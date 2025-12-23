@@ -1,0 +1,63 @@
+.select-location-page {
+    padding: 2rem 0;
+    min-height: 60vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.select-location-card {
+    background: white;
+    padding: 2.5rem;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    max-width: 500px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+.select-location-title {
+    font-family: var(--font-family-display);
+    font-size: 2.5rem;
+    color: var(--color-primary);
+    text-align: center;
+    margin-bottom: 2rem;
+}
+
+.select-location-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.select-location-btn {
+    font-family: var(--font-family-display) !important;
+    font-size: 1.25rem !important;
+    letter-spacing: 0.05em;
+}
+
+/* Reusing form styles from delivery or defining them here if needed */
+.location-select {
+    font-family: var(--font-family-display);
+    font-size: 1.1rem;
+    padding: 0.875rem 1rem;
+    border: 1px solid var(--color-gray-300);
+    border-radius: 8px;
+    width: 100%;
+    color: var(--color-gray-900);
+    background-color: white;
+    cursor: pointer;
+
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+    background-position: right 0.5rem center;
+    background-repeat: no-repeat;
+    background-size: 1.5em 1.5em;
+    padding-right: 2.5rem;
+}
+
+[dir="rtl"] .location-select {
+    background-position: left 0.5rem center;
+    padding-right: 1rem;
+    padding-left: 2.5rem;
+}
