@@ -1,0 +1,98 @@
+.delivery-page {
+    padding: 2rem 0;
+    min-height: 60vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.delivery-card {
+    background: white;
+    padding: 2.5rem;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    /* Soft shadow */
+    max-width: 500px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+.delivery-title {
+    font-family: var(--font-family-display);
+    font-size: 2.5rem;
+    color: var(--color-primary);
+    text-align: center;
+    margin-bottom: 0.5rem;
+}
+
+.delivery-subtitle {
+    text-align: center;
+    color: var(--color-gray-600);
+    margin-bottom: 2rem;
+    font-size: 1.25rem;
+    font-family: var(--font-family-display);
+}
+
+.delivery-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.form-label {
+    font-weight: 600;
+    color: var(--color-gray-900);
+    font-size: 1.1rem;
+    font-family: var(--font-family-display);
+}
+
+.form-control {
+    padding: 0.875rem 1rem;
+    border: 1px solid var(--color-gray-300);
+    border-radius: 8px;
+    font-family: var(--font-family-display);
+    font-size: 1rem;
+    color: var(--color-gray-900);
+    transition: all 0.2s;
+    background-color: white;
+    /* Ensure white bg */
+}
+
+/* RTL Support for inputs */
+[dir="rtl"] .form-control {
+    text-align: right;
+}
+
+.form-control:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
+    /* Primary color glow */
+}
+
+.form-select {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+    background-position: right 0.5rem center;
+    background-repeat: no-repeat;
+    background-size: 1.5em 1.5em;
+    padding-right: 2.5rem;
+}
+
+[dir="rtl"] .form-select {
+    background-position: left 0.5rem center;
+    padding-right: 1rem;
+    padding-left: 2.5rem;
+}
+
+.delivery-submit-btn {
+    font-family: var(--font-family-display) !important;
+    font-size: 1.25rem !important;
+    letter-spacing: 0.05em;
+}
