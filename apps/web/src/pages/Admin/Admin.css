@@ -1,0 +1,286 @@
+.admin-login-page {
+    min-height: 80vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--color-off-white);
+}
+
+.admin-login-card {
+    background: var(--color-white);
+    padding: var(--spacing-2xl);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    width: 100%;
+    max-width: 400px;
+    text-align: center;
+}
+
+.admin-title {
+    font-family: var(--font-family-display);
+    font-size: 2rem;
+    color: var(--color-primary-red);
+    margin-bottom: var(--spacing-lg);
+}
+
+.admin-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-lg);
+}
+
+.admin-back-btn {
+    color: var(--color-gray-500) !important;
+    font-size: 0.875rem !important;
+}
+
+.admin-back-btn:hover {
+    color: var(--color-black) !important;
+}
+
+/* Dashboard Styles */
+.admin-dashboard {
+    padding: var(--spacing-xl) 0;
+    min-height: 100vh;
+    background-color: var(--color-gray-100);
+}
+
+.admin-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--spacing-xl);
+}
+
+.admin-header h1 {
+    font-family: var(--font-family-display);
+    color: var(--color-black);
+}
+
+.admin-tabs {
+    display: flex;
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-lg);
+    border-bottom: 2px solid var(--color-gray-200);
+}
+
+.admin-tab {
+    padding: var(--spacing-md) var(--spacing-lg);
+    background: none;
+    border: none;
+    font-family: var(--font-family-display);
+    font-size: 1.1rem;
+    color: var(--color-gray-500);
+    cursor: pointer;
+    position: relative;
+    transition: all 0.2s ease;
+}
+
+.admin-tab.active {
+    color: var(--color-primary-red);
+    font-weight: 700;
+}
+
+.admin-tab.active::after {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background-color: var(--color-primary-red);
+}
+
+.admin-order-card {
+    background: var(--color-white);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-lg);
+    margin-bottom: var(--spacing-md);
+    box-shadow: var(--shadow-sm);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-left: 4px solid var(--color-secondary-gold);
+}
+
+.order-details h3 {
+    font-family: var(--font-family-display);
+    margin-bottom: var(--spacing-xs);
+}
+
+.order-actions {
+    display: flex;
+    gap: var(--spacing-sm);
+}
+
+.status-badge {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    border-radius: var(--radius-full);
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.status-pending {
+    background-color: #FEF3C7;
+    color: #D97706;
+}
+
+.status-completed {
+    background-color: #D1FAE5;
+    color: #059669;
+}
+
+.admin-header-left {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+.admin-header-actions {
+    display: flex;
+    gap: var(--spacing-sm);
+}
+
+.status-active {
+    background-color: #D1FAE5;
+    color: #059669;
+}
+
+.status-paused {
+    background-color: #FEE2E2;
+    color: #DC2626;
+}
+
+.btn-pause {
+    color: #DC2626 !important;
+    border: 2px solid #DC2626 !important;
+    background-color: transparent !important;
+}
+
+.btn-pause:hover {
+    background-color: #FEF2F2 !important;
+}
+
+.btn-resume {
+    background-color: #059669 !important;
+    border-color: #059669 !important;
+}
+
+/* Stock Tab */
+.stock-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    max-width: 600px;
+}
+
+.admin-stock-card {
+    background: var(--color-white);
+    padding: var(--spacing-md);
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: var(--shadow-sm);
+}
+
+.stock-name {
+    font-weight: 500;
+    font-family: var(--font-family-display);
+    font-size: 1.1rem;
+    flex: 1;
+}
+
+.stock-status {
+    width: 60px;
+    text-align: right;
+    font-size: 0.875rem;
+    font-weight: 600;
+}
+
+.text-success {
+    color: #059669;
+}
+
+.text-error {
+    color: #DC2626;
+}
+
+/* Switch Toggle */
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 50px;
+    height: 24px;
+}
+
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: .4s;
+    border-radius: 24px;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 16px;
+    width: 16px;
+    left: 4px;
+    bottom: 4px;
+    background-color: white;
+    transition: .4s;
+    border-radius: 50%;
+}
+
+input:checked+.slider {
+    background-color: var(--color-primary-red);
+}
+
+input:checked+.slider:before {
+    transform: translateX(26px);
+}
+
+/* Rush Hour Tab */
+.rush-card {
+    background: var(--color-white);
+    padding: var(--spacing-xl);
+    border-radius: var(--radius-lg);
+    text-align: center;
+    max-width: 500px;
+    margin: 0 auto;
+    box-shadow: var(--shadow-md);
+}
+
+.rush-controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-lg);
+    margin: var(--spacing-xl) 0;
+}
+
+.time-value {
+    display: block;
+    font-size: 3rem;
+    font-weight: 700;
+    color: var(--color-primary-red);
+    line-height: 1;
+}
+
+.time-unit {
+    color: var(--color-gray-500);
+}

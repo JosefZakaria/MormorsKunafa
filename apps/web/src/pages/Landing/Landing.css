@@ -1,0 +1,78 @@
+.landing {
+    min-height: 80vh;
+    display: flex;
+    align-items: center;
+    /* Using real image as background with overlay */
+    background-image: linear-gradient(rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.6)), url('/images/kunafa-ashta.jpg');
+    background-size: cover;
+    background-position: center;
+    color: var(--color-white);
+    padding: var(--spacing-3xl) 0;
+    position: relative;
+}
+
+.landing__container {
+    display: flex;
+    justify-content: center;
+    text-align: center;
+}
+
+.landing__content {
+    max-width: 600px;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xl);
+    align-items: center;
+    /* Increase readability on busy background */
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+.landing__title {
+    color: var(--color-secondary-gold);
+}
+
+.landing__subtitle {
+    color: var(--color-gray-100);
+    margin-top: -1rem;
+    font-family: var(--font-family-display);
+    font-weight: 700;
+    font-size: 1.25rem;
+    letter-spacing: 0.1em;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
+}
+
+.landing__actions {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+    width: 100%;
+    max-width: 320px;
+    margin: var(--spacing-lg) 0;
+}
+
+.landing__actions button {
+    font-family: var(--font-family-display);
+    font-size: 1.1rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+}
+
+.landing__secondary {
+    margin-top: var(--spacing-md);
+}
+
+.landing__secondary button {
+    font-family: var(--font-family-display);
+    font-size: 1.1rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+}
+
+@media (min-width: 768px) {
+    .landing__actions {
+        flex-direction: row;
+        max-width: none;
+        justify-content: center;
+    }
+}

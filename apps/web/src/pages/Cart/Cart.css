@@ -1,0 +1,106 @@
+.cart-page {
+    padding: var(--spacing-2xl) 0;
+    min-height: 60vh;
+}
+
+.cart-title {
+    margin-bottom: var(--spacing-xl);
+    text-align: center;
+}
+
+.cart-content {
+    display: grid;
+    gap: var(--spacing-2xl);
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+@media (min-width: 768px) {
+    .cart-content {
+        grid-template-columns: 3fr 2fr;
+        align-items: start;
+    }
+}
+
+.cart-items {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+}
+
+.cart-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--spacing-md);
+    border: 1px solid var(--color-gray-200);
+    border-radius: var(--radius-md);
+    background-color: var(--color-white);
+}
+
+.cart-item__info {
+    display: flex;
+    flex-direction: column;
+}
+
+.cart-item__controls {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    background: var(--color-gray-100);
+    padding: 0.25rem;
+    border-radius: var(--radius-sm);
+}
+
+.quantity-btn {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    border-radius: var(--radius-sm);
+}
+
+.quantity-btn:hover {
+    background-color: var(--color-white);
+}
+
+.quantity-value {
+    padding: 0 var(--spacing-sm);
+    font-weight: 600;
+    min-width: 32px;
+    text-align: center;
+}
+
+.cart-summary {
+    background-color: var(--color-white);
+    padding: var(--spacing-lg);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-gray-200);
+    box-shadow: var(--shadow-sm);
+}
+
+.cart-summary__row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: var(--spacing-sm);
+}
+
+.cart-divider {
+    border: 0;
+    border-top: 1px solid var(--color-gray-200);
+    margin: var(--spacing-md) 0;
+}
+
+.cart-summary__total {
+    margin-bottom: var(--spacing-lg);
+}
+
+.text-primary {
+    color: var(--color-primary-red);
+}
+
+.checkout-btn {
+    margin-bottom: var(--spacing-sm);
+}
