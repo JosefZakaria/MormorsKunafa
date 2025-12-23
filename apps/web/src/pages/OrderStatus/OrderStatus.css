@@ -1,0 +1,121 @@
+.status-page {
+    padding: var(--spacing-2xl) 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 70vh;
+}
+
+.status-container {
+    display: flex;
+    justify-content: center;
+}
+
+.status-card {
+    background: var(--color-white);
+    padding: var(--spacing-2xl);
+    border-radius: var(--radius-lg);
+    text-align: center;
+    box-shadow: var(--shadow-lg);
+    width: 100%;
+    max-width: 600px;
+    border: 4px solid transparent;
+}
+
+/* Status Colors */
+.status--on-time {
+    border-color: #10B981;
+    /* Green */
+}
+
+.status--almost-ready {
+    border-color: var(--color-secondary-gold);
+}
+
+.status--delayed {
+    border-color: var(--color-primary-red);
+}
+
+.status-title {
+    margin-bottom: var(--spacing-xl);
+}
+
+.timer-display {
+    background: var(--color-gray-100);
+    padding: var(--spacing-xl);
+    border-radius: var(--radius-full);
+    display: inline-flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    width: 250px;
+    height: 250px;
+    margin-bottom: var(--spacing-xl);
+}
+
+.timer-value {
+    font-family: var(--font-family-display);
+    font-size: 4rem;
+    font-weight: 700;
+    color: var(--color-black);
+    line-height: 1;
+}
+
+.timer-label {
+    color: var(--color-gray-500);
+    margin-top: var(--spacing-xs);
+}
+
+.status-steps {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: var(--spacing-lg);
+    position: relative;
+}
+
+/* Pseudo-line connecting steps */
+.status-steps::before {
+    content: '';
+    position: absolute;
+    top: 7px;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--color-gray-200);
+    z-index: 0;
+}
+
+.step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--spacing-sm);
+    z-index: 1;
+    position: relative;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--color-gray-500);
+}
+
+.step-dot {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--color-gray-200);
+    border: 2px solid var(--color-white);
+}
+
+.step--completed .step-dot,
+.step--active .step-dot {
+    background: var(--color-secondary-gold);
+}
+
+.step--active {
+    color: var(--color-black);
+    font-weight: 700;
+}
+
+.status-message {
+    font-size: 1.125rem;
+    color: var(--color-gray-800);
+}
