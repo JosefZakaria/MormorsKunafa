@@ -8,6 +8,11 @@
  * This should only contain pure JavaScript/TypeScript code.
  */
 
+
+
+// Utan raden nedan kommer det problem på "process".
+declare const process: any;
+
 // API configuration
 export const API_CONFIG = {
   // Base URL will be configured per environment
@@ -28,11 +33,11 @@ export const API_CONFIG = {
 //       ...options?.headers,
 //     },
 //   });
-//   
+//
 //   if (!response.ok) {
 //     throw new Error(`API Error: ${response.status}`);
 //   }
-//   
+//
 //   return response.json();
 // }
 
