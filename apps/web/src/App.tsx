@@ -12,7 +12,7 @@ import { AdminDashboard } from './pages/Admin/Dashboard/AdminDashboard';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { LanguageProvider } from './contexts/LanguageContext';
 
-const PrivateRoute = ({ children }: { children: JSX.Element }) => {
+const PrivateRoute = ({ children }: { children: React.ReactElement }) => {
   const { isAuthenticated } = useAuth();
   return isAuthenticated ? children : <Navigate to="/admin/login" />;
 };
@@ -48,4 +48,3 @@ function App() {
 }
 
 export default App
-

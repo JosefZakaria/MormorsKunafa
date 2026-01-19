@@ -15,7 +15,6 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
-    "noUncheckedSideEffectImports": true,
     "paths": {
       "@/*": ["./src/*"],
       "@shared/*": ["../../shared/*"]
@@ -24,4 +23,3 @@
   },
   "include": ["src"]
 }
-
