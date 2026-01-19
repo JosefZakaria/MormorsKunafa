@@ -63,4 +63,3 @@ export const API_CONFIG = {
 //
 //   return response.json();
 // }
-
