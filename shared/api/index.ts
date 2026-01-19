@@ -8,10 +8,38 @@
  * This should only contain pure JavaScript/TypeScript code.
  */
 
+// Helper to safely get environment variables in both Vite and Node environments
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+declare const process: any;
+
+const getEnvVar = (key: string, fallback: string): string => {
+  // Check for Vite environment
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const meta = (import.meta as any);
+  if (typeof meta !== 'undefined' && meta.env && meta.env[key]) {
+    return meta.env[key] as string;
+  }
+  // Check for Vite environment with VITE_ prefix (common convention)
+  if (typeof meta !== 'undefined' && meta.env && meta.env[`VITE_${key}`]) {
+    return meta.env[`VITE_${key}`] as string;
+  }
+
+  // Check for Node.js environment
+  try {
+    if (typeof process !== 'undefined' && process.env && process.env[key]) {
+      return process.env[key] as string;
+    }
+  } catch (e) {
+    // Ignore errors if process is not defined
+  }
+
+  return fallback;
+};
+
 // API configuration
 export const API_CONFIG = {
   // Base URL will be configured per environment
-  baseUrl: process.env.API_BASE_URL || 'http://localhost:3000/api',
+  baseUrl: getEnvVar('API_BASE_URL', 'http://localhost:3000/api'),
   timeout: 10000,
 };
 
@@ -28,11 +56,11 @@ export const API_CONFIG = {
 //       ...options?.headers,
 //     },
 //   });
-//   
+//
 //   if (!response.ok) {
 //     throw new Error(`API Error: ${response.status}`);
 //   }
-//   
+//
 //   return response.json();
 // }
 
