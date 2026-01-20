@@ -11,6 +11,9 @@ import { AdminLogin } from './pages/Admin/Login/AdminLogin';
 import { AdminDashboard } from './pages/Admin/Dashboard/AdminDashboard';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { LanguageProvider } from './contexts/LanguageContext';
+import { CartProvider } from './contexts/CartContext';
+import { ToastProvider } from './contexts/ToastContext';
+import { Toast } from './components/common/Toast/Toast';
 
 const PrivateRoute = ({ children }: { children: React.ReactElement }) => {
   const { isAuthenticated } = useAuth();
@@ -22,7 +25,10 @@ function App() {
     <BrowserRouter>
       <AuthProvider>
         <LanguageProvider>
-          <Routes>
+          <CartProvider>
+            <ToastProvider>
+              <Toast />
+              <Routes>
             <Route path="/" element={<MainLayout />}>
               <Route index element={<Landing />} />
               <Route path="menu" element={<Menu />} />
@@ -40,7 +46,9 @@ function App() {
                 <AdminDashboard />
               </PrivateRoute>
             } />
-          </Routes>
+            </Routes>
+            </ToastProvider>
+          </CartProvider>
         </LanguageProvider>
       </AuthProvider>
     </BrowserRouter>

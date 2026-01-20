@@ -6,11 +6,14 @@ import { LanguageSelector } from '../../common/LanguageSelector/LanguageSelector
 import './Header.css';
 
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { useCart } from '../../../contexts/CartContext';
 
 export const Header: React.FC = () => {
     const { t } = useLanguage();
+    const { getItemCount } = useCart();
     const navigate = useNavigate();
     const [isMenuOpen, setIsMenuOpen] = React.useState(false);
+    const cartItemCount = getItemCount();
 
     const toggleMenu = () => setIsMenuOpen(!isMenuOpen);
     const closeMenu = () => setIsMenuOpen(false);
@@ -42,6 +45,9 @@ export const Header: React.FC = () => {
                     </Button>
                     <Button variant="ghost" className="header__menu-btn" onClick={() => handleNavigation('/cart')}>
                         {t('nav.cart')}
+                        {cartItemCount > 0 && (
+                            <span className="header__cart-badge">{cartItemCount}</span>
+                        )}
                     </Button>
                 </nav>
             </Container>
