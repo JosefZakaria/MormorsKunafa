@@ -49,7 +49,7 @@ const getEnvVar = (key: string, fallback: string): string => {
 
 // API configuration - works for both web and mobile
 export const API_CONFIG = {
-  baseUrl: getEnvVar('API_BASE_URL', 'http://localhost:3000/api'),
+  baseUrl: getEnvVar('API_BASE_URL', 'http://localhost:3002/api'),
   timeout: 10000,
 };
 
