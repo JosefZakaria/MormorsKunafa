@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Container } from '../../components/common/Container/Container';
 import { Card } from '../../components/common/Card/Card';
 import { Button } from '../../components/common/Button/Button';
@@ -104,27 +104,34 @@ export const Menu: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [usingMockData, setUsingMockData] = useState(false);
+    const tRef = useRef(t);
+    tRef.current = t;
 
+    // Fetch products once on mount so a refetch (e.g. from t changing) can't overwrite real data
     useEffect(() => {
+        let cancelled = false;
         const fetchProducts = async () => {
             try {
                 setLoading(true);
                 setError(null);
                 setUsingMockData(false);
                 const data = await productApi.getAll();
-                setProducts(data);
+                if (!cancelled) {
+                    setProducts(data);
+                }
             } catch (err) {
-                // Fallback to mock data if API fails
+                if (cancelled) return;
                 console.warn('API not available, using mock data:', err);
                 setUsingMockData(true);
-                setProducts(getMockProducts(t));
+                setProducts(getMockProducts(tRef.current));
             } finally {
-                setLoading(false);
+                if (!cancelled) setLoading(false);
             }
         };
 
         fetchProducts();
-    }, [t]);
+        return () => { cancelled = true; };
+    }, []);
 
     const handleAddToCart = (product: Product) => {
         if (!product.inStock) {
