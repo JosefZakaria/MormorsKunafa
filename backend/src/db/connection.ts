@@ -14,3 +14,7 @@ const pool = mysql.createPool({
 
 export type Row = Record<string, unknown>;
 export const db = pool;
+
+export function generateId(): string {
+  return crypto.randomUUID();
+}
