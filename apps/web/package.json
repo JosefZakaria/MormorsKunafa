@@ -11,6 +11,7 @@
   "dependencies": {
     "@fontsource/playfair-display": "^5.2.8",
     "@types/leaflet": "^1.9.21",
+    "dompurify": "^3.3.1",
     "inter-ui": "^4.1.1",
     "leaflet": "^1.9.4",
     "react": "^19.0.0",
@@ -20,6 +21,7 @@
     "socket.io-client": "^4.7.2"
   },
   "devDependencies": {
+    "@types/dompurify": "^3.0.5",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.4",
