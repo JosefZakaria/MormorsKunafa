@@ -17,6 +17,11 @@
     box-shadow: none;
 }
 
+.footer__content--contact-only {
+    padding-left: 0;
+    padding-right: 0;
+}
+
 .footer__grid {
     display: grid;
     grid-template-columns: 1fr;
@@ -190,5 +195,12 @@
 
     .footer__grid--no-map {
         grid-template-columns: 1fr 1fr;
+    }
+
+    .footer__grid--contact-only {
+        grid-template-columns: 1fr;
+        max-width: none;
+        margin: 0;
+        justify-items: start;
     }
 }
