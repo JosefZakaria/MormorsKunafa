@@ -7,6 +7,42 @@
     z-index: 1000;
 }
 
+/* Transparent over landing hero / menu / cart so content fills to the top */
+.header--over-hero {
+    background-color: transparent !important;
+    border-bottom-color: transparent;
+    box-shadow: none;
+}
+
+.header--over-hero .header__brand-text,
+.header--over-hero .header__nav a,
+.header--over-hero .header__nav button {
+    color: var(--color-white);
+}
+
+.header--over-hero .header__hamburger,
+.header--over-hero .header__hamburger::before,
+.header--over-hero .header__hamburger::after {
+    background-color: var(--color-white);
+}
+
+.header--over-hero .header__nav .lang-btn {
+    color: rgba(255, 255, 255, 0.85);
+}
+
+.header--over-hero .header__nav .lang-btn.active {
+    color: var(--color-white);
+}
+
+.header--over-hero .header__nav .lang-divider {
+    color: rgba(255, 255, 255, 0.6);
+}
+
+/* No border on cart so header and content blend (all white) */
+.header--on-cart {
+    border-bottom: none;
+}
+
 .header__container {
     display: flex;
     align-items: center;
