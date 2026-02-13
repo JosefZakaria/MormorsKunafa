@@ -1,19 +1,38 @@
 .landing {
-    min-height: 80vh;
+    min-height: 90vh;
     display: flex;
-    align-items: center;
-    /* Using real image as background with overlay */
-    background-image: linear-gradient(rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.6)), url('/images/kunafa-ashta.jpg');
-    background-size: cover;
-    background-position: center;
+    flex-direction: column;
     color: var(--color-white);
-    padding: var(--spacing-3xl) 0;
+    overflow: visible;
+    background-color: var(--color-white);
+    /* Extend behind the header */
+    margin-top: -80px;
+    padding-top: 0;
+    padding-bottom: 0;
     position: relative;
 }
 
+.landing__hero {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow: visible;
+    max-height: 82vh;
+    background-image: linear-gradient(rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.6)), url('/images/kunafa-ashta.jpg');
+    background-size: cover;
+    background-position: center;
+    padding-top: calc(80px + var(--spacing-3xl));
+    padding-bottom: var(--spacing-2xl);
+    border-bottom: none;
+    box-shadow: none;
+}
+
 .landing__container {
+    flex: 1;
     display: flex;
     justify-content: center;
+    align-items: center;
     text-align: center;
 }
 
@@ -42,20 +61,133 @@
     text-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
 }
 
-.landing__actions {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-md);
-    width: 100%;
-    max-width: 320px;
-    margin: var(--spacing-lg) 0;
+/* MAX-style: placeholder on the edge; pull up so buttons sit halfway on image, halfway on white */
+#start-order-button-group-placeholder {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translate(-50%, 50%);
+    margin-top: -50px;
+    width: auto;
+    max-width: 100%;
+    box-sizing: border-box;
 }
 
-.landing__actions button {
+/* Button group: single row, never wrap/stack */
+.landing__actions {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    justify-content: center;
+    align-items: stretch;
+    gap: var(--spacing-xs);
+    padding: 0 var(--spacing-lg);
+    box-sizing: border-box;
+    background-color: transparent;
+}
+
+/* Large, slightly rounded squares/rectangles (not pills); floating shadow */
+.landing__actions .landing__btn {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-sm);
+    width: 160px;
+    height: 120px;
+    min-width: 160px;
+    min-height: 120px;
+    border-radius: 8px;
+    padding: var(--spacing-md);
     font-family: var(--font-family-display);
-    font-size: 1.1rem;
+    font-size: 0.95rem;
     font-weight: 700;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    text-align: center;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
+}
+
+/* Ät här (first): no rounding on right so it connects to the middle */
+.landing__actions .landing__btn:first-child {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+/* Leverans (last): no rounding on left so it connects to the middle */
+.landing__actions .landing__btn:last-child {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+}
+
+/* Ta med (middle): no rounded corners */
+.landing__actions .landing__btn:nth-child(2) {
+    border-radius: 0;
+}
+
+.landing__btn-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.landing__btn-icon svg {
+    width: 36px;
+    height: 36px;
+}
+
+.landing__btn-label {
+    line-height: 1.2;
+}
+
+/* Language selector below the buttons, centered (MAX-style) */
+.landing__language {
+    display: flex;
+    justify-content: center;
+    margin-top: var(--spacing-lg);
+    padding-bottom: var(--spacing-sm);
+}
+
+.landing__language .language-selector {
+    color: var(--color-gray-800);
+}
+
+.landing__language .lang-btn {
+    color: var(--color-gray-500);
+}
+
+.landing__language .lang-btn.active {
+    color: var(--color-primary-red);
+}
+
+.landing__language .lang-divider {
+    color: var(--color-gray-400);
+}
+
+@media (max-width: 767px) {
+    .landing__actions {
+        padding: 0 var(--spacing-md);
+    }
+
+    .landing__actions .landing__btn {
+        width: 120px;
+        min-width: 100px;
+        height: 100px;
+        min-height: 100px;
+        border-radius: 8px;
+    }
+
+    .landing__btn-icon svg {
+        width: 32px;
+        height: 32px;
+    }
+}
+
+@media (min-width: 768px) {
+    .landing__actions {
+        padding: 0 var(--spacing-2xl);
+    }
 }
 
 .landing__secondary {
@@ -67,12 +199,4 @@
     font-size: 1.1rem;
     font-weight: 700;
     letter-spacing: 0.1em;
-}
-
-@media (min-width: 768px) {
-    .landing__actions {
-        flex-direction: row;
-        max-width: none;
-        justify-content: center;
-    }
 }

@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { ScrollToTop } from './components/ScrollToTop';
 import { MainLayout } from './components/layout/MainLayout';
 import { Landing } from './pages/Landing/Landing';
 import { Menu } from './pages/Menu/Menu';
@@ -23,6 +24,7 @@ const PrivateRoute = ({ children }: { children: React.ReactElement }) => {
 function App() {
   return (
     <BrowserRouter>
+      <ScrollToTop />
       <AuthProvider>
         <LanguageProvider>
           <CartProvider>

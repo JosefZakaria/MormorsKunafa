@@ -1,6 +1,7 @@
 .cart-page {
     padding: var(--spacing-2xl) 0;
     min-height: 60vh;
+    background-color: #ffffff;
 }
 
 .cart-title {

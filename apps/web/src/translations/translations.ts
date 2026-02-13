@@ -10,6 +10,18 @@ export const translations = {
         // Footer
         "footer.tagline": "Autentiska smaker, gjorda med kärlek.",
         "footer.copyright": "© 2024 Mormors Kunafa. Alla rättigheter förbehållna.",
+        "footer.address_label": "Adress:",
+        "footer.address": "Karolingatan 1, 212 34 Malmö",
+        "footer.phone_label": "Telefon:",
+        "footer.phone": "072-868 25 92",
+        "footer.bookings_label": "Bokningar:",
+        "footer.hours_label": "Öppettider:",
+        "footer.hours": "Mån–Sön: 11:00–22:00",
+        "footer.find_us": "Hitta hit",
+        "footer.contact": "Kontakt",
+        "footer.opening_hours": "Öppettider",
+        "footer.about_us": "Om oss",
+        "footer.about_text": "Vi serverar autentisk kunafa gjord med kärlek och tradition. Vårt recept har gått i arv i generationer för att ge dig den sanna smaken av Mellanöstern.",
 
         // Landing
         "landing.title": "Smaka på traditionen",
@@ -31,6 +43,8 @@ export const translations = {
         "menu.title": "Vår Meny",
         "menu.subtitle": "Traditionella sötsaker, nybakade varje dag.",
         "menu.add_to_cart": "Lägg till",
+        "menu.out_of_stock": "Slut i lager",
+        "menu.added_to_cart": "{name} har lagts till i varukorgen!",
 
         // Cart
         "cart.title": "Din Beställning",
@@ -41,6 +55,7 @@ export const translations = {
         // Common
         "loading": "Laddar...",
         "error": "Ett fel uppstod",
+        "modal.close": "Stäng",
 
         // Products
         "products.1.name": "Pistage Baklawa",
@@ -56,9 +71,19 @@ export const translations = {
         "products.6.name": "Harise med Ashta",
         "products.6.desc": "Söt mannagrynskaka toppad med färsk kräm.",
         "products.7.name": "Ostkaka (Halawet el Jibn)",
-        "products.7.desc": "Söta ostrule fyllda med kräm.",
+        "products.7.desc": "Söta ostrullar fyllda med kräm.",
         "products.8.name": "Krispig Kunafa",
         "products.8.desc": "Grov kunafa-deg, krispig och gyllene.",
+        "products.9.name": "Bröd (kaek)",
+        "products.9.desc": "Vanligt att njuta av kunafa inuti bröd. Välj hur många bröd du vill ha.",
+        "products.11.name": "Mad bel Ashta",
+        "products.11.desc": "Utsökt, krämig dessert fylld med traditionell arabisk grädde ashta. Toppad med pistage.",
+        "products.12.name": "Mormorsbox - BaklawaMix",
+        "products.12.desc": "Lyxig samling handgjorda bakverk: baklava, maamoul, harise med mera. 1 kg.",
+        "products.13.name": "Mamoul Pistage",
+        "products.13.desc": "Klassisk maamoul fylld med premium pistagenötter.",
+        "products.14.name": "Pistagemix",
+        "products.14.desc": "Exklusiv samling handgjorda baklawabitar med premium pistage. Perfekt som gåva.",
 
         // Delivery
         "delivery.title": "Hemkörning",
@@ -91,6 +116,18 @@ export const translations = {
         // Footer
         "footer.tagline": "Authentic flavors, made with love.",
         "footer.copyright": "© 2024 Mormors Kunafa. All rights reserved.",
+        "footer.address_label": "Address:",
+        "footer.address": "Karolingatan 1, 212 34 Malmö",
+        "footer.phone_label": "Phone:",
+        "footer.phone": "072-868 25 92",
+        "footer.bookings_label": "Bookings:",
+        "footer.hours_label": "Opening hours:",
+        "footer.hours": "Mon–Sun: 11:00–22:00",
+        "footer.find_us": "Find us",
+        "footer.contact": "Contact",
+        "footer.opening_hours": "Opening hours",
+        "footer.about_us": "About us",
+        "footer.about_text": "We serve authentic kunafa made with love and tradition. Our recipe has been passed down through generations to bring you the true taste of the Middle East.",
 
         // Landing
         "landing.title": "Taste the Tradition",
@@ -112,6 +149,8 @@ export const translations = {
         "menu.title": "Our Menu",
         "menu.subtitle": "Traditional sweets, baked fresh daily.",
         "menu.add_to_cart": "Add to Cart",
+        "menu.out_of_stock": "Out of stock",
+        "menu.added_to_cart": "{name} has been added to cart.",
 
         // Cart
         "cart.title": "Your Order",
@@ -122,6 +161,7 @@ export const translations = {
         // Common
         "loading": "Loading...",
         "error": "An error occurred",
+        "modal.close": "Close",
 
         // Products
         "products.1.name": "Pistachio Baklawa",
@@ -140,6 +180,29 @@ export const translations = {
         "products.7.desc": "Sweet cheese rolls filled with cream.",
         "products.8.name": "Crispy Kunafa",
         "products.8.desc": "Coarse kunafa dough, crispy and golden.",
+        "products.9.name": "Bread (Kaak)",
+        "products.9.desc": "Common to enjoy kunafa inside bread. Choose how many breads you want.",
+        "products.11.name": "Mad bel Ashta",
+        "products.11.desc": "Exquisite creamy dessert filled with traditional Arabic ashta cream. Topped with pistachio.",
+        "products.12.name": "Mormorsbox Baklawa Mix",
+        "products.12.desc": "Luxury collection of handmade pastries: baklava, maamoul, harise and more. 1 kg.",
+        "products.13.name": "Mamoul Pistachio",
+        "products.13.desc": "Classic maamoul filled with premium pistachios.",
+        "products.14.name": "Pistachio Mix",
+        "products.14.desc": "Exclusive collection of handmade baklava pieces with premium pistachio. Perfect as a gift.",
+        "products.1.desc_long": "<h3><strong>Pistachio Baklawa – pure taste, without excess</strong></h3><p>The first thing you notice is the balance. Not too sweet. Not too heavy. Just right.</p><p>We chose to hold back on the syrup to bring out what really matters: the finest pistachios, the hand-rolled phyllo dough, and the real butter that binds it all together. <strong>The result?</strong> A baklawa you can enjoy again and again, without tiring of it.</p><p>Here it's not about overwhelming but about refining. Every bite is clear, crispy and rich in flavour. An elegant take on a beloved classic.</p>",
+        "products.2.desc_long": "<p>500 g yields approximately 16–20 small pieces. Classic baklawa filled with crushed walnuts – a timeless favourite with crisp layers and rich walnut filling.</p>",
+        "products.3.desc_long": "<h3><strong>The story begins here...</strong></h3><p>Perhaps you've had a day when you longed for warmth. For a moment of calm that holds you gently. A taste that takes you back to the safety of childhood. In that moment, nothing beats a warm kunafa that melts in your mouth, like a whisper from a bygone time.</p><p>Fine kunafa is a delicate shredded dough mixed with genuine Arabic ghee <em>Ghee</em>, filled with creamy cheese, drizzled with light syrup and topped with pistachios like a golden full stop to every story.</p><h3><strong>A product that changes everything</strong></h3><p>Kunafa is not just a dessert – it's a ritual, a moment, a full experience that starts with the scent and ends with a smile. It's the taste of home, of family, of evenings gathered around a tray when someone calls: \"Get the kunafa before it's gone!\" From the first bite you notice the difference – a difference made by quality, care and love in every layer.</p><h3><strong>Who is it for?</strong></h3><p>– For those who love memorable flavour experiences.<br>– For those who prefer soft over crispy – something that melts in the heart.<br>– As a gift full of thought and warmth – our smooth kunafa is an edible love letter.</p><h3><strong>The taste starts with the eyes...</strong></h3><p>We created packaging that embraces the product like a first glance. A warm, elegant box with an exclusive feel. Inside – soft padding that keeps the heat and holds the kunafa like a small jewel. A light pistachio sprinkle on top, and small golden forks that make every bite a ceremony.</p>",
+        "products.4.desc_long": "<p>Sesame bread filled with warm kunafa cheese. It's common to enjoy kunafa inside bread – syrup is added to the bread and then filled with kunafa. Choose how many breads you want with your kunafa order.</p>",
+        "products.5.desc_long": "<h3><strong>A luxurious fusion of flavours</strong></h3><p>Ashta Baklawa is a delightful combination of classic baklawa with a rich, creamy ashta (Arabic cream) in the centre. The buttery, crisp pastry wraps the smooth layer of ashta and gives a perfect balance of sweet and creamy. Topped with finely chopped pistachios and baked to perfection, this baklawa offers an irresistible taste experience.</p><h3><strong>Who is it for?</strong></h3><p>For those who want a sophisticated twist on a classic favourite, for those who love the perfect mix of pastry and creamy filling, and for those seeking something unique and delicate.</p><p><strong>More than just a dessert – a taste of tradition and luxury.</strong></p>",
+        "products.6.desc_long": "<p>Sweet semolina cake topped with fresh cream. A traditional treat that brings together the best of texture and flavour.</p>",
+        "products.7.desc_long": "<h3><strong>A sweet and creamy delicacy</strong></h3><p>Halawet El Jibn is a heavenly Arabic dessert that combines the smooth taste of cheese with a sweet, soft dough. Filled with a creamy blend of cheese and sugar, this dessert is rolled to perfection and often topped with pistachios or syrup for extra flavour. It has a balanced consistency and is both sweet and light, making it a wonderful end to a meal.</p><h3><strong>Who is it for?</strong></h3><p>For those who love sweet, cheese-based desserts, for those seeking a tasteful tradition, and for those who want to treat themselves to something truly soft and delicate.</p><p><strong>More than a dessert – a heavenly taste experience.</strong></p>",
+        "products.8.desc_long": "<h3><strong>Where the party begins… with a sound</strong></h3><p>There are sounds that stick in the memory – laughter from the kitchen, spoons stirring in pots, and Grandma's voice filling the whole home with warmth. Memories take you back to childhood or to special holidays or an ordinary day that became something special. But one thing you remember: how everything paused for a moment when the smell of butter, syrup and toasted dough spread through the house.</p><p>This is where our story begins – a tribute to tradition, from generation to generation.</p><h3><strong>Crispy kunafa as before, but even better</strong></h3><p>We've kept what made the classic kunafa beloved: the golden surface, the roasted strands, the sweet layer of cheese or ashta, and the perfectly balanced syrup – but we've added something more: our time, our precision, our passion. Crispy kunafa, baked on low heat and high feeling. It's love in every layer. And it's the result of years of experience and love for what we do.</p><h3><strong>A sound, a scent, a taste… an experience</strong></h3><h3><strong>Who is it for?</strong></h3><p>– For you who grew up with \"the real kunafa\"<br>– For you who want to offer something that's heard before it's tasted<br>– For you who know that some flavours bring people closer</p><h3><strong>Because we know the first impression starts with the packaging</strong></h3><p>We chose a design that reflects what's inside: pride, elegance and a scent of tradition. A sleek box in deep colours. Every detail is thought through. It's more than a dessert. It's a story you get to taste. Order now!</p><p><em>Note: The crispiness may lessen after a day.</em></p>",
+        "products.9.desc_long": "<p>It's common to enjoy kunafa inside bread. Syrup is added to the bread and then it's filled with kunafa. Choose how many breads you want with your kunafa order.</p>",
+        "products.11.desc_long": "<p>An exquisite, creamy dessert filled with the traditional Arabic cream ashta. This delicious dessert combines the smooth taste of ashta with pastry, creating a perfect balance of sweetness and creaminess. Topped with finely chopped pistachios and lightly baked to a golden colour, Mad bel Ashta offers an unforgettable taste experience that takes you on a journey through Arabic food culture. A perfect end to a meal or a sweet moment to enjoy anytime.</p>",
+        "products.12.desc_long": "<p>Discover <strong>Mormors Box</strong>, a luxury collection of handmade Oriental pastries, perfect as a gift or to treat your guests.</p><p>🧡 <strong>What's in the box?</strong><br>✔ <strong>Pistachio Baklava</strong> – Crispy phyllo with the finest pistachios and sweet syrup.<br>✔ <strong>Walnut Baklava</strong> – Classic favourite with crisp layers and rich walnut filling.<br>✔ <strong>Maamoul Mad Pistachio</strong> – Soft, flavourful pastry filled with pistachios.<br>✔ <strong>Maamoul Mad Walnut</strong> – Soft, flavourful pastry filled with walnuts.<br>✔ <strong>Turkish Pistachio Baklava</strong> – Extra creamy baklava with premium ground pistachio.<br>✔ <strong>Harise</strong> – Moist semolina cake with a perfect balance of sweetness.</p><p>📦 <strong>Weight:</strong> 1 kg</p>",
+        "products.13.desc_long": "<p>Classic maamoul filled with premium pistachios. A traditional pastry that's both tender and full of flavour.</p>",
+        "products.14.desc_long": "<p><strong>Discover our Pistachio Baklawa Mix</strong> – an exclusive collection of handmade baklawa pieces filled with premium pistachio. Perfect as a luxury gift or to impress guests on special occasions 💚</p><p>🧡 <strong>What's in the box?</strong><br>✔ <strong>Bird's Nest Pistachio</strong> – Thin, crispy strands of pastry filled generously with pistachio.<br>✔ <strong>Red Baloriye Pistachio</strong> – Crisp and elegant baklawa with rich pistachio filling.<br>✔ <strong>White Baloriye Pistachio Baklawa</strong> – Extra smooth and luxurious variety with ground pistachio.</p><p>📦 <strong>Weight:</strong> 1350 g<br>💰 <strong>Price:</strong> 499 kr</p><p>A pistachio dream in every bite – baked with love according to traditional recipes 💫</p>",
 
         // Delivery
         "delivery.title": "Home Delivery",
@@ -172,6 +235,18 @@ export const translations = {
         // Footer
         "footer.tagline": "نكهات أصيلة، صُنعت بحب.",
         "footer.copyright": "© 2024 كنافة جدتي. جميع الحقوق محفوظة.",
+        "footer.address_label": "العنوان:",
+        "footer.address": "Karolingatan 1, 212 34 Malmö",
+        "footer.phone_label": "الهاتف:",
+        "footer.phone": "072-868 25 92",
+        "footer.bookings_label": "الحجوزات:",
+        "footer.hours_label": "ساعات العمل:",
+        "footer.hours": "الإثنين–الأحد: 11:00–22:00",
+        "footer.find_us": "اعثر علينا",
+        "footer.contact": "اتصل",
+        "footer.opening_hours": "ساعات العمل",
+        "footer.about_us": "من نحن",
+        "footer.about_text": "نقدم كنافة أصيلة مصنوعة بالحب والتقاليد. وصفاتنا موروثة عبر الأجيال لتمنحك الطعم الأصيل للشرق الأوسط.",
 
         // Landing
         "landing.title": "تذوق التقاليد",
@@ -193,6 +268,8 @@ export const translations = {
         "menu.title": "قائمتنا",
         "menu.subtitle": "حلويات تقليدية، تُخبز طازجة يومياً.",
         "menu.add_to_cart": "أضف للسلة",
+        "menu.out_of_stock": "نفذ من المخزون",
+        "menu.added_to_cart": "تمت إضافة {name} إلى السلة.",
 
         // Cart
         "cart.title": "طلبك",
@@ -203,6 +280,7 @@ export const translations = {
         // Common
         "loading": "جار التحميل...",
         "error": "حدث خطأ",
+        "modal.close": "إغلاق",
 
         // Products
         "products.1.name": "بقلاوة بالفستق",
@@ -221,6 +299,29 @@ export const translations = {
         "products.7.desc": "لفائف جبنة حلوة محشوة بالقشطة.",
         "products.8.name": "كنافة خشنة",
         "products.8.desc": "عجينة كنافة خشنة، مقرمشة وذهبية.",
+        "products.9.name": "خبز (كعك)",
+        "products.9.desc": "من الشائع الاستمتاع بالكنافة داخل الخبز. اختر عدد الأرغفة التي تريدها.",
+        "products.11.name": "معمول بالقشطة",
+        "products.11.desc": "حلوى كريمية فاخرة محشوة بالقشطة العربية التقليدية. تُزيّن بالفستق.",
+        "products.12.name": "صندوق الجدة – مزيج البقلاوة",
+        "products.12.desc": "تشكيلة فاخرة من الحلويات المصنوعة يدوياً: بقلاوة، معمول، هريسة والمزيد. 1 كغ.",
+        "products.13.name": "معمول بالفستق",
+        "products.13.desc": "معمول كلاسيكي محشو بأجود أنواع الفستق.",
+        "products.14.name": "مزيج الفستق",
+        "products.14.desc": "تشكيلة حصرية من قطع البقلاوة المصنوعة يدوياً مع فستق فاخر. مثالية كهدية.",
+        "products.1.desc_long": "<h3><strong>بقلاوة بالفستق – نكهة نقية، دون إفراط</strong></h3><p>أول ما تلاحظه هو التوازن. ليست حلوة جداً. ولا ثقيلة. بل مناسبة تماماً.</p><p>اخترنا التخفيف من القطر لإبراز ما يهم حقاً: أجود الفستق، عجينة الفيلو المُلفّة يدوياً، والزبدة الحقيقية التي تجمع كل شيء. <strong>النتيجة؟</strong> بقلاوة يمكنك الاستمتاع بها مرة تلو أخرى دون ملل.</p><p>هنا لا يتعلق الأمر بالإبهار بل بالتحسين. كل قضمة واضحة ومقرمشة وغنية بالنكهة. تفسير أنيق لتحفة كلاسيكية محبوبة.</p>",
+        "products.2.desc_long": "<p>٥٠٠ غرام تعطي حوالي ١٦–٢٠ قطعة صغيرة. بقلاوة كلاسيكية محشوة بالجوز المطحون – مفضلة خالدة بطبقات مقرمشة وحشوة غنية بالجوز.</p>",
+        "products.3.desc_long": "<h3><strong>القصة تبدأ هنا...</strong></h3><p>ربما مرّ عليك يوم شعرت فيه بحاجة إلى دفء، إلى لحظة هدوء تحضنك بلطف، إلى طعم يعيدك لطفولتك. في تلك اللحظة، لا شيء يضاهي لقمة كنافة ناعمة تذوب في فمك، كهمسة من زمن جميل.</p><p>الكنافة الناعمة عجينة رفيعة ممزوجة بالسمن العربي الأصيل <em>Ghee</em>، محشوة بجبنة كريمية، تُسقى بالقطر الخفيف وتُزيَّن بالفستق كلمسة ذهبية تختم كل قصة.</p><h3><strong>منتج واحد يغيّر كل شيء</strong></h3><p>الكنافة ليست مجرد حلوى – بل طقس، لحظة، تجربة كاملة تبدأ من الرائحة وتنتهي بابتسامة. هي طعم البيت والعائلة وسهرات تجمع حول صينية حين يقال: «خلي عينك عالكنافة!» من أول لقمة تشعر بالفرق – فرق تصنعه الجودة والاهتمام والحب في كل طبقة.</p><h3><strong>لمن هذا المنتج؟</strong></h3><p>– للذوّاقة الذين يبحثون عن نكهة تبقى في الذاكرة.<br>– لمن يحبون النعومة أكثر من القرمشة – ما يذوب في القلب.<br>– كهدية تحمل الدفء والاهتمام – كنافتنا الناعمة رسالة حب تؤكل.</p><h3><strong>الذوق يبدأ من العين...</strong></h3><p>صممنا تغليفاً يعانق المنتج كالنظرة الأولى. علبة أنيقة دافئة بإحساس فاخر. في الداخل – حماية ناعمة تحفظ الحرارة وتحتضن الكنافة كجوهرة. رشة فستق على السطح، وشوك ذهبية صغيرة تجعل كل لقمة طقساً.</p>",
+        "products.4.desc_long": "<p>خبز بالسمسم محشو بجبنة الكنافة الساخنة. من الشائع الاستمتاع بالكنافة داخل الخبز – يُضاف القطر إلى الخبز ثم يُحشى بالكنافة. اختر عدد الأرغفة التي تريدها مع طلب الكنافة.</p>",
+        "products.5.desc_long": "<h3><strong>مزيج فاخر من النكهات</strong></h3><p>بقلاوة القشطة مزيج رائع من البقلاوة الكلاسيكية مع قشطة عربية غنية وكريمية في الوسط. العجينة الزبدية المقرمشة تحيط بطبقة القشطة الناعمة وتعطي توازناً مثالياً بين الحلو والكريمي. تُزيَّن بالفستق المفروم وتُخبز إلى الكمال، لتعطي تجربة طعم لا تُقاوم.</p><h3><strong>لمن هذا المنتج؟</strong></h3><p>لمن يريد لمسة راقية على كلاسيكي مفضل، لمن يحب المزيج المثالي بين العجين والحشوة الكريمية، ولمن يبحث عن شيء فريد ورقيق.</p><p><strong>أكثر من مجرد حلوى – نكهة تقليد وفخامة.</strong></p>",
+        "products.6.desc_long": "<p>كعكة سميد حلوة تعلوها قشطة طازجة. حلوى تقليدية تجمع بين أفضل ما في الملمس والنكهة.</p>",
+        "products.7.desc_long": "<h3><strong>حلوى حلوة وكريمية</strong></h3><p>حلاوة الجبن حلوى عربية سماوية تجمع الطعم الناعم للجبن مع عجينة حلوة وناعمة. محشوة بمزيج كريمي من الجبن والسكر، تُلف هذه الحلوى إلى الكمال وغالباً ما تُزيَّن بالفستق أو القطر لمذاق إضافي. قوامها متوازن وهي حلوة وخفيفة، ما يجعلها خاتمة رائعة لوجبة.</p><h3><strong>لمن هذا المنتج؟</strong></h3><p>لمن يحب الحلويات القائمة على الجبن، لمن يبحث عن تقليد ذي نكهة، ولمن يريد أن يمنح نفسه شيئاً ناعماً ورقيقاً حقاً.</p><p><strong>أكثر من حلوى – تجربة طعم سماوية.</strong></p>",
+        "products.8.desc_long": "<h3><strong>حيث تبدأ الحفلة… بصوت</strong></h3><p>ثمة أصوات تبقى في الذاكرة – ضحكات من المطبخ، ملاعق تتحرك في القدور، وصوت الجدة يملأ البيت دفئاً. الذكريات تأخذك إلى الطفولة أو إلى أعياد خاصة أو يوم عادي أصبح مميزاً. لكن شيئاً واحداً تذكره: كيف توقف كل شيء لحظة عندما انتشرت رائحة السمن والقطر والكنافة المحمصة في البيت.</p><p>هنا تبدأ قصتنا – تحية للتقاليد، من جيل إلى جيل.</p><h3><strong>كنافة مقرمشة كما كانت، بل أفضل</strong></h3><p>حافظنا على ما جعل الكنافة الكلاسيكية محبوبة: السطح الذهبي، الخيوط المحمصة، طبقة الجبن أو القشطة الحلوة، والقطر المتوازن – وأضفنا شيئاً أكثر: وقتنا ودقتنا وشغفنا. كنافة مقرمشة تُخبز على نار هادئة ومشاعر عالية. إنها حب في كل طبقة. ونتيجة سنوات من التجربة والحب لما نقدمه.</p><h3><strong>صوت، رائحة، طعم… تجربة</strong></h3><h3><strong>لمن هذا المنتج؟</strong></h3><p>– لمن نشأ مع «الكنافة الحقيقية»<br>– لمن يريد أن يقدم شيئاً يُسمع قبل أن يُذاق<br>– لمن يعرف أن نكهاتاً تجمع الناس</p><h3><strong>لأننا نعلم أن الانطباع الأول يبدأ من التغليف</strong></h3><p>اخترنا تصميماً يعكس ما بالداخل: فخر وأناقة ورائحة تقليد. علبة أنيقة بألوان عميقة. كل تفصيلة مدروسة. إنها أكثر من حلوى. إنها قصة تتذوقها. اطلبها الآن!</p><p><em>ملاحظة: قد تقل القرمشة بعد يوم.</em></p>",
+        "products.9.desc_long": "<p>من الشائع الاستمتاع بالكنافة داخل الخبز. يُضاف القطر إلى الخبز ثم يُحشى بالكنافة. اختر عدد الأرغفة التي تريدها مع طلب الكنافة.</p>",
+        "products.11.desc_long": "<p>حلوى كريمية فاخرة محشوة بالقشطة العربية التقليدية. تجمع هذه الحلوى طعم القشطة الناعم مع العجين، لتعطي توازناً مثالياً بين الحلاوة والكريمية. تُزيَّن بالفستق المفروم وتُخبز قليلاً إلى لون ذهبي، لتعطي تجربة طعم لا تُنسى تأخذك في رحلة عبر المطبخ العربي. خاتمة مثالية لوجبة أو لحظة حلوة للاستمتاع في أي وقت.</p>",
+        "products.12.desc_long": "<p>اكتشف <strong>صندوق الجدة</strong>، تشكيلة فاخرة من الحلويات الشرقية المصنوعة يدوياً، مثالية كهدية أو لضيوفك.</p><p>🧡 <strong>ماذا في الصندوق؟</strong><br>✔ <strong>بقلاوة بالفستق</strong> – فيلو مقرمش بأجود الفستق والقطر.<br>✔ <strong>بقلاوة بالجوز</strong> – كلاسيكية مفضلة بطبقات مقرمشة وحشوة جوز.<br>✔ <strong>معمول مد بالفستق</strong> – معجنات طرية محشوة بالفستق.<br>✔ <strong>معمول مد بالجوز</strong> – معجنات طرية محشوة بالجوز.<br>✔ <strong>بقلاوة تركية بالفستق</strong> – بقلاوة كريمية مع فستق مطحون فاخر.<br>✔ <strong>هريسة</strong> – كعكة سميد رطبة بتوازن حلاوة مثالي.</p><p>📦 <strong>الوزن:</strong> 1 كغ</p>",
+        "products.13.desc_long": "<p>معمول كلاسيكي محشو بأجود أنواع الفستق. معجنات تقليدية طرية وغنية بالنكهة.</p>",
+        "products.14.desc_long": "<p><strong>اكتشف مزيج البقلاوة بالفستق</strong> – تشكيلة حصرية من قطع البقلاوة المصنوعة يدوياً والمحشوة بالفستق الفاخر. مثالية كهدية فاخرة أو لإبهار الضيوف في مناسبات خاصة 💚</p><p>🧡 <strong>ماذا في الصندوق؟</strong><br>✔ <strong>عش الطير بالفستق</strong> – خيوط عجين رفيعة مقرمشة محشوة بوفرة من الفستق.<br>✔ <strong>بلورية حمراء بالفستق</strong> – بقلاوة مقرمشة وأنيقة بحشوة فستق غنية.<br>✔ <strong>بقلاوة بلورية بيضاء بالفستق</strong> – صنف فاخر وناعم إضافي مع فستق مطحون.</p><p>📦 <strong>الوزن:</strong> 1350 غ<br>💰 <strong>السعر:</strong> 499 كر</p><p>حلم فستق في كل قضمة – مُخبزة بحب وفق وصفات تقليدية 💫</p>",
 
         // Delivery
         "delivery.title": "توصيل",

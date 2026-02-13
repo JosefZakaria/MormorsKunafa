@@ -1,8 +1,7 @@
 import React from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Container } from '../../common/Container/Container';
 import { Button } from '../../common/Button/Button';
-import { LanguageSelector } from '../../common/LanguageSelector/LanguageSelector';
 import './Header.css';
 
 import { useLanguage } from '../../../contexts/LanguageContext';
@@ -12,8 +11,11 @@ export const Header: React.FC = () => {
     const { t } = useLanguage();
     const { getItemCount } = useCart();
     const navigate = useNavigate();
+    const { pathname } = useLocation();
     const [isMenuOpen, setIsMenuOpen] = React.useState(false);
     const cartItemCount = getItemCount();
+    const isOverDark = pathname === '/' || pathname.startsWith('/menu');
+    const isOnCart = pathname.startsWith('/cart');
 
     const toggleMenu = () => setIsMenuOpen(!isMenuOpen);
     const closeMenu = () => setIsMenuOpen(false);
@@ -24,7 +26,7 @@ export const Header: React.FC = () => {
     };
 
     return (
-        <header className="header">
+        <header className={`header ${isOverDark ? 'header--over-hero' : ''} ${isOnCart ? 'header--on-cart' : ''}`}>
             <Container className="header__container">
                 <Link to="/" className="header__brand" onClick={closeMenu}>
                     <img src="/images/logo-icon.png" alt="" className="header__logo-icon" />
@@ -36,10 +38,6 @@ export const Header: React.FC = () => {
                 </button>
 
                 <nav className={`header__nav ${isMenuOpen ? 'header__nav--open' : ''}`}>
-                    <LanguageSelector />
-                    <Button variant="ghost" className="header__menu-btn" onClick={() => handleNavigation('/find-us')}>
-                        {t('nav.hitta_hit')}
-                    </Button>
                     <Button variant="ghost" className="header__menu-btn" onClick={() => handleNavigation('/menu')}>
                         {t('nav.meny')}
                     </Button>
