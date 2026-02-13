@@ -11,18 +11,19 @@
     margin-bottom: var(--spacing-2xl);
 }
 
+/* Match header nav (MENY, VARUKORG) color for visual consistency */
 .menu-page__header .text-display-md {
-    color: var(--color-white);
+    color: rgba(255, 255, 255, 0.9);
 }
 
 .menu-page__subtitle {
-    color: var(--color-white);
+    color: rgba(255, 255, 255, 0.9);
     margin-top: var(--spacing-sm);
 }
 
 .menu-page__header .text-body-lg,
 .menu-page__header .text-body-sm {
-    color: var(--color-white);
+    color: rgba(255, 255, 255, 0.9);
 }
 
 /* All card content dark on white cards (override page inheritance) */
