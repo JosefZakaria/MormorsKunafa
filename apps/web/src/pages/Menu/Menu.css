@@ -1,14 +1,49 @@
 .menu-page {
     padding: var(--spacing-2xl) 0;
+    padding-top: calc(5rem + var(--spacing-2xl));
+    margin-top: -5rem;
+    background-color: #5C2A2F;
+    min-height: 100%;
+    color: #D9D9D9;
 }
 
 .menu-page__header {
     margin-bottom: var(--spacing-2xl);
 }
 
+.menu-page__header .text-display-md {
+    color: var(--color-white);
+}
+
 .menu-page__subtitle {
-    color: var(--color-gray-500);
+    color: var(--color-white);
     margin-top: var(--spacing-sm);
+}
+
+.menu-page__header .text-body-lg,
+.menu-page__header .text-body-sm {
+    color: var(--color-white);
+}
+
+/* All card content dark on white cards (override page inheritance) */
+.menu-page .menu-item .menu-item__content,
+.menu-page .menu-item .menu-item__content * {
+    color: var(--color-black);
+}
+.menu-page .menu-item .menu-item__price {
+    color: var(--color-primary-red);
+}
+.menu-page .menu-item .menu-item__description {
+    color: var(--color-gray-800);
+}
+
+.menu-page__demo-notice {
+    margin-top: 0.5rem;
+    color: #D9D9D9;
+}
+
+.menu-page .text-error {
+    color: #E8A0A0;
 }
 
 .menu-grid {
@@ -115,7 +150,7 @@
     position: relative;
     background: var(--color-white, #fff);
     border-radius: 12px;
-    --modal-size: min(420px, 90vmin);
+    --modal-size: min(520px, 92vmin);
     width: var(--modal-size);
     height: var(--modal-size);
     max-width: 100%;
@@ -163,22 +198,26 @@
 }
 
 .menu-modal__image-wrap {
-    aspect-ratio: 1/1;
-    width: 100%;
+    flex-shrink: 0;
+    width: 140px;
+    height: 140px;
+    margin: var(--spacing-lg) 0 0 var(--spacing-lg);
     background: var(--color-gray-100);
+    border-radius: 8px;
     overflow: hidden;
 }
 
 .menu-modal__image {
     width: 100%;
     height: 100%;
-    object-fit: contain;
+    object-fit: cover;
 }
 
 .menu-modal__body {
-    padding: var(--spacing-lg);
+    padding: var(--spacing-md) var(--spacing-lg) var(--spacing-lg);
     overflow-y: auto;
     flex: 1;
+    min-height: 0;
 }
 
 .menu-modal__title {
@@ -192,14 +231,65 @@
 }
 
 .menu-modal__description {
-    color: var(--color-gray-600);
+    color: var(--color-gray-800);
     margin-bottom: var(--spacing-lg);
     line-height: 1.6;
 }
 
-.menu-modal__description p,
+.menu-modal__description p {
+    margin-bottom: 0.75em;
+}
+
+.menu-modal__description p:first-child {
+    margin-bottom: 1.25em;
+}
+
+.menu-modal__description p:last-child {
+    margin-bottom: 0;
+}
+
+/* First sentence/strong in first paragraph should have space below */
+.menu-modal__description p:first-child strong:first-child {
+    display: block;
+    margin-bottom: 0.75em;
+    font-size: 1.05em;
+}
+
+/* Headers stand out: more size, weight, and space above/below */
 .menu-modal__description h3 {
+    font-size: 1.1em;
+    font-weight: 700;
+    color: var(--color-gray-800, #1f2937);
+    margin-top: 1.25em;
     margin-bottom: 0.5em;
+    line-height: 1.3;
+}
+
+.menu-modal__description h3:first-child {
+    margin-top: 0;
+}
+
+/* Space between sections: extra top margin after a paragraph (before next h3) */
+.menu-modal__description p + h3 {
+    margin-top: 1.5em;
+}
+
+/* Strong tags that act as headers (like "För vem?") should have spacing */
+.menu-modal__description p strong:only-child,
+.menu-modal__description p:has(> strong:only-child) {
+    margin-top: 1.5em;
+    margin-bottom: 0.5em;
+    display: block;
+}
+
+.menu-modal__description p:has(> strong:only-child) + p {
+    margin-top: 0;
+}
+
+/* Body text right under a header: normal weight so the header is clearly the header */
+.menu-modal__description h3 + p,
+.menu-modal__description h3 + p strong {
+    font-weight: 400;
 }
 
 .menu-modal__description strong {
