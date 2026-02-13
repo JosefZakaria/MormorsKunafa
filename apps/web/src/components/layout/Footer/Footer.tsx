@@ -16,12 +16,13 @@ export const Footer: React.FC = () => {
     const { t } = useLanguage();
     const { pathname } = useLocation();
     const hideMap = pathname.startsWith('/menu') || pathname.startsWith('/cart');
+    const contactOnly = pathname.startsWith('/delivery');
 
     return (
         <footer className="footer">
-            <div className="footer__content">
-                <div className={`footer__grid ${hideMap ? 'footer__grid--no-map' : ''}`}>
-                    {!hideMap && (
+            <div className={`footer__content ${contactOnly ? 'footer__content--contact-only' : ''}`}>
+                <div className={`footer__grid ${hideMap ? 'footer__grid--no-map' : ''} ${contactOnly ? 'footer__grid--contact-only' : ''}`}>
+                    {!hideMap && !contactOnly && (
                         <section className="footer__column" aria-labelledby="footer-find-us">
                             <h3 id="footer-find-us" className="footer__column-title">
                                 {t('footer.find_us')}
@@ -66,12 +67,14 @@ export const Footer: React.FC = () => {
                             <span className="footer__detail">{t('footer.hours')}</span>
                         </div>
                     </section>
-                    <section className="footer__column" aria-labelledby="footer-about">
-                        <h3 id="footer-about" className="footer__column-title">
-                            {t('footer.about_us')}
-                        </h3>
-                        <p className="footer__about-text">{t('footer.about_text')}</p>
-                    </section>
+                    {!contactOnly && (
+                        <section className="footer__column" aria-labelledby="footer-about">
+                            <h3 id="footer-about" className="footer__column-title">
+                                {t('footer.about_us')}
+                            </h3>
+                            <p className="footer__about-text">{t('footer.about_text')}</p>
+                        </section>
+                    )}
                 </div>
             </div>
             <div className="footer__lang">
