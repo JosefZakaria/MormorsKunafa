@@ -53,7 +53,7 @@ export const Landing: React.FC = () => {
                             variant="primary"
                             size="lg"
                             className="landing__btn animate-in delay-200"
-                            onClick={() => navigate('/select-location?mode=dine-in')}
+                            onClick={() => navigate('/menu')}
                         >
                             <span className="landing__btn-icon"><IconEatHere /></span>
                             <span className="landing__btn-label">{t('landing.eat_here')}</span>
@@ -62,7 +62,7 @@ export const Landing: React.FC = () => {
                             variant="primary"
                             size="lg"
                             className="landing__btn animate-in delay-300"
-                            onClick={() => navigate('/select-location?mode=takeaway')}
+                            onClick={() => navigate('/menu')}
                         >
                             <span className="landing__btn-icon"><IconTakeaway /></span>
                             <span className="landing__btn-label">{t('landing.takeaway')}</span>
