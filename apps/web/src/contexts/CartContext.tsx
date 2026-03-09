@@ -11,7 +11,7 @@ export interface CartItem {
 
 interface CartContextType {
   items: CartItem[];
-  addItem: (product: Product, quantity?: number) => void;
+  addItem: (product: Product, quantity?: number, option?: string) => void;
   removeItem: (productId: string) => void;
   updateQuantity: (productId: string, quantity: number) => void;
   clearCart: () => void;
@@ -39,14 +39,17 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items));
   }, [items]);
 
-  const addItem = (product: Product, quantity: number = 1) => {
+  const addItem = (product: Product, quantity: number = 1, option?: string) => {
     setItems((prevItems) => {
-      const existingItem = prevItems.find((item) => item.productId === product.id);
+      const uniqueId = option ? `${product.id}-${option}` : product.id;
+      const displayName = option ? `${product.name} - ${option}` : product.name;
+
+      const existingItem = prevItems.find((item) => item.productId === uniqueId);
 
       if (existingItem) {
         // Update quantity if item already exists
         return prevItems.map((item) =>
-          item.productId === product.id
+          item.productId === uniqueId
             ? { ...item, quantity: item.quantity + quantity }
             : item
         );
@@ -56,8 +59,8 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return [
           ...prevItems,
           {
-            productId: product.id,
-            productName: product.name,
+            productId: uniqueId,
+            productName: displayName,
             price: product.price, // Already in öre
             quantity,
             image: product.image,

@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import DOMPurify from 'dompurify';
 import { Container } from '../../components/common/Container/Container';
-import { Card } from '../../components/common/Card/Card';
 import { Button } from '../../components/common/Button/Button';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useCart } from '../../contexts/CartContext';
@@ -253,7 +252,14 @@ export const Menu: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [usingMockData, setUsingMockData] = useState(false);
     const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+    const [selectedOption, setSelectedOption] = useState<string>('');
     const tRef = useRef(t);
+
+    useEffect(() => {
+        if (selectedProduct) {
+            setSelectedOption('');
+        }
+    }, [selectedProduct]);
     tRef.current = t;
 
     // Fetch products once on mount so a refetch (e.g. from t changing) can't overwrite real data
@@ -282,12 +288,12 @@ export const Menu: React.FC = () => {
         return () => { cancelled = true; };
     }, []);
 
-    const handleAddToCart = (product: Product) => {
+    const handleAddToCart = (product: Product, option: string) => {
         if (!product.inStock) {
             alert('Denna produkt är tyvärr slut i lager.');
             return;
         }
-        addItem(product, 1);
+        addItem(product, 1, option);
         showToast(t('menu.added_to_cart').replace('{name}', getDisplayName(product, t)), 'success');
     };
 
@@ -336,12 +342,12 @@ export const Menu: React.FC = () => {
 
                     <div className="menu-grid">
                         {products.map((product) => (
-                            <Card 
-                                key={product.id} 
-                                className={`menu-item ${!product.inStock ? 'menu-item--out-of-stock' : ''}`}
+                            <div
+                                key={product.id}
+                                className={`menu-item-simple ${!product.inStock ? 'menu-item--out-of-stock' : ''}`}
                             >
                                 <div
-                                    className="menu-item__clickable"
+                                    className="menu-item-simple__clickable"
                                     onClick={() => setSelectedProduct(product)}
                                     role="button"
                                     tabIndex={0}
@@ -352,42 +358,36 @@ export const Menu: React.FC = () => {
                                         }
                                     }}
                                 >
-                                    <div className="menu-item__image-container">
-                                        <img src={product.image} alt={getDisplayName(product, t)} className="menu-item__image" />
+                                    <div className="menu-item-simple__image-container">
+                                        <img src={product.image} alt={getDisplayName(product, t)} className="menu-item-simple__image" />
                                         {!product.inStock && (
-                                            <div className="menu-item__out-of-stock-badge">
+                                            <div className="menu-item-simple__out-of-stock-badge">
                                                 {t('menu.out_of_stock')}
                                             </div>
                                         )}
                                     </div>
-                                    <div className="menu-item__content">
-                                        <div className="menu-item__info">
-                                            <h3 className="text-heading-sm">{getDisplayName(product, t)}</h3>
-                                            <span className="menu-item__price">
-                                                {(product.price / 100).toFixed(0)} kr
-                                            </span>
-                                        </div>
-                                        <p className="menu-item__description text-body-sm">
-                                            {getDisplayShortDesc(product, t)}
-                                        </p>
+                                    <div className="menu-item-simple__content">
+                                        <h3 className="menu-item-simple__title">
+                                            {getDisplayName(product, t)}
+                                        </h3>
                                     </div>
                                 </div>
-                                <div className="menu-item__actions">
-                                    <Button 
-                                        variant="primary" 
-                                        fullWidth 
-                                        size="sm" 
-                                        className="menu-item__btn"
+                                <div className="menu-item-simple__actions">
+                                    <Button
+                                        variant="primary"
+                                        fullWidth
+                                        size="sm"
+                                        className="menu-item-simple__btn"
                                         onClick={(e) => {
                                             e.stopPropagation();
-                                            handleAddToCart(product);
+                                            setSelectedProduct(product);
                                         }}
                                         disabled={!product.inStock}
                                     >
-                                        {product.inStock ? t('menu.add_to_cart') : t('menu.out_of_stock')}
+                                        {product.inStock ? 'Välj alternativ' : t('menu.out_of_stock')}
                                     </Button>
                                 </div>
-                            </Card>
+                            </div>
                         ))}
                     </div>
                 </Container>
@@ -414,12 +414,32 @@ export const Menu: React.FC = () => {
                         >
                             ×
                         </button>
-                        <div className="menu-modal__image-wrap">
-                            <img
-                                src={selectedProduct.image}
-                                alt={getDisplayName(selectedProduct, t)}
-                                className="menu-modal__image"
-                            />
+                        <div className="menu-modal__top-row">
+                            <div className="menu-modal__image-wrap">
+                                <img
+                                    src={selectedProduct.image}
+                                    alt={getDisplayName(selectedProduct, t)}
+                                    className="menu-modal__image"
+                                />
+                            </div>
+                            <div className="menu-modal__options-box">
+                                <label className="menu-modal__options-label">
+                                    {(/kunafa|ostkaka/i.test(selectedProduct.name) ? 'Välj antal' : 'Välj vikt')}
+                                </label>
+                                <select
+                                    className="menu-modal__select"
+                                    value={selectedOption}
+                                    onChange={(e) => setSelectedOption(e.target.value)}
+                                >
+                                    <option value="" disabled>Välj...</option>
+                                    {(/kunafa|ostkaka/i.test(selectedProduct.name)
+                                        ? ['2 personer', '4 personer']
+                                        : ['250 gram', '500 gram', '1 kg']
+                                    ).map((opt) => (
+                                        <option key={opt} value={opt}>{opt}</option>
+                                    ))}
+                                </select>
+                            </div>
                         </div>
                         <div className="menu-modal__body">
                             <h2 id="menu-modal-title" className="text-heading-md menu-modal__title">
@@ -489,12 +509,15 @@ export const Menu: React.FC = () => {
                                 fullWidth
                                 className="menu-modal__btn"
                                 onClick={() => {
-                                    handleAddToCart(selectedProduct);
+                                    if (!selectedOption) return;
+                                    handleAddToCart(selectedProduct, selectedOption);
                                     setSelectedProduct(null);
                                 }}
-                                disabled={!selectedProduct.inStock}
+                                disabled={!selectedProduct.inStock || !selectedOption}
                             >
-                                {selectedProduct.inStock ? t('menu.add_to_cart') : t('menu.out_of_stock')}
+                                {selectedProduct.inStock
+                                    ? selectedOption ? t('menu.add_to_cart') : 'Välj ett alternativ'
+                                    : t('menu.out_of_stock')}
                             </Button>
                         </div>
                     </div>
