@@ -202,7 +202,7 @@ router.patch('/admin/:id/status', requireAdmin, async (req: Request, res: Respon
     const params: unknown[] = [status];
     if (estimatedReadyTime) {
       updates.push('estimated_ready_at = ?');
-      params.push(estimatedReadyTime);
+      params.push(new Date(estimatedReadyTime));
     }
     if (status === 'påbörjad') {
       updates.push('started_at = COALESCE(started_at, NOW())');
@@ -233,7 +233,7 @@ router.patch('/admin/:id/time', requireAdmin, async (req: Request, res: Response
     const params: unknown[] = [];
     if (estimatedReadyTime) {
       updates.push('estimated_ready_at = ?');
-      params.push(estimatedReadyTime);
+      params.push(new Date(estimatedReadyTime));
     }
     if (typeof preparationTime === 'number') {
       updates.push('default_preparation_time_minutes = ?');
