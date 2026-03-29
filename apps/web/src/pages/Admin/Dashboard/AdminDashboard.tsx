@@ -122,6 +122,14 @@ export const AdminDashboard: React.FC = () => {
         }
     };
 
+    const handlePrintReceipt = async (orderId: string) => {
+        try {
+            await orderApi.printReceipt(orderId);
+        } catch {
+            setError('Kunde inte skriva ut kvitto. Kontrollera skrivaren.');
+        }
+    };
+
     // --- Stock toggle ---
     const handleToggleStock = async (product: Product) => {
         try {
@@ -241,6 +249,9 @@ export const AdminDashboard: React.FC = () => {
                                             <Button size="sm" variant="ghost" onClick={() => handleUpdateStatus(order.id, order.orderType === 'delivery' ? 'levererad' : 'uthämtad')}>
                                                 Avsluta
                                             </Button>
+                                            <Button size="sm" variant="ghost" onClick={() => handlePrintReceipt(order.id)}>
+                                                Kvitto
+                                            </Button>
                                         </div>
                                     </div>
                                 ))
@@ -267,7 +278,12 @@ export const AdminDashboard: React.FC = () => {
                                                 ))}
                                             </ul>
                                             <p className="order-total">{(order.totalPrice / 100).toFixed(0)} kr</p>
-                                            <p style={{ fontSize: '0.8rem', color: '#888' }}>{new Date(order.createdAt).toLocaleString('sv-SE')}</p>
+                                            <p style={{ fontSize: '0.8rem', color: '#888', margin: 0 }}>{new Date(order.createdAt).toLocaleString('sv-SE')}</p>
+                                        </div>
+                                        <div className="order-actions">
+                                            <Button size="sm" variant="ghost" onClick={() => handlePrintReceipt(order.id)}>
+                                                Kvitto
+                                            </Button>
                                         </div>
                                     </div>
                                 ))

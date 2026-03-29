@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { db, generateId, type Row } from '../db/connection.js';
 import { requireAdmin } from '../middleware/auth.js';
+import { PrinterService } from '../services/PrinterService.js';
 
 const router = Router();
 
@@ -262,6 +263,32 @@ router.patch('/admin/:id/time', requireAdmin, async (req: Request, res: Response
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Failed to update time' });
+  }
+});
+
+// Admin: print receipt
+router.post('/admin/:id/print', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const result = await getOrderById(req.params.id);
+    if (!result) {
+      res.status(404).json({ error: 'Order not found' });
+      return;
+    }
+    const orderData = orderRowToOrder(result.order, result.items);
+
+    const printerIp = process.env.PRINTER_IP || '192.168.1.100';
+    const printerService = new PrinterService(printerIp);
+    
+    const success = await printerService.printOrder(orderData);
+    if (!success) {
+      res.status(500).json({ error: 'Failed to print receipt' });
+      return;
+    }
+    
+    res.json({ success: true, message: 'Kvitto utskrivet' });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to print receipt' });
   }
 });
 

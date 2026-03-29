@@ -84,6 +84,16 @@ export const orderApi = {
       token,
     });
   },
+
+  printReceipt: async (id: string): Promise<{ success: boolean; message: string }> => {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+    
+    return authenticatedRequest<{ success: boolean; message: string }>(`/orders/admin/${id}/print`, {
+      method: 'POST',
+      token,
+    });
+  },
 };
 
 // Admin API
