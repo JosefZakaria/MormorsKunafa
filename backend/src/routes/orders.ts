@@ -236,11 +236,29 @@ router.get('/admin/pre-orders', requireAdmin, async (_req: Request, res: Respons
 // Admin: history
 router.get('/admin/history', requireAdmin, async (req: Request, res: Response) => {
   try {
-    const limit = Math.min(Number(req.query.limit) || 50, 200);
-    const [rows] = (await db.query(
-      'SELECT * FROM orders ORDER BY created_at DESC LIMIT ?',
-      [limit]
-    )) as [Row[], unknown];
+    const limit = Math.min(Number(req.query.limit) || 50, 500);
+    const dateFrom = req.query.from as string | undefined;
+    const dateTo = req.query.to as string | undefined;
+
+    let sql = 'SELECT * FROM orders';
+    const params: unknown[] = [];
+    const conditions: string[] = [];
+
+    if (dateFrom) {
+      conditions.push('created_at >= ?');
+      params.push(dateFrom);
+    }
+    if (dateTo) {
+      conditions.push('created_at < DATE_ADD(?, INTERVAL 1 DAY)');
+      params.push(dateTo);
+    }
+    if (conditions.length > 0) {
+      sql += ' WHERE ' + conditions.join(' AND ');
+    }
+    sql += ' ORDER BY created_at DESC LIMIT ?';
+    params.push(limit);
+
+    const [rows] = (await db.query(sql, params)) as [Row[], unknown];
     const list = Array.isArray(rows) ? rows : [];
     const out = [];
     for (const o of list) {
@@ -251,6 +269,28 @@ router.get('/admin/history', requireAdmin, async (req: Request, res: Response) =
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Failed to fetch history' });
+  }
+});
+
+// Admin: delete all history (completed/cancelled orders only) — must be before :id route
+router.delete('/admin/history/all', requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    await db.query("DELETE FROM orders WHERE status IN ('klar', 'avbruten', 'uthämtad', 'levererad')");
+    res.status(204).end();
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to clear history' });
+  }
+});
+
+// Admin: delete single order
+router.delete('/admin/:id', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    await db.query('DELETE FROM orders WHERE id = ?', [req.params.id]);
+    res.status(204).end();
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to delete order' });
   }
 });
 
