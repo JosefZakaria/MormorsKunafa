@@ -1,0 +1,79 @@
+[
+  {
+    "order_id": "086f6bc5-7a94-4169-a982-6668fe852360",
+    "product_id": "1ae3fd7a-0042-4220-b330-b27b3147a0a6",
+    "product_name_snapshot": "Baklawa Pistage 89 kr - 500 gram",
+    "quantity": 1,
+    "price_ore": 8900
+  },
+  {
+    "order_id": "75b90692-2cf6-494c-a19d-1bb5189f2c95",
+    "product_id": "fc469599-82e8-4ea3-aa18-0436bc2a2afd",
+    "product_name_snapshot": "Ashta Baklawa 149 kr - 250 gram",
+    "quantity": 1,
+    "price_ore": 14900
+  },
+  {
+    "order_id": "dd55f893-0d0f-4d1f-8fd7-d87022f757da",
+    "product_id": "1ae3fd7a-0042-4220-b330-b27b3147a0a6",
+    "product_name_snapshot": "Baklawa Pistage 89 kr - 500 gram",
+    "quantity": 1,
+    "price_ore": 8900
+  },
+  {
+    "order_id": "621ec53f-0aca-41cd-aa74-1910a33b8752",
+    "product_id": "fc469599-82e8-4ea3-aa18-0436bc2a2afd",
+    "product_name_snapshot": "Ashta Baklawa 149 kr - 250 gram",
+    "quantity": 1,
+    "price_ore": 14900
+  },
+  {
+    "order_id": "829a8929-8dff-4475-8326-7486fc58b9fb",
+    "product_id": "fc469599-82e8-4ea3-aa18-0436bc2a2afd",
+    "product_name_snapshot": "Ashta Baklawa 149 kr - 500 gram",
+    "quantity": 1,
+    "price_ore": 14900
+  },
+  {
+    "order_id": "353f16d2-5e9c-475c-b0dd-14c6bf01e364",
+    "product_id": "1ae3fd7a-0042-4220-b330-b27b3147a0a6",
+    "product_name_snapshot": "Baklawa Pistage 89 kr - 500 gram",
+    "quantity": 1,
+    "price_ore": 8900
+  },
+  {
+    "order_id": "b888cac3-ae66-44ae-8813-d537869e2614",
+    "product_id": "fc469599-82e8-4ea3-aa18-0436bc2a2afd",
+    "product_name_snapshot": "Ashta Baklawa 149 kr - 250 gram",
+    "quantity": 1,
+    "price_ore": 14900
+  },
+  {
+    "order_id": "9368b8fa-4446-4bd4-9659-d6d41ae2ee62",
+    "product_id": "1ae3fd7a-0042-4220-b330-b27b3147a0a6",
+    "product_name_snapshot": "Baklawa Pistage 89 kr - 500 gram",
+    "quantity": 1,
+    "price_ore": 8900
+  },
+  {
+    "order_id": "9041e206-6769-4806-aa0f-9bf0fcc02c31",
+    "product_id": null,
+    "product_name_snapshot": "Testa-Kunafa",
+    "quantity": 1,
+    "price_ore": 15000
+  },
+  {
+    "order_id": "4d3a42d5-ff19-4efc-81c7-79b507d3f160",
+    "product_id": "1ae3fd7a-0042-4220-b330-b27b3147a0a6",
+    "product_name_snapshot": "Baklawa Pistage 89 kr - 250 gram",
+    "quantity": 1,
+    "price_ore": 8900
+  },
+  {
+    "order_id": "e10842a2-0db1-4d8f-aefc-13aa89b7b9ad",
+    "product_id": "1ae3fd7a-0042-4220-b330-b27b3147a0a6",
+    "product_name_snapshot": "Baklawa Pistage 89 kr - 500 gram",
+    "quantity": 1,
+    "price_ore": 8900
+  }
+]

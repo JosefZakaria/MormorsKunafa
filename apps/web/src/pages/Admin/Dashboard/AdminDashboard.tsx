@@ -63,7 +63,10 @@ export const AdminDashboard: React.FC = () => {
     const [statsError, setStatsError] = useState<string | null>(null);
     const [statsLoading, setStatsLoading] = useState(false);
     const [statsData, setStatsData] = useState<StatsData | null>(null);
-    const [statsPeriod, setStatsPeriod] = useState<'dag' | 'vecka' | 'manad' | 'ar' | 'totalt'>('dag');
+    const [statsPeriod, setStatsPeriod] = useState<'dag' | 'vecka' | 'manad' | 'ar' | 'custom'>('dag');
+    const [statsStartDate, setStatsStartDate] = useState<string>('');
+    const [statsEndDate, setStatsEndDate] = useState<string>('');
+    const [isSelectingDate, setIsSelectingDate] = useState(false);
 
     // UI state
     const [loadingOrders, setLoadingOrders] = useState(true);
@@ -178,13 +181,30 @@ export const AdminDashboard: React.FC = () => {
         setStatsLoading(true);
         setStatsError(null);
         try {
-            const data = await adminApi.getStatistics(statsPassword);
+            const data = await adminApi.getStatistics(statsPassword, statsStartDate || undefined, statsEndDate || undefined);
             setStatsData(data);
+            if (statsStartDate && statsEndDate) {
+                setStatsPeriod('custom');
+            }
             setShowStatsModal(false);
             setStatsPassword('');
             setActiveTab('stats');
         } catch {
-            setStatsError('Felaktigt lösenord. Försök igen.');
+            setStatsError('Fel lösenord eller problem vid hämtning.');
+        } finally {
+            setStatsLoading(false);
+        }
+    };
+
+    const handleUpdateCustomStats = async (start: string, end: string) => {
+        if (!statsPassword) return;
+        setStatsLoading(true);
+        try {
+            const data = await adminApi.getStatistics(statsPassword, start, end);
+            setStatsData(data);
+            setStatsPeriod('custom');
+        } catch (e) {
+            console.error('Kunde inte uppdatera statistik:', e);
         } finally {
             setStatsLoading(false);
         }
@@ -384,37 +404,85 @@ export const AdminDashboard: React.FC = () => {
                         const t = statsData.totals;
                         const orders = statsPeriod === 'dag' ? t.ordersDay
                             : statsPeriod === 'vecka' ? t.ordersWeek
-                            : statsPeriod === 'manad' ? t.ordersMonth
-                            : statsPeriod === 'ar' ? t.ordersYear
-                            : t.ordersTotal;
+                                : statsPeriod === 'manad' ? t.ordersMonth
+                                    : statsPeriod === 'ar' ? t.ordersYear
+                                        : t.ordersTotal;
                         const items = statsPeriod === 'dag' ? t.itemsDay
                             : statsPeriod === 'vecka' ? t.itemsWeek
-                            : statsPeriod === 'manad' ? t.itemsMonth
-                            : statsPeriod === 'ar' ? t.itemsYear
-                            : t.itemsTotal;
+                                : statsPeriod === 'manad' ? t.itemsMonth
+                                    : statsPeriod === 'ar' ? t.itemsYear
+                                        : t.itemsTotal;
                         const revenueOre = statsPeriod === 'dag' ? t.revenueDayOre
                             : statsPeriod === 'vecka' ? t.revenueWeekOre
-                            : statsPeriod === 'manad' ? t.revenueMonthOre
-                            : statsPeriod === 'ar' ? t.revenueYearOre
-                            : t.revenueTotalOre;
+                                : statsPeriod === 'manad' ? t.revenueMonthOre
+                                    : statsPeriod === 'ar' ? t.revenueYearOre
+                                        : t.revenueTotalOre;
 
                         return (
                             <div className="stats-section">
-                                {/* Rubrik + dropdown */}
+                                {/* Rubrik + dropdown + Datum */}
                                 <div className="stats-overview-header">
                                     <h3 className="stats-overview-title">Översikt</h3>
                                     <select
                                         id="stats-period-select"
                                         className="stats-period-select"
-                                        value={statsPeriod}
-                                        onChange={e => setStatsPeriod(e.target.value as typeof statsPeriod)}
+                                        value={statsPeriod === 'custom' ? 'custom' : statsPeriod}
+                                        onChange={e => {
+                                            const val = e.target.value as any;
+                                            if (val !== 'custom') {
+                                                setStatsPeriod(val);
+                                                setStatsStartDate('');
+                                                setStatsEndDate('');
+                                            }
+                                        }}
                                     >
                                         <option value="dag">Dag</option>
                                         <option value="vecka">Vecka</option>
                                         <option value="manad">Månad</option>
                                         <option value="ar">År</option>
-                                        <option value="totalt">Totalt</option>
+                                        {statsPeriod === 'custom' && <option value="custom">Anpassat</option>}
                                     </select>
+
+                                    <div className="stats-date-picker-trigger">
+                                        <Button variant="ghost" size="sm" onClick={() => setIsSelectingDate(!isSelectingDate)} id="stats-date-btn">
+                                            Datum
+                                        </Button>
+                                        {isSelectingDate && (
+                                            <div className="stats-date-popover">
+                                                <div className="date-inputs">
+                                                    <div>
+                                                        <label>Från</label>
+                                                        <input
+                                                            type="date"
+                                                            value={statsStartDate}
+                                                            onChange={e => setStatsStartDate(e.target.value)}
+                                                            onDoubleClick={() => {
+                                                                if (statsStartDate) {
+                                                                    setStatsEndDate(statsStartDate);
+                                                                    handleUpdateCustomStats(statsStartDate, statsStartDate);
+                                                                    setIsSelectingDate(false);
+                                                                }
+                                                            }}
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label>Till</label>
+                                                        <input
+                                                            type="date"
+                                                            value={statsEndDate}
+                                                            onChange={e => setStatsEndDate(e.target.value)}
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <Button size="sm" variant="primary" onClick={() => {
+                                                    if (statsStartDate && statsEndDate) {
+                                                        handleUpdateCustomStats(statsStartDate, statsEndDate);
+                                                        setIsSelectingDate(false);
+                                                    }
+                                                }}>Visa</Button>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
 
                                 {/* 3 stora kort */}
@@ -446,17 +514,19 @@ export const AdminDashboard: React.FC = () => {
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                {statsData.products.map((p, i) => {
+                                                {statsData.products.slice().sort((a, b) => a.name.localeCompare(b.name, 'sv')).map((p, i) => {
                                                     const pSold = statsPeriod === 'dag' ? p.soldDay
                                                         : statsPeriod === 'vecka' ? p.soldWeek
-                                                        : statsPeriod === 'manad' ? p.soldMonth
-                                                        : statsPeriod === 'ar' ? p.soldYear
-                                                        : p.soldTotal;
+                                                            : statsPeriod === 'manad' ? p.soldMonth
+                                                                : statsPeriod === 'ar' ? p.soldYear
+                                                                    : statsPeriod === 'custom' ? p.soldCustom
+                                                                        : p.soldTotal;
                                                     const pRev = statsPeriod === 'dag' ? p.revenueDayOre
                                                         : statsPeriod === 'vecka' ? p.revenueWeekOre
-                                                        : statsPeriod === 'manad' ? p.revenueMonthOre
-                                                        : statsPeriod === 'ar' ? p.revenueYearOre
-                                                        : p.revenueTotalOre;
+                                                            : statsPeriod === 'manad' ? p.revenueMonthOre
+                                                                : statsPeriod === 'ar' ? p.revenueYearOre
+                                                                    : statsPeriod === 'custom' ? p.revenueCustomOre
+                                                                        : p.revenueTotalOre;
                                                     return (
                                                         <tr key={i}>
                                                             <td className="product-name">{p.name}</td>
@@ -468,13 +538,6 @@ export const AdminDashboard: React.FC = () => {
                                             </tbody>
                                         </table>
                                     </div>
-                                </div>
-
-                                {/* Avsluta-knapp */}
-                                <div className="stats-footer">
-                                    <Button variant="ghost" onClick={() => { setStatsData(null); setActiveTab('active'); }} id="stats-close-btn">
-                                        Avsluta statistik
-                                    </Button>
                                 </div>
                             </div>
                         );

@@ -351,6 +351,51 @@ input:checked+.slider:before {
     border-color: var(--color-primary-red);
 }
 
+.stats-date-picker-trigger {
+    position: relative;
+    margin-left: auto;
+}
+
+.stats-date-popover {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 8px;
+    background: var(--color-white);
+    padding: var(--spacing-md);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    border: 1px solid var(--color-gray-200);
+    z-index: 100;
+    min-width: 250px;
+}
+
+.date-inputs {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-md);
+}
+
+.date-inputs div {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.date-inputs label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--color-gray-500);
+}
+
+.date-inputs input {
+    padding: 0.5rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--color-gray-300);
+    font-family: inherit;
+}
+
 .stats-big-cards {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -516,12 +561,9 @@ input:checked+.slider:before {
     color: var(--color-primary-red);
 }
 
-.stats-footer {
-    display: flex;
-    justify-content: flex-end;
+/* Stats products table */
+.stats-table-section {
     margin-top: var(--spacing-xl);
-    padding-top: var(--spacing-md);
-    border-top: 1px solid var(--color-gray-200);
 }
 
 /* Stats password modal */
