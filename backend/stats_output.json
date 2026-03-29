@@ -1,0 +1,33 @@
+{
+  "orders": {
+    "total_orders": 11,
+    "total_revenue": "128000"
+  },
+  "products": [
+    {
+      "name": "Ashta Baklawa 149 kr - 250 gram",
+      "sold_total": "3",
+      "revenue_total_ore": "44700"
+    },
+    {
+      "name": "Ashta Baklawa 149 kr - 500 gram",
+      "sold_total": "1",
+      "revenue_total_ore": "14900"
+    },
+    {
+      "name": "Baklawa Pistage 89 kr - 250 gram",
+      "sold_total": "1",
+      "revenue_total_ore": "8900"
+    },
+    {
+      "name": "Baklawa Pistage 89 kr - 500 gram",
+      "sold_total": "5",
+      "revenue_total_ore": "44500"
+    },
+    {
+      "name": "Testa-Kunafa",
+      "sold_total": "1",
+      "revenue_total_ore": "15000"
+    }
+  ]
+}

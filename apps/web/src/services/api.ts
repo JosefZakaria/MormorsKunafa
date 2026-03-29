@@ -141,7 +141,8 @@ export const adminApi = {
     });
   },
 
-  getStatistics: async (password: string): Promise<{
+  getStatistics: async (password: string, startDate?: string, endDate?: string): Promise<{
+    hasCustomRange: boolean;
     products: Array<{
       name: string;
       soldDay: number;
@@ -149,11 +150,13 @@ export const adminApi = {
       soldMonth: number;
       soldYear: number;
       soldTotal: number;
+      soldCustom: number;
       revenueDayOre: number;
       revenueWeekOre: number;
       revenueMonthOre: number;
       revenueYearOre: number;
       revenueTotalOre: number;
+      revenueCustomOre: number;
     }>;
     totals: {
       ordersDay: number;
@@ -161,16 +164,19 @@ export const adminApi = {
       ordersMonth: number;
       ordersYear: number;
       ordersTotal: number;
+      ordersCustom: number;
       itemsDay: number;
       itemsWeek: number;
       itemsMonth: number;
       itemsYear: number;
       itemsTotal: number;
+      itemsCustom: number;
       revenueDayOre: number;
       revenueWeekOre: number;
       revenueMonthOre: number;
       revenueYearOre: number;
       revenueTotalOre: number;
+      revenueCustomOre: number;
     };
   }> => {
     const token = getToken();
@@ -178,7 +184,7 @@ export const adminApi = {
 
     return authenticatedRequest(`/admin/statistics`, {
       method: 'POST',
-      body: JSON.stringify({ password }),
+      body: JSON.stringify({ password, startDate, endDate }),
       token,
     });
   },
