@@ -41,6 +41,24 @@ export const orderApi = {
     return apiRequest<Order>(`/orders/${id}`);
   },
 
+  getPending: async (): Promise<Order[]> => {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    return authenticatedRequest<Order[]>('/orders/admin/pending', { token });
+  },
+
+  acceptOrder: async (id: string, extraMinutes?: number): Promise<Order> => {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    return authenticatedRequest<Order>(`/orders/admin/${id}/accept`, {
+      method: 'PATCH',
+      body: JSON.stringify({ extraMinutes: extraMinutes ?? 0 }),
+      token,
+    });
+  },
+
   getActive: async (): Promise<Order[]> => {
     const token = getToken();
     if (!token) throw new Error('Not authenticated');
@@ -55,12 +73,30 @@ export const orderApi = {
     return authenticatedRequest<Order[]>('/orders/admin/pre-orders', { token });
   },
 
-  getHistory: async (limit?: number): Promise<Order[]> => {
+  getHistory: async (limit?: number, from?: string, to?: string): Promise<Order[]> => {
     const token = getToken();
     if (!token) throw new Error('Not authenticated');
-    
-    const params = limit ? `?limit=${limit}` : '';
-    return authenticatedRequest<Order[]>(`/orders/admin/history${params}`, { token });
+
+    const qp = new URLSearchParams();
+    if (limit) qp.set('limit', String(limit));
+    if (from) qp.set('from', from);
+    if (to) qp.set('to', to);
+    const qs = qp.toString();
+    return authenticatedRequest<Order[]>(`/orders/admin/history${qs ? `?${qs}` : ''}`, { token });
+  },
+
+  deleteOrder: async (id: string): Promise<void> => {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    return authenticatedRequest<void>(`/orders/admin/${id}`, { method: 'DELETE', token });
+  },
+
+  deleteAllHistory: async (): Promise<void> => {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    return authenticatedRequest<void>('/orders/admin/history/all', { method: 'DELETE', token });
   },
 
   updateStatus: async (id: string, data: UpdateOrderStatusRequest): Promise<Order> => {
