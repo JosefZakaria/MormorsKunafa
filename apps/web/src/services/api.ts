@@ -1,5 +1,5 @@
 import { apiRequest, authenticatedRequest } from '@shared/api';
-import type { Product, Order, CreateOrderRequest, OrderStatus, UpdateOrderStatusRequest, UpdateOrderTimeRequest, AdminSettings } from '@shared/types';
+import type { Product, Order, CreateOrderRequest, UpdateOrderStatusRequest, UpdateOrderTimeRequest, AdminSettings } from '@shared/types';
 
 // Get auth token from localStorage (web-specific)
 const getToken = (): string | null => {
@@ -173,6 +173,54 @@ export const adminApi = {
     
     return authenticatedRequest<void>(`/admin/notifications/${id}/read`, {
       method: 'PATCH',
+      token,
+    });
+  },
+
+  getStatistics: async (password: string, startDate?: string, endDate?: string): Promise<{
+    hasCustomRange: boolean;
+    products: Array<{
+      name: string;
+      soldDay: number;
+      soldWeek: number;
+      soldMonth: number;
+      soldYear: number;
+      soldTotal: number;
+      soldCustom: number;
+      revenueDayOre: number;
+      revenueWeekOre: number;
+      revenueMonthOre: number;
+      revenueYearOre: number;
+      revenueTotalOre: number;
+      revenueCustomOre: number;
+    }>;
+    totals: {
+      ordersDay: number;
+      ordersWeek: number;
+      ordersMonth: number;
+      ordersYear: number;
+      ordersTotal: number;
+      ordersCustom: number;
+      itemsDay: number;
+      itemsWeek: number;
+      itemsMonth: number;
+      itemsYear: number;
+      itemsTotal: number;
+      itemsCustom: number;
+      revenueDayOre: number;
+      revenueWeekOre: number;
+      revenueMonthOre: number;
+      revenueYearOre: number;
+      revenueTotalOre: number;
+      revenueCustomOre: number;
+    };
+  }> => {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    return authenticatedRequest(`/admin/statistics`, {
+      method: 'POST',
+      body: JSON.stringify({ password, startDate, endDate }),
       token,
     });
   },
