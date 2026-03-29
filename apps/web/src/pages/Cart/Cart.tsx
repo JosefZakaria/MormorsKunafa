@@ -16,9 +16,13 @@ export const Cart: React.FC = () => {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [showPausedPopup, setShowPausedPopup] = useState(false);
-
-    // Get order type from URL or default to 'takeaway'
-    const orderType = (searchParams.get('type') as OrderType) || 'takeaway';
+    const [orderType, setOrderType] = useState<OrderType | ''>(() => {
+        const fromUrl = searchParams.get('type') as OrderType;
+        if (fromUrl) return fromUrl;
+        const stored = sessionStorage.getItem('orderType') as OrderType;
+        return stored || '';
+    });
+    const [orderTypeError, setOrderTypeError] = useState<string | null>(null);
 
     // Get delivery info from localStorage if available
     const getDeliveryInfo = () => {
@@ -28,14 +32,30 @@ export const Cart: React.FC = () => {
 
     const total = getTotal() / 100; // Convert from öre to kr
 
+    const handleOrderTypeChange = (value: string) => {
+        setOrderTypeError(null);
+        if (value === 'delivery') {
+            localStorage.setItem('cartReturnTo', 'true');
+            navigate('/delivery');
+            return;
+        }
+        sessionStorage.setItem('orderType', value);
+        setOrderType(value as OrderType);
+    };
+
     const handleCheckout = async () => {
         if (items.length === 0) {
             setError('Din varukorg är tom');
             return;
         }
+        if (!orderType) {
+            setOrderTypeError('Välj hur du vill få din beställning.');
+            return;
+        }
 
         setIsSubmitting(true);
         setError(null);
+        setOrderTypeError(null);
 
         try {
             // Convert cart items to order items format
@@ -52,7 +72,7 @@ export const Cart: React.FC = () => {
             // Create order
             const order = await orderApi.create({
                 items: orderItems,
-                orderType: orderType,
+                orderType: orderType as OrderType,
                 deliveryInfo: deliveryInfo,
                 paymentMethod: 'app' as PaymentMethod, // Default to app payment
             });
@@ -140,6 +160,23 @@ export const Cart: React.FC = () => {
                         </div>
 
                         <div className="cart-summary">
+                            <div className="order-type-selector">
+                                <label className="order-type-label">Leveranssätt</label>
+                                <select
+                                    className={`order-type-select ${orderTypeError ? 'order-type-select--error' : ''}`}
+                                    value={orderType}
+                                    onChange={(e) => handleOrderTypeChange(e.target.value)}
+                                >
+                                    <option value="" disabled>Välj leveranssätt...</option>
+                                    <option value="eat-here">Äta här</option>
+                                    <option value="takeaway">Ta med</option>
+                                    <option value="delivery">Hemkörning</option>
+                                </select>
+                                {orderTypeError && (
+                                    <p className="order-type-error">{orderTypeError}</p>
+                                )}
+                            </div>
+
                             <div className="cart-summary__row">
                                 <span className="text-body-lg">{t('cart.total')}</span>
                                 <span className="text-body-lg font-bold">{total.toFixed(0)} kr</span>

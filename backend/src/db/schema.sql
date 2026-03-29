@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS `products` (
 CREATE TABLE IF NOT EXISTS `orders` (
   `id` varchar(36) NOT NULL,
   `order_number` varchar(32) NOT NULL,
-  `status` varchar(20) NOT NULL DEFAULT 'mottagen',
+  `status` varchar(20) NOT NULL DEFAULT 'ny',
   `order_type` varchar(20) NOT NULL DEFAULT 'takeaway',
   `payment_method` varchar(20) NOT NULL DEFAULT 'cash',
   `payment_status` varchar(20) NOT NULL DEFAULT 'pending',

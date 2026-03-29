@@ -308,7 +308,88 @@ input:checked+.slider:before {
 }
 
 /* Status badges for order statuses */
+.status-ny       { background: #FEE2E2; color: #DC2626; padding: 0.2rem 0.5rem; border-radius: var(--radius-full); font-size: 0.8rem; font-weight: 600; }
 .status-mottagen { background: #FEF3C7; color: #D97706; padding: 0.2rem 0.5rem; border-radius: var(--radius-full); font-size: 0.8rem; }
 .status-påbörjad { background: #DBEAFE; color: #2563EB; padding: 0.2rem 0.5rem; border-radius: var(--radius-full); font-size: 0.8rem; }
 .status-klar     { background: #D1FAE5; color: #059669; padding: 0.2rem 0.5rem; border-radius: var(--radius-full); font-size: 0.8rem; }
-.status-uthämtad, .status-levererad { background: #F3F4F6; color: #6B7280; padding: 0.2rem 0.5rem; border-radius: var(--radius-full); font-size: 0.8rem; }
+.status-avbruten { background: #FEE2E2; color: #DC2626; padding: 0.2rem 0.5rem; border-radius: var(--radius-full); font-size: 0.8rem; font-weight: 600; }
+.status-uthämtad, .status-levererad { background: #F3F4F6; color: #6B7280; padding: 0.2rem 0.5rem; border-radius: var(--radius-full); font-size: 0.8rem; }
+
+.history-card-done {
+    border-left-color: #059669;
+}
+
+.history-card-cancelled {
+    border-left-color: #DC2626;
+}
+
+/* Pending order cards */
+.pending-order-card {
+    border-left: 4px solid #DC2626;
+    animation: pulse-border 2s ease-in-out infinite;
+}
+
+@keyframes pulse-border {
+    0%, 100% { border-left-color: #DC2626; }
+    50% { border-left-color: #FCA5A5; }
+}
+
+.orders-section-title {
+    font-family: var(--font-family-display);
+    font-size: 1.1rem;
+    color: var(--color-gray-500);
+    margin-bottom: var(--spacing-sm);
+}
+
+.pending-title {
+    color: #DC2626;
+}
+
+/* Pending order actions layout */
+.pending-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 120px;
+}
+
+.pending-time-display {
+    display: flex;
+    align-items: baseline;
+    gap: 0.25rem;
+}
+
+.pending-time-value {
+    font-family: var(--font-family-display);
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--color-primary-red);
+    line-height: 1;
+}
+
+.pending-time-unit {
+    font-size: 0.85rem;
+    color: var(--color-gray-500);
+}
+
+.pending-time-buttons {
+    display: flex;
+    gap: 0.25rem;
+}
+
+.tab-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #DC2626;
+    color: #fff;
+    font-size: 0.75rem;
+    font-weight: 700;
+    min-width: 1.25rem;
+    height: 1.25rem;
+    padding: 0 0.35rem;
+    border-radius: 999px;
+    margin-left: 0.35rem;
+    vertical-align: middle;
+}

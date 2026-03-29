@@ -14,10 +14,10 @@ function getCountdown(isoTime: string | undefined): string {
     return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 }
 
-const STATUS_STEPS: Order['status'][] = ['mottagen', 'påbörjad', 'klar'];
+const STATUS_STEPS: Order['status'][] = ['ny', 'påbörjad', 'klar'];
 
 const STEP_LABELS: Record<string, string> = {
-    mottagen: 'Mottagen',
+    ny: 'Skickad',
     påbörjad: 'Förbereder',
     klar: 'Klar',
 };
@@ -65,10 +65,13 @@ export const OrderStatus: React.FC = () => {
         return () => clearInterval(id);
     }, [order?.estimatedReadyTime]);
 
+    const isCancelled = order?.status === 'avbruten';
+    const isPending = order?.status === 'ny' || order?.status === 'mottagen';
     const isCompleted = order?.status === 'klar' || order?.status === 'uthämtad' || order?.status === 'levererad';
-    const statusClass = isCompleted ? 'almost-ready' : countdown === '00:00' ? 'delayed' : 'on-time';
+    const statusClass = isCancelled ? 'cancelled' : isCompleted ? 'almost-ready' : isPending ? 'on-time' : countdown === '00:00' ? 'delayed' : 'on-time';
 
-    const currentStepIndex = order ? STATUS_STEPS.indexOf(order.status as Order['status']) : 0;
+    const stepIndex = order ? STATUS_STEPS.indexOf(order.status as Order['status']) : 0;
+    const currentStepIndex = stepIndex >= 0 ? stepIndex : order?.status === 'mottagen' ? 1 : 0;
 
     if (loading) {
         return (
@@ -102,35 +105,61 @@ export const OrderStatus: React.FC = () => {
                     <p style={{ fontSize: '0.85rem', color: '#888', marginBottom: '0.25rem' }}>
                         Beställning {order.orderNumber}
                     </p>
-                    <h1 className="text-display-md status-title">
-                        {isCompleted ? 'Din beställning är klar! 🎉' : 'Förbereder din beställning'}
-                    </h1>
 
-                    {!isCompleted && (
-                        <div className="timer-display">
-                            <span className="timer-value">{countdown}</span>
-                            <span className="text-body-md timer-label">Minuter kvar</span>
-                        </div>
-                    )}
+                    {isCancelled ? (
+                        <>
+                            <h1 className="text-display-md status-title">
+                                Beställningen har avbrutits
+                            </h1>
+                            <p className="text-center status-message" style={{ color: '#DC2626' }}>
+                                Tyvärr har din beställning blivit avbruten. Kontakta oss om du har frågor.
+                            </p>
+                            <button
+                                onClick={() => navigate('/')}
+                                style={{ marginTop: '1.5rem', cursor: 'pointer', padding: '0.5rem 1.5rem', borderRadius: '8px', border: '1px solid #ccc', background: '#fff' }}
+                            >
+                                Tillbaka till menyn
+                            </button>
+                        </>
+                    ) : (
+                        <>
+                            <h1 className="text-display-md status-title">
+                                {isCompleted
+                                    ? 'Din beställning är klar! 🎉'
+                                    : isPending
+                                        ? 'Väntar på bekräftelse'
+                                        : 'Förbereder din beställning'}
+                            </h1>
 
-                    <div className="status-steps">
-                        {STATUS_STEPS.map((step, index) => {
-                            const done = currentStepIndex > index;
-                            const active = currentStepIndex === index;
-                            return (
-                                <div key={step} className={`step ${done ? 'step--completed' : ''} ${active ? 'step--active' : ''}`}>
-                                    <span className="step-dot"></span>
-                                    <span>{STEP_LABELS[step]}</span>
+                            {!isCompleted && !isPending && (
+                                <div className="timer-display">
+                                    <span className="timer-value">{countdown}</span>
+                                    <span className="text-body-md timer-label">Minuter kvar</span>
                                 </div>
-                            );
-                        })}
-                    </div>
+                            )}
 
-                    <p className="text-center status-message">
-                        {isCompleted
-                            ? 'Du kan hämta din Kunafa nu!'
-                            : 'Vi förbereder din färska Kunafa!'}
-                    </p>
+                            <div className="status-steps">
+                                {STATUS_STEPS.map((step, index) => {
+                                    const done = currentStepIndex > index;
+                                    const active = currentStepIndex === index;
+                                    return (
+                                        <div key={step} className={`step ${done ? 'step--completed' : ''} ${active ? 'step--active' : ''}`}>
+                                            <span className="step-dot"></span>
+                                            <span>{STEP_LABELS[step]}</span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+
+                            <p className="text-center status-message">
+                                {isCompleted
+                                    ? 'Du kan hämta din Kunafa nu!'
+                                    : isPending
+                                        ? 'Din beställning har skickats och väntar på att bli accepterad.'
+                                        : 'Vi förbereder din färska Kunafa!'}
+                            </p>
+                        </>
+                    )}
                 </div>
             </Container>
         </div>

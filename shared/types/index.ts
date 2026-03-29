@@ -9,7 +9,7 @@
  */
 
 // Order Status Types (F.Order.2)
-export type OrderStatus = 'mottagen' | 'påbörjad' | 'klar' | 'uthämtad' | 'levererad';
+export type OrderStatus = 'ny' | 'mottagen' | 'påbörjad' | 'klar' | 'avbruten' | 'uthämtad' | 'levererad';
 
 // Order Type
 export type OrderType = 'eat-here' | 'takeaway' | 'delivery';
