@@ -15,6 +15,7 @@ export const Cart: React.FC = () => {
     const { items, updateQuantity, removeItem, getTotal, clearCart } = useCart();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [showPausedPopup, setShowPausedPopup] = useState(false);
 
     // Get order type from URL or default to 'takeaway'
     const orderType = (searchParams.get('type') as OrderType) || 'takeaway';
@@ -62,7 +63,15 @@ export const Cart: React.FC = () => {
             // Navigate to order status page with order ID
             navigate(`/status?orderId=${order.id}`);
         } catch (err: any) {
-            setError(err.message || 'Kunde inte skapa beställning. Försök igen.');
+            let errorMsg = err.message || 'Kunde inte skapa beställning. Försök igen.';
+            if (err.data && err.data.error) {
+                errorMsg = err.data.error;
+            }
+            if (errorMsg.toLowerCase().includes('pausade') || err.status === 403) {
+                setShowPausedPopup(true);
+            } else {
+                setError(errorMsg);
+            }
             console.error('Error creating order:', err);
         } finally {
             setIsSubmitting(false);
@@ -157,6 +166,21 @@ export const Cart: React.FC = () => {
                     </div>
                 )}
             </Container>
+
+            {showPausedPopup && (
+                <div className="cart-popup-overlay animate-in">
+                    <div className="cart-popup-content">
+                        <div className="cart-popup-icon">⚠️</div>
+                        <h3 className="text-heading-md" style={{ marginBottom: '1rem' }}>Pausat</h3>
+                        <p className="text-body-lg" style={{ marginBottom: '2rem' }}>
+                            Beställningar är för tillfället pausade. Vänligen försök igen lite senare!
+                        </p>
+                        <Button variant="primary" onClick={() => setShowPausedPopup(false)} fullWidth>
+                            Okej, jag förstår
+                        </Button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
