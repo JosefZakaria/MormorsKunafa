@@ -106,6 +106,8 @@ export const AdminDashboard: React.FC = () => {
     const [loadingHistory, setLoadingHistory] = useState(false);
     const [loadingProducts, setLoadingProducts] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [historyDateFrom, setHistoryDateFrom] = useState('');
+    const [historyDateTo, setHistoryDateTo] = useState('');
 
     const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -144,14 +146,16 @@ export const AdminDashboard: React.FC = () => {
         if (activeTab !== 'history') return;
 
         const fetchHistory = () => {
-            orderApi.getHistory(100).then(setHistoryOrders).finally(() => setLoadingHistory(false));
+            orderApi.getHistory(200, historyDateFrom || undefined, historyDateTo || undefined)
+                .then(setHistoryOrders)
+                .finally(() => setLoadingHistory(false));
         };
 
-        setLoadingHistory(prev => historyOrders.length === 0 ? true : prev);
+        setLoadingHistory(true);
         fetchHistory();
         const id = setInterval(fetchHistory, 5000);
         return () => clearInterval(id);
-    }, [activeTab]);
+    }, [activeTab, historyDateFrom, historyDateTo]);
 
     // --- Accept pending order ---
     const handleAcceptOrder = async (orderId: string, extraMinutes?: number) => {
@@ -175,6 +179,25 @@ export const AdminDashboard: React.FC = () => {
             );
         } catch {
             setError('Kunde inte uppdatera orderstatus.');
+        }
+    };
+
+    const handleDeleteOrder = async (orderId: string) => {
+        try {
+            await orderApi.deleteOrder(orderId);
+            setHistoryOrders(prev => prev.filter(o => o.id !== orderId));
+        } catch {
+            setError('Kunde inte ta bort ordern.');
+        }
+    };
+
+    const handleDeleteAllHistory = async () => {
+        if (!confirm('Är du säker på att du vill radera hela orderhistoriken?')) return;
+        try {
+            await orderApi.deleteAllHistory();
+            setHistoryOrders([]);
+        } catch {
+            setError('Kunde inte radera historiken.');
         }
     };
 
@@ -345,6 +368,40 @@ export const AdminDashboard: React.FC = () => {
                     {/* ── HISTORIK ── */}
                     {activeTab === 'history' && (
                         <div className="orders-list">
+                            <div className="history-date-filter">
+                                <div className="history-date-field">
+                                    <label>Från</label>
+                                    <input
+                                        type="date"
+                                        value={historyDateFrom}
+                                        onChange={(e) => setHistoryDateFrom(e.target.value)}
+                                    />
+                                </div>
+                                <div className="history-date-field">
+                                    <label>Till</label>
+                                    <input
+                                        type="date"
+                                        value={historyDateTo}
+                                        onChange={(e) => setHistoryDateTo(e.target.value)}
+                                    />
+                                </div>
+                                {(historyDateFrom || historyDateTo) && (
+                                    <button
+                                        className="history-date-clear"
+                                        onClick={() => { setHistoryDateFrom(''); setHistoryDateTo(''); }}
+                                    >
+                                        Rensa filter
+                                    </button>
+                                )}
+                                {historyOrders.length > 0 && (
+                                    <button
+                                        className="history-delete-all"
+                                        onClick={handleDeleteAllHistory}
+                                    >
+                                        Radera all historik
+                                    </button>
+                                )}
+                            </div>
                             {loadingHistory ? (
                                 <p>Laddar historik...</p>
                             ) : historyOrders.length === 0 ? (
@@ -365,9 +422,12 @@ export const AdminDashboard: React.FC = () => {
                                             <p className="order-total">{(order.totalPrice / 100).toFixed(0)} kr</p>
                                             <p style={{ fontSize: '0.8rem', color: '#888', margin: 0 }}>{new Date(order.createdAt).toLocaleString('sv-SE')}</p>
                                         </div>
-                                        <div className="order-actions">
+                                        <div className="order-actions" style={{ flexDirection: 'column', gap: '0.5rem' }}>
                                             <Button size="sm" variant="ghost" onClick={() => handlePrintReceipt(order.id)}>
                                                 Kvitto
+                                            </Button>
+                                            <Button size="sm" variant="ghost" style={{ color: '#DC2626' }} onClick={() => handleDeleteOrder(order.id)}>
+                                                Ta bort
                                             </Button>
                                         </div>
                                     </div>
