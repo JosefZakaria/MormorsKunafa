@@ -17,7 +17,10 @@ export const AdminLogin: React.FC = () => {
         setError('');
         setIsLoading(true);
 
-        const result = await login(email, password);
+        const cleanEmail = email.trim();
+        const cleanPassword = password.trim();
+        
+        const result = await login(cleanEmail, cleanPassword);
 
         if (result.ok) {
             navigate('/admin/dashboard');
