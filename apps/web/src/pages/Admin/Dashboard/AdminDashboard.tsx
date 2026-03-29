@@ -76,10 +76,10 @@ export const AdminDashboard: React.FC = () => {
         }
     }, []);
 
-    // --- Polling every 10s ---
+    // --- Polling every 15s ---
     useEffect(() => {
         fetchActiveOrders();
-        pollingRef.current = setInterval(fetchActiveOrders, 10000);
+        pollingRef.current = setInterval(fetchActiveOrders, 15000);
         return () => { if (pollingRef.current) clearInterval(pollingRef.current); };
     }, [fetchActiveOrders]);
 
