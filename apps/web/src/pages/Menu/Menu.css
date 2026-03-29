@@ -11,6 +11,11 @@
     margin-bottom: var(--spacing-2xl);
 }
 
+/* Gör hela sidans container bredare för att bilderna ska bli uppemot 15% bredare & högre */
+.menu-page .container {
+    max-width: 1400px !important;
+}
+
 /* Match header nav (MENY, VARUKORG) color for visual consistency */
 .menu-page__header .text-display-md {
     color: rgba(255, 255, 255, 0.9);
@@ -24,18 +29,6 @@
 .menu-page__header .text-body-lg,
 .menu-page__header .text-body-sm {
     color: rgba(255, 255, 255, 0.9);
-}
-
-/* All card content dark on white cards (override page inheritance) */
-.menu-page .menu-item .menu-item__content,
-.menu-page .menu-item .menu-item__content * {
-    color: var(--color-black);
-}
-.menu-page .menu-item .menu-item__price {
-    color: var(--color-primary-red);
-}
-.menu-page .menu-item .menu-item__description {
-    color: var(--color-gray-800);
 }
 
 .menu-page__demo-notice {
@@ -65,68 +58,78 @@
     }
 }
 
-.menu-item {
+/* Product items - Transparent background, yellow button */
+.menu-item-simple {
     display: flex;
     flex-direction: column;
     height: 100%;
 }
 
-.menu-item__image-container {
-    aspect-ratio: 1/1;
+.menu-item-simple__image-container {
+    aspect-ratio: 4 / 5;
+    /* 4 delar bred, 5 delar hög - ger en stående rektangel */
     width: 100%;
-    border-bottom: 1px solid var(--color-gray-100);
-    background-color: var(--color-gray-100);
     overflow: hidden;
+    margin-bottom: var(--spacing-sm);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    /* Lätt skugga för snyggare presentation */
 }
 
-.menu-item__image {
+.menu-item-simple__image {
     width: 100%;
     height: 100%;
-    object-fit: contain;
+    object-fit: cover;
     transition: transform 0.3s ease;
 }
 
-.menu-item:hover .menu-item__image {
+.menu-item-simple:hover .menu-item-simple__image {
     transform: scale(1.05);
 }
 
-.menu-item__clickable {
+.menu-item-simple__clickable {
     cursor: pointer;
     flex-grow: 1;
     display: flex;
     flex-direction: column;
 }
 
-.menu-item__content {
-    padding: var(--spacing-md);
+.menu-item-simple__content {
     display: flex;
     flex-direction: column;
     flex-grow: 1;
+    gap: 4px;
+    /* Space between title and stars */
+    margin-bottom: 12px;
 }
 
-.menu-item__actions {
-    padding: 0 var(--spacing-md) var(--spacing-md);
-}
-
-.menu-item__info {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    margin-bottom: var(--spacing-xs);
-}
-
-.menu-item__price {
+.menu-item-simple__title {
+    color: #ffffff;
     font-weight: 700;
-    color: var(--color-primary-red);
+    font-size: 1.1rem;
+    margin: 0;
 }
 
-.menu-item__description {
-    color: var(--color-gray-500);
-    flex-grow: 1;
-}
-
-.menu-item__btn {
+.menu-item-simple__btn {
     margin-top: 0;
+    width: 100%;
+}
+
+.menu-item-simple--out-of-stock .menu-item-simple__image {
+    opacity: 0.5;
+    filter: grayscale(80%);
+}
+
+.menu-item-simple__out-of-stock-badge {
+    position: absolute;
+    top: var(--spacing-sm);
+    right: var(--spacing-sm);
+    background-color: var(--color-error);
+    color: white;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 700;
 }
 
 /* Product detail modal */
@@ -143,8 +146,13 @@
 }
 
 @keyframes menu-modal-fade-in {
-    from { opacity: 0; }
-    to { opacity: 1; }
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
 }
 
 .menu-modal {
@@ -168,6 +176,7 @@
         opacity: 0;
         transform: scale(0.95);
     }
+
     to {
         opacity: 1;
         transform: scale(1);
@@ -198,14 +207,80 @@
     background: rgba(0, 0, 0, 0.7);
 }
 
+.menu-modal__top-row {
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+    padding: var(--spacing-lg) var(--spacing-lg) 0;
+    gap: var(--spacing-lg);
+}
+
 .menu-modal__image-wrap {
     flex-shrink: 0;
-    width: 140px;
-    height: 140px;
-    margin: var(--spacing-lg) 0 0 var(--spacing-lg);
+    width: 220px;
+    height: 220px;
+    margin: 0;
     background: var(--color-gray-100);
-    border-radius: 8px;
+    border-radius: 12px;
     overflow: hidden;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+}
+
+.menu-modal__image {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.menu-modal__options-box {
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+    align-items: center;
+    justify-content: center;
+}
+
+.menu-modal__options-label {
+    font-size: 0.85rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #5C2A2F;
+    margin-bottom: 8px;
+    text-align: center;
+}
+
+.menu-modal__select {
+    padding: 10px 16px;
+    border: 2px solid #5C2A2F;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    font-family: inherit;
+    background-color: #faf5f5;
+    color: #5C2A2F;
+    width: 100%;
+    max-width: 220px;
+    cursor: pointer;
+    box-shadow: 0 4px 6px rgba(92, 42, 47, 0.08);
+    appearance: none;
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235C2A2F' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+    background-repeat: no-repeat;
+    background-position: right 14px center;
+    background-size: 16px;
+    padding-right: 40px;
+    transition: all 0.2s ease;
+}
+
+.menu-modal__select:hover {
+    background-color: #ffffff;
+    box-shadow: 0 6px 12px rgba(92, 42, 47, 0.12);
+}
+
+.menu-modal__select:focus {
+    outline: none;
+    border-color: #f7a01a;
+    box-shadow: 0 0 0 3px rgba(247, 160, 26, 0.2);
 }
 
 .menu-modal__image {
@@ -271,7 +346,7 @@
 }
 
 /* Space between sections: extra top margin after a paragraph (before next h3) */
-.menu-modal__description p + h3 {
+.menu-modal__description p+h3 {
     margin-top: 1.5em;
 }
 
@@ -283,13 +358,13 @@
     display: block;
 }
 
-.menu-modal__description p:has(> strong:only-child) + p {
+.menu-modal__description p:has(> strong:only-child)+p {
     margin-top: 0;
 }
 
 /* Body text right under a header: normal weight so the header is clearly the header */
-.menu-modal__description h3 + p,
-.menu-modal__description h3 + p strong {
+.menu-modal__description h3+p,
+.menu-modal__description h3+p strong {
     font-weight: 400;
 }
 
