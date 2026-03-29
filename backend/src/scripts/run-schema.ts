@@ -2,6 +2,7 @@
  * Run schema.sql against the database.
  * Usage: npm run db:migrate (ensure DB_DATABASE exists and .env is set)
  */
+import 'dotenv/config';
 import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
