@@ -278,12 +278,12 @@ export const AdminDashboard: React.FC = () => {
                                                 ))}
                                             </ul>
                                             <p className="order-total">{(order.totalPrice / 100).toFixed(0)} kr</p>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                <p style={{ fontSize: '0.8rem', color: '#888', margin: 0 }}>{new Date(order.createdAt).toLocaleString('sv-SE')}</p>
-                                                <Button size="sm" variant="ghost" onClick={() => handlePrintReceipt(order.id)}>
-                                                    Kvitto
-                                                </Button>
-                                            </div>
+                                            <p style={{ fontSize: '0.8rem', color: '#888', margin: 0 }}>{new Date(order.createdAt).toLocaleString('sv-SE')}</p>
+                                        </div>
+                                        <div className="order-actions">
+                                            <Button size="sm" variant="ghost" onClick={() => handlePrintReceipt(order.id)}>
+                                                Kvitto
+                                            </Button>
                                         </div>
                                     </div>
                                 ))
