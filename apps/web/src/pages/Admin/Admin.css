@@ -378,6 +378,69 @@ input:checked+.slider:before {
     gap: 0.25rem;
 }
 
+/* History date filter */
+.history-date-filter {
+    display: flex;
+    align-items: flex-end;
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-lg);
+    flex-wrap: wrap;
+}
+
+.history-date-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.history-date-field label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--color-gray-500);
+}
+
+.history-date-field input[type="date"] {
+    padding: 0.45rem 0.6rem;
+    border: 1px solid var(--color-gray-200);
+    border-radius: var(--radius-md);
+    font-family: inherit;
+    font-size: 0.9rem;
+}
+
+.history-date-field input[type="date"]:focus {
+    outline: none;
+    border-color: var(--color-primary-red);
+}
+
+.history-date-clear {
+    padding: 0.45rem 0.75rem;
+    background: none;
+    border: 1px solid var(--color-gray-200);
+    border-radius: var(--radius-md);
+    font-size: 0.85rem;
+    color: var(--color-gray-500);
+    cursor: pointer;
+}
+
+.history-date-clear:hover {
+    background: var(--color-gray-100);
+}
+
+.history-delete-all {
+    padding: 0.45rem 0.75rem;
+    background: none;
+    border: 1px solid #DC2626;
+    border-radius: var(--radius-md);
+    font-size: 0.85rem;
+    color: #DC2626;
+    cursor: pointer;
+    margin-left: auto;
+}
+
+.history-delete-all:hover {
+    background: #FEF2F2;
+}
+
 .tab-badge {
     display: inline-flex;
     align-items: center;
