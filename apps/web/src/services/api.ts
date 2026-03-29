@@ -41,6 +41,24 @@ export const orderApi = {
     return apiRequest<Order>(`/orders/${id}`);
   },
 
+  getPending: async (): Promise<Order[]> => {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    return authenticatedRequest<Order[]>('/orders/admin/pending', { token });
+  },
+
+  acceptOrder: async (id: string, extraMinutes?: number): Promise<Order> => {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    return authenticatedRequest<Order>(`/orders/admin/${id}/accept`, {
+      method: 'PATCH',
+      body: JSON.stringify({ extraMinutes: extraMinutes ?? 0 }),
+      token,
+    });
+  },
+
   getActive: async (): Promise<Order[]> => {
     const token = getToken();
     if (!token) throw new Error('Not authenticated');

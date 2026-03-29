@@ -88,7 +88,7 @@ router.post('/', async (req: Request, res: Response) => {
     const orderId = generateId();
     await db.query(
       `INSERT INTO orders (id, order_number, status, order_type, payment_method, payment_status, total_ore, default_preparation_time_minutes, estimated_ready_at, scheduled_at, customer_name, customer_email, customer_phone, delivery_info_json)
-       VALUES (?, ?, 'mottagen', ?, ?, 'pending', 0, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, 'ny', ?, ?, 'pending', 0, ?, ?, ?, ?, ?, ?, ?)`,
       [
         orderId,
         orderNumber,
@@ -138,6 +138,62 @@ router.post('/', async (req: Request, res: Response) => {
 });
 
 // Admin routes must be before /:id so /admin/active is not matched as id=admin
+
+// Admin: pending orders (status 'ny', waiting for acceptance)
+router.get('/admin/pending', requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const [rows] = (await db.query(
+      "SELECT * FROM orders WHERE status = 'ny' ORDER BY created_at ASC"
+    )) as [Row[], unknown];
+    const list = Array.isArray(rows) ? rows : [];
+    const out = [];
+    for (const o of list) {
+      const [items] = (await db.query('SELECT * FROM order_items WHERE order_id = ?', [o.id])) as [Row[], unknown];
+      out.push(orderRowToOrder(o, Array.isArray(items) ? items : []));
+    }
+    res.json(out);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to fetch pending orders' });
+  }
+});
+
+// Admin: accept order (ny → mottagen), optionally adjust estimated time
+router.patch('/admin/:id/accept', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { extraMinutes } = req.body as { extraMinutes?: number };
+
+    const result = await getOrderById(req.params.id);
+    if (!result) {
+      res.status(404).json({ error: 'Order not found' });
+      return;
+    }
+    if (result.order.status !== 'ny') {
+      res.status(400).json({ error: 'Order is not in pending state' });
+      return;
+    }
+
+    const defaultPrep = Number(result.order.default_preparation_time_minutes) || 30;
+    const totalMinutes = defaultPrep + (extraMinutes ?? 0);
+    const estimatedReady = new Date(Date.now() + totalMinutes * 60 * 1000);
+
+    await db.query(
+      `UPDATE orders SET status = 'mottagen', estimated_ready_at = ?, updated_at = NOW() WHERE id = ?`,
+      [estimatedReady, req.params.id]
+    );
+
+    const updated = await getOrderById(req.params.id);
+    if (!updated) {
+      res.status(500).json({ error: 'Accept succeeded but fetch failed' });
+      return;
+    }
+    res.json(orderRowToOrder(updated.order, updated.items));
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to accept order' });
+  }
+});
+
 // Admin: active orders
 router.get('/admin/active', requireAdmin, async (_req: Request, res: Response) => {
   try {
@@ -202,7 +258,7 @@ router.get('/admin/history', requireAdmin, async (req: Request, res: Response) =
 router.patch('/admin/:id/status', requireAdmin, async (req: Request, res: Response) => {
   try {
     const { status, estimatedReadyTime } = req.body as { status?: string; estimatedReadyTime?: string };
-    if (!status || !['mottagen', 'påbörjad', 'klar', 'uthämtad', 'levererad'].includes(status)) {
+    if (!status || !['ny', 'mottagen', 'påbörjad', 'klar', 'avbruten', 'uthämtad', 'levererad'].includes(status)) {
       res.status(400).json({ error: 'Invalid status' });
       return;
     }

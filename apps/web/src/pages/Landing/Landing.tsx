@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Container } from '../../components/common/Container/Container';
 import { Button } from '../../components/common/Button/Button';
@@ -34,6 +34,10 @@ export const Landing: React.FC = () => {
     const navigate = useNavigate();
     const { t } = useLanguage();
 
+    useEffect(() => {
+        sessionStorage.removeItem('orderType');
+    }, []);
+
     return (
         <div className="landing">
             <div className="landing__hero">
@@ -53,7 +57,7 @@ export const Landing: React.FC = () => {
                             variant="primary"
                             size="lg"
                             className="landing__btn animate-in delay-200"
-                            onClick={() => navigate('/menu')}
+                            onClick={() => { sessionStorage.setItem('orderType', 'eat-here'); navigate('/menu'); }}
                         >
                             <span className="landing__btn-icon"><IconEatHere /></span>
                             <span className="landing__btn-label">{t('landing.eat_here')}</span>
@@ -62,7 +66,7 @@ export const Landing: React.FC = () => {
                             variant="primary"
                             size="lg"
                             className="landing__btn animate-in delay-300"
-                            onClick={() => navigate('/menu')}
+                            onClick={() => { sessionStorage.setItem('orderType', 'takeaway'); navigate('/menu'); }}
                         >
                             <span className="landing__btn-icon"><IconTakeaway /></span>
                             <span className="landing__btn-label">{t('landing.takeaway')}</span>
@@ -71,7 +75,7 @@ export const Landing: React.FC = () => {
                             variant="primary"
                             size="lg"
                             className="landing__btn animate-in delay-400"
-                            onClick={() => navigate('/delivery')}
+                            onClick={() => { sessionStorage.setItem('orderType', 'delivery'); navigate('/delivery'); }}
                         >
                             <span className="landing__btn-icon"><IconDelivery /></span>
                             <span className="landing__btn-label">{t('landing.delivery')}</span>
