@@ -44,16 +44,26 @@ function OrderTimer({ estimatedReadyTime }: { estimatedReadyTime: string }) {
     );
 }
 
+type StatsData = Awaited<ReturnType<typeof adminApi.getStatistics>>;
+
 export const AdminDashboard: React.FC = () => {
     const { logout, admin } = useAuth();
     const navigate = useNavigate();
-    const [activeTab, setActiveTab] = useState<'active' | 'history' | 'stock' | 'rush'>('active');
+    const [activeTab, setActiveTab] = useState<'active' | 'history' | 'stock' | 'rush' | 'stats'>('active');
 
     // Data state
     const [activeOrders, setActiveOrders] = useState<Order[]>([]);
     const [historyOrders, setHistoryOrders] = useState<Order[]>([]);
     const [products, setProducts] = useState<Product[]>([]);
     const [settings, setSettings] = useState<AdminSettings | null>(null);
+
+    // Statistics state
+    const [showStatsModal, setShowStatsModal] = useState(false);
+    const [statsPassword, setStatsPassword] = useState('');
+    const [statsError, setStatsError] = useState<string | null>(null);
+    const [statsLoading, setStatsLoading] = useState(false);
+    const [statsData, setStatsData] = useState<StatsData | null>(null);
+    const [statsPeriod, setStatsPeriod] = useState<'dag' | 'vecka' | 'manad' | 'ar' | 'totalt'>('dag');
 
     // UI state
     const [loadingOrders, setLoadingOrders] = useState(true);
@@ -156,6 +166,30 @@ export const AdminDashboard: React.FC = () => {
         navigate('/admin/login');
     };
 
+    const handleStatsTabClick = () => {
+        if (statsData) {
+            setActiveTab('stats');
+        } else {
+            setShowStatsModal(true);
+        }
+    };
+
+    const handleStatsSubmit = async () => {
+        setStatsLoading(true);
+        setStatsError(null);
+        try {
+            const data = await adminApi.getStatistics(statsPassword);
+            setStatsData(data);
+            setShowStatsModal(false);
+            setStatsPassword('');
+            setActiveTab('stats');
+        } catch {
+            setStatsError('Felaktigt lösenord. Försök igen.');
+        } finally {
+            setStatsLoading(false);
+        }
+    };
+
     const isPaused = settings?.isPaused ?? false;
 
     return (
@@ -200,7 +234,37 @@ export const AdminDashboard: React.FC = () => {
                     <button className={`admin-tab ${activeTab === 'rush' ? 'active' : ''}`} onClick={() => setActiveTab('rush')}>
                         Inställningar
                     </button>
+                    <button className={`admin-tab ${activeTab === 'stats' ? 'active' : ''}`} onClick={handleStatsTabClick}>
+                        Statistik
+                    </button>
                 </div>
+
+                {/* ── STATISTIK LÖSENORDS-POPUP ── */}
+                {showStatsModal && (
+                    <div className="stats-modal-overlay">
+                        <div className="stats-modal">
+                            <h2>Statistik</h2>
+                            <p>Ange lösenord för att se statistiken</p>
+                            <input
+                                id="stats-password-input"
+                                className="stats-modal-input"
+                                type="password"
+                                placeholder="Lösenord"
+                                value={statsPassword}
+                                onChange={e => setStatsPassword(e.target.value)}
+                                onKeyDown={e => e.key === 'Enter' && handleStatsSubmit()}
+                                autoFocus
+                            />
+                            {statsError && <p className="stats-modal-error">{statsError}</p>}
+                            <div className="stats-modal-actions">
+                                <Button variant="ghost" onClick={() => { setShowStatsModal(false); setStatsPassword(''); setStatsError(null); }} style={{ flex: 1 }}>Avbryt</Button>
+                                <Button variant="primary" onClick={handleStatsSubmit} style={{ flex: 1 }} id="stats-submit-btn">
+                                    {statsLoading ? 'Laddar...' : 'Öppna'}
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 <div className="admin-content animate-in">
                     {/* ── AKTIVA ORDRAR ── */}
@@ -314,6 +378,107 @@ export const AdminDashboard: React.FC = () => {
                             ))}
                         </div>
                     )}
+
+                    {/* ── STATISTIK ── */}
+                    {activeTab === 'stats' && statsData && (() => {
+                        const t = statsData.totals;
+                        const orders = statsPeriod === 'dag' ? t.ordersDay
+                            : statsPeriod === 'vecka' ? t.ordersWeek
+                            : statsPeriod === 'manad' ? t.ordersMonth
+                            : statsPeriod === 'ar' ? t.ordersYear
+                            : t.ordersTotal;
+                        const items = statsPeriod === 'dag' ? t.itemsDay
+                            : statsPeriod === 'vecka' ? t.itemsWeek
+                            : statsPeriod === 'manad' ? t.itemsMonth
+                            : statsPeriod === 'ar' ? t.itemsYear
+                            : t.itemsTotal;
+                        const revenueOre = statsPeriod === 'dag' ? t.revenueDayOre
+                            : statsPeriod === 'vecka' ? t.revenueWeekOre
+                            : statsPeriod === 'manad' ? t.revenueMonthOre
+                            : statsPeriod === 'ar' ? t.revenueYearOre
+                            : t.revenueTotalOre;
+
+                        return (
+                            <div className="stats-section">
+                                {/* Rubrik + dropdown */}
+                                <div className="stats-overview-header">
+                                    <h3 className="stats-overview-title">Översikt</h3>
+                                    <select
+                                        id="stats-period-select"
+                                        className="stats-period-select"
+                                        value={statsPeriod}
+                                        onChange={e => setStatsPeriod(e.target.value as typeof statsPeriod)}
+                                    >
+                                        <option value="dag">Dag</option>
+                                        <option value="vecka">Vecka</option>
+                                        <option value="manad">Månad</option>
+                                        <option value="ar">År</option>
+                                        <option value="totalt">Totalt</option>
+                                    </select>
+                                </div>
+
+                                {/* 3 stora kort */}
+                                <div className="stats-big-cards">
+                                    <div className="stats-big-card">
+                                        <span className="stats-card-label">Ordrar</span>
+                                        <span className="stats-big-value">{orders.toLocaleString('sv-SE')} <span>st</span></span>
+                                    </div>
+                                    <div className="stats-big-card">
+                                        <span className="stats-card-label">Sålda varor</span>
+                                        <span className="stats-big-value">{items.toLocaleString('sv-SE')} <span>st</span></span>
+                                    </div>
+                                    <div className="stats-big-card highlight">
+                                        <span className="stats-card-label">Intäkter</span>
+                                        <span className="stats-big-value">{Math.round(revenueOre / 100).toLocaleString('sv-SE')} <span>kr</span></span>
+                                    </div>
+                                </div>
+
+                                {/* Per-produkt tabell */}
+                                <div className="stats-table-section">
+                                    <h3>Per produkt</h3>
+                                    <div className="stats-table-wrapper">
+                                        <table className="stats-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Produkt</th>
+                                                    <th className="right">Sålda</th>
+                                                    <th className="right">Intäkt</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {statsData.products.map((p, i) => {
+                                                    const pSold = statsPeriod === 'dag' ? p.soldDay
+                                                        : statsPeriod === 'vecka' ? p.soldWeek
+                                                        : statsPeriod === 'manad' ? p.soldMonth
+                                                        : statsPeriod === 'ar' ? p.soldYear
+                                                        : p.soldTotal;
+                                                    const pRev = statsPeriod === 'dag' ? p.revenueDayOre
+                                                        : statsPeriod === 'vecka' ? p.revenueWeekOre
+                                                        : statsPeriod === 'manad' ? p.revenueMonthOre
+                                                        : statsPeriod === 'ar' ? p.revenueYearOre
+                                                        : p.revenueTotalOre;
+                                                    return (
+                                                        <tr key={i}>
+                                                            <td className="product-name">{p.name}</td>
+                                                            <td className="right">{pSold}</td>
+                                                            <td className="right revenue-total">{Math.round(pRev / 100).toLocaleString('sv-SE')} kr</td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+
+                                {/* Avsluta-knapp */}
+                                <div className="stats-footer">
+                                    <Button variant="ghost" onClick={() => { setStatsData(null); setActiveTab('active'); }} id="stats-close-btn">
+                                        Avsluta statistik
+                                    </Button>
+                                </div>
+                            </div>
+                        );
+                    })()}
 
                     {/* ── INSTÄLLNINGAR ── */}
                     {activeTab === 'rush' && settings && (
