@@ -96,6 +96,7 @@ export async function apiRequest<T>(
       ...fetchOptions,
       headers,
       signal: controller.signal,
+      cache: 'no-store', // ensures polling always gets fresh DB results
     });
 
     clearTimeout(timeoutId);

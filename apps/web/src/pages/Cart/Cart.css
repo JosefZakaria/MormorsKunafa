@@ -105,3 +105,34 @@
 .checkout-btn {
     margin-bottom: var(--spacing-sm);
 }
+
+/* --- Paused Popup Overlay --- */
+.cart-popup-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+}
+
+.cart-popup-content {
+    background: #fff;
+    padding: 2.5rem;
+    border-radius: 16px;
+    max-width: 400px;
+    width: 90%;
+    text-align: center;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+}
+
+.cart-popup-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+}
+

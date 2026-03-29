@@ -5,18 +5,27 @@ import { Button } from '../../../components/common/Button/Button';
 import '../Admin.css';
 
 export const AdminLogin: React.FC = () => {
+    const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
     const { login } = useAuth();
     const navigate = useNavigate();
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (login(password)) {
+        setError('');
+        setIsLoading(true);
+
+        const result = await login(email, password);
+
+        if (result.ok) {
             navigate('/admin/dashboard');
         } else {
-            setError('Fel lösenord. Försök igen.');
+            setError(result.error || 'Fel e-post eller lösenord. Försök igen.');
         }
+
+        setIsLoading(false);
     };
 
     return (
@@ -25,6 +34,19 @@ export const AdminLogin: React.FC = () => {
                 <h1 className="admin-title">Admin Login</h1>
                 <form onSubmit={handleSubmit} className="admin-form">
                     <div className="form-group">
+                        <label htmlFor="email" className="form-label" style={{ textAlign: 'left' }}>E-post</label>
+                        <input
+                            type="email"
+                            id="email"
+                            className="form-control"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            placeholder="E-postadress"
+                            required
+                            disabled={isLoading}
+                        />
+                    </div>
+                    <div className="form-group">
                         <label htmlFor="password" className="form-label" style={{ textAlign: 'left' }}>Lösenord</label>
                         <input
                             type="password"
@@ -32,12 +54,14 @@ export const AdminLogin: React.FC = () => {
                             className="form-control"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
-                            placeholder="Ange admin-lösenord"
+                            placeholder="Lösenord"
+                            required
+                            disabled={isLoading}
                         />
                     </div>
                     {error && <p className="text-error" style={{ color: 'var(--color-primary-red)' }}>{error}</p>}
-                    <Button variant="primary" fullWidth type="submit">
-                        Logga in
+                    <Button variant="primary" fullWidth type="submit" disabled={isLoading}>
+                        {isLoading ? 'Loggar in...' : 'Logga in'}
                     </Button>
                 </form>
                 <Button variant="ghost" onClick={() => navigate('/')} className="admin-back-btn">
@@ -47,3 +71,4 @@ export const AdminLogin: React.FC = () => {
         </div>
     );
 };
+
