@@ -222,16 +222,16 @@ export const AdminDashboard: React.FC = () => {
                 )}
 
                 <div className="admin-tabs">
-                    <button className={`admin-tab ${activeTab === 'active' ? 'active' : ''}`} onClick={() => setActiveTab('active')}>
+                    <button className={`admin-tab ${activeTab === 'active' ? 'active' : ''}`} onClick={() => { setActiveTab('active'); setStatsData(null); }}>
                         Aktiva Ordrar ({activeOrders.length})
                     </button>
-                    <button className={`admin-tab ${activeTab === 'history' ? 'active' : ''}`} onClick={() => setActiveTab('history')}>
+                    <button className={`admin-tab ${activeTab === 'history' ? 'active' : ''}`} onClick={() => { setActiveTab('history'); setStatsData(null); }}>
                         Orderhistorik
                     </button>
-                    <button className={`admin-tab ${activeTab === 'stock' ? 'active' : ''}`} onClick={() => setActiveTab('stock')}>
+                    <button className={`admin-tab ${activeTab === 'stock' ? 'active' : ''}`} onClick={() => { setActiveTab('stock'); setStatsData(null); }}>
                         Lager
                     </button>
-                    <button className={`admin-tab ${activeTab === 'rush' ? 'active' : ''}`} onClick={() => setActiveTab('rush')}>
+                    <button className={`admin-tab ${activeTab === 'rush' ? 'active' : ''}`} onClick={() => { setActiveTab('rush'); setStatsData(null); }}>
                         Inställningar
                     </button>
                     <button className={`admin-tab ${activeTab === 'stats' ? 'active' : ''}`} onClick={handleStatsTabClick}>
