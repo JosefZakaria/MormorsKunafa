@@ -32,6 +32,7 @@ function OrderTimer({ estimatedReadyTime }: { estimatedReadyTime: string }) {
     const isOverdue = new Date(estimatedReadyTime).getTime() < Date.now();
 
     useEffect(() => {
+        setCountdown(getCountdown(estimatedReadyTime));
         const id = setInterval(() => setCountdown(getCountdown(estimatedReadyTime)), 1000);
         return () => clearInterval(id);
     }, [estimatedReadyTime]);
