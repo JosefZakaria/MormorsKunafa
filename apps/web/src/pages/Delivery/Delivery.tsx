@@ -23,11 +23,21 @@ export const Delivery: React.FC = () => {
     const [postalCode, setPostalCode] = useState('');
     const [ort, setOrt] = useState('');
     const [phone, setPhone] = useState('');
+    const cameFromCart = !!localStorage.getItem('cartReturnTo');
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        console.log('Delivery details:', { firstName, lastName, address, postalCode, ort, phone });
-        navigate('/menu?mode=delivery');
+        const info = { name: `${firstName} ${lastName}`, address, postalCode, city: ort, phone };
+        localStorage.setItem('deliveryInfo', JSON.stringify(info));
+        sessionStorage.setItem('orderType', 'delivery');
+
+        const returnToCart = localStorage.getItem('cartReturnTo');
+        if (returnToCart) {
+            localStorage.removeItem('cartReturnTo');
+            navigate('/cart');
+        } else {
+            navigate('/menu');
+        }
     };
 
     return (
@@ -125,7 +135,7 @@ export const Delivery: React.FC = () => {
                                 </div>
 
                                 <Button variant="primary" size="lg" fullWidth type="submit" className="delivery-submit-btn">
-                                    {t('delivery.submit_btn')}
+                                    {cameFromCart ? 'Gå till betalning' : t('delivery.submit_btn')}
                                 </Button>
                             </form>
                         </div>

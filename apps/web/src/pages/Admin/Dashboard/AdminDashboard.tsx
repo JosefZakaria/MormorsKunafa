@@ -19,9 +19,9 @@ function getCountdown(isoTime: string | undefined): string {
 
 function OrderTypeLabel({ type }: { type: string }) {
     const labels: Record<string, string> = {
-        'eat-here': '🍽 Äta här',
-        'takeaway': '🥡 Ta med',
-        'delivery': '🚗 Leverans',
+        'eat-here': 'Äta här',
+        'takeaway': 'Ta med',
+        'delivery': 'Hemleverans',
     };
     return <span>{labels[type] ?? type}</span>;
 }
@@ -44,12 +44,58 @@ function OrderTimer({ estimatedReadyTime }: { estimatedReadyTime: string }) {
     );
 }
 
+function PendingOrderCard({ order, defaultPrepTime, onAccept }: {
+    order: Order;
+    defaultPrepTime: number;
+    onAccept: (orderId: string, extraMinutes: number) => void;
+}) {
+    const [extraMinutes, setExtraMinutes] = useState(0);
+    const totalMinutes = defaultPrepTime + extraMinutes;
+
+    return (
+        <div className="admin-order-card pending-order-card">
+            <div className="order-details">
+                <h3>
+                    {order.orderNumber}
+                    &nbsp;·&nbsp;
+                    <OrderTypeLabel type={order.orderType} />
+                </h3>
+                <span className="status-badge status-ny">Ny</span>
+                <ul style={{ margin: '0.5rem 0', paddingLeft: '1.2rem' }}>
+                    {order.items.map((item, i) => (
+                        <li key={i}>{item.quantity}x {item.productName} – {(item.price * item.quantity / 100).toFixed(0)} kr</li>
+                    ))}
+                </ul>
+                <p className="order-total">{(order.totalPrice / 100).toFixed(0)} kr</p>
+                <p style={{ fontSize: '0.8rem', color: '#888', marginTop: '0.25rem' }}>
+                    Beställd {new Date(order.createdAt).toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' })}
+                </p>
+            </div>
+            <div className="pending-actions">
+                <div className="pending-time-display">
+                    <span className="pending-time-value">{totalMinutes}</span>
+                    <span className="pending-time-unit">min</span>
+                </div>
+                <div className="pending-time-buttons">
+                    <Button size="sm" variant="ghost" onClick={() => setExtraMinutes(prev => Math.max(-defaultPrepTime + 5, prev - 5))}>−5</Button>
+                    <Button size="sm" variant="ghost" onClick={() => setExtraMinutes(prev => prev + 5)}>+5</Button>
+                    <Button size="sm" variant="ghost" onClick={() => setExtraMinutes(prev => prev + 10)}>+10</Button>
+                </div>
+                <Button size="sm" variant="primary" onClick={() => onAccept(order.id, extraMinutes)}>
+                    Acceptera
+                </Button>
+            </div>
+        </div>
+    );
+}
+
 export const AdminDashboard: React.FC = () => {
     const { logout, admin } = useAuth();
     const navigate = useNavigate();
-    const [activeTab, setActiveTab] = useState<'active' | 'history' | 'stock' | 'rush'>('active');
+    const [activeTab, setActiveTab] = useState<'pending' | 'active' | 'history' | 'stock' | 'rush'>('pending');
 
     // Data state
+    const [pendingOrders, setPendingOrders] = useState<Order[]>([]);
     const [activeOrders, setActiveOrders] = useState<Order[]>([]);
     const [historyOrders, setHistoryOrders] = useState<Order[]>([]);
     const [products, setProducts] = useState<Product[]>([]);
@@ -63,25 +109,29 @@ export const AdminDashboard: React.FC = () => {
 
     const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-    // --- Fetch active orders ---
-    const fetchActiveOrders = useCallback(async () => {
+    // --- Fetch pending + active orders ---
+    const fetchOrders = useCallback(async () => {
         try {
-            const orders = await orderApi.getActive();
-            setActiveOrders(orders);
+            const [pending, active] = await Promise.all([
+                orderApi.getPending(),
+                orderApi.getActive(),
+            ]);
+            setPendingOrders(pending);
+            setActiveOrders(active);
             setError(null);
         } catch (e: any) {
-            setError('Kunde inte hämta aktiva ordrar.');
+            setError('Kunde inte hämta ordrar.');
         } finally {
             setLoadingOrders(false);
         }
     }, []);
 
-    // --- Polling every 15s ---
+    // --- Polling every 5s ---
     useEffect(() => {
-        fetchActiveOrders();
-        pollingRef.current = setInterval(fetchActiveOrders, 15000);
+        fetchOrders();
+        pollingRef.current = setInterval(fetchOrders, 5000);
         return () => { if (pollingRef.current) clearInterval(pollingRef.current); };
-    }, [fetchActiveOrders]);
+    }, [fetchOrders]);
 
     // --- Fetch products + settings on mount ---
     useEffect(() => {
@@ -89,20 +139,37 @@ export const AdminDashboard: React.FC = () => {
         adminApi.getSettings().then(setSettings);
     }, []);
 
-    // --- Fetch history when tab opens ---
+    // --- Fetch history when tab opens + poll while on tab ---
     useEffect(() => {
-        if (activeTab === 'history' && historyOrders.length === 0) {
-            setLoadingHistory(true);
+        if (activeTab !== 'history') return;
+
+        const fetchHistory = () => {
             orderApi.getHistory(100).then(setHistoryOrders).finally(() => setLoadingHistory(false));
-        }
+        };
+
+        setLoadingHistory(prev => historyOrders.length === 0 ? true : prev);
+        fetchHistory();
+        const id = setInterval(fetchHistory, 5000);
+        return () => clearInterval(id);
     }, [activeTab]);
+
+    // --- Accept pending order ---
+    const handleAcceptOrder = async (orderId: string, extraMinutes?: number) => {
+        try {
+            const accepted = await orderApi.acceptOrder(orderId, extraMinutes);
+            setPendingOrders(prev => prev.filter(o => o.id !== orderId));
+            setActiveOrders(prev => [...prev, accepted]);
+        } catch {
+            setError('Kunde inte acceptera ordern.');
+        }
+    };
 
     // --- Order actions ---
     const handleUpdateStatus = async (orderId: string, status: Order['status']) => {
         try {
             const updated = await orderApi.updateStatus(orderId, { status });
             setActiveOrders(prev =>
-                status === 'klar' || status === 'uthämtad' || status === 'levererad'
+                status === 'klar' || status === 'avbruten' || status === 'uthämtad' || status === 'levererad'
                     ? prev.filter(o => o.id !== orderId)
                     : prev.map(o => o.id === orderId ? updated : o)
             );
@@ -180,6 +247,9 @@ export const AdminDashboard: React.FC = () => {
                 )}
 
                 <div className="admin-tabs">
+                    <button className={`admin-tab ${activeTab === 'pending' ? 'active' : ''}`} onClick={() => setActiveTab('pending')}>
+                        Inkommande {pendingOrders.length > 0 && <span className="tab-badge">{pendingOrders.length}</span>}
+                    </button>
                     <button className={`admin-tab ${activeTab === 'active' ? 'active' : ''}`} onClick={() => setActiveTab('active')}>
                         Aktiva Ordrar ({activeOrders.length})
                     </button>
@@ -195,6 +265,26 @@ export const AdminDashboard: React.FC = () => {
                 </div>
 
                 <div className="admin-content animate-in">
+                    {/* ── INKOMMANDE ORDRAR ── */}
+                    {activeTab === 'pending' && (
+                        <div className="orders-list">
+                            {loadingOrders ? (
+                                <p>Laddar ordrar...</p>
+                            ) : pendingOrders.length === 0 ? (
+                                <p>Inga inkommande ordrar just nu.</p>
+                            ) : (
+                                pendingOrders.map(order => (
+                                    <PendingOrderCard
+                                        key={order.id}
+                                        order={order}
+                                        defaultPrepTime={settings?.defaultPreparationTime ?? 30}
+                                        onAccept={handleAcceptOrder}
+                                    />
+                                ))
+                            )}
+                        </div>
+                    )}
+
                     {/* ── AKTIVA ORDRAR ── */}
                     {activeTab === 'active' && (
                         <div className="orders-list">
@@ -227,19 +317,12 @@ export const AdminDashboard: React.FC = () => {
                                                 <Button size="sm" variant="ghost" onClick={() => handleAddTime(order, 10)}>+10 min</Button>
                                             </div>
                                         </div>
-                                        <div className="order-actions">
-                                            {order.status === 'mottagen' && (
-                                                <Button size="sm" variant="primary" onClick={() => handleUpdateStatus(order.id, 'påbörjad')}>
-                                                    Påbörja
-                                                </Button>
-                                            )}
-                                            {order.status === 'påbörjad' && (
-                                                <Button size="sm" variant="primary" onClick={() => handleUpdateStatus(order.id, 'klar')}>
-                                                    Markera Klar
-                                                </Button>
-                                            )}
-                                            <Button size="sm" variant="ghost" onClick={() => handleUpdateStatus(order.id, order.orderType === 'delivery' ? 'levererad' : 'uthämtad')}>
-                                                Avsluta
+                                        <div className="order-actions" style={{ flexDirection: 'column', gap: '0.5rem' }}>
+                                            <Button size="sm" variant="ghost" onClick={() => handleUpdateStatus(order.id, 'avbruten')}>
+                                                Avbryt
+                                            </Button>
+                                            <Button size="sm" variant="primary" onClick={() => handleUpdateStatus(order.id, 'klar')}>
+                                                Färdig
                                             </Button>
                                         </div>
                                     </div>
@@ -257,10 +340,12 @@ export const AdminDashboard: React.FC = () => {
                                 <p>Ingen orderhistorik ännu.</p>
                             ) : (
                                 historyOrders.map(order => (
-                                    <div key={order.id} className="admin-order-card" style={{ borderLeftColor: 'var(--color-gray-500)' }}>
+                                    <div key={order.id} className={`admin-order-card ${order.status === 'avbruten' ? 'history-card-cancelled' : 'history-card-done'}`}>
                                         <div className="order-details">
                                             <h3>{order.orderNumber} · <OrderTypeLabel type={order.orderType} /></h3>
-                                            <span className={`status-badge status-${order.status}`}>{order.status}</span>
+                                            <span className={`status-badge ${order.status === 'avbruten' ? 'status-avbruten' : 'status-klar'}`}>
+                                                {order.status === 'avbruten' ? 'Avbruten' : 'Klar'}
+                                            </span>
                                             <ul style={{ margin: '0.5rem 0', paddingLeft: '1.2rem' }}>
                                                 {order.items.map((item, i) => (
                                                     <li key={i}>{item.quantity}x {item.productName}</li>
