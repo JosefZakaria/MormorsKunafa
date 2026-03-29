@@ -10,6 +10,7 @@
  * Temporary passwords are printed; change them after first login.
  */
 
+import 'dotenv/config';
 import mysql from 'mysql2/promise';
 import bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
