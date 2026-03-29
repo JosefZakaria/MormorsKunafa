@@ -284,3 +284,31 @@ input:checked+.slider:before {
 .time-unit {
     color: var(--color-gray-500);
 }
+
+/* Order timer */
+.order-timer {
+    font-family: var(--font-family-display);
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #059669;
+    background: #D1FAE5;
+    padding: 0.2rem 0.6rem;
+    border-radius: var(--radius-full);
+}
+
+.order-timer.timer-overdue {
+    color: #DC2626;
+    background: #FEE2E2;
+}
+
+/* Admin name display */
+.admin-name {
+    font-size: 0.9rem;
+    color: var(--color-gray-500);
+}
+
+/* Status badges for order statuses */
+.status-mottagen { background: #FEF3C7; color: #D97706; padding: 0.2rem 0.5rem; border-radius: var(--radius-full); font-size: 0.8rem; }
+.status-påbörjad { background: #DBEAFE; color: #2563EB; padding: 0.2rem 0.5rem; border-radius: var(--radius-full); font-size: 0.8rem; }
+.status-klar     { background: #D1FAE5; color: #059669; padding: 0.2rem 0.5rem; border-radius: var(--radius-full); font-size: 0.8rem; }
+.status-uthämtad, .status-levererad { background: #F3F4F6; color: #6B7280; padding: 0.2rem 0.5rem; border-radius: var(--radius-full); font-size: 0.8rem; }
