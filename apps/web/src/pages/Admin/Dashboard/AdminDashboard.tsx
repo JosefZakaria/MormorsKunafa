@@ -406,17 +406,20 @@ export const AdminDashboard: React.FC = () => {
                             : statsPeriod === 'vecka' ? t.ordersWeek
                                 : statsPeriod === 'manad' ? t.ordersMonth
                                     : statsPeriod === 'ar' ? t.ordersYear
-                                        : t.ordersTotal;
+                                        : statsPeriod === 'custom' ? t.ordersCustom
+                                            : t.ordersTotal;
                         const items = statsPeriod === 'dag' ? t.itemsDay
                             : statsPeriod === 'vecka' ? t.itemsWeek
                                 : statsPeriod === 'manad' ? t.itemsMonth
                                     : statsPeriod === 'ar' ? t.itemsYear
-                                        : t.itemsTotal;
+                                        : statsPeriod === 'custom' ? t.itemsCustom
+                                            : t.itemsTotal;
                         const revenueOre = statsPeriod === 'dag' ? t.revenueDayOre
                             : statsPeriod === 'vecka' ? t.revenueWeekOre
                                 : statsPeriod === 'manad' ? t.revenueMonthOre
                                     : statsPeriod === 'ar' ? t.revenueYearOre
-                                        : t.revenueTotalOre;
+                                        : statsPeriod === 'custom' ? t.revenueCustomOre
+                                            : t.revenueTotalOre;
 
                         return (
                             <div className="stats-section">

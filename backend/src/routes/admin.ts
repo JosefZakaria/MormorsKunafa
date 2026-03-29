@@ -145,33 +145,42 @@ router.post('/statistics', requireAdmin, async (req: Request, res: Response) => 
       ORDER BY p.name ASC
     `, [startStr, endStr, startStr, endStr, startStr, endStr, startStr, endStr])) as [Row[], unknown];
 
-    // Totaler per period
-    const [totalRows] = (await db.query(`
+    // Totaler per period - Items (kräver join)
+    const [itemTotalRows] = (await db.query(`
       SELECT
         SUM(oi.quantity) AS items_total,
         SUM(CASE WHEN DATE(o.created_at) = CURDATE() THEN oi.quantity ELSE 0 END) AS items_day,
         SUM(CASE WHEN o.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN oi.quantity ELSE 0 END) AS items_week,
         SUM(CASE WHEN o.created_at >= DATE_SUB(NOW(), INTERVAL 1 MONTH) THEN oi.quantity ELSE 0 END) AS items_month,
         SUM(CASE WHEN YEAR(o.created_at) = YEAR(NOW()) THEN oi.quantity ELSE 0 END) AS items_year,
-        SUM(CASE WHEN ? IS NOT NULL AND ? IS NOT NULL AND o.created_at BETWEEN ? AND ? THEN oi.quantity ELSE 0 END) AS items_custom,
-        SUM(o.total_ore) AS revenue_total_ore,
-        SUM(CASE WHEN DATE(o.created_at) = CURDATE() THEN o.total_ore ELSE 0 END) AS revenue_day_ore,
-        SUM(CASE WHEN o.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN o.total_ore ELSE 0 END) AS revenue_week_ore,
-        SUM(CASE WHEN o.created_at >= DATE_SUB(NOW(), INTERVAL 1 MONTH) THEN o.total_ore ELSE 0 END) AS revenue_month_ore,
-        SUM(CASE WHEN YEAR(o.created_at) = YEAR(NOW()) THEN o.total_ore ELSE 0 END) AS revenue_year_ore,
-        SUM(CASE WHEN ? IS NOT NULL AND ? IS NOT NULL AND o.created_at BETWEEN ? AND ? THEN o.total_ore ELSE 0 END) AS revenue_custom_ore,
-        COUNT(DISTINCT o.id) AS orders_total,
-        SUM(CASE WHEN DATE(o.created_at) = CURDATE() THEN 1 ELSE 0 END) AS orders_day,
-        SUM(CASE WHEN o.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS orders_week,
-        SUM(CASE WHEN o.created_at >= DATE_SUB(NOW(), INTERVAL 1 MONTH) THEN 1 ELSE 0 END) AS orders_month,
-        SUM(CASE WHEN YEAR(o.created_at) = YEAR(NOW()) THEN 1 ELSE 0 END) AS orders_year,
-        SUM(CASE WHEN ? IS NOT NULL AND ? IS NOT NULL AND o.created_at BETWEEN ? AND ? THEN 1 ELSE 0 END) AS orders_custom
+        SUM(CASE WHEN ? IS NOT NULL AND ? IS NOT NULL AND o.created_at BETWEEN ? AND ? THEN oi.quantity ELSE 0 END) AS items_custom
       FROM orders o
       JOIN order_items oi ON oi.order_id = o.id
       WHERE o.status NOT IN ('avbruten')
-    `, [startStr, endStr, startStr, endStr, startStr, endStr, startStr, endStr, startStr, endStr, startStr, endStr])) as [Row[], unknown];
+    `, [startStr, endStr, startStr, endStr])) as [Row[], unknown];
 
-    const totals = Array.isArray(totalRows) && totalRows[0] ? totalRows[0] as Row : {};
+    // Totaler per period - Revenue & Orders (direkt från orders)
+    const [orderTotalRows] = (await db.query(`
+      SELECT
+        COUNT(id) AS orders_total,
+        SUM(CASE WHEN DATE(created_at) = CURDATE() THEN 1 ELSE 0 END) AS orders_day,
+        SUM(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS orders_week,
+        SUM(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 1 MONTH) THEN 1 ELSE 0 END) AS orders_month,
+        SUM(CASE WHEN YEAR(created_at) = YEAR(NOW()) THEN 1 ELSE 0 END) AS orders_year,
+        SUM(CASE WHEN ? IS NOT NULL AND ? IS NOT NULL AND created_at BETWEEN ? AND ? THEN 1 ELSE 0 END) AS orders_custom,
+        SUM(total_ore) AS revenue_total_ore,
+        SUM(CASE WHEN DATE(created_at) = CURDATE() THEN total_ore ELSE 0 END) AS revenue_day_ore,
+        SUM(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN total_ore ELSE 0 END) AS revenue_week_ore,
+        SUM(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 1 MONTH) THEN total_ore ELSE 0 END) AS revenue_month_ore,
+        SUM(CASE WHEN YEAR(created_at) = YEAR(NOW()) THEN total_ore ELSE 0 END) AS revenue_year_ore,
+        SUM(CASE WHEN ? IS NOT NULL AND ? IS NOT NULL AND created_at BETWEEN ? AND ? THEN total_ore ELSE 0 END) AS revenue_custom_ore
+      FROM orders
+      WHERE status NOT IN ('avbruten')
+    `, [startStr, endStr, startStr, endStr, startStr, endStr, startStr, endStr])) as [Row[], unknown];
+
+    const itemTotals = (itemTotalRows as Row[])[0] || {};
+    const orderTotals = (orderTotalRows as Row[])[0] || {};
+    const totals = { ...itemTotals, ...orderTotals };
     const products = (Array.isArray(productRows) ? productRows : []) as Row[];
 
     res.json({
