@@ -12,6 +12,10 @@ build/
 .env.local
 .env.*.local
 
+# Database and SQL dumps
+Database/
+*.sql
+
 # IDE
 .idea/
 .vscode/

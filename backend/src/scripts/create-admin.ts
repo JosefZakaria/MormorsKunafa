@@ -20,8 +20,8 @@ async function main() {
   });
 
   try {
-    const email = 'admin@a.se';
-    const password = 'admin123';
+    const email = process.env.DEFAULT_ADMIN_EMAIL ?? 'admin@mormorskunafe.se';
+    const password = process.env.DEFAULT_ADMIN_PASSWORD ?? 'admin123';
     
     console.log(`⏳ Testar databasanslutning...`);
 
