@@ -574,6 +574,16 @@ input:checked+.slider:before {
     border-color: var(--color-primary-red);
 }
 
+textarea.stats-modal-input {
+    resize: vertical;
+    min-height: 96px;
+}
+
+select.stats-modal-input {
+    cursor: pointer;
+    background: var(--color-white);
+}
+
 .stats-modal-error {
     color: #DC2626;
     font-size: 0.85rem;
@@ -715,4 +725,4 @@ input:checked+.slider:before {
     border-radius: 999px;
     margin-left: 0.35rem;
     vertical-align: middle;
-}
+}

@@ -6,6 +6,7 @@ import { PrinterService } from '../services/PrinterService.js';
 const router = Router();
 
 const ACTIVE_STATUSES = ['mottagen', 'påbörjad'] as const;
+const REFUND_STATUSES = ['none', 'pending', 'refunded', 'failed'] as const;
 
 function orderRowToOrder(r: Row, items: Row[]): Record<string, unknown> {
   const deliveryInfo = r.delivery_info_json != null
@@ -27,6 +28,10 @@ function orderRowToOrder(r: Row, items: Row[]): Record<string, unknown> {
     updatedAt: (r.updated_at as Date)?.toISOString?.() ?? r.updated_at,
     startedAt: (r.started_at as Date)?.toISOString?.() ?? r.started_at,
     completedAt: (r.completed_at as Date)?.toISOString?.() ?? r.completed_at,
+    cancellationReason: r.cancellation_reason ?? undefined,
+    cancelledAt: (r.cancelled_at as Date)?.toISOString?.() ?? r.cancelled_at,
+    refundStatus: r.refund_status ?? 'none',
+    internalNotes: r.internal_notes ?? undefined,
     items: items.map((i) => ({
       productId: i.product_id ?? '',
       productName: i.product_name_snapshot,
@@ -240,20 +245,16 @@ router.get('/admin/history', requireAdmin, async (req: Request, res: Response) =
     const dateFrom = req.query.from as string | undefined;
     const dateTo = req.query.to as string | undefined;
 
-    let sql = 'SELECT * FROM orders';
+    let sql = "SELECT * FROM orders WHERE status IN ('klar', 'avbruten', 'uthämtad', 'levererad')";
     const params: unknown[] = [];
-    const conditions: string[] = [];
 
     if (dateFrom) {
-      conditions.push('created_at >= ?');
+      sql += ' AND created_at >= ?';
       params.push(dateFrom);
     }
     if (dateTo) {
-      conditions.push('created_at < DATE_ADD(?, INTERVAL 1 DAY)');
+      sql += ' AND created_at < DATE_ADD(?, INTERVAL 1 DAY)';
       params.push(dateTo);
-    }
-    if (conditions.length > 0) {
-      sql += ' WHERE ' + conditions.join(' AND ');
     }
     sql += ' ORDER BY created_at DESC LIMIT ?';
     params.push(limit);
@@ -297,9 +298,17 @@ router.delete('/admin/:id', requireAdmin, async (req: Request, res: Response) =>
 // Admin: update status
 router.patch('/admin/:id/status', requireAdmin, async (req: Request, res: Response) => {
   try {
-    const { status, estimatedReadyTime } = req.body as { status?: string; estimatedReadyTime?: string };
+    const { status, estimatedReadyTime, cancellationReason } = req.body as {
+      status?: string;
+      estimatedReadyTime?: string;
+      cancellationReason?: string;
+    };
     if (!status || !['ny', 'mottagen', 'påbörjad', 'klar', 'avbruten', 'uthämtad', 'levererad'].includes(status)) {
       res.status(400).json({ error: 'Invalid status' });
+      return;
+    }
+    if (status === 'avbruten' && (!cancellationReason || !cancellationReason.trim())) {
+      res.status(400).json({ error: 'cancellationReason is required when status is avbruten' });
       return;
     }
     const updates: string[] = ['status = ?', 'updated_at = NOW()'];
@@ -313,6 +322,11 @@ router.patch('/admin/:id/status', requireAdmin, async (req: Request, res: Respon
     }
     if (status === 'klar') {
       updates.push('completed_at = COALESCE(completed_at, NOW())');
+    }
+    if (status === 'avbruten') {
+      updates.push('cancelled_at = COALESCE(cancelled_at, NOW())');
+      updates.push('cancellation_reason = ?');
+      params.push(cancellationReason?.trim() ?? null);
     }
     params.push(req.params.id);
     await db.query(`UPDATE orders SET ${updates.join(', ')} WHERE id = ?`, params);
@@ -359,6 +373,54 @@ router.patch('/admin/:id/time', requireAdmin, async (req: Request, res: Response
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Failed to update time' });
+  }
+});
+
+// Admin: update refund status
+router.patch('/admin/:id/refund', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { refundStatus } = req.body as { refundStatus?: string };
+    if (!refundStatus || !REFUND_STATUSES.includes(refundStatus as (typeof REFUND_STATUSES)[number])) {
+      res.status(400).json({ error: `refundStatus must be one of: ${REFUND_STATUSES.join(', ')}` });
+      return;
+    }
+
+    await db.query(
+      'UPDATE orders SET refund_status = ?, updated_at = NOW() WHERE id = ?',
+      [refundStatus, req.params.id]
+    );
+
+    const result = await getOrderById(req.params.id);
+    if (!result) {
+      res.status(404).json({ error: 'Order not found' });
+      return;
+    }
+    res.json(orderRowToOrder(result.order, result.items));
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to update refund status' });
+  }
+});
+
+// Admin: update internal notes
+router.patch('/admin/:id/notes', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { internalNotes } = req.body as { internalNotes?: string };
+    const trimmed = typeof internalNotes === 'string' ? internalNotes.trim() : '';
+    await db.query(
+      'UPDATE orders SET internal_notes = ?, updated_at = NOW() WHERE id = ?',
+      [trimmed.length > 0 ? trimmed : null, req.params.id]
+    );
+
+    const result = await getOrderById(req.params.id);
+    if (!result) {
+      res.status(404).json({ error: 'Order not found' });
+      return;
+    }
+    res.json(orderRowToOrder(result.order, result.items));
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to update internal notes' });
   }
 });
 

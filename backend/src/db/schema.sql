@@ -66,11 +66,16 @@ CREATE TABLE IF NOT EXISTS `orders` (
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `started_at` datetime DEFAULT NULL,
   `completed_at` datetime DEFAULT NULL,
+  `cancellation_reason` text DEFAULT NULL,
+  `cancelled_at` datetime DEFAULT NULL,
+  `refund_status` varchar(20) DEFAULT 'none',
+  `internal_notes` text DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `order_number` (`order_number`),
   KEY `status` (`status`),
   KEY `created_at` (`created_at`),
-  KEY `scheduled_at` (`scheduled_at`)
+  KEY `scheduled_at` (`scheduled_at`),
+  KEY `cancelled_at` (`cancelled_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Order line items (price at time of order in öre)

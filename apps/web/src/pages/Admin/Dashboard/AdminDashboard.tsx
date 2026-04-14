@@ -8,6 +8,14 @@ import { printKitchenTicket, printReceipt, testConnection, isPrinterConfigured, 
 import type { Order, Product, AdminSettings } from '@shared/types';
 import '../Admin.css';
 
+const REFUND_STATUS_LABELS: Record<Order['refundStatus'], string> = {
+    none: 'Ingen',
+    pending: 'Väntar',
+    refunded: 'Återbetald',
+    failed: 'Misslyckad',
+};
+const REFUND_STATUS_OPTIONS: Order['refundStatus'][] = ['none', 'pending', 'refunded', 'failed'];
+
 // --- Helper: countdown string from ISO time ---
 function getCountdown(isoTime: string | undefined): string {
     if (!isoTime) return '--:--';
@@ -158,6 +166,177 @@ function PendingOrderCard({ order, defaultPrepTime, onAccept }: {
     );
 }
 
+function CancelOrderModal({
+    open,
+    reason,
+    onReasonChange,
+    onClose,
+    onConfirm,
+    loading,
+}: {
+    open: boolean;
+    reason: string;
+    onReasonChange: (value: string) => void;
+    onClose: () => void;
+    onConfirm: () => void;
+    loading: boolean;
+}) {
+    if (!open) return null;
+    return (
+        <div className="stats-modal-overlay" onClick={onClose}>
+            <div className="stats-modal" onClick={(e) => e.stopPropagation()}>
+                <h2>Avbryt beställning</h2>
+                <p>Ange anledning till avbokning.</p>
+                <textarea
+                    value={reason}
+                    onChange={(e) => onReasonChange(e.target.value)}
+                    className="stats-modal-input"
+                    rows={4}
+                    placeholder="Skriv anledning..."
+                    autoFocus
+                />
+                <div className="stats-modal-actions">
+                    <Button variant="ghost" onClick={onClose} style={{ flex: 1 }}>
+                        Avbryt
+                    </Button>
+                    <Button
+                        variant="primary"
+                        onClick={onConfirm}
+                        style={{ flex: 1 }}
+                        disabled={loading || !reason.trim()}
+                    >
+                        {loading ? 'Sparar...' : 'Spara och avbryt'}
+                    </Button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function RefundStatusModal({
+    open,
+    value,
+    onChange,
+    onClose,
+    onConfirm,
+    loading,
+}: {
+    open: boolean;
+    value: Order['refundStatus'];
+    onChange: (value: Order['refundStatus']) => void;
+    onClose: () => void;
+    onConfirm: () => void;
+    loading: boolean;
+}) {
+    if (!open) return null;
+    return (
+        <div className="stats-modal-overlay" onClick={onClose}>
+            <div className="stats-modal" onClick={(e) => e.stopPropagation()}>
+                <h2>Uppdatera refund-status</h2>
+                <p>Välj aktuell status för återbetalningen.</p>
+                <select
+                    className="stats-modal-input"
+                    value={value}
+                    onChange={(e) => onChange(e.target.value as Order['refundStatus'])}
+                    autoFocus
+                >
+                    {REFUND_STATUS_OPTIONS.map((status) => (
+                        <option key={status} value={status}>
+                            {REFUND_STATUS_LABELS[status]}
+                        </option>
+                    ))}
+                </select>
+                <div className="stats-modal-actions">
+                    <Button variant="ghost" onClick={onClose} style={{ flex: 1 }}>
+                        Avbryt
+                    </Button>
+                    <Button variant="primary" onClick={onConfirm} style={{ flex: 1 }} disabled={loading}>
+                        {loading ? 'Sparar...' : 'Spara'}
+                    </Button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function InternalNotesModal({
+    open,
+    notes,
+    onNotesChange,
+    onClose,
+    onConfirm,
+    loading,
+}: {
+    open: boolean;
+    notes: string;
+    onNotesChange: (value: string) => void;
+    onClose: () => void;
+    onConfirm: () => void;
+    loading: boolean;
+}) {
+    if (!open) return null;
+    return (
+        <div className="stats-modal-overlay" onClick={onClose}>
+            <div className="stats-modal" onClick={(e) => e.stopPropagation()}>
+                <h2>Intern notis</h2>
+                <p>Spara en intern anteckning för ordern.</p>
+                <textarea
+                    value={notes}
+                    onChange={(e) => onNotesChange(e.target.value)}
+                    className="stats-modal-input"
+                    rows={4}
+                    placeholder="Skriv intern notis..."
+                    maxLength={500}
+                    autoFocus
+                />
+                <div className="stats-modal-actions">
+                    <Button variant="ghost" onClick={onClose} style={{ flex: 1 }}>
+                        Avbryt
+                    </Button>
+                    <Button variant="primary" onClick={onConfirm} style={{ flex: 1 }} disabled={loading}>
+                        {loading ? 'Sparar...' : 'Spara'}
+                    </Button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function ConfirmDeleteOrderModal({
+    open,
+    orderNumber,
+    onClose,
+    onConfirm,
+    loading,
+}: {
+    open: boolean;
+    orderNumber?: string;
+    onClose: () => void;
+    onConfirm: () => void;
+    loading: boolean;
+}) {
+    if (!open) return null;
+    return (
+        <div className="stats-modal-overlay" onClick={onClose}>
+            <div className="stats-modal" onClick={(e) => e.stopPropagation()}>
+                <h2>Ta bort order</h2>
+                <p>
+                    Är du säker på att du vill ta bort {orderNumber ? `order ${orderNumber}` : 'den här ordern'}?
+                    Detta går inte att ångra.
+                </p>
+                <div className="stats-modal-actions">
+                    <Button variant="ghost" onClick={onClose} style={{ flex: 1 }}>
+                        Avbryt
+                    </Button>
+                    <Button variant="primary" onClick={onConfirm} style={{ flex: 1 }} disabled={loading}>
+                        {loading ? 'Tar bort...' : 'Ta bort'}
+                    </Button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 export const AdminDashboard: React.FC = () => {
     const { logout, admin } = useAuth();
     const navigate = useNavigate();
@@ -188,6 +367,22 @@ export const AdminDashboard: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [historyDateFrom, setHistoryDateFrom] = useState('');
     const [historyDateTo, setHistoryDateTo] = useState('');
+    const [cancelModalOpen, setCancelModalOpen] = useState(false);
+    const [cancelOrderId, setCancelOrderId] = useState<string | null>(null);
+    const [cancelReason, setCancelReason] = useState('');
+    const [cancelSubmitting, setCancelSubmitting] = useState(false);
+    const [refundModalOpen, setRefundModalOpen] = useState(false);
+    const [refundOrderId, setRefundOrderId] = useState<string | null>(null);
+    const [refundStatusValue, setRefundStatusValue] = useState<Order['refundStatus']>('none');
+    const [refundSubmitting, setRefundSubmitting] = useState(false);
+    const [notesModalOpen, setNotesModalOpen] = useState(false);
+    const [notesOrderId, setNotesOrderId] = useState<string | null>(null);
+    const [notesValue, setNotesValue] = useState('');
+    const [notesSubmitting, setNotesSubmitting] = useState(false);
+    const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+    const [deleteOrderId, setDeleteOrderId] = useState<string | null>(null);
+    const [deleteOrderNumber, setDeleteOrderNumber] = useState<string>('');
+    const [deleteSubmitting, setDeleteSubmitting] = useState(false);
 
     const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -268,12 +463,108 @@ export const AdminDashboard: React.FC = () => {
         }
     };
 
-    const handleDeleteOrder = async (orderId: string) => {
+    const openCancelModal = (orderId: string) => {
+        setCancelOrderId(orderId);
+        setCancelReason('');
+        setCancelModalOpen(true);
+    };
+
+    const closeCancelModal = () => {
+        setCancelModalOpen(false);
+        setCancelOrderId(null);
+        setCancelReason('');
+        setCancelSubmitting(false);
+    };
+
+    const handleCancelOrder = async () => {
+        if (!cancelOrderId || !cancelReason.trim()) return;
+        setCancelSubmitting(true);
         try {
-            await orderApi.deleteOrder(orderId);
-            setHistoryOrders(prev => prev.filter(o => o.id !== orderId));
+            const updated = await orderApi.updateStatus(cancelOrderId, { status: 'avbruten', cancellationReason: cancelReason.trim() });
+            setActiveOrders(prev => prev.filter(o => o.id !== cancelOrderId));
+            setHistoryOrders(prev => [updated, ...prev.filter(o => o.id !== cancelOrderId)]);
+            closeCancelModal();
+        } catch {
+            setError('Kunde inte avbryta ordern.');
+            setCancelSubmitting(false);
+        }
+    };
+
+    const openRefundModal = (order: Order) => {
+        setRefundOrderId(order.id);
+        setRefundStatusValue(order.refundStatus || 'none');
+        setRefundModalOpen(true);
+    };
+
+    const closeRefundModal = () => {
+        setRefundModalOpen(false);
+        setRefundOrderId(null);
+        setRefundStatusValue('none');
+        setRefundSubmitting(false);
+    };
+
+    const handleUpdateRefundStatus = async () => {
+        if (!refundOrderId) return;
+        setRefundSubmitting(true);
+        try {
+            const updated = await orderApi.updateRefundStatus(refundOrderId, { refundStatus: refundStatusValue });
+            setHistoryOrders(prev => prev.map(o => (o.id === refundOrderId ? updated : o)));
+            closeRefundModal();
+        } catch {
+            setError('Kunde inte uppdatera refund-status.');
+            setRefundSubmitting(false);
+        }
+    };
+
+    const openNotesModal = (order: Order) => {
+        setNotesOrderId(order.id);
+        setNotesValue(order.internalNotes || '');
+        setNotesModalOpen(true);
+    };
+
+    const closeNotesModal = () => {
+        setNotesModalOpen(false);
+        setNotesOrderId(null);
+        setNotesValue('');
+        setNotesSubmitting(false);
+    };
+
+    const handleUpdateInternalNotes = async () => {
+        if (!notesOrderId) return;
+        setNotesSubmitting(true);
+        try {
+            const updated = await orderApi.updateInternalNotes(notesOrderId, { internalNotes: notesValue });
+            setHistoryOrders(prev => prev.map(o => (o.id === notesOrderId ? updated : o)));
+            closeNotesModal();
+        } catch {
+            setError('Kunde inte spara intern anteckning.');
+            setNotesSubmitting(false);
+        }
+    };
+
+    const openDeleteModal = (order: Order) => {
+        setDeleteOrderId(order.id);
+        setDeleteOrderNumber(order.orderNumber || '');
+        setDeleteModalOpen(true);
+    };
+
+    const closeDeleteModal = () => {
+        setDeleteModalOpen(false);
+        setDeleteOrderId(null);
+        setDeleteOrderNumber('');
+        setDeleteSubmitting(false);
+    };
+
+    const handleDeleteOrder = async () => {
+        if (!deleteOrderId) return;
+        setDeleteSubmitting(true);
+        try {
+            await orderApi.deleteOrder(deleteOrderId);
+            setHistoryOrders(prev => prev.filter(o => o.id !== deleteOrderId));
+            closeDeleteModal();
         } catch {
             setError('Kunde inte ta bort ordern.');
+            setDeleteSubmitting(false);
         }
     };
 
@@ -454,6 +745,37 @@ export const AdminDashboard: React.FC = () => {
                         </div>
                     </div>
                 )}
+                <CancelOrderModal
+                    open={cancelModalOpen}
+                    reason={cancelReason}
+                    onReasonChange={setCancelReason}
+                    onClose={closeCancelModal}
+                    onConfirm={handleCancelOrder}
+                    loading={cancelSubmitting}
+                />
+                <RefundStatusModal
+                    open={refundModalOpen}
+                    value={refundStatusValue}
+                    onChange={setRefundStatusValue}
+                    onClose={closeRefundModal}
+                    onConfirm={handleUpdateRefundStatus}
+                    loading={refundSubmitting}
+                />
+                <InternalNotesModal
+                    open={notesModalOpen}
+                    notes={notesValue}
+                    onNotesChange={setNotesValue}
+                    onClose={closeNotesModal}
+                    onConfirm={handleUpdateInternalNotes}
+                    loading={notesSubmitting}
+                />
+                <ConfirmDeleteOrderModal
+                    open={deleteModalOpen}
+                    orderNumber={deleteOrderNumber}
+                    onClose={closeDeleteModal}
+                    onConfirm={handleDeleteOrder}
+                    loading={deleteSubmitting}
+                />
 
                 <div className="admin-content animate-in">
                     {/* ── INKOMMANDE ORDRAR ── */}
@@ -509,7 +831,7 @@ export const AdminDashboard: React.FC = () => {
                                             </div>
                                         </div>
                                         <div className="order-actions" style={{ flexDirection: 'column', gap: '0.5rem' }}>
-                                            <Button size="sm" variant="ghost" onClick={() => handleUpdateStatus(order.id, 'avbruten')}>
+                                            <Button size="sm" variant="ghost" onClick={() => openCancelModal(order.id)}>
                                                 Avbryt
                                             </Button>
                                             <Button size="sm" variant="primary" onClick={() => handleUpdateStatus(order.id, 'klar')}>
@@ -581,12 +903,40 @@ export const AdminDashboard: React.FC = () => {
                                             </ul>
                                             <p className="order-total">{(order.totalPrice / 100).toFixed(0)} kr</p>
                                             <p style={{ fontSize: '0.8rem', color: '#888', margin: 0 }}>{new Date(order.createdAt).toLocaleString('sv-SE')}</p>
+                                            {order.status === 'avbruten' && (
+                                                <>
+                                                    {order.cancelledAt && (
+                                                        <p style={{ fontSize: '0.8rem', color: '#666', marginTop: '0.35rem' }}>
+                                                            Avbruten: {new Date(order.cancelledAt).toLocaleString('sv-SE')}
+                                                        </p>
+                                                    )}
+                                                    {order.cancellationReason && (
+                                                        <p style={{ fontSize: '0.85rem', color: '#444', marginTop: '0.25rem' }}>
+                                                            Orsak: {order.cancellationReason}
+                                                        </p>
+                                                    )}
+                                                </>
+                                            )}
+                                            <p style={{ fontSize: '0.85rem', color: '#444', marginTop: '0.35rem' }}>
+                                                Refund: {REFUND_STATUS_LABELS[order.refundStatus || 'none']}
+                                            </p>
+                                            {order.internalNotes && (
+                                                <p style={{ fontSize: '0.85rem', color: '#444', marginTop: '0.25rem' }}>
+                                                    Intern notis: {order.internalNotes}
+                                                </p>
+                                            )}
                                         </div>
                                         <div className="order-actions" style={{ flexDirection: 'column', gap: '0.5rem' }}>
+                                            <Button size="sm" variant="ghost" onClick={() => openRefundModal(order)}>
+                                                Refund-status
+                                            </Button>
+                                            <Button size="sm" variant="ghost" onClick={() => openNotesModal(order)}>
+                                                Intern notis
+                                            </Button>
                                             <Button size="sm" variant="ghost" onClick={() => handlePrintReceipt(order)}>
                                                 Kvitto
                                             </Button>
-                                            <Button size="sm" variant="ghost" style={{ color: '#DC2626' }} onClick={() => handleDeleteOrder(order.id)}>
+                                            <Button size="sm" variant="ghost" style={{ color: '#DC2626' }} onClick={() => openDeleteModal(order)}>
                                                 Ta bort
                                             </Button>
                                         </div>

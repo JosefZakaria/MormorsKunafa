@@ -16,6 +16,7 @@ export type OrderType = 'eat-here' | 'takeaway' | 'delivery';
 
 // Payment Method
 export type PaymentMethod = 'app' | 'cash';
+export type RefundStatus = 'none' | 'pending' | 'refunded' | 'failed';
 
 // Product Interface
 export interface Product {
@@ -63,6 +64,10 @@ export interface Order {
   updatedAt: string;
   startedAt?: string; // When status changed to 'påbörjad'
   completedAt?: string; // When status changed to 'klar'
+  cancellationReason?: string;
+  cancelledAt?: string;
+  refundStatus: RefundStatus;
+  internalNotes?: string;
   paymentMethod: PaymentMethod;
   paymentStatus: 'pending' | 'paid';
 }
@@ -108,12 +113,21 @@ export interface CreateOrderRequest {
 export interface UpdateOrderStatusRequest {
   status: OrderStatus;
   estimatedReadyTime?: string;
+  cancellationReason?: string;
 }
 
 // Update Order Time Request (F.Admin.3)
 export interface UpdateOrderTimeRequest {
   estimatedReadyTime: string;
   preparationTime?: number; // Override default time
+}
+
+export interface UpdateOrderRefundRequest {
+  refundStatus: RefundStatus;
+}
+
+export interface UpdateOrderNotesRequest {
+  internalNotes?: string;
 }
 
 // Admin Login Request

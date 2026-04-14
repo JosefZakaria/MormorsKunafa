@@ -114,6 +114,16 @@ export const OrderStatus: React.FC = () => {
                             <p className="text-center status-message" style={{ color: '#DC2626' }}>
                                 Tyvärr har din beställning blivit avbruten. Kontakta oss om du har frågor.
                             </p>
+                            {order.cancellationReason && (
+                                <p className="text-center status-message" style={{ marginTop: '0.5rem' }}>
+                                    Orsak: {order.cancellationReason}
+                                </p>
+                            )}
+                            {order.cancelledAt && (
+                                <p className="text-center status-message" style={{ marginTop: '0.25rem', fontSize: '0.9rem', color: '#666' }}>
+                                    Avbruten: {new Date(order.cancelledAt).toLocaleString('sv-SE')}
+                                </p>
+                            )}
                             <button
                                 onClick={() => navigate('/')}
                                 style={{ marginTop: '1.5rem', cursor: 'pointer', padding: '0.5rem 1.5rem', borderRadius: '8px', border: '1px solid #ccc', background: '#fff' }}
