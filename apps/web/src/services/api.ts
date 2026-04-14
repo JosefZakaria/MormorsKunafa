@@ -1,5 +1,14 @@
 import { apiRequest, authenticatedRequest } from '@shared/api';
-import type { Product, Order, CreateOrderRequest, UpdateOrderStatusRequest, UpdateOrderTimeRequest, AdminSettings } from '@shared/types';
+import type {
+  Product,
+  Order,
+  CreateOrderRequest,
+  UpdateOrderStatusRequest,
+  UpdateOrderTimeRequest,
+  UpdateOrderRefundRequest,
+  UpdateOrderNotesRequest,
+  AdminSettings,
+} from '@shared/types';
 
 // Get auth token from localStorage (web-specific)
 const getToken = (): string | null => {
@@ -115,6 +124,28 @@ export const orderApi = {
     if (!token) throw new Error('Not authenticated');
     
     return authenticatedRequest<Order>(`/orders/admin/${id}/time`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+      token,
+    });
+  },
+
+  updateRefundStatus: async (id: string, data: UpdateOrderRefundRequest): Promise<Order> => {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    return authenticatedRequest<Order>(`/orders/admin/${id}/refund`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+      token,
+    });
+  },
+
+  updateInternalNotes: async (id: string, data: UpdateOrderNotesRequest): Promise<Order> => {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    return authenticatedRequest<Order>(`/orders/admin/${id}/notes`, {
       method: 'PATCH',
       body: JSON.stringify(data),
       token,
