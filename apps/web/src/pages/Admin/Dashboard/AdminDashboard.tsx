@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Container } from '../../../components/common/Container/Container';
 import { Button } from '../../../components/common/Button/Button';
 import { orderApi, productApi, adminApi } from '../../../services/api';
+import { printKitchenTicket, printReceipt, testConnection, isPrinterConfigured, getPrinterConfig, setPrinterConfig } from '../../../services/printer';
 import type { Order, Product, AdminSettings } from '@shared/types';
 import '../Admin.css';
 
@@ -45,6 +46,72 @@ function OrderTimer({ estimatedReadyTime }: { estimatedReadyTime: string }) {
 }
 
 type StatsData = Awaited<ReturnType<typeof adminApi.getStatistics>>;
+
+function PrinterSettings() {
+    const config = getPrinterConfig();
+    const [ip, setIp] = useState(config.ip);
+    const [deviceId, setDeviceId] = useState(config.deviceId);
+    const [testResult, setTestResult] = useState<string | null>(null);
+    const [testing, setTesting] = useState(false);
+
+    const handleSave = () => {
+        setPrinterConfig(ip.trim(), deviceId.trim() || undefined);
+        setTestResult('Inställningar sparade.');
+    };
+
+    const handleTest = async () => {
+        if (!ip.trim()) {
+            setTestResult('Ange en IP-adress först.');
+            return;
+        }
+        setPrinterConfig(ip.trim(), deviceId.trim() || undefined);
+        setTesting(true);
+        setTestResult(null);
+        const res = await testConnection();
+        setTesting(false);
+        setTestResult(res.success ? 'Anslutning lyckades!' : (res.error || 'Kunde inte nå skrivaren.'));
+    };
+
+    return (
+        <div className="rush-card" style={{ marginTop: '1rem' }}>
+            <h3>Skrivare (ePOS-Print)</h3>
+            <p>Anslut till en Epson-kvittoskrivare på det lokala nätverket.</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.75rem' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                    <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Skrivarens IP-adress</label>
+                    <input
+                        type="text"
+                        placeholder="t.ex. 192.168.1.50"
+                        value={ip}
+                        onChange={e => setIp(e.target.value)}
+                        style={{ padding: '0.5rem 0.75rem', borderRadius: '6px', border: '1px solid #ccc', fontSize: '1rem' }}
+                    />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                    <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Enhets-ID</label>
+                    <input
+                        type="text"
+                        placeholder="local_printer"
+                        value={deviceId}
+                        onChange={e => setDeviceId(e.target.value)}
+                        style={{ padding: '0.5rem 0.75rem', borderRadius: '6px', border: '1px solid #ccc', fontSize: '1rem' }}
+                    />
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <Button variant="primary" size="sm" onClick={handleSave}>Spara</Button>
+                    <Button variant="ghost" size="sm" onClick={handleTest} disabled={testing}>
+                        {testing ? 'Testar...' : 'Testa anslutning'}
+                    </Button>
+                </div>
+                {testResult && (
+                    <p style={{ fontSize: '0.85rem', margin: 0, color: testResult.includes('lyckades') ? '#16a34a' : '#dc2626' }}>
+                        {testResult}
+                    </p>
+                )}
+            </div>
+        </div>
+    );
+}
 
 function PendingOrderCard({ order, defaultPrepTime, onAccept }: {
     order: Order;
@@ -176,6 +243,12 @@ export const AdminDashboard: React.FC = () => {
             const accepted = await orderApi.acceptOrder(orderId, extraMinutes);
             setPendingOrders(prev => prev.filter(o => o.id !== orderId));
             setActiveOrders(prev => [...prev, accepted]);
+
+            if (isPrinterConfigured()) {
+                printKitchenTicket(accepted).then(res => {
+                    if (!res.success) console.error('[Auto-print]', res.error);
+                });
+            }
         } catch {
             setError('Kunde inte acceptera ordern.');
         }
@@ -225,11 +298,14 @@ export const AdminDashboard: React.FC = () => {
         }
     };
 
-    const handlePrintReceipt = async (orderId: string) => {
-        try {
-            await orderApi.printReceipt(orderId);
-        } catch {
-            setError('Kunde inte skriva ut kvitto. Kontrollera skrivaren.');
+    const handlePrintReceipt = async (order: Order) => {
+        if (!isPrinterConfigured()) {
+            setError('Skrivaren är inte konfigurerad. Ange IP-adress under Inställningar.');
+            return;
+        }
+        const result = await printReceipt(order);
+        if (!result.success) {
+            setError(result.error || 'Kunde inte skriva ut kvitto. Kontrollera skrivaren.');
         }
     };
 
@@ -439,7 +515,7 @@ export const AdminDashboard: React.FC = () => {
                                             <Button size="sm" variant="primary" onClick={() => handleUpdateStatus(order.id, 'klar')}>
                                                 Färdig
                                             </Button>
-                                            <Button size="sm" variant="ghost" onClick={() => handlePrintReceipt(order.id)}>
+                                            <Button size="sm" variant="ghost" onClick={() => handlePrintReceipt(order)}>
                                                 Kvitto
                                             </Button>
                                         </div>
@@ -507,7 +583,7 @@ export const AdminDashboard: React.FC = () => {
                                             <p style={{ fontSize: '0.8rem', color: '#888', margin: 0 }}>{new Date(order.createdAt).toLocaleString('sv-SE')}</p>
                                         </div>
                                         <div className="order-actions" style={{ flexDirection: 'column', gap: '0.5rem' }}>
-                                            <Button size="sm" variant="ghost" onClick={() => handlePrintReceipt(order.id)}>
+                                            <Button size="sm" variant="ghost" onClick={() => handlePrintReceipt(order)}>
                                                 Kvitto
                                             </Button>
                                             <Button size="sm" variant="ghost" style={{ color: '#DC2626' }} onClick={() => handleDeleteOrder(order.id)}>
@@ -718,6 +794,7 @@ export const AdminDashboard: React.FC = () => {
                                     <Button variant="ghost" onClick={() => handleUpdateSettings({ rushTimeAdjustment: settings.rushTimeAdjustment + 5 })}>+ 5 min</Button>
                                 </div>
                             </div>
+                            <PrinterSettings />
                         </div>
                     )}
                 </div>

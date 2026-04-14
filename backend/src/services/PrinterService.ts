@@ -8,7 +8,7 @@ export class PrinterService {
     this.printer = new ThermalPrinter({
       type: PrinterTypes.EPSON,
       interface: `tcp://${printerIp}`,
-      characterSet: CharacterSet.SWEDEN,
+      characterSet: CharacterSet.PC865_NORDIC,
       removeSpecialCharacters: false,
       lineCharacter: "-",
       breakLine: BreakLine.WORD,
@@ -30,8 +30,100 @@ export class PrinterService {
   }
 
   /**
-   * Huvudmetoden för att skriva ut en order som ett kvitto.
-   * Modifera den här utifrån hur din Order-typ ser ut!
+   * Skriver ut en kökslapp med bara det köket behöver veta (inga priser).
+   * Används automatiskt när admin accepterar en order.
+   */
+  public async printKitchenTicket(order: any): Promise<boolean> {
+    try {
+      const connected = await this.isConnected();
+      if (!connected) {
+        console.error("Kunde inte ansluta till skrivaren. Kontrollera nätverk/IP.");
+        return false;
+      }
+
+      this.printer.clear();
+
+      // -- HEADER --
+      this.printer.alignCenter();
+      this.printer.setTextSize(1, 1);
+      this.printer.bold(true);
+      this.printer.println("Mormors Kunafa");
+
+      this.printer.setTextNormal();
+      this.printer.setTextSize(1, 1);
+      this.printer.bold(true);
+      this.printer.println("KOKSLAPP");
+      this.printer.bold(false);
+      this.printer.setTextNormal();
+      this.printer.println(new Date().toLocaleString('sv-SE'));
+      this.printer.newLine();
+
+      // -- ORDERINFO --
+      this.printer.alignLeft();
+      this.printer.bold(true);
+      this.printer.println(`Order: #${order.orderNumber || order.id || 'N/A'}`);
+      this.printer.bold(false);
+
+      const orderTypeLabels: Record<string, string> = {
+        'eat-here': 'Ata har',
+        'takeaway': 'Ta med',
+        'delivery': 'Hemleverans',
+      };
+      this.printer.println(`Typ: ${orderTypeLabels[order.orderType] || order.orderType || 'Okand'}`);
+
+      if (order.estimatedReadyTime) {
+        const ready = new Date(order.estimatedReadyTime);
+        this.printer.println(`Fardig: ${ready.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' })}`);
+      }
+
+      this.printer.drawLine();
+
+      // -- PRODUKTER (utan pris) --
+      if (order.items && Array.isArray(order.items)) {
+        order.items.forEach((item: any) => {
+          this.printer.println(`${item.quantity || 1}x ${item.productName || 'Okand produkt'}`);
+          if (item.modifications && Array.isArray(item.modifications) && item.modifications.length > 0) {
+            item.modifications.forEach((mod: string) => {
+              this.printer.println(`   - ${mod}`);
+            });
+          }
+        });
+      }
+
+      this.printer.drawLine();
+
+      // -- LEVERANSINFO (om hemleverans) --
+      if (order.orderType === 'delivery' && order.deliveryInfo) {
+        this.printer.newLine();
+        this.printer.bold(true);
+        this.printer.println("Leveransinfo:");
+        this.printer.bold(false);
+        if (order.deliveryInfo.address) this.printer.println(order.deliveryInfo.address);
+        if (order.deliveryInfo.postalCode || order.deliveryInfo.city) {
+          this.printer.println(`${order.deliveryInfo.postalCode || ''} ${order.deliveryInfo.city || ''}`.trim());
+        }
+        if (order.deliveryInfo.phone) this.printer.println(`Tel: ${order.deliveryInfo.phone}`);
+        this.printer.drawLine();
+      }
+
+      this.printer.newLine();
+      this.printer.cut();
+      this.printer.beep();
+
+      await this.printer.execute();
+      console.log(`[PrinterService] Skrev ut kokslapp for order #${order.orderNumber || order.id}`);
+
+      return true;
+
+    } catch (error) {
+      console.error("[PrinterService] Fel vid utskrift av kokslapp:", error);
+      return false;
+    }
+  }
+
+  /**
+   * Skriver ut ett kundkvitto med priser och totalsumma.
+   * Används vid manuell utskrift via "Kvitto"-knappen.
    */
   public async printOrder(order: any): Promise<boolean> {
     try {
@@ -65,8 +157,8 @@ export class PrinterService {
       // Byt ut logiken nedan så den matchar vad du har i dina order items
       if (order.items && Array.isArray(order.items)) {
         order.items.forEach((item: any) => {
-          const quantityRow = `${item.quantity || 1}x ${item.name || 'Okänd produkt'}`;
-          const priceRow = `${(item.price * item.quantity).toFixed(2) || 0} kr`;
+          const quantityRow = `${item.quantity || 1}x ${item.productName || 'Okänd produkt'}`;
+          const priceRow = `${(item.price * item.quantity / 100).toFixed(2) || 0} kr`;
           // leftRight formaterar automatiskt priset längst till höger
           this.printer.leftRight(quantityRow, priceRow);
         });
@@ -76,7 +168,7 @@ export class PrinterService {
       
       // -- TOTALPRIS --
       this.printer.bold(true);
-      this.printer.leftRight("Totalt:", `${order.totalAmount || 0} kr`);
+      this.printer.leftRight("Totalt:", `${order.totalPrice / 100 || 0} kr`);
       this.printer.bold(false);
       this.printer.newLine();
       this.printer.newLine();
