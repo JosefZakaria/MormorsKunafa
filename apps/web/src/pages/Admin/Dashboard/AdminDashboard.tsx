@@ -360,7 +360,6 @@ export const AdminDashboard: React.FC = () => {
     const [statsPeriod, setStatsPeriod] = useState<'dag' | 'vecka' | 'manad' | 'ar' | 'custom'>('dag');
     const [statsStartDate, setStatsStartDate] = useState<string>('');
     const [statsEndDate, setStatsEndDate] = useState<string>('');
-    const [isSelectingDate, setIsSelectingDate] = useState(false);
 
     // UI state
     const [loadingOrders, setLoadingOrders] = useState(true);
@@ -674,13 +673,6 @@ export const AdminDashboard: React.FC = () => {
     };
 
     const isPaused = settings?.isPaused ?? false;
-    const hasCustomDateRange = !!(statsStartDate && statsEndDate);
-    const formatStatsDateLabel = (dateValue: string) =>
-        new Date(dateValue).toLocaleDateString('sv-SE', { day: 'numeric', month: 'short' });
-    const statsDateButtonLabel = hasCustomDateRange
-        ? `Datum: ${formatStatsDateLabel(statsStartDate)} - ${formatStatsDateLabel(statsEndDate)}`
-        : 'Datum';
-
     return (
         <div className="admin-dashboard">
             <Container>
@@ -1003,6 +995,15 @@ export const AdminDashboard: React.FC = () => {
                                     : statsPeriod === 'ar' ? t.revenueYearOre
                                         : statsPeriod === 'custom' ? t.revenueCustomOre
                                             : t.revenueTotalOre;
+                        const cancelledOrders = statsPeriod === 'dag' ? t.ordersCancelledDay
+                            : statsPeriod === 'vecka' ? t.ordersCancelledWeek
+                                : statsPeriod === 'manad' ? t.ordersCancelledMonth
+                                    : statsPeriod === 'ar' ? t.ordersCancelledYear
+                                        : statsPeriod === 'custom' ? t.ordersCancelledCustom
+                                            : t.ordersCancelledTotal;
+                        const completedOrders = orders;
+                        const allFinishedOrders = completedOrders + cancelledOrders;
+                        const cancellationRate = allFinishedOrders > 0 ? (cancelledOrders / allFinishedOrders) * 100 : 0;
 
                         return (
                             <div className="stats-section">
@@ -1028,75 +1029,72 @@ export const AdminDashboard: React.FC = () => {
                                         <option value="ar">År</option>
                                         {statsPeriod === 'custom' && <option value="custom">Anpassat</option>}
                                     </select>
-
-                                    <div className="stats-date-picker-trigger">
-                                        <Button variant="ghost" size="sm" onClick={() => setIsSelectingDate(!isSelectingDate)} id="stats-date-btn">
-                                            {statsDateButtonLabel}
-                                        </Button>
-                                        {hasCustomDateRange && (
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    setStatsStartDate('');
-                                                    setStatsEndDate('');
-                                                    setStatsPeriod('dag');
-                                                    setIsSelectingDate(false);
-                                                }}
-                                                style={{ marginLeft: '0.5rem', border: 'none', background: 'transparent', color: '#666', cursor: 'pointer', fontSize: '0.85rem' }}
-                                            >
-                                                Rensa
-                                            </button>
-                                        )}
-                                        {isSelectingDate && (
-                                            <div className="stats-date-popover">
-                                                <div className="date-inputs">
-                                                    <div>
-                                                        <label>Från</label>
-                                                        <input
-                                                            type="date"
-                                                            value={statsStartDate}
-                                                            onChange={e => setStatsStartDate(e.target.value)}
-                                                            onDoubleClick={() => {
-                                                                if (statsStartDate) {
-                                                                    setStatsEndDate(statsStartDate);
-                                                                    handleUpdateCustomStats(statsStartDate, statsStartDate);
-                                                                    setIsSelectingDate(false);
-                                                                }
-                                                            }}
-                                                        />
-                                                    </div>
-                                                    <div>
-                                                        <label>Till</label>
-                                                        <input
-                                                            type="date"
-                                                            value={statsEndDate}
-                                                            onChange={e => setStatsEndDate(e.target.value)}
-                                                        />
-                                                    </div>
-                                                </div>
-                                                <Button size="sm" variant="primary" onClick={() => {
-                                                    if (statsStartDate && statsEndDate) {
-                                                        handleUpdateCustomStats(statsStartDate, statsEndDate);
-                                                        setIsSelectingDate(false);
-                                                    }
-                                                }}>Visa</Button>
-                                            </div>
-                                        )}
-                                    </div>
                                 </div>
-                                {/* 3 stora kort */}
+
+                                <div className="history-date-filter">
+                                    <div className="history-date-field">
+                                        <label>Från</label>
+                                        <input
+                                            type="date"
+                                            value={statsStartDate}
+                                            onChange={(e) => setStatsStartDate(e.target.value)}
+                                        />
+                                    </div>
+                                    <div className="history-date-field">
+                                        <label>Till</label>
+                                        <input
+                                            type="date"
+                                            value={statsEndDate}
+                                            onChange={(e) => setStatsEndDate(e.target.value)}
+                                        />
+                                    </div>
+                                    {(statsStartDate || statsEndDate) && (
+                                        <button
+                                            type="button"
+                                            className="history-date-clear"
+                                            onClick={() => {
+                                                setStatsStartDate('');
+                                                setStatsEndDate('');
+                                                setStatsPeriod('dag');
+                                            }}
+                                        >
+                                            Rensa filter
+                                        </button>
+                                    )}
+                                    <Button
+                                        size="sm"
+                                        variant="primary"
+                                        onClick={() => {
+                                            if (statsStartDate && statsEndDate) {
+                                                handleUpdateCustomStats(statsStartDate, statsEndDate);
+                                            }
+                                        }}
+                                        disabled={!statsStartDate || !statsEndDate || statsLoading}
+                                    >
+                                        {statsLoading ? 'Laddar...' : 'Visa'}
+                                    </Button>
+                                </div>
+                                {/* KPI-kort */}
                                 <div className="stats-big-cards">
                                     <div className="stats-big-card">
-                                        <span className="stats-card-label">Ordrar</span>
-                                        <span className="stats-big-value">{orders.toLocaleString('sv-SE')} <span>st</span></span>
+                                        <span className="stats-card-label">Genomförda ordrar</span>
+                                        <span className="stats-big-value">{completedOrders.toLocaleString('sv-SE')} <span>st</span></span>
                                     </div>
                                     <div className="stats-big-card">
-                                        <span className="stats-card-label">Sålda varor</span>
-                                        <span className="stats-big-value">{items.toLocaleString('sv-SE')} <span>st</span></span>
+                                        <span className="stats-card-label">Avbrutna ordrar</span>
+                                        <span className="stats-big-value">{cancelledOrders.toLocaleString('sv-SE')} <span>st</span></span>
                                     </div>
                                     <div className="stats-big-card highlight">
                                         <span className="stats-card-label">Intäkter</span>
                                         <span className="stats-big-value">{Math.round(revenueOre / 100).toLocaleString('sv-SE')} <span>kr</span></span>
+                                    </div>
+                                    <div className="stats-big-card">
+                                        <span className="stats-card-label">Avbokningsgrad</span>
+                                        <span className="stats-big-value">{cancellationRate.toFixed(1).replace('.', ',')} <span>%</span></span>
+                                    </div>
+                                    <div className="stats-big-card">
+                                        <span className="stats-card-label">Sålda varor</span>
+                                        <span className="stats-big-value">{items.toLocaleString('sv-SE')} <span>st</span></span>
                                     </div>
                                 </div>
 

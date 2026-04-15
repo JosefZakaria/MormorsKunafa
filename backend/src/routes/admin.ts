@@ -116,7 +116,8 @@ router.post('/statistics', requireAdmin, async (req: Request, res: Response) => 
     const startStr = startDate ? `${startDate} 00:00:00` : null;
     const endStr = endDate ? `${endDate} 23:59:59` : null;
 
-    // Per-produkt: alla produkter i menyn inkl. varianter, matcha på id ELLER namn
+    // Per-produkt: alla produkter i menyn inkl. varianter, matcha pa id ELLER namn.
+    // Endast genomforda ordrar raknas som forsaljning.
     const [productRows] = (await db.query(`
       SELECT
         p.name AS name,
@@ -134,7 +135,7 @@ router.post('/statistics', requireAdmin, async (req: Request, res: Response) => 
         COALESCE(SUM(CASE WHEN o.id IS NOT NULL AND ? IS NOT NULL AND ? IS NOT NULL AND o.created_at BETWEEN ? AND ? THEN oi.price_ore * oi.quantity ELSE 0 END), 0) AS revenue_custom_ore
       FROM products p
       LEFT JOIN order_items oi ON (oi.product_id = p.id OR oi.product_name_snapshot = p.name)
-      LEFT JOIN orders o ON o.id = oi.order_id AND o.status IN ('klar', 'avbruten', 'uthämtad', 'levererad')
+      LEFT JOIN orders o ON o.id = oi.order_id AND o.status IN ('klar', 'uthämtad', 'levererad')
       GROUP BY p.id, p.name
       ORDER BY p.name ASC
     `, [startStr, endStr, startStr, endStr, startStr, endStr, startStr, endStr])) as [Row[], unknown];
@@ -150,27 +151,32 @@ router.post('/statistics', requireAdmin, async (req: Request, res: Response) => 
         SUM(CASE WHEN ? IS NOT NULL AND ? IS NOT NULL AND o.created_at BETWEEN ? AND ? THEN oi.quantity ELSE 0 END) AS items_custom
       FROM orders o
       JOIN order_items oi ON oi.order_id = o.id
-      WHERE o.status IN ('klar', 'avbruten', 'uthämtad', 'levererad')
+      WHERE o.status IN ('klar', 'uthämtad', 'levererad')
     `, [startStr, endStr, startStr, endStr])) as [Row[], unknown];
 
-    // Totaler per period - Revenue & Orders (direkt från orders)
+    // Totaler per period - Revenue, genomforda ordrar och avbrutna ordrar.
     const [orderTotalRows] = (await db.query(`
       SELECT
-        COUNT(id) AS orders_total,
-        SUM(CASE WHEN DATE(created_at) = CURDATE() THEN 1 ELSE 0 END) AS orders_day,
-        SUM(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS orders_week,
-        SUM(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 1 MONTH) THEN 1 ELSE 0 END) AS orders_month,
-        SUM(CASE WHEN YEAR(created_at) = YEAR(NOW()) THEN 1 ELSE 0 END) AS orders_year,
-        SUM(CASE WHEN ? IS NOT NULL AND ? IS NOT NULL AND created_at BETWEEN ? AND ? THEN 1 ELSE 0 END) AS orders_custom,
-        SUM(total_ore) AS revenue_total_ore,
-        SUM(CASE WHEN DATE(created_at) = CURDATE() THEN total_ore ELSE 0 END) AS revenue_day_ore,
-        SUM(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN total_ore ELSE 0 END) AS revenue_week_ore,
-        SUM(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 1 MONTH) THEN total_ore ELSE 0 END) AS revenue_month_ore,
-        SUM(CASE WHEN YEAR(created_at) = YEAR(NOW()) THEN total_ore ELSE 0 END) AS revenue_year_ore,
-        SUM(CASE WHEN ? IS NOT NULL AND ? IS NOT NULL AND created_at BETWEEN ? AND ? THEN total_ore ELSE 0 END) AS revenue_custom_ore
+        SUM(CASE WHEN status IN ('klar', 'uthämtad', 'levererad') THEN 1 ELSE 0 END) AS orders_total,
+        SUM(CASE WHEN status IN ('klar', 'uthämtad', 'levererad') AND DATE(created_at) = CURDATE() THEN 1 ELSE 0 END) AS orders_day,
+        SUM(CASE WHEN status IN ('klar', 'uthämtad', 'levererad') AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS orders_week,
+        SUM(CASE WHEN status IN ('klar', 'uthämtad', 'levererad') AND created_at >= DATE_SUB(NOW(), INTERVAL 1 MONTH) THEN 1 ELSE 0 END) AS orders_month,
+        SUM(CASE WHEN status IN ('klar', 'uthämtad', 'levererad') AND YEAR(created_at) = YEAR(NOW()) THEN 1 ELSE 0 END) AS orders_year,
+        SUM(CASE WHEN status IN ('klar', 'uthämtad', 'levererad') AND ? IS NOT NULL AND ? IS NOT NULL AND created_at BETWEEN ? AND ? THEN 1 ELSE 0 END) AS orders_custom,
+        SUM(CASE WHEN status = 'avbruten' THEN 1 ELSE 0 END) AS orders_cancelled_total,
+        SUM(CASE WHEN status = 'avbruten' AND DATE(created_at) = CURDATE() THEN 1 ELSE 0 END) AS orders_cancelled_day,
+        SUM(CASE WHEN status = 'avbruten' AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS orders_cancelled_week,
+        SUM(CASE WHEN status = 'avbruten' AND created_at >= DATE_SUB(NOW(), INTERVAL 1 MONTH) THEN 1 ELSE 0 END) AS orders_cancelled_month,
+        SUM(CASE WHEN status = 'avbruten' AND YEAR(created_at) = YEAR(NOW()) THEN 1 ELSE 0 END) AS orders_cancelled_year,
+        SUM(CASE WHEN status = 'avbruten' AND ? IS NOT NULL AND ? IS NOT NULL AND created_at BETWEEN ? AND ? THEN 1 ELSE 0 END) AS orders_cancelled_custom,
+        SUM(CASE WHEN status IN ('klar', 'uthämtad', 'levererad') THEN total_ore ELSE 0 END) AS revenue_total_ore,
+        SUM(CASE WHEN status IN ('klar', 'uthämtad', 'levererad') AND DATE(created_at) = CURDATE() THEN total_ore ELSE 0 END) AS revenue_day_ore,
+        SUM(CASE WHEN status IN ('klar', 'uthämtad', 'levererad') AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN total_ore ELSE 0 END) AS revenue_week_ore,
+        SUM(CASE WHEN status IN ('klar', 'uthämtad', 'levererad') AND created_at >= DATE_SUB(NOW(), INTERVAL 1 MONTH) THEN total_ore ELSE 0 END) AS revenue_month_ore,
+        SUM(CASE WHEN status IN ('klar', 'uthämtad', 'levererad') AND YEAR(created_at) = YEAR(NOW()) THEN total_ore ELSE 0 END) AS revenue_year_ore,
+        SUM(CASE WHEN status IN ('klar', 'uthämtad', 'levererad') AND ? IS NOT NULL AND ? IS NOT NULL AND created_at BETWEEN ? AND ? THEN total_ore ELSE 0 END) AS revenue_custom_ore
       FROM orders
-      WHERE status IN ('klar', 'avbruten', 'uthämtad', 'levererad')
-    `, [startStr, endStr, startStr, endStr, startStr, endStr, startStr, endStr])) as [Row[], unknown];
+    `, [startStr, endStr, startStr, endStr, startStr, endStr, startStr, endStr, startStr, endStr, startStr, endStr])) as [Row[], unknown];
 
     const itemTotals = (itemTotalRows as Row[])[0] || {};
     const orderTotals = (orderTotalRows as Row[])[0] || {};
@@ -200,6 +206,12 @@ router.post('/statistics', requireAdmin, async (req: Request, res: Response) => 
         ordersYear: Number(totals.orders_year) || 0,
         ordersTotal: Number(totals.orders_total) || 0,
         ordersCustom: Number(totals.orders_custom) || 0,
+        ordersCancelledDay: Number(totals.orders_cancelled_day) || 0,
+        ordersCancelledWeek: Number(totals.orders_cancelled_week) || 0,
+        ordersCancelledMonth: Number(totals.orders_cancelled_month) || 0,
+        ordersCancelledYear: Number(totals.orders_cancelled_year) || 0,
+        ordersCancelledTotal: Number(totals.orders_cancelled_total) || 0,
+        ordersCancelledCustom: Number(totals.orders_cancelled_custom) || 0,
         itemsDay: Number(totals.items_day) || 0,
         itemsWeek: Number(totals.items_week) || 0,
         itemsMonth: Number(totals.items_month) || 0,
