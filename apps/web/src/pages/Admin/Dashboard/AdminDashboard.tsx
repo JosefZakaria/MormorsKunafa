@@ -20,10 +20,12 @@ const REFUND_STATUS_OPTIONS: Order['refundStatus'][] = ['none', 'pending', 'refu
 function getCountdown(isoTime: string | undefined): string {
     if (!isoTime) return '--:--';
     const diff = new Date(isoTime).getTime() - Date.now();
-    if (diff <= 0) return '00:00';
-    const mins = Math.floor(diff / 60000);
-    const secs = Math.floor((diff % 60000) / 1000);
-    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    const isOverdue = diff < 0;
+    const absoluteDiff = Math.abs(diff);
+    const mins = Math.floor(absoluteDiff / 60000);
+    const secs = Math.floor((absoluteDiff % 60000) / 1000);
+    const formatted = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    return isOverdue ? `-${formatted}` : formatted;
 }
 
 function OrderTypeLabel({ type }: { type: string }) {
@@ -48,7 +50,7 @@ function OrderTimer({ estimatedReadyTime }: { estimatedReadyTime: string }) {
 
     return (
         <span className={`order-timer ${isOverdue ? 'timer-overdue' : ''}`}>
-            ⏱ {countdown}
+            ⏱ {countdown} {isOverdue ? '(SEN)' : ''}
         </span>
     );
 }
@@ -385,6 +387,7 @@ export const AdminDashboard: React.FC = () => {
     const [deleteSubmitting, setDeleteSubmitting] = useState(false);
 
     const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const statsAuthPasswordRef = useRef('');
 
     // --- Fetch pending + active orders ---
     const fetchOrders = useCallback(async () => {
@@ -637,9 +640,11 @@ export const AdminDashboard: React.FC = () => {
     const handleStatsSubmit = async () => {
         setStatsLoading(true);
         setStatsError(null);
+        const password = statsPassword.trim();
         try {
-            const data = await adminApi.getStatistics(statsPassword, statsStartDate || undefined, statsEndDate || undefined);
+            const data = await adminApi.getStatistics(password, statsStartDate || undefined, statsEndDate || undefined);
             setStatsData(data);
+            statsAuthPasswordRef.current = password;
             if (statsStartDate && statsEndDate) {
                 setStatsPeriod('custom');
             }
@@ -654,10 +659,11 @@ export const AdminDashboard: React.FC = () => {
     };
 
     const handleUpdateCustomStats = async (start: string, end: string) => {
-        if (!statsPassword) return;
+        const password = statsAuthPasswordRef.current;
+        if (!password) return;
         setStatsLoading(true);
         try {
-            const data = await adminApi.getStatistics(statsPassword, start, end);
+            const data = await adminApi.getStatistics(password, start, end);
             setStatsData(data);
             setStatsPeriod('custom');
         } catch (e) {
@@ -668,6 +674,12 @@ export const AdminDashboard: React.FC = () => {
     };
 
     const isPaused = settings?.isPaused ?? false;
+    const hasCustomDateRange = !!(statsStartDate && statsEndDate);
+    const formatStatsDateLabel = (dateValue: string) =>
+        new Date(dateValue).toLocaleDateString('sv-SE', { day: 'numeric', month: 'short' });
+    const statsDateButtonLabel = hasCustomDateRange
+        ? `Datum: ${formatStatsDateLabel(statsStartDate)} - ${formatStatsDateLabel(statsEndDate)}`
+        : 'Datum';
 
     return (
         <div className="admin-dashboard">
@@ -1019,8 +1031,22 @@ export const AdminDashboard: React.FC = () => {
 
                                     <div className="stats-date-picker-trigger">
                                         <Button variant="ghost" size="sm" onClick={() => setIsSelectingDate(!isSelectingDate)} id="stats-date-btn">
-                                            Datum
+                                            {statsDateButtonLabel}
                                         </Button>
+                                        {hasCustomDateRange && (
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setStatsStartDate('');
+                                                    setStatsEndDate('');
+                                                    setStatsPeriod('dag');
+                                                    setIsSelectingDate(false);
+                                                }}
+                                                style={{ marginLeft: '0.5rem', border: 'none', background: 'transparent', color: '#666', cursor: 'pointer', fontSize: '0.85rem' }}
+                                            >
+                                                Rensa
+                                            </button>
+                                        )}
                                         {isSelectingDate && (
                                             <div className="stats-date-popover">
                                                 <div className="date-inputs">
@@ -1058,7 +1084,6 @@ export const AdminDashboard: React.FC = () => {
                                         )}
                                     </div>
                                 </div>
-
                                 {/* 3 stora kort */}
                                 <div className="stats-big-cards">
                                     <div className="stats-big-card">
@@ -1130,18 +1155,6 @@ export const AdminDashboard: React.FC = () => {
                                         <span className="time-unit">minuter</span>
                                     </div>
                                     <Button variant="ghost" onClick={() => handleUpdateSettings({ defaultPreparationTime: settings.defaultPreparationTime + 5 })}>+ 5 min</Button>
-                                </div>
-                            </div>
-                            <div className="rush-card" style={{ marginTop: '1rem' }}>
-                                <h3>Extraköns-justering</h3>
-                                <p>Läggs på under högt tryck.</p>
-                                <div className="rush-controls">
-                                    <Button variant="ghost" onClick={() => handleUpdateSettings({ rushTimeAdjustment: Math.max(0, settings.rushTimeAdjustment - 5) })}>- 5 min</Button>
-                                    <div className="rush-display">
-                                        <span className="time-value">+{settings.rushTimeAdjustment}</span>
-                                        <span className="time-unit">minuter</span>
-                                    </div>
-                                    <Button variant="ghost" onClick={() => handleUpdateSettings({ rushTimeAdjustment: settings.rushTimeAdjustment + 5 })}>+ 5 min</Button>
                                 </div>
                             </div>
                             <PrinterSettings />

@@ -53,7 +53,6 @@ router.get('/settings', requireAdmin, async (_req: Request, res: Response) => {
     }
     res.json({
       defaultPreparationTime: Number(r.default_preparation_time_minutes) ?? 30,
-      rushTimeAdjustment: Number(r.rush_time_adjustment_minutes) ?? 10,
       isPaused: Boolean(r.is_paused),
     });
   } catch (e) {
@@ -64,16 +63,12 @@ router.get('/settings', requireAdmin, async (_req: Request, res: Response) => {
 
 router.patch('/settings', requireAdmin, async (req: Request, res: Response) => {
   try {
-    const body = req.body as { defaultPreparationTime?: number; rushTimeAdjustment?: number; isPaused?: boolean };
+    const body = req.body as { defaultPreparationTime?: number; isPaused?: boolean };
     const updates: string[] = [];
     const params: unknown[] = [];
     if (typeof body.defaultPreparationTime === 'number') {
       updates.push('default_preparation_time_minutes = ?');
       params.push(body.defaultPreparationTime);
-    }
-    if (typeof body.rushTimeAdjustment === 'number') {
-      updates.push('rush_time_adjustment_minutes = ?');
-      params.push(body.rushTimeAdjustment);
     }
     if (typeof body.isPaused === 'boolean') {
       updates.push('is_paused = ?');
@@ -90,7 +85,6 @@ router.patch('/settings', requireAdmin, async (req: Request, res: Response) => {
     }
     res.json({
       defaultPreparationTime: Number(r.default_preparation_time_minutes) ?? 30,
-      rushTimeAdjustment: Number(r.rush_time_adjustment_minutes) ?? 10,
       isPaused: Boolean(r.is_paused),
     });
   } catch (e) {
@@ -140,7 +134,7 @@ router.post('/statistics', requireAdmin, async (req: Request, res: Response) => 
         COALESCE(SUM(CASE WHEN o.id IS NOT NULL AND ? IS NOT NULL AND ? IS NOT NULL AND o.created_at BETWEEN ? AND ? THEN oi.price_ore * oi.quantity ELSE 0 END), 0) AS revenue_custom_ore
       FROM products p
       LEFT JOIN order_items oi ON (oi.product_id = p.id OR oi.product_name_snapshot = p.name)
-      LEFT JOIN orders o ON o.id = oi.order_id AND o.status NOT IN ('avbruten')
+      LEFT JOIN orders o ON o.id = oi.order_id AND o.status IN ('klar', 'avbruten', 'uthämtad', 'levererad')
       GROUP BY p.id, p.name
       ORDER BY p.name ASC
     `, [startStr, endStr, startStr, endStr, startStr, endStr, startStr, endStr])) as [Row[], unknown];
@@ -156,7 +150,7 @@ router.post('/statistics', requireAdmin, async (req: Request, res: Response) => 
         SUM(CASE WHEN ? IS NOT NULL AND ? IS NOT NULL AND o.created_at BETWEEN ? AND ? THEN oi.quantity ELSE 0 END) AS items_custom
       FROM orders o
       JOIN order_items oi ON oi.order_id = o.id
-      WHERE o.status NOT IN ('avbruten')
+      WHERE o.status IN ('klar', 'avbruten', 'uthämtad', 'levererad')
     `, [startStr, endStr, startStr, endStr])) as [Row[], unknown];
 
     // Totaler per period - Revenue & Orders (direkt från orders)
@@ -175,7 +169,7 @@ router.post('/statistics', requireAdmin, async (req: Request, res: Response) => 
         SUM(CASE WHEN YEAR(created_at) = YEAR(NOW()) THEN total_ore ELSE 0 END) AS revenue_year_ore,
         SUM(CASE WHEN ? IS NOT NULL AND ? IS NOT NULL AND created_at BETWEEN ? AND ? THEN total_ore ELSE 0 END) AS revenue_custom_ore
       FROM orders
-      WHERE status NOT IN ('avbruten')
+      WHERE status IN ('klar', 'avbruten', 'uthämtad', 'levererad')
     `, [startStr, endStr, startStr, endStr, startStr, endStr, startStr, endStr])) as [Row[], unknown];
 
     const itemTotals = (itemTotalRows as Row[])[0] || {};

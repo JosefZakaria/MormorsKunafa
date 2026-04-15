@@ -20,13 +20,12 @@ CREATE TABLE IF NOT EXISTS `admin_users` (
 CREATE TABLE IF NOT EXISTS `admin_settings` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `default_preparation_time_minutes` int NOT NULL DEFAULT 30,
-  `rush_time_adjustment_minutes` int NOT NULL DEFAULT 10,
   `is_paused` tinyint(1) NOT NULL DEFAULT 0,
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-INSERT INTO `admin_settings` (`default_preparation_time_minutes`, `rush_time_adjustment_minutes`, `is_paused`) VALUES (30, 10, 0);
+INSERT INTO `admin_settings` (`default_preparation_time_minutes`, `is_paused`) VALUES (30, 0);
 
 -- Products (prices stored in öre for precision)
 CREATE TABLE IF NOT EXISTS `products` (
