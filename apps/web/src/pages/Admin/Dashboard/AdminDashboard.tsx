@@ -408,7 +408,7 @@ export const AdminDashboard: React.FC = () => {
     // --- Polling every 5s ---
     useEffect(() => {
         fetchOrders();
-        pollingRef.current = setInterval(fetchOrders, 5000);
+        pollingRef.current = setInterval(fetchOrders, 3000);
         return () => { if (pollingRef.current) clearInterval(pollingRef.current); };
     }, [fetchOrders]);
 
