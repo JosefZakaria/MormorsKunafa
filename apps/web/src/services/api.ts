@@ -232,6 +232,12 @@ export const adminApi = {
       ordersYear: number;
       ordersTotal: number;
       ordersCustom: number;
+      ordersCancelledDay: number;
+      ordersCancelledWeek: number;
+      ordersCancelledMonth: number;
+      ordersCancelledYear: number;
+      ordersCancelledTotal: number;
+      ordersCancelledCustom: number;
       itemsDay: number;
       itemsWeek: number;
       itemsMonth: number;
