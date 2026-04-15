@@ -8,6 +8,7 @@
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
     "db:migrate": "tsx src/scripts/run-schema.ts",
+    "db:migrate:remove-rush-time-adjustment": "tsx src/scripts/migrate-remove-rush-time-adjustment.ts",
     "db:seed-wp": "tsx src/scripts/migrate-from-wp.ts",
     "db:generate-product-sql": "tsx src/scripts/generate-product-sql.ts",
     "db:admin": "tsx src/scripts/create-admin.ts"

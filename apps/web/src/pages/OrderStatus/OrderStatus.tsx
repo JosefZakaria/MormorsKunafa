@@ -8,10 +8,12 @@ import './OrderStatus.css';
 function getCountdown(isoTime: string | undefined): string {
     if (!isoTime) return '--:--';
     const diff = new Date(isoTime).getTime() - Date.now();
-    if (diff <= 0) return '00:00';
-    const mins = Math.floor(diff / 60000);
-    const secs = Math.floor((diff % 60000) / 1000);
-    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    const isOverdue = diff < 0;
+    const absoluteDiff = Math.abs(diff);
+    const mins = Math.floor(absoluteDiff / 60000);
+    const secs = Math.floor((absoluteDiff % 60000) / 1000);
+    const formatted = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    return isOverdue ? `-${formatted}` : formatted;
 }
 
 const STATUS_STEPS: Order['status'][] = ['ny', 'påbörjad', 'klar'];
@@ -68,7 +70,8 @@ export const OrderStatus: React.FC = () => {
     const isCancelled = order?.status === 'avbruten';
     const isPending = order?.status === 'ny' || order?.status === 'mottagen';
     const isCompleted = order?.status === 'klar' || order?.status === 'uthämtad' || order?.status === 'levererad';
-    const statusClass = isCancelled ? 'cancelled' : isCompleted ? 'almost-ready' : isPending ? 'on-time' : countdown === '00:00' ? 'delayed' : 'on-time';
+    const isDelayed = !!order?.estimatedReadyTime && new Date(order.estimatedReadyTime).getTime() < Date.now();
+    const statusClass = isCancelled ? 'cancelled' : isCompleted ? 'almost-ready' : isPending ? 'on-time' : isDelayed ? 'delayed' : 'on-time';
 
     const stepIndex = order ? STATUS_STEPS.indexOf(order.status as Order['status']) : 0;
     const currentStepIndex = stepIndex >= 0 ? stepIndex : order?.status === 'mottagen' ? 1 : 0;

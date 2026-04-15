@@ -81,6 +81,7 @@ The shared API config defaults to `http://localhost:3000/api`. To use this backe
 | `npm run build` | Compile TypeScript to `dist/` |
 | `npm run start` | Run `node dist/index.js` (production) |
 | `npm run db:migrate` | Apply `src/db/schema.sql` to `DB_DATABASE` |
+| `npm run db:migrate:remove-rush-time-adjustment` | Drop `admin_settings.rush_time_adjustment_minutes` if it exists |
 | `npm run db:seed-wp` | One-time migration from WordPress DB (requires `WP_DB_*`) |
 | `npm run db:generate-product-sql` | Read WordPress dump file, output `backend/generated-products.sql` for the `products` table (no DB connection) |
 

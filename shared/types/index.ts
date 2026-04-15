@@ -84,7 +84,6 @@ export interface AdminUser {
 // Admin Settings
 export interface AdminSettings {
   defaultPreparationTime: number; // minutes (F.Admin.3)
-  rushTimeAdjustment: number; // additional minutes during rush (F.Admin.6)
   isPaused: boolean; // pause new orders
 }
 
