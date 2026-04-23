@@ -30,6 +30,20 @@ export const Cart: React.FC = () => {
 
     const needsInlineCustomerInfo = orderType === 'eat-here' || orderType === 'takeaway';
 
+    // --- Scheduled pickup/delivery date ---
+    const formatDateInput = (d: Date) => {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+    };
+    const today = new Date();
+    const maxDate = new Date();
+    maxDate.setDate(maxDate.getDate() + 30);
+    const todayStr = formatDateInput(today);
+    const maxDateStr = formatDateInput(maxDate);
+    const [scheduledDate, setScheduledDate] = useState<string>(todayStr);
+
     // Get delivery info from localStorage if available
     const getDeliveryInfo = () => {
         const stored = localStorage.getItem('deliveryInfo');
@@ -102,12 +116,21 @@ export const Cart: React.FC = () => {
                 }
             }
 
+            // Build scheduledTime only if customer chose a future date
+            let scheduledTime: string | undefined;
+            if (scheduledDate && scheduledDate !== todayStr) {
+                // Noon local time on the chosen date — kept as a local ISO-like string
+                // (no Z suffix) so the server stores it in the restaurant's timezone.
+                scheduledTime = `${scheduledDate}T12:00:00`;
+            }
+
             // Create order
             const order = await orderApi.create({
                 items: orderItems,
                 orderType: orderType as OrderType,
                 customerInfo,
                 deliveryInfo: deliveryInfo,
+                scheduledTime,
                 paymentMethod: 'app' as PaymentMethod, // Default to app payment
             });
 
@@ -135,7 +158,9 @@ export const Cart: React.FC = () => {
     return (
         <div className="cart-page animate-in">
             <Container className="cart-container">
-                <h1 className="text-display-md cart-title">{t('cart.title')}</h1>
+                {items.length > 0 && (
+                    <h1 className="text-display-md cart-title">{t('cart.title')}</h1>
+                )}
 
                 {error && (
                     <div className="cart-error" style={{ 
@@ -150,8 +175,8 @@ export const Cart: React.FC = () => {
                 )}
 
                 {items.length === 0 ? (
-                    <div className="text-center py-12">
-                        <p className="text-body-lg text-gray-500 mb-8">{t('cart.empty')}</p>
+                    <div className="cart-empty">
+                        <p className="cart-empty__text">{t('cart.empty')}</p>
                         <Button variant="primary" onClick={() => navigate('/menu')}>
                             {t('nav.meny')}
                         </Button>
@@ -217,6 +242,7 @@ export const Cart: React.FC = () => {
                                     <div className="customer-info__field">
                                         <label htmlFor="customer-name" className="customer-info__label">
                                             {t('cart.customer_name')}
+                                            <span className="customer-info__required" aria-hidden="true">*</span>
                                         </label>
                                         <input
                                             id="customer-name"
@@ -231,6 +257,7 @@ export const Cart: React.FC = () => {
                                     <div className="customer-info__field">
                                         <label htmlFor="customer-phone" className="customer-info__label">
                                             {t('cart.customer_phone')}
+                                            <span className="customer-info__required" aria-hidden="true">*</span>
                                         </label>
                                         <input
                                             id="customer-phone"
@@ -283,6 +310,27 @@ export const Cart: React.FC = () => {
                             >
                                 {isSubmitting ? 'Skapar beställning...' : t('cart.checkout')}
                             </Button>
+                        </div>
+
+                        <div className="cart-schedule">
+                            <h3 className="cart-schedule__title">{t('cart.schedule_title')}</h3>
+                            <label htmlFor="cart-schedule-date" className="cart-schedule__label">
+                                {t('cart.schedule_label')}
+                            </label>
+                            <input
+                                id="cart-schedule-date"
+                                type="date"
+                                className="cart-schedule__input"
+                                value={scheduledDate}
+                                min={todayStr}
+                                max={maxDateStr}
+                                onChange={(e) => setScheduledDate(e.target.value || todayStr)}
+                            />
+                            <p className="cart-schedule__summary">
+                                {scheduledDate === todayStr
+                                    ? t('cart.schedule_today')
+                                    : `${t('cart.schedule_future')} ${new Date(scheduledDate).toLocaleDateString('sv-SE', { weekday: 'long', day: 'numeric', month: 'long' })}`}
+                            </p>
                         </div>
                     </div>
                 )}

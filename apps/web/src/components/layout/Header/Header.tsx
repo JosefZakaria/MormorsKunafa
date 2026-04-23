@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { ShoppingCart } from 'lucide-react';
 import { Container } from '../../common/Container/Container';
 import { Button } from '../../common/Button/Button';
 import './Header.css';
@@ -41,8 +42,13 @@ export const Header: React.FC = () => {
                     <Button variant="ghost" className="header__menu-btn" onClick={() => handleNavigation('/menu')}>
                         {t('nav.meny')}
                     </Button>
-                    <Button variant="ghost" className="header__menu-btn" onClick={() => handleNavigation('/cart')}>
-                        {t('nav.cart')}
+                    <Button
+                        variant="ghost"
+                        className="header__menu-btn header__menu-btn--cart"
+                        onClick={() => handleNavigation('/cart')}
+                        aria-label={t('nav.cart')}
+                    >
+                        <ShoppingCart className="header__cart-icon" aria-hidden="true" strokeWidth={1.75} />
                         {cartItemCount > 0 && (
                             <span className="header__cart-badge">{cartItemCount}</span>
                         )}

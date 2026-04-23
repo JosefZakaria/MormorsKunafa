@@ -48,6 +48,13 @@ export interface DeliveryInfo {
   email?: string;
 }
 
+// Customer contact info (used for all order types)
+export interface CustomerInfo {
+  name: string;
+  phone: string;
+  email?: string;
+}
+
 // Order Interface (F.Order.1)
 export interface Order {
   id: string;
@@ -56,6 +63,7 @@ export interface Order {
   totalPrice: number; // in öre
   orderType: OrderType;
   status: OrderStatus;
+  customerInfo?: CustomerInfo;
   deliveryInfo?: DeliveryInfo;
   scheduledTime?: string; // ISO string for pre-orders (F.Kund.5)
   defaultPreparationTime: number; // minutes (F.Admin.3)
@@ -103,6 +111,7 @@ export interface SalesHistoryEntry {
 export interface CreateOrderRequest {
   items: OrderItem[];
   orderType: OrderType;
+  customerInfo?: CustomerInfo;
   deliveryInfo?: DeliveryInfo;
   scheduledTime?: string; // For pre-orders
   paymentMethod: PaymentMethod;
