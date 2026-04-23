@@ -145,8 +145,17 @@
 .landing__language {
     display: flex;
     justify-content: center;
-    margin-top: var(--spacing-lg);
-    padding-bottom: var(--spacing-sm);
+    /* Knapparna sticker ut 60px under hero (translateY(50%) av 120px),
+       så vi behöver extra utrymme här för att hamna under dem. */
+    margin-top: calc(60px + var(--spacing-lg));
+    padding-bottom: var(--spacing-lg);
+}
+
+@media (max-width: 767px) {
+    .landing__language {
+        /* Mobil: knapparna är 100px höga, alltså sticker ut 50px */
+        margin-top: calc(50px + var(--spacing-md));
+    }
 }
 
 .landing__language .language-selector {

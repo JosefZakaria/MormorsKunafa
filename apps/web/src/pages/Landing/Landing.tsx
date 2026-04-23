@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Container } from '../../components/common/Container/Container';
 import { Button } from '../../components/common/Button/Button';
+import { LanguageSelector } from '../../components/common/LanguageSelector/LanguageSelector';
 import './Landing.css';
 
 import { useLanguage } from '../../contexts/LanguageContext';
@@ -82,6 +83,9 @@ export const Landing: React.FC = () => {
                         </Button>
                     </div>
                 </div>
+            </div>
+            <div className="landing__language">
+                <LanguageSelector />
             </div>
         </div>
     );

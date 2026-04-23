@@ -1,22 +1,22 @@
 .header {
-    background-color: var(--color-white);
+    background-color: var(--color-primary-red);
     padding: var(--spacing-md) 0;
     position: sticky;
     top: 0;
     z-index: 1000;
 }
 
-/* Transparent over landing hero / menu / cart so content fills to the top */
-.header--over-hero {
-    background-color: transparent !important;
-    border-bottom-color: transparent;
-    box-shadow: none;
+.header .header__brand-text,
+.header .header__nav a,
+.header .header__nav button {
+    color: var(--color-white);
 }
 
-.header--over-hero .header__brand-text,
-.header--over-hero .header__nav a,
-.header--over-hero .header__nav button {
-    color: var(--color-white);
+/* Keep header solid wine-red over hero as well */
+.header--over-hero {
+    background-color: var(--color-primary-red) !important;
+    border-bottom-color: transparent;
+    box-shadow: none;
 }
 
 .header--over-hero .header__hamburger,
@@ -154,7 +154,7 @@
     position: absolute;
     top: -8px;
     right: -8px;
-    background-color: var(--color-primary-red);
+    background-color: var(--color-secondary-gold);
     color: var(--color-white);
     border-radius: 50%;
     width: 20px;
@@ -199,7 +199,7 @@
         font-size: 1.5rem;
         width: 100%;
         text-align: center;
-        color: var(--color-primary-red) !important; /* Force red text over white background */
+        color: var(--color-primary-red) !important;
         position: relative;
         padding-bottom: 1.5rem;
         margin-bottom: 1.5rem;
@@ -209,7 +209,7 @@
         content: '';
         position: absolute;
         bottom: 0;
-        left: 12.5%; /* Centers the 75% width line */
+        left: 12.5%;
         width: 75%;
         height: 2px;
         background-color: var(--color-primary-red);

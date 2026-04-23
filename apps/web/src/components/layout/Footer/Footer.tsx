@@ -15,32 +15,29 @@ const MAP_EMBED_SRC =
 export const Footer: React.FC = () => {
     const { t } = useLanguage();
     const { pathname } = useLocation();
-    const hideMap = pathname.startsWith('/menu') || pathname.startsWith('/cart');
-    const contactOnly = pathname.startsWith('/delivery');
+    const hideLanguage = pathname === '/';
 
     return (
         <footer className="footer">
-            <div className={`footer__content ${contactOnly ? 'footer__content--contact-only' : ''}`}>
-                <div className={`footer__grid ${hideMap ? 'footer__grid--no-map' : ''} ${contactOnly ? 'footer__grid--contact-only' : ''}`}>
-                    {!hideMap && !contactOnly && (
-                        <section className="footer__column" aria-labelledby="footer-find-us">
-                            <h3 id="footer-find-us" className="footer__column-title">
-                                {t('footer.find_us')}
-                            </h3>
-                            <div className="footer__map-wrap">
-                                <iframe
-                                    src={MAP_EMBED_SRC}
-                                    title={t('footer.find_us')}
-                                    width="100%"
-                                    height="340"
-                                    allowFullScreen
-                                    loading="lazy"
-                                    referrerPolicy="no-referrer-when-downgrade"
-                                    className="footer__map"
-                                />
-                            </div>
-                        </section>
-                    )}
+            <div className="footer__content">
+                <div className="footer__grid">
+                    <section className="footer__column" aria-labelledby="footer-find-us">
+                        <h3 id="footer-find-us" className="footer__column-title">
+                            {t('footer.find_us')}
+                        </h3>
+                        <div className="footer__map-wrap">
+                            <iframe
+                                src={MAP_EMBED_SRC}
+                                title={t('footer.find_us')}
+                                width="100%"
+                                height="340"
+                                allowFullScreen
+                                loading="lazy"
+                                referrerPolicy="no-referrer-when-downgrade"
+                                className="footer__map"
+                            />
+                        </div>
+                    </section>
                     <section className="footer__column footer__column--middle" aria-labelledby="footer-contact-hours">
                         <h3 id="footer-contact-hours" className="footer__column-title">
                             {t('footer.contact')}
@@ -67,19 +64,19 @@ export const Footer: React.FC = () => {
                             <span className="footer__detail">{t('footer.hours')}</span>
                         </div>
                     </section>
-                    {!contactOnly && (
-                        <section className="footer__column" aria-labelledby="footer-about">
-                            <h3 id="footer-about" className="footer__column-title">
-                                {t('footer.about_us')}
-                            </h3>
-                            <p className="footer__about-text">{t('footer.about_text')}</p>
-                        </section>
-                    )}
+                    <section className="footer__column" aria-labelledby="footer-about">
+                        <h3 id="footer-about" className="footer__column-title">
+                            {t('footer.about_us')}
+                        </h3>
+                        <p className="footer__about-text">{t('footer.about_text')}</p>
+                    </section>
                 </div>
             </div>
-            <div className="footer__lang">
-                <LanguageSelector />
-            </div>
+            {!hideLanguage && (
+                <div className="footer__lang">
+                    <LanguageSelector />
+                </div>
+            )}
             <div className="footer__sub">
                 <span className="footer__copyright">{t('footer.copyright')}</span>
                 <Link to="/admin/login" className="footer__admin-link" aria-label="Admin Login">

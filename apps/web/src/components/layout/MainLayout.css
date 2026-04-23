@@ -11,3 +11,11 @@
     padding-bottom: var(--spacing-3xl);
     background-color: #ffffff;
 }
+
+.layout__main--no-footer {
+    padding-bottom: 0;
+}
+
+.layout__main--no-footer > * {
+    flex: 1;
+}
