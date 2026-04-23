@@ -59,6 +59,11 @@ export const translations = {
         "cart.customer_email": "E-post (frivilligt)",
         "cart.customer_email_placeholder": "namn@exempel.se",
         "cart.customer_info_required": "Vänligen fyll i namn och telefonnummer.",
+        "cart.schedule_title": "När vill du ha din beställning?",
+        "cart.schedule_subtitle": "Default är idag. Välj annan dag för att förbeställa.",
+        "cart.schedule_label": "Datum",
+        "cart.schedule_today": "Idag",
+        "cart.schedule_future": "Förbeställd till",
 
         // Common
         "loading": "Laddar...",
@@ -193,6 +198,11 @@ export const translations = {
         "cart.customer_email": "Email (optional)",
         "cart.customer_email_placeholder": "name@example.com",
         "cart.customer_info_required": "Please enter your name and phone number.",
+        "cart.schedule_title": "When do you want your order?",
+        "cart.schedule_subtitle": "Default is today. Pick another day to pre-order.",
+        "cart.schedule_label": "Date",
+        "cart.schedule_today": "Today",
+        "cart.schedule_future": "Pre-ordered for",
 
         // Common
         "loading": "Loading...",
@@ -340,6 +350,11 @@ export const translations = {
         "cart.customer_email": "البريد الإلكتروني (اختياري)",
         "cart.customer_email_placeholder": "name@example.com",
         "cart.customer_info_required": "يرجى إدخال الاسم ورقم الهاتف.",
+        "cart.schedule_title": "متى تريد طلبك؟",
+        "cart.schedule_subtitle": "الافتراضي هو اليوم. اختر يومًا آخر للطلب المسبق.",
+        "cart.schedule_label": "التاريخ",
+        "cart.schedule_today": "اليوم",
+        "cart.schedule_future": "طلب مسبق لـ",
 
         // Common
         "loading": "جار التحميل...",

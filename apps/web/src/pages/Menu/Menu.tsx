@@ -128,6 +128,18 @@ function getTranslationIndex(product: Product): string | null {
     return null;
 }
 
+/** Products that are sold only in one fixed weight (no dropdown). */
+const FIXED_WEIGHT_BY_INDEX: Record<string, string> = {
+    '12': '1 kg',      // Mormorsbox - BaklawaMix
+    '14': '1350 gram', // Pistagemix
+};
+
+function getFixedWeight(product: Product): string | null {
+    const idx = getTranslationIndex(product);
+    if (idx && FIXED_WEIGHT_BY_INDEX[idx]) return FIXED_WEIGHT_BY_INDEX[idx];
+    return null;
+}
+
 /** Translated product name when we have a translation index, otherwise API name. */
 function getDisplayName(product: Product, t: (key: string) => string): string {
     const idx = getTranslationIndex(product);
@@ -257,7 +269,8 @@ export const Menu: React.FC = () => {
 
     useEffect(() => {
         if (selectedProduct) {
-            setSelectedOption('');
+            const fixed = getFixedWeight(selectedProduct);
+            setSelectedOption(fixed ?? '');
         }
     }, [selectedProduct]);
     tRef.current = t;
@@ -328,17 +341,13 @@ export const Menu: React.FC = () => {
         <>
             <div className="menu-page animate-in">
                 <Container>
-                    <header className="menu-page__header">
-                        <h1 className="text-display-md text-center">{t('menu.title')}</h1>
-                        <p className="text-center text-body-lg menu-page__subtitle">
-                            {t('menu.subtitle')}
-                        </p>
-                        {usingMockData && (
+                    {usingMockData && (
+                        <header className="menu-page__header">
                             <p className="text-center text-body-sm menu-page__demo-notice">
                                 (Demo-läge: Använder testdata)
                             </p>
-                        )}
-                    </header>
+                        </header>
+                    )}
 
                     <div className="menu-grid">
                         {products.map((product) => (
@@ -384,7 +393,9 @@ export const Menu: React.FC = () => {
                                         }}
                                         disabled={!product.inStock}
                                     >
-                                        {product.inStock ? 'Välj alternativ' : t('menu.out_of_stock')}
+                                        {product.inStock
+                                            ? (getFixedWeight(product) ? 'Visa produkt' : 'Välj alternativ')
+                                            : t('menu.out_of_stock')}
                                     </Button>
                                 </div>
                             </div>
@@ -423,22 +434,38 @@ export const Menu: React.FC = () => {
                                 />
                             </div>
                             <div className="menu-modal__options-box">
-                                <label className="menu-modal__options-label">
-                                    {(/kunafa|ostkaka/i.test(selectedProduct.name) ? 'Välj antal' : 'Välj vikt')}
-                                </label>
-                                <select
-                                    className="menu-modal__select"
-                                    value={selectedOption}
-                                    onChange={(e) => setSelectedOption(e.target.value)}
-                                >
-                                    <option value="" disabled>Välj...</option>
-                                    {(/kunafa|ostkaka/i.test(selectedProduct.name)
-                                        ? ['2 personer', '4 personer']
-                                        : ['250 gram', '500 gram', '1 kg']
-                                    ).map((opt) => (
-                                        <option key={opt} value={opt}>{opt}</option>
-                                    ))}
-                                </select>
+                                {(() => {
+                                    const fixedWeight = getFixedWeight(selectedProduct);
+                                    if (fixedWeight) {
+                                        return (
+                                            <>
+                                                <label className="menu-modal__options-label">Vikt</label>
+                                                <div className="menu-modal__fixed-weight">{fixedWeight}</div>
+                                            </>
+                                        );
+                                    }
+                                    const isCountBased = /kunafa|ostkaka/i.test(selectedProduct.name);
+                                    return (
+                                        <>
+                                            <label className="menu-modal__options-label">
+                                                {isCountBased ? 'Välj antal' : 'Välj vikt'}
+                                            </label>
+                                            <select
+                                                className="menu-modal__select"
+                                                value={selectedOption}
+                                                onChange={(e) => setSelectedOption(e.target.value)}
+                                            >
+                                                <option value="" disabled>Välj...</option>
+                                                {(isCountBased
+                                                    ? ['2 personer', '4 personer']
+                                                    : ['250 gram', '500 gram', '1 kg']
+                                                ).map((opt) => (
+                                                    <option key={opt} value={opt}>{opt}</option>
+                                                ))}
+                                            </select>
+                                        </>
+                                    );
+                                })()}
                             </div>
                         </div>
                         <div className="menu-modal__body">

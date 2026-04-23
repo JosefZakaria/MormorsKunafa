@@ -150,6 +150,21 @@
     position: relative;
 }
 
+.header__menu-btn--cart {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+}
+
+.header__cart-icon {
+    width: 1.5rem;
+    height: 1.5rem;
+    color: currentColor;
+    display: block;
+}
+
 .header__cart-badge {
     position: absolute;
     top: -8px;
