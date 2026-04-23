@@ -115,13 +115,15 @@ export async function printKitchenTicket(order: Order): Promise<{ success: boole
   let xml = '';
 
   // Header
-  xml += `<text align="center" dw="true" dh="true" em="true">Mormors Kunafa&#10;</text>`;
   xml += `<text align="center" dw="true" dh="true" em="true">KOKSLAPP&#10;</text>`;
   xml += `<text align="center" dw="false" dh="false" em="false">${escapeXml(new Date().toLocaleString('sv-SE'))}&#10;</text>`;
   xml += `<feed unit="24"/>`;
 
   // Order info
   xml += `<text align="left" em="true">Order: #${escapeXml(order.orderNumber || order.id)}&#10;</text>`;
+  if (order.customerInfo?.name) {
+    xml += `<text align="left" em="true">Kund: ${escapeXml(order.customerInfo.name)}&#10;</text>`;
+  }
   xml += `<text align="left" em="false">Typ: ${escapeXml(ORDER_TYPE_LABELS[order.orderType] || order.orderType)}&#10;</text>`;
 
   if (order.estimatedReadyTime) {

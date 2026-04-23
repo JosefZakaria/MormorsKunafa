@@ -5,7 +5,7 @@ import { Button } from '../../components/common/Button/Button';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useCart } from '../../contexts/CartContext';
 import { orderApi } from '../../services/api';
-import type { OrderType, PaymentMethod } from '@shared/types';
+import type { CustomerInfo, OrderType, PaymentMethod } from '@shared/types';
 import './Cart.css';
 
 export const Cart: React.FC = () => {
@@ -23,6 +23,12 @@ export const Cart: React.FC = () => {
         return stored || '';
     });
     const [orderTypeError, setOrderTypeError] = useState<string | null>(null);
+    const [customerName, setCustomerName] = useState('');
+    const [customerPhone, setCustomerPhone] = useState('');
+    const [customerEmail, setCustomerEmail] = useState('');
+    const [customerInfoError, setCustomerInfoError] = useState<string | null>(null);
+
+    const needsInlineCustomerInfo = orderType === 'eat-here' || orderType === 'takeaway';
 
     // Get delivery info from localStorage if available
     const getDeliveryInfo = () => {
@@ -53,9 +59,22 @@ export const Cart: React.FC = () => {
             return;
         }
 
+        let customerInfo: CustomerInfo | undefined;
+        if (needsInlineCustomerInfo) {
+            const name = customerName.trim();
+            const phone = customerPhone.trim();
+            if (!name || !phone) {
+                setCustomerInfoError(t('cart.customer_info_required'));
+                return;
+            }
+            const email = customerEmail.trim();
+            customerInfo = { name, phone, ...(email ? { email } : {}) };
+        }
+
         setIsSubmitting(true);
         setError(null);
         setOrderTypeError(null);
+        setCustomerInfoError(null);
 
         try {
             // Convert cart items to order items format
@@ -69,10 +88,25 @@ export const Cart: React.FC = () => {
             // Get delivery info if order type is delivery
             const deliveryInfo = orderType === 'delivery' ? getDeliveryInfo() : undefined;
 
+            // For delivery, derive customer info from the delivery form data
+            if (orderType === 'delivery' && deliveryInfo) {
+                const name = (deliveryInfo.name || '').trim();
+                const phone = (deliveryInfo.phone || '').trim();
+                const email = (deliveryInfo.email || '').trim();
+                if (name || phone || email) {
+                    customerInfo = {
+                        name,
+                        phone,
+                        ...(email ? { email } : {}),
+                    };
+                }
+            }
+
             // Create order
             const order = await orderApi.create({
                 items: orderItems,
                 orderType: orderType as OrderType,
+                customerInfo,
                 deliveryInfo: deliveryInfo,
                 paymentMethod: 'app' as PaymentMethod, // Default to app payment
             });
@@ -176,6 +210,56 @@ export const Cart: React.FC = () => {
                                     <p className="order-type-error">{orderTypeError}</p>
                                 )}
                             </div>
+
+                            {needsInlineCustomerInfo && (
+                                <div className="customer-info">
+                                    <h3 className="customer-info__title">{t('cart.customer_info_title')}</h3>
+                                    <div className="customer-info__field">
+                                        <label htmlFor="customer-name" className="customer-info__label">
+                                            {t('cart.customer_name')}
+                                        </label>
+                                        <input
+                                            id="customer-name"
+                                            type="text"
+                                            className="customer-info__input"
+                                            placeholder={t('cart.customer_name_placeholder')}
+                                            value={customerName}
+                                            onChange={(e) => setCustomerName(e.target.value)}
+                                            required
+                                        />
+                                    </div>
+                                    <div className="customer-info__field">
+                                        <label htmlFor="customer-phone" className="customer-info__label">
+                                            {t('cart.customer_phone')}
+                                        </label>
+                                        <input
+                                            id="customer-phone"
+                                            type="tel"
+                                            className="customer-info__input"
+                                            placeholder={t('cart.customer_phone_placeholder')}
+                                            value={customerPhone}
+                                            onChange={(e) => setCustomerPhone(e.target.value)}
+                                            required
+                                        />
+                                    </div>
+                                    <div className="customer-info__field">
+                                        <label htmlFor="customer-email" className="customer-info__label">
+                                            {t('cart.customer_email')}
+                                        </label>
+                                        <input
+                                            id="customer-email"
+                                            type="email"
+                                            className="customer-info__input"
+                                            placeholder={t('cart.customer_email_placeholder')}
+                                            value={customerEmail}
+                                            onChange={(e) => setCustomerEmail(e.target.value)}
+                                        />
+                                    </div>
+                                    {customerInfoError && (
+                                        <p className="order-type-error">{customerInfoError}</p>
+                                    )}
+                                </div>
+                            )}
 
                             <div className="cart-summary__row">
                                 <span className="text-body-lg">{t('cart.total')}</span>

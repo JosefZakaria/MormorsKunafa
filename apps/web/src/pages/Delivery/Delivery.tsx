@@ -140,6 +140,7 @@ export const Delivery: React.FC = () => {
                                     placeholder={t('delivery.email_placeholder')}
                                     value={email}
                                     onChange={(e) => setEmail(e.target.value)}
+                                    required
                                 />
                             </div>
                         </div>

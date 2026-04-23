@@ -12,6 +12,13 @@ function orderRowToOrder(r: Row, items: Row[]): Record<string, unknown> {
   const deliveryInfo = r.delivery_info_json != null
     ? (typeof r.delivery_info_json === 'string' ? JSON.parse(r.delivery_info_json as string) : r.delivery_info_json)
     : undefined;
+  const customerInfo = (r.customer_name || r.customer_phone || r.customer_email)
+    ? {
+        name: (r.customer_name as string) ?? '',
+        phone: (r.customer_phone as string) ?? '',
+        ...(r.customer_email ? { email: r.customer_email as string } : {}),
+      }
+    : undefined;
   return {
     id: r.id,
     orderNumber: r.order_number,
@@ -23,6 +30,7 @@ function orderRowToOrder(r: Row, items: Row[]): Record<string, unknown> {
     defaultPreparationTime: r.default_preparation_time_minutes,
     estimatedReadyTime: (r.estimated_ready_at as Date)?.toISOString?.() ?? r.estimated_ready_at,
     scheduledTime: (r.scheduled_at as Date)?.toISOString?.() ?? r.scheduled_at,
+    customerInfo,
     deliveryInfo,
     createdAt: (r.created_at as Date)?.toISOString?.() ?? r.created_at,
     updatedAt: (r.updated_at as Date)?.toISOString?.() ?? r.updated_at,
@@ -58,6 +66,7 @@ router.post('/', async (req: Request, res: Response) => {
     const body = req.body as {
       items: Array<{ productId: string; productName: string; quantity: number; price: number; modifications?: string[] }>;
       orderType: string;
+      customerInfo?: { name?: string; phone?: string; email?: string };
       deliveryInfo?: Record<string, string>;
       scheduledTime?: string;
       paymentMethod: string;
@@ -90,6 +99,10 @@ router.post('/', async (req: Request, res: Response) => {
     const baseTime = scheduledAt && scheduledAt.getTime() > Date.now() ? scheduledAt : new Date();
     const estimatedReady = new Date(baseTime.getTime() + defaultPrep * 60 * 1000);
 
+    const customerName = body.customerInfo?.name ?? body.deliveryInfo?.name ?? null;
+    const customerEmail = body.customerInfo?.email ?? body.deliveryInfo?.email ?? null;
+    const customerPhone = body.customerInfo?.phone ?? body.deliveryInfo?.phone ?? null;
+
     const orderId = generateId();
     await db.query(
       `INSERT INTO orders (id, order_number, status, order_type, payment_method, payment_status, total_ore, default_preparation_time_minutes, estimated_ready_at, scheduled_at, customer_name, customer_email, customer_phone, delivery_info_json)
@@ -102,9 +115,9 @@ router.post('/', async (req: Request, res: Response) => {
         defaultPrep,
         estimatedReady,
         scheduledAt,
-        body.deliveryInfo?.name ?? null,
-        body.deliveryInfo?.email ?? null,
-        body.deliveryInfo?.phone ?? null,
+        customerName,
+        customerEmail,
+        customerPhone,
         body.deliveryInfo ? JSON.stringify(body.deliveryInfo) : null,
       ]
     );
