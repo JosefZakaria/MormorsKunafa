@@ -146,6 +146,51 @@
     margin-bottom: var(--spacing-sm);
 }
 
+/* Inline customer info fields (eat-here / takeaway) */
+.customer-info {
+    margin-bottom: var(--spacing-md);
+    padding-top: var(--spacing-sm);
+    border-top: 1px solid var(--color-gray-100);
+}
+
+.customer-info__title {
+    font-family: var(--font-family-display);
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--color-gray-800);
+    margin: 0 0 var(--spacing-sm) 0;
+}
+
+.customer-info__field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+    margin-bottom: var(--spacing-sm);
+}
+
+.customer-info__label {
+    font-weight: 600;
+    font-size: 0.875rem;
+    color: var(--color-gray-800);
+    font-family: var(--font-family-display);
+}
+
+.customer-info__input {
+    padding: 0.6rem 0.75rem;
+    border: 1px solid var(--color-gray-200);
+    border-radius: var(--radius-md);
+    font-family: var(--font-family-display);
+    font-size: 0.95rem;
+    background-color: var(--color-white);
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.customer-info__input:focus {
+    outline: none;
+    border-color: var(--color-primary-red);
+    box-shadow: 0 0 0 3px rgba(62, 30, 34, 0.1);
+}
+
 /* --- Paused Popup Overlay --- */
 .cart-popup-overlay {
     position: fixed;

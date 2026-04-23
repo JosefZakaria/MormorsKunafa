@@ -47,11 +47,6 @@ export class PrinterService {
       this.printer.alignCenter();
       this.printer.setTextSize(1, 1);
       this.printer.bold(true);
-      this.printer.println("Mormors Kunafa");
-
-      this.printer.setTextNormal();
-      this.printer.setTextSize(1, 1);
-      this.printer.bold(true);
       this.printer.println("KOKSLAPP");
       this.printer.bold(false);
       this.printer.setTextNormal();
@@ -62,6 +57,9 @@ export class PrinterService {
       this.printer.alignLeft();
       this.printer.bold(true);
       this.printer.println(`Order: #${order.orderNumber || order.id || 'N/A'}`);
+      if (order.customerInfo?.name) {
+        this.printer.println(`Kund: ${order.customerInfo.name}`);
+      }
       this.printer.bold(false);
 
       const orderTypeLabels: Record<string, string> = {
