@@ -5,7 +5,6 @@ import type {
   CreateOrderRequest,
   UpdateOrderStatusRequest,
   UpdateOrderTimeRequest,
-  UpdateOrderRefundRequest,
   UpdateOrderNotesRequest,
   AdminSettings,
 } from '@shared/types';
@@ -94,18 +93,37 @@ export const orderApi = {
     return authenticatedRequest<Order[]>(`/orders/admin/history${qs ? `?${qs}` : ''}`, { token });
   },
 
-  deleteOrder: async (id: string): Promise<void> => {
+  cancelOrder: async (id: string, cancellationReason: string, password: string): Promise<Order> => {
     const token = getToken();
     if (!token) throw new Error('Not authenticated');
 
-    return authenticatedRequest<void>(`/orders/admin/${id}`, { method: 'DELETE', token });
+    return authenticatedRequest<Order>(`/orders/admin/${id}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({ password, cancellationReason }),
+      token,
+    });
   },
 
-  deleteAllHistory: async (): Promise<void> => {
+  deleteOrder: async (id: string, password: string): Promise<void> => {
     const token = getToken();
     if (!token) throw new Error('Not authenticated');
 
-    return authenticatedRequest<void>('/orders/admin/history/all', { method: 'DELETE', token });
+    return authenticatedRequest<void>(`/orders/admin/${id}/delete`, {
+      method: 'POST',
+      body: JSON.stringify({ password }),
+      token,
+    });
+  },
+
+  deleteAllHistory: async (password: string): Promise<void> => {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    return authenticatedRequest<void>('/orders/admin/history/all/delete', {
+      method: 'POST',
+      body: JSON.stringify({ password }),
+      token,
+    });
   },
 
   updateStatus: async (id: string, data: UpdateOrderStatusRequest): Promise<Order> => {
@@ -124,17 +142,6 @@ export const orderApi = {
     if (!token) throw new Error('Not authenticated');
     
     return authenticatedRequest<Order>(`/orders/admin/${id}/time`, {
-      method: 'PATCH',
-      body: JSON.stringify(data),
-      token,
-    });
-  },
-
-  updateRefundStatus: async (id: string, data: UpdateOrderRefundRequest): Promise<Order> => {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
-
-    return authenticatedRequest<Order>(`/orders/admin/${id}/refund`, {
       method: 'PATCH',
       body: JSON.stringify(data),
       token,

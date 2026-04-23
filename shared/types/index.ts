@@ -130,10 +130,6 @@ export interface UpdateOrderTimeRequest {
   preparationTime?: number; // Override default time
 }
 
-export interface UpdateOrderRefundRequest {
-  refundStatus: RefundStatus;
-}
-
 export interface UpdateOrderNotesRequest {
   internalNotes?: string;
 }

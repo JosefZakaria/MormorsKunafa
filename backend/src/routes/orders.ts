@@ -6,7 +6,21 @@ import { PrinterService } from '../services/PrinterService.js';
 const router = Router();
 
 const ACTIVE_STATUSES = ['mottagen', 'påbörjad'] as const;
-const REFUND_STATUSES = ['none', 'pending', 'refunded', 'failed'] as const;
+
+// Returns "YYYY-MM-DD" for the given date in the Europe/Stockholm timezone.
+// Used because the Namecheap DB server is not in Swedish time and lacks
+// timezone tables, so we can't rely on MySQL CURDATE()/DATE() for
+// same-day-vs-future comparisons.
+function toStockholmDateString(value: Date | string | null | undefined): string | null {
+  if (value == null) return null;
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString('sv-SE', { timeZone: 'Europe/Stockholm' });
+}
+
+function todayInStockholm(): string {
+  return new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Stockholm' });
+}
 
 function orderRowToOrder(r: Row, items: Row[]): Record<string, unknown> {
   const deliveryInfo = r.delivery_info_json != null
@@ -157,15 +171,21 @@ router.post('/', async (req: Request, res: Response) => {
 
 // Admin routes must be before /:id so /admin/active is not matched as id=admin
 
-// Admin: pending orders (status 'ny', waiting for acceptance)
+// Admin: pending orders (status 'ny', waiting for acceptance).
+// Excludes pre-orders scheduled for a future date (in Europe/Stockholm time).
 router.get('/admin/pending', requireAdmin, async (_req: Request, res: Response) => {
   try {
     const [rows] = (await db.query(
       "SELECT * FROM orders WHERE status = 'ny' ORDER BY created_at ASC"
     )) as [Row[], unknown];
     const list = Array.isArray(rows) ? rows : [];
+    const today = todayInStockholm();
+    const sameDay = list.filter((r) => {
+      const schedDate = toStockholmDateString(r.scheduled_at as Date | string | null);
+      return schedDate == null || schedDate <= today;
+    });
     const out = [];
-    for (const o of list) {
+    for (const o of sameDay) {
       const [items] = (await db.query('SELECT * FROM order_items WHERE order_id = ?', [o.id])) as [Row[], unknown];
       out.push(orderRowToOrder(o, Array.isArray(items) ? items : []));
     }
@@ -231,16 +251,21 @@ router.get('/admin/active', requireAdmin, async (_req: Request, res: Response) =
   }
 });
 
-// Admin: pre-orders (scheduled in the future)
+// Admin: pre-orders (scheduled for a future date in Europe/Stockholm time).
+// Includes both unaccepted ('ny') and accepted ('mottagen', 'påbörjad') pre-orders.
 router.get('/admin/pre-orders', requireAdmin, async (_req: Request, res: Response) => {
   try {
     const [rows] = (await db.query(
-      'SELECT * FROM orders WHERE scheduled_at IS NOT NULL AND scheduled_at > NOW() AND status IN (?, ?) ORDER BY scheduled_at ASC',
-      ['mottagen', 'påbörjad']
+      "SELECT * FROM orders WHERE scheduled_at IS NOT NULL AND status IN ('ny', 'mottagen', 'påbörjad') ORDER BY scheduled_at ASC"
     )) as [Row[], unknown];
     const list = Array.isArray(rows) ? rows : [];
+    const today = todayInStockholm();
+    const futureOnly = list.filter((r) => {
+      const schedDate = toStockholmDateString(r.scheduled_at as Date | string | null);
+      return schedDate != null && schedDate > today;
+    });
     const out = [];
-    for (const o of list) {
+    for (const o of futureOnly) {
       const [items] = (await db.query('SELECT * FROM order_items WHERE order_id = ?', [o.id])) as [Row[], unknown];
       out.push(orderRowToOrder(o, Array.isArray(items) ? items : []));
     }
@@ -286,9 +311,16 @@ router.get('/admin/history', requireAdmin, async (req: Request, res: Response) =
   }
 });
 
-// Admin: delete all history (completed/cancelled orders only) — must be before :id route
-router.delete('/admin/history/all', requireAdmin, async (_req: Request, res: Response) => {
+// Admin: delete all history (completed/cancelled orders only) — must be before :id route.
+// Uses POST so a password can be supplied in the body.
+router.post('/admin/history/all/delete', requireAdmin, async (req: Request, res: Response) => {
   try {
+    const { password } = req.body as { password?: string };
+    const deletePassword = process.env.DELETE_PASSWORD;
+    if (!deletePassword || !password || password !== deletePassword) {
+      res.status(401).json({ error: 'Felaktigt lösenord' });
+      return;
+    }
     await db.query("DELETE FROM orders WHERE status IN ('klar', 'avbruten', 'uthämtad', 'levererad')");
     res.status(204).end();
   } catch (e) {
@@ -297,14 +329,56 @@ router.delete('/admin/history/all', requireAdmin, async (_req: Request, res: Res
   }
 });
 
-// Admin: delete single order
-router.delete('/admin/:id', requireAdmin, async (req: Request, res: Response) => {
+// Admin: delete single order. Uses POST so a password can be supplied in the body.
+router.post('/admin/:id/delete', requireAdmin, async (req: Request, res: Response) => {
   try {
+    const { password } = req.body as { password?: string };
+    const deletePassword = process.env.DELETE_PASSWORD;
+    if (!deletePassword || !password || password !== deletePassword) {
+      res.status(401).json({ error: 'Felaktigt lösenord' });
+      return;
+    }
     await db.query('DELETE FROM orders WHERE id = ?', [req.params.id]);
     res.status(204).end();
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Failed to delete order' });
+  }
+});
+
+// Admin: cancel order (password protected).
+router.post('/admin/:id/cancel', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { password, cancellationReason } = req.body as { password?: string; cancellationReason?: string };
+    const deletePassword = process.env.DELETE_PASSWORD;
+    if (!deletePassword || !password || password !== deletePassword) {
+      res.status(401).json({ error: 'Felaktigt lösenord' });
+      return;
+    }
+    if (!cancellationReason || !cancellationReason.trim()) {
+      res.status(400).json({ error: 'cancellationReason is required' });
+      return;
+    }
+
+    await db.query(
+      `UPDATE orders
+       SET status = 'avbruten',
+           cancelled_at = COALESCE(cancelled_at, NOW()),
+           cancellation_reason = ?,
+           updated_at = NOW()
+       WHERE id = ?`,
+      [cancellationReason.trim(), req.params.id]
+    );
+
+    const result = await getOrderById(req.params.id);
+    if (!result) {
+      res.status(404).json({ error: 'Order not found' });
+      return;
+    }
+    res.json(orderRowToOrder(result.order, result.items));
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to cancel order' });
   }
 });
 
@@ -386,32 +460,6 @@ router.patch('/admin/:id/time', requireAdmin, async (req: Request, res: Response
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Failed to update time' });
-  }
-});
-
-// Admin: update refund status
-router.patch('/admin/:id/refund', requireAdmin, async (req: Request, res: Response) => {
-  try {
-    const { refundStatus } = req.body as { refundStatus?: string };
-    if (!refundStatus || !REFUND_STATUSES.includes(refundStatus as (typeof REFUND_STATUSES)[number])) {
-      res.status(400).json({ error: `refundStatus must be one of: ${REFUND_STATUSES.join(', ')}` });
-      return;
-    }
-
-    await db.query(
-      'UPDATE orders SET refund_status = ?, updated_at = NOW() WHERE id = ?',
-      [refundStatus, req.params.id]
-    );
-
-    const result = await getOrderById(req.params.id);
-    if (!result) {
-      res.status(404).json({ error: 'Order not found' });
-      return;
-    }
-    res.json(orderRowToOrder(result.order, result.items));
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: 'Failed to update refund status' });
   }
 });
 
