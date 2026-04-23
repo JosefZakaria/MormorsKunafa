@@ -8,14 +8,6 @@ import { printKitchenTicket, printReceipt, testConnection, isPrinterConfigured, 
 import type { Order, Product, AdminSettings } from '@shared/types';
 import '../Admin.css';
 
-const REFUND_STATUS_LABELS: Record<Order['refundStatus'], string> = {
-    none: 'Ingen',
-    pending: 'Väntar',
-    refunded: 'Återbetald',
-    failed: 'Misslyckad',
-};
-const REFUND_STATUS_OPTIONS: Order['refundStatus'][] = ['none', 'pending', 'refunded', 'failed'];
-
 // --- Helper: countdown string from ISO time ---
 function getCountdown(isoTime: string | undefined): string {
     if (!isoTime) return '--:--';
@@ -123,6 +115,89 @@ function PrinterSettings() {
     );
 }
 
+function formatScheduledDate(iso: string | undefined): string {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    const datePart = d.toLocaleDateString('sv-SE', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        timeZone: 'Europe/Stockholm',
+    });
+    const capitalized = datePart.charAt(0).toUpperCase() + datePart.slice(1);
+    return capitalized;
+}
+
+function daysUntil(iso: string | undefined): number | null {
+    if (!iso) return null;
+    const todayStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Stockholm' });
+    const targetStr = new Date(iso).toLocaleDateString('sv-SE', { timeZone: 'Europe/Stockholm' });
+    if (!todayStr || !targetStr) return null;
+    const [ty, tm, td] = todayStr.split('-').map(Number);
+    const [y, m, d] = targetStr.split('-').map(Number);
+    const todayUtc = Date.UTC(ty, tm - 1, td);
+    const targetUtc = Date.UTC(y, m - 1, d);
+    return Math.round((targetUtc - todayUtc) / (1000 * 60 * 60 * 24));
+}
+
+function PreOrderCard({ order, onEditNotes, onDelete }: {
+    order: Order;
+    onEditNotes: (order: Order) => void;
+    onDelete: (order: Order) => void;
+}) {
+    const dateLabel = formatScheduledDate(order.scheduledTime);
+    const diffDays = daysUntil(order.scheduledTime);
+    const relativeLabel =
+        diffDays === 1 ? 'Imorgon' :
+            diffDays != null && diffDays > 1 ? `Om ${diffDays} dagar` :
+                diffDays === 0 ? 'Idag' : '';
+
+    return (
+        <div className="admin-order-card preorder-card">
+            <div className="order-details">
+                <h3>
+                    {order.orderNumber}
+                    &nbsp;·&nbsp;
+                    <OrderTypeLabel type={order.orderType} />
+                </h3>
+                <div className="preorder-date-banner">
+                    <span className="preorder-date-relative">{relativeLabel}</span>
+                    <span className="preorder-date-absolute">{dateLabel}</span>
+                </div>
+                <ul style={{ margin: '0.5rem 0', paddingLeft: '1.2rem' }}>
+                    {order.items.map((item, i) => (
+                        <li key={i}>{item.quantity}x {item.productName} – {(item.price * item.quantity / 100).toFixed(0)} kr</li>
+                    ))}
+                </ul>
+                <p className="order-total">{(order.totalPrice / 100).toFixed(0)} kr</p>
+                {order.customerInfo?.name && (
+                    <p style={{ fontSize: '0.85rem', color: '#444', margin: '0.25rem 0 0' }}>
+                        Kund: {order.customerInfo.name}
+                        {order.customerInfo.phone ? ` · ${order.customerInfo.phone}` : ''}
+                    </p>
+                )}
+                {order.internalNotes && (
+                    <div className="preorder-notes">
+                        <span className="preorder-notes-label">Notis:</span> {order.internalNotes}
+                    </div>
+                )}
+                <p style={{ fontSize: '0.8rem', color: '#888', marginTop: '0.25rem' }}>
+                    Beställd {new Date(order.createdAt).toLocaleString('sv-SE', { timeZone: 'Europe/Stockholm' })}
+                </p>
+            </div>
+            <div className="order-actions" style={{ flexDirection: 'column', gap: '0.5rem' }}>
+                <Button size="sm" variant="ghost" onClick={() => onEditNotes(order)}>
+                    {order.internalNotes ? 'Ändra notis' : 'Lägg till notis'}
+                </Button>
+                <Button size="sm" variant="ghost" style={{ color: '#DC2626' }} onClick={() => onDelete(order)}>
+                    Ta bort
+                </Button>
+            </div>
+        </div>
+    );
+}
+
 function PendingOrderCard({ order, defaultPrepTime, onAccept }: {
     order: Order;
     defaultPrepTime: number;
@@ -172,6 +247,9 @@ function CancelOrderModal({
     open,
     reason,
     onReasonChange,
+    password,
+    onPasswordChange,
+    errorMsg,
     onClose,
     onConfirm,
     loading,
@@ -179,6 +257,9 @@ function CancelOrderModal({
     open: boolean;
     reason: string;
     onReasonChange: (value: string) => void;
+    password: string;
+    onPasswordChange: (value: string) => void;
+    errorMsg: string | null;
     onClose: () => void;
     onConfirm: () => void;
     loading: boolean;
@@ -197,6 +278,15 @@ function CancelOrderModal({
                     placeholder="Skriv anledning..."
                     autoFocus
                 />
+                <input
+                    className="stats-modal-input"
+                    type="password"
+                    placeholder="Lösenord"
+                    value={password}
+                    onChange={(e) => onPasswordChange(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && reason.trim() && password.trim() && !loading) onConfirm(); }}
+                />
+                {errorMsg && <p className="stats-modal-error">{errorMsg}</p>}
                 <div className="stats-modal-actions">
                     <Button variant="ghost" onClick={onClose} style={{ flex: 1 }}>
                         Avbryt
@@ -205,55 +295,9 @@ function CancelOrderModal({
                         variant="primary"
                         onClick={onConfirm}
                         style={{ flex: 1 }}
-                        disabled={loading || !reason.trim()}
+                        disabled={loading || !reason.trim() || !password.trim()}
                     >
                         {loading ? 'Sparar...' : 'Spara och avbryt'}
-                    </Button>
-                </div>
-            </div>
-        </div>
-    );
-}
-
-function RefundStatusModal({
-    open,
-    value,
-    onChange,
-    onClose,
-    onConfirm,
-    loading,
-}: {
-    open: boolean;
-    value: Order['refundStatus'];
-    onChange: (value: Order['refundStatus']) => void;
-    onClose: () => void;
-    onConfirm: () => void;
-    loading: boolean;
-}) {
-    if (!open) return null;
-    return (
-        <div className="stats-modal-overlay" onClick={onClose}>
-            <div className="stats-modal" onClick={(e) => e.stopPropagation()}>
-                <h2>Uppdatera refund-status</h2>
-                <p>Välj aktuell status för återbetalningen.</p>
-                <select
-                    className="stats-modal-input"
-                    value={value}
-                    onChange={(e) => onChange(e.target.value as Order['refundStatus'])}
-                    autoFocus
-                >
-                    {REFUND_STATUS_OPTIONS.map((status) => (
-                        <option key={status} value={status}>
-                            {REFUND_STATUS_LABELS[status]}
-                        </option>
-                    ))}
-                </select>
-                <div className="stats-modal-actions">
-                    <Button variant="ghost" onClick={onClose} style={{ flex: 1 }}>
-                        Avbryt
-                    </Button>
-                    <Button variant="primary" onClick={onConfirm} style={{ flex: 1 }} disabled={loading}>
-                        {loading ? 'Sparar...' : 'Spara'}
                     </Button>
                 </div>
             </div>
@@ -307,12 +351,18 @@ function InternalNotesModal({
 function ConfirmDeleteOrderModal({
     open,
     orderNumber,
+    password,
+    onPasswordChange,
+    errorMsg,
     onClose,
     onConfirm,
     loading,
 }: {
     open: boolean;
     orderNumber?: string;
+    password: string;
+    onPasswordChange: (value: string) => void;
+    errorMsg: string | null;
     onClose: () => void;
     onConfirm: () => void;
     loading: boolean;
@@ -326,12 +376,70 @@ function ConfirmDeleteOrderModal({
                     Är du säker på att du vill ta bort {orderNumber ? `order ${orderNumber}` : 'den här ordern'}?
                     Detta går inte att ångra.
                 </p>
+                <input
+                    className="stats-modal-input"
+                    type="password"
+                    placeholder="Lösenord"
+                    value={password}
+                    onChange={(e) => onPasswordChange(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && password.trim() && !loading) onConfirm(); }}
+                    autoFocus
+                />
+                {errorMsg && <p className="stats-modal-error">{errorMsg}</p>}
                 <div className="stats-modal-actions">
                     <Button variant="ghost" onClick={onClose} style={{ flex: 1 }}>
                         Avbryt
                     </Button>
-                    <Button variant="primary" onClick={onConfirm} style={{ flex: 1 }} disabled={loading}>
+                    <Button variant="primary" onClick={onConfirm} style={{ flex: 1 }} disabled={loading || !password.trim()}>
                         {loading ? 'Tar bort...' : 'Ta bort'}
+                    </Button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function ConfirmDeleteAllHistoryModal({
+    open,
+    password,
+    onPasswordChange,
+    errorMsg,
+    onClose,
+    onConfirm,
+    loading,
+}: {
+    open: boolean;
+    password: string;
+    onPasswordChange: (value: string) => void;
+    errorMsg: string | null;
+    onClose: () => void;
+    onConfirm: () => void;
+    loading: boolean;
+}) {
+    if (!open) return null;
+    return (
+        <div className="stats-modal-overlay" onClick={onClose}>
+            <div className="stats-modal" onClick={(e) => e.stopPropagation()}>
+                <h2>Radera all historik</h2>
+                <p>
+                    Är du säker på att du vill radera hela orderhistoriken? Detta går inte att ångra.
+                </p>
+                <input
+                    className="stats-modal-input"
+                    type="password"
+                    placeholder="Lösenord"
+                    value={password}
+                    onChange={(e) => onPasswordChange(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && password.trim() && !loading) onConfirm(); }}
+                    autoFocus
+                />
+                {errorMsg && <p className="stats-modal-error">{errorMsg}</p>}
+                <div className="stats-modal-actions">
+                    <Button variant="ghost" onClick={onClose} style={{ flex: 1 }}>
+                        Avbryt
+                    </Button>
+                    <Button variant="primary" onClick={onConfirm} style={{ flex: 1 }} disabled={loading || !password.trim()}>
+                        {loading ? 'Raderar...' : 'Radera allt'}
                     </Button>
                 </div>
             </div>
@@ -342,10 +450,11 @@ function ConfirmDeleteOrderModal({
 export const AdminDashboard: React.FC = () => {
     const { logout, admin } = useAuth();
     const navigate = useNavigate();
-    const [activeTab, setActiveTab] = useState<'pending' | 'active' | 'history' | 'stock' | 'rush' | 'stats'>('pending');
+    const [activeTab, setActiveTab] = useState<'pending' | 'preorders' | 'active' | 'history' | 'stock' | 'rush' | 'stats'>('pending');
 
     // Data state
     const [pendingOrders, setPendingOrders] = useState<Order[]>([]);
+    const [preOrders, setPreOrders] = useState<Order[]>([]);
     const [activeOrders, setActiveOrders] = useState<Order[]>([]);
     const [historyOrders, setHistoryOrders] = useState<Order[]>([]);
     const [products, setProducts] = useState<Product[]>([]);
@@ -372,10 +481,8 @@ export const AdminDashboard: React.FC = () => {
     const [cancelOrderId, setCancelOrderId] = useState<string | null>(null);
     const [cancelReason, setCancelReason] = useState('');
     const [cancelSubmitting, setCancelSubmitting] = useState(false);
-    const [refundModalOpen, setRefundModalOpen] = useState(false);
-    const [refundOrderId, setRefundOrderId] = useState<string | null>(null);
-    const [refundStatusValue, setRefundStatusValue] = useState<Order['refundStatus']>('none');
-    const [refundSubmitting, setRefundSubmitting] = useState(false);
+    const [cancelPassword, setCancelPassword] = useState('');
+    const [cancelError, setCancelError] = useState<string | null>(null);
     const [notesModalOpen, setNotesModalOpen] = useState(false);
     const [notesOrderId, setNotesOrderId] = useState<string | null>(null);
     const [notesValue, setNotesValue] = useState('');
@@ -384,19 +491,27 @@ export const AdminDashboard: React.FC = () => {
     const [deleteOrderId, setDeleteOrderId] = useState<string | null>(null);
     const [deleteOrderNumber, setDeleteOrderNumber] = useState<string>('');
     const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+    const [deletePassword, setDeletePassword] = useState('');
+    const [deleteError, setDeleteError] = useState<string | null>(null);
+    const [deleteAllModalOpen, setDeleteAllModalOpen] = useState(false);
+    const [deleteAllSubmitting, setDeleteAllSubmitting] = useState(false);
+    const [deleteAllPassword, setDeleteAllPassword] = useState('');
+    const [deleteAllError, setDeleteAllError] = useState<string | null>(null);
 
     const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const statsAuthPasswordRef = useRef('');
 
-    // --- Fetch pending + active orders ---
+    // --- Fetch pending + active + pre-orders ---
     const fetchOrders = useCallback(async () => {
         try {
-            const [pending, active] = await Promise.all([
+            const [pending, active, preOrdersList] = await Promise.all([
                 orderApi.getPending(),
                 orderApi.getActive(),
+                orderApi.getPreOrders(),
             ]);
             setPendingOrders(pending);
             setActiveOrders(active);
+            setPreOrders(preOrdersList);
             setError(null);
         } catch (e: any) {
             setError('Kunde inte hämta ordrar.');
@@ -468,6 +583,8 @@ export const AdminDashboard: React.FC = () => {
     const openCancelModal = (orderId: string) => {
         setCancelOrderId(orderId);
         setCancelReason('');
+        setCancelPassword('');
+        setCancelError(null);
         setCancelModalOpen(true);
     };
 
@@ -476,45 +593,23 @@ export const AdminDashboard: React.FC = () => {
         setCancelOrderId(null);
         setCancelReason('');
         setCancelSubmitting(false);
+        setCancelPassword('');
+        setCancelError(null);
     };
 
     const handleCancelOrder = async () => {
-        if (!cancelOrderId || !cancelReason.trim()) return;
+        if (!cancelOrderId || !cancelReason.trim() || !cancelPassword.trim()) return;
         setCancelSubmitting(true);
+        setCancelError(null);
         try {
-            const updated = await orderApi.updateStatus(cancelOrderId, { status: 'avbruten', cancellationReason: cancelReason.trim() });
+            const updated = await orderApi.cancelOrder(cancelOrderId, cancelReason.trim(), cancelPassword.trim());
             setActiveOrders(prev => prev.filter(o => o.id !== cancelOrderId));
             setHistoryOrders(prev => [updated, ...prev.filter(o => o.id !== cancelOrderId)]);
             closeCancelModal();
-        } catch {
-            setError('Kunde inte avbryta ordern.');
+        } catch (e: any) {
+            const msg = e?.status === 401 ? 'Felaktigt lösenord.' : 'Kunde inte avbryta ordern.';
+            setCancelError(msg);
             setCancelSubmitting(false);
-        }
-    };
-
-    const openRefundModal = (order: Order) => {
-        setRefundOrderId(order.id);
-        setRefundStatusValue(order.refundStatus || 'none');
-        setRefundModalOpen(true);
-    };
-
-    const closeRefundModal = () => {
-        setRefundModalOpen(false);
-        setRefundOrderId(null);
-        setRefundStatusValue('none');
-        setRefundSubmitting(false);
-    };
-
-    const handleUpdateRefundStatus = async () => {
-        if (!refundOrderId) return;
-        setRefundSubmitting(true);
-        try {
-            const updated = await orderApi.updateRefundStatus(refundOrderId, { refundStatus: refundStatusValue });
-            setHistoryOrders(prev => prev.map(o => (o.id === refundOrderId ? updated : o)));
-            closeRefundModal();
-        } catch {
-            setError('Kunde inte uppdatera refund-status.');
-            setRefundSubmitting(false);
         }
     };
 
@@ -537,6 +632,7 @@ export const AdminDashboard: React.FC = () => {
         try {
             const updated = await orderApi.updateInternalNotes(notesOrderId, { internalNotes: notesValue });
             setHistoryOrders(prev => prev.map(o => (o.id === notesOrderId ? updated : o)));
+            setPreOrders(prev => prev.map(o => (o.id === notesOrderId ? updated : o)));
             closeNotesModal();
         } catch {
             setError('Kunde inte spara intern anteckning.');
@@ -555,28 +651,51 @@ export const AdminDashboard: React.FC = () => {
         setDeleteOrderId(null);
         setDeleteOrderNumber('');
         setDeleteSubmitting(false);
+        setDeletePassword('');
+        setDeleteError(null);
     };
 
     const handleDeleteOrder = async () => {
-        if (!deleteOrderId) return;
+        if (!deleteOrderId || !deletePassword.trim()) return;
         setDeleteSubmitting(true);
+        setDeleteError(null);
         try {
-            await orderApi.deleteOrder(deleteOrderId);
+            await orderApi.deleteOrder(deleteOrderId, deletePassword.trim());
             setHistoryOrders(prev => prev.filter(o => o.id !== deleteOrderId));
+            setPreOrders(prev => prev.filter(o => o.id !== deleteOrderId));
             closeDeleteModal();
-        } catch {
-            setError('Kunde inte ta bort ordern.');
+        } catch (e: any) {
+            const msg = e?.status === 401 ? 'Felaktigt lösenord.' : 'Kunde inte ta bort ordern.';
+            setDeleteError(msg);
             setDeleteSubmitting(false);
         }
     };
 
+    const openDeleteAllModal = () => {
+        setDeleteAllPassword('');
+        setDeleteAllError(null);
+        setDeleteAllModalOpen(true);
+    };
+
+    const closeDeleteAllModal = () => {
+        setDeleteAllModalOpen(false);
+        setDeleteAllSubmitting(false);
+        setDeleteAllPassword('');
+        setDeleteAllError(null);
+    };
+
     const handleDeleteAllHistory = async () => {
-        if (!confirm('Är du säker på att du vill radera hela orderhistoriken?')) return;
+        if (!deleteAllPassword.trim()) return;
+        setDeleteAllSubmitting(true);
+        setDeleteAllError(null);
         try {
-            await orderApi.deleteAllHistory();
+            await orderApi.deleteAllHistory(deleteAllPassword.trim());
             setHistoryOrders([]);
-        } catch {
-            setError('Kunde inte radera historiken.');
+            closeDeleteAllModal();
+        } catch (e: any) {
+            const msg = e?.status === 401 ? 'Felaktigt lösenord.' : 'Kunde inte radera historiken.';
+            setDeleteAllError(msg);
+            setDeleteAllSubmitting(false);
         }
     };
 
@@ -703,6 +822,9 @@ export const AdminDashboard: React.FC = () => {
                 )}
 
                 <div className="admin-tabs">
+                    <button className={`admin-tab ${activeTab === 'preorders' ? 'active' : ''}`} onClick={() => { setActiveTab('preorders'); setStatsData(null); }}>
+                        Förbeställningar {preOrders.length > 0 && <span className="tab-badge">{preOrders.length}</span>}
+                    </button>
                     <button className={`admin-tab ${activeTab === 'pending' ? 'active' : ''}`} onClick={() => { setActiveTab('pending'); setStatsData(null); }}>
                         Inkommande {pendingOrders.length > 0 && <span className="tab-badge">{pendingOrders.length}</span>}
                     </button>
@@ -753,17 +875,12 @@ export const AdminDashboard: React.FC = () => {
                     open={cancelModalOpen}
                     reason={cancelReason}
                     onReasonChange={setCancelReason}
+                    password={cancelPassword}
+                    onPasswordChange={setCancelPassword}
+                    errorMsg={cancelError}
                     onClose={closeCancelModal}
                     onConfirm={handleCancelOrder}
                     loading={cancelSubmitting}
-                />
-                <RefundStatusModal
-                    open={refundModalOpen}
-                    value={refundStatusValue}
-                    onChange={setRefundStatusValue}
-                    onClose={closeRefundModal}
-                    onConfirm={handleUpdateRefundStatus}
-                    loading={refundSubmitting}
                 />
                 <InternalNotesModal
                     open={notesModalOpen}
@@ -776,9 +893,21 @@ export const AdminDashboard: React.FC = () => {
                 <ConfirmDeleteOrderModal
                     open={deleteModalOpen}
                     orderNumber={deleteOrderNumber}
+                    password={deletePassword}
+                    onPasswordChange={setDeletePassword}
+                    errorMsg={deleteError}
                     onClose={closeDeleteModal}
                     onConfirm={handleDeleteOrder}
                     loading={deleteSubmitting}
+                />
+                <ConfirmDeleteAllHistoryModal
+                    open={deleteAllModalOpen}
+                    password={deleteAllPassword}
+                    onPasswordChange={setDeleteAllPassword}
+                    errorMsg={deleteAllError}
+                    onClose={closeDeleteAllModal}
+                    onConfirm={handleDeleteAllHistory}
+                    loading={deleteAllSubmitting}
                 />
 
                 <div className="admin-content animate-in">
@@ -798,6 +927,54 @@ export const AdminDashboard: React.FC = () => {
                                         onAccept={handleAcceptOrder}
                                     />
                                 ))
+                            )}
+                        </div>
+                    )}
+
+                    {/* ── FÖRBESTÄLLNINGAR ── */}
+                    {activeTab === 'preorders' && (
+                        <div className="orders-list">
+                            {loadingOrders ? (
+                                <p>Laddar förbeställningar...</p>
+                            ) : preOrders.length === 0 ? (
+                                <p>Inga förbeställningar just nu.</p>
+                            ) : (
+                                (() => {
+                                    const groups = new Map<string, Order[]>();
+                                    for (const order of preOrders) {
+                                        const key = order.scheduledTime
+                                            ? new Date(order.scheduledTime).toLocaleDateString('sv-SE', { timeZone: 'Europe/Stockholm' })
+                                            : 'okänt';
+                                        if (!groups.has(key)) groups.set(key, []);
+                                        groups.get(key)!.push(order);
+                                    }
+                                    const sortedKeys = Array.from(groups.keys()).sort();
+                                    return sortedKeys.map(key => {
+                                        const ordersForDate = groups.get(key)!;
+                                        const first = ordersForDate[0];
+                                        const heading = formatScheduledDate(first.scheduledTime);
+                                        const diff = daysUntil(first.scheduledTime);
+                                        const relative =
+                                            diff === 1 ? 'Imorgon' :
+                                                diff != null && diff > 1 ? `Om ${diff} dagar` : '';
+                                        return (
+                                            <div key={key} className="preorder-group">
+                                                <h2 className="preorder-group-heading">
+                                                    {heading}
+                                                    {relative && <span className="preorder-group-relative"> · {relative}</span>}
+                                                </h2>
+                                                {ordersForDate.map(o => (
+                                                    <PreOrderCard
+                                                        key={o.id}
+                                                        order={o}
+                                                        onEditNotes={openNotesModal}
+                                                        onDelete={openDeleteModal}
+                                                    />
+                                                ))}
+                                            </div>
+                                        );
+                                    });
+                                })()
                             )}
                         </div>
                     )}
@@ -882,7 +1059,7 @@ export const AdminDashboard: React.FC = () => {
                                 {historyOrders.length > 0 && (
                                     <button
                                         className="history-delete-all"
-                                        onClick={handleDeleteAllHistory}
+                                        onClick={openDeleteAllModal}
                                     >
                                         Radera all historik
                                     </button>
@@ -921,9 +1098,6 @@ export const AdminDashboard: React.FC = () => {
                                                     )}
                                                 </>
                                             )}
-                                            <p style={{ fontSize: '0.85rem', color: '#444', marginTop: '0.35rem' }}>
-                                                Refund: {REFUND_STATUS_LABELS[order.refundStatus || 'none']}
-                                            </p>
                                             {order.internalNotes && (
                                                 <p style={{ fontSize: '0.85rem', color: '#444', marginTop: '0.25rem' }}>
                                                     Intern notis: {order.internalNotes}
@@ -931,9 +1105,6 @@ export const AdminDashboard: React.FC = () => {
                                             )}
                                         </div>
                                         <div className="order-actions" style={{ flexDirection: 'column', gap: '0.5rem' }}>
-                                            <Button size="sm" variant="ghost" onClick={() => openRefundModal(order)}>
-                                                Refund-status
-                                            </Button>
                                             <Button size="sm" variant="ghost" onClick={() => openNotesModal(order)}>
                                                 Intern notis
                                             </Button>

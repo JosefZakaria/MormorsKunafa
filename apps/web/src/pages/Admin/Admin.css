@@ -648,6 +648,69 @@ select.stats-modal-input {
     gap: 0.25rem;
 }
 
+/* Pre-order cards */
+.preorder-group {
+    margin-bottom: var(--spacing-xl);
+}
+
+.preorder-group-heading {
+    font-family: var(--font-family-display);
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--color-gray-900, #111);
+    margin: 0 0 var(--spacing-md) 0;
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid var(--color-gray-200, #e5e7eb);
+}
+
+.preorder-group-relative {
+    font-weight: 500;
+    font-size: 1rem;
+    color: var(--color-primary-red);
+}
+
+.preorder-card {
+    border-left: 4px solid #2563EB;
+}
+
+.preorder-date-banner {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    background: #EFF6FF;
+    border: 1px solid #DBEAFE;
+    border-radius: var(--radius-md);
+    padding: 0.5rem 0.75rem;
+    margin: 0.35rem 0 0.5rem 0;
+}
+
+.preorder-date-relative {
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: #1D4ED8;
+}
+
+.preorder-date-absolute {
+    font-size: 0.85rem;
+    color: var(--color-gray-500, #6b7280);
+}
+
+.preorder-notes {
+    background: #FEF3C7;
+    border: 1px solid #FDE68A;
+    border-radius: var(--radius-md);
+    padding: 0.5rem 0.75rem;
+    margin-top: 0.5rem;
+    font-size: 0.9rem;
+    color: #78350F;
+}
+
+.preorder-notes-label {
+    font-weight: 700;
+    color: #92400E;
+    margin-right: 0.35rem;
+}
+
 /* History date filter */
 .history-date-filter {
     display: flex;
