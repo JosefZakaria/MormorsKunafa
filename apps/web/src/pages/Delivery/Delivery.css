@@ -2,30 +2,15 @@
     padding: var(--spacing-2xl) 0;
     min-height: 60vh;
     background-color: var(--color-white);
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .delivery-page__container {
     width: 100%;
-    max-width: 1280px;
-    margin: 0 auto;
-}
-
-.delivery-columns {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: var(--spacing-3xl);
-    align-items: start;
-}
-
-.delivery-column {
-    min-width: 0;
-}
-
-/* Left column: form card – wider, squarer via grid rows */
-.delivery-column--form {
     display: flex;
-    justify-content: stretch;
-    align-items: stretch;
+    justify-content: center;
 }
 
 .delivery-card {
@@ -34,7 +19,8 @@
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-md);
     width: 100%;
-    max-width: 100%;
+    max-width: 600px;
+    margin: 0 auto;
 }
 
 .delivery-title {
@@ -49,12 +35,35 @@
 .delivery-subtitle {
     text-align: center;
     color: var(--color-gray-500);
-    margin: 0 0 var(--spacing-xl) 0;
+    margin: 0 0 var(--spacing-lg) 0;
     font-size: 1rem;
     font-family: var(--font-family-display);
 }
 
-/* Form: internal grid for squarer layout */
+.delivery-time {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-sm) var(--spacing-md);
+    margin: 0 0 var(--spacing-xl) 0;
+    background-color: #faf5f5;
+    border: 1px solid var(--color-gray-100);
+    border-radius: var(--radius-md);
+    font-family: var(--font-family-display);
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--color-gray-800);
+    text-align: center;
+}
+
+.delivery-time__icon {
+    flex-shrink: 0;
+    width: 1.125rem;
+    height: 1.125rem;
+    color: var(--color-primary-red);
+}
+
 .delivery-form {
     display: flex;
     flex-direction: column;
@@ -112,141 +121,12 @@
     margin-top: var(--spacing-sm);
 }
 
-/* Right column: delivery info – left-aligned, professional */
-.delivery-column--info {
-    display: flex;
-    justify-content: stretch;
-    align-items: stretch;
-}
-
-.delivery-info {
-    text-align: left;
-    padding: var(--spacing-xl) 0;
-    width: 100%;
-}
-
-.delivery-info__title {
-    font-family: var(--font-family-display);
-    font-size: 1.25rem;
-    font-weight: 700;
-    color: var(--color-black);
-    margin: 0 0 var(--spacing-lg) 0;
-    line-height: 1.4;
-}
-
-.delivery-info__list {
-    list-style: none;
-    padding: 0;
-    margin: 0 0 var(--spacing-xl) 0;
-}
-
-.delivery-info__item {
-    display: flex;
-    align-items: flex-start;
-    gap: var(--spacing-sm);
-    padding: var(--spacing-sm) 0;
-    border-bottom: 1px solid var(--color-gray-100);
-    font-family: var(--font-family-display);
-}
-
-.delivery-info__item:last-child {
-    border-bottom: none;
-}
-
-.delivery-info__icon {
-    flex-shrink: 0;
-    width: 1.25rem;
-    height: 1.25rem;
-    color: var(--color-primary-red);
-    margin-top: 0.125rem;
-}
-
-.delivery-info__item-content {
-    display: flex;
-    flex-direction: column;
-    gap: 0.125rem;
-}
-
-.delivery-info__item-main {
-    font-size: 0.9375rem;
-    font-weight: 700;
-    color: var(--color-black);
-}
-
-.delivery-info__item-sub {
-    font-size: 0.8125rem;
-    color: var(--color-gray-500);
-    line-height: 1.4;
-}
-
-[dir="rtl"] .delivery-info {
-    text-align: right;
-}
-
-[dir="rtl"] .delivery-info__item-content {
-    align-items: flex-end;
-}
-
-/* Note: alert-style box with icon */
-.delivery-info__note-box {
-    display: flex;
-    align-items: flex-start;
-    gap: var(--spacing-sm);
-    padding: var(--spacing-md);
-    background-color: #fefce8;
-    border: 1px solid #fef08a;
-    border-radius: var(--radius-md);
-}
-
-.delivery-info__note-icon {
-    flex-shrink: 0;
-    width: 1.25rem;
-    height: 1.25rem;
-    color: #ca8a04;
-    margin-top: 0.125rem;
-}
-
-.delivery-info__note {
-    font-family: var(--font-family-display);
-    font-size: 0.875rem;
-    color: var(--color-gray-800);
-    margin: 0;
-    line-height: 1.5;
-}
-
-/* Mobile: stack half-rows to single column on very small screens */
 @media (max-width: 480px) {
     .delivery-form__row--half {
         grid-template-columns: 1fr;
     }
-}
-
-/* Desktop: two columns, wider form, generous gap */
-@media (min-width: 900px) {
-    .delivery-columns {
-        grid-template-columns: 1fr 1fr;
-        gap: 4rem;
-        align-items: start;
-    }
 
     .delivery-card {
-        padding: var(--spacing-2xl) var(--spacing-2xl);
-        max-width: 560px;
-    }
-
-    .delivery-info {
-        padding: var(--spacing-md) 0 var(--spacing-md) var(--spacing-lg);
-        max-width: 420px;
-    }
-}
-
-@media (min-width: 1100px) {
-    .delivery-columns {
-        grid-template-columns: 1.15fr 1fr;
-        gap: 5rem;
-    }
-
-    .delivery-card {
-        max-width: 600px;
+        padding: var(--spacing-xl) var(--spacing-lg);
     }
 }
