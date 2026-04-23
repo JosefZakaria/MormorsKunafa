@@ -22,6 +22,100 @@ function todayInStockholm(): string {
   return new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Stockholm' });
 }
 
+// Statuses where stock has been "reserved" but not consumed yet. Canceling or
+// deleting an order in one of these statuses should release the stock back to
+// the counter.
+const STOCK_RESERVED_STATUSES = new Set(['ny', 'mottagen', 'påbörjad']);
+
+// Aggregate order items by productId (ignoring items without a productId).
+function aggregateStockDemand(
+  items: Array<{ productId?: string | null; productName?: string; quantity?: number }>
+): Map<string, { name: string; qty: number }> {
+  const map = new Map<string, { name: string; qty: number }>();
+  for (const it of items) {
+    const pid = it.productId;
+    if (!pid) continue;
+    const qty = Math.max(0, Math.floor(Number(it.quantity ?? 1)));
+    if (qty <= 0) continue;
+    const prev = map.get(pid);
+    if (prev) prev.qty += qty;
+    else map.set(pid, { name: it.productName ?? '', qty });
+  }
+  return map;
+}
+
+// Atomically reserves the required quantity for each tracked product.
+// Products with stock_quantity = NULL are untracked and always succeed.
+// Returns { ok: true } on success, or { ok: false, productName, available }
+// on insufficient stock (in which case any partial reservations are rolled
+// back before returning).
+async function reserveStock(
+  demand: Map<string, { name: string; qty: number }>
+): Promise<{ ok: true } | { ok: false; productName: string; available: number }> {
+  const reserved: Array<{ productId: string; qty: number }> = [];
+  for (const [productId, info] of demand) {
+    const [updateRes] = (await db.query(
+      `UPDATE products
+       SET stock_quantity = stock_quantity - ?, updated_at = NOW()
+       WHERE id = ? AND stock_quantity IS NOT NULL AND stock_quantity >= ?`,
+      [info.qty, productId, info.qty]
+    )) as [{ affectedRows: number }, unknown];
+
+    if (updateRes.affectedRows > 0) {
+      reserved.push({ productId, qty: info.qty });
+      continue;
+    }
+
+    // No rows affected: either product is untracked (stock_quantity NULL) or
+    // there's not enough left. Check which case we're in.
+    const [checkRows] = (await db.query(
+      'SELECT name, stock_quantity FROM products WHERE id = ?',
+      [productId]
+    )) as [Row[], unknown];
+    const check = Array.isArray(checkRows) && checkRows[0] ? (checkRows[0] as Row) : null;
+    const currentQty = check?.stock_quantity;
+    const currentName = (check?.name as string) ?? info.name;
+
+    if (check == null) {
+      // Product doesn't exist anymore; skip stock tracking for it.
+      continue;
+    }
+    if (currentQty == null) {
+      // Untracked product — no reservation needed.
+      continue;
+    }
+
+    // Tracked but insufficient. Roll back everything we already reserved.
+    for (const r of reserved) {
+      await db.query(
+        'UPDATE products SET stock_quantity = stock_quantity + ?, updated_at = NOW() WHERE id = ? AND stock_quantity IS NOT NULL',
+        [r.qty, r.productId]
+      );
+    }
+    return { ok: false, productName: currentName, available: Number(currentQty) };
+  }
+  return { ok: true };
+}
+
+// Releases stock back to the counter for each order item (ignores untracked
+// products automatically). Used when an order is cancelled or deleted while
+// still in a "reserved" status.
+async function releaseStockForItems(items: Row[]): Promise<void> {
+  const demand = aggregateStockDemand(
+    items.map((i) => ({
+      productId: (i.product_id as string | null) ?? null,
+      productName: (i.product_name_snapshot as string) ?? '',
+      quantity: Number(i.quantity ?? 0),
+    }))
+  );
+  for (const [productId, info] of demand) {
+    await db.query(
+      'UPDATE products SET stock_quantity = stock_quantity + ?, updated_at = NOW() WHERE id = ? AND stock_quantity IS NOT NULL',
+      [info.qty, productId]
+    );
+  }
+}
+
 function orderRowToOrder(r: Row, items: Row[]): Record<string, unknown> {
   const deliveryInfo = r.delivery_info_json != null
     ? (typeof r.delivery_info_json === 'string' ? JSON.parse(r.delivery_info_json as string) : r.delivery_info_json)
@@ -117,52 +211,78 @@ router.post('/', async (req: Request, res: Response) => {
     const customerEmail = body.customerInfo?.email ?? body.deliveryInfo?.email ?? null;
     const customerPhone = body.customerInfo?.phone ?? body.deliveryInfo?.phone ?? null;
 
-    const orderId = generateId();
-    await db.query(
-      `INSERT INTO orders (id, order_number, status, order_type, payment_method, payment_status, total_ore, default_preparation_time_minutes, estimated_ready_at, scheduled_at, customer_name, customer_email, customer_phone, delivery_info_json)
-       VALUES (?, ?, 'ny', ?, ?, 'pending', 0, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        orderId,
-        orderNumber,
-        body.orderType ?? 'takeaway',
-        body.paymentMethod ?? 'cash',
-        defaultPrep,
-        estimatedReady,
-        scheduledAt,
-        customerName,
-        customerEmail,
-        customerPhone,
-        body.deliveryInfo ? JSON.stringify(body.deliveryInfo) : null,
-      ]
-    );
-
-    let totalOre = 0;
-    for (const it of body.items) {
-      const itemId = generateId();
-      const lineTotal = (it.price ?? 0) * (it.quantity ?? 1);
-      totalOre += lineTotal;
-      await db.query(
-        `INSERT INTO order_items (id, order_id, product_id, product_name_snapshot, quantity, price_ore, modifications_json)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [
-          itemId,
-          orderId,
-          it.productId || null,
-          it.productName ?? '',
-          it.quantity ?? 1,
-          it.price ?? 0,
-          it.modifications?.length ? JSON.stringify(it.modifications) : null,
-        ]
-      );
-    }
-    await db.query('UPDATE orders SET total_ore = ? WHERE id = ?', [totalOre, orderId]);
-
-    const result = await getOrderById(orderId);
-    if (!result) {
-      res.status(500).json({ error: 'Order created but fetch failed' });
+    // Reserve stock before inserting anything. If insufficient, fail fast
+    // with a friendly 409 so the client can refresh its product list.
+    const demand = aggregateStockDemand(body.items);
+    const reservation = await reserveStock(demand);
+    if (!reservation.ok) {
+      res.status(409).json({
+        error: `'${reservation.productName}' är slut i lager.`,
+        productName: reservation.productName,
+        available: reservation.available,
+        outOfStock: true,
+      });
       return;
     }
-    res.status(201).json(orderRowToOrder(result.order, result.items));
+
+    const orderId = generateId();
+    try {
+      await db.query(
+        `INSERT INTO orders (id, order_number, status, order_type, payment_method, payment_status, total_ore, default_preparation_time_minutes, estimated_ready_at, scheduled_at, customer_name, customer_email, customer_phone, delivery_info_json)
+         VALUES (?, ?, 'ny', ?, ?, 'pending', 0, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          orderId,
+          orderNumber,
+          body.orderType ?? 'takeaway',
+          body.paymentMethod ?? 'cash',
+          defaultPrep,
+          estimatedReady,
+          scheduledAt,
+          customerName,
+          customerEmail,
+          customerPhone,
+          body.deliveryInfo ? JSON.stringify(body.deliveryInfo) : null,
+        ]
+      );
+
+      let totalOre = 0;
+      for (const it of body.items) {
+        const itemId = generateId();
+        const lineTotal = (it.price ?? 0) * (it.quantity ?? 1);
+        totalOre += lineTotal;
+        await db.query(
+          `INSERT INTO order_items (id, order_id, product_id, product_name_snapshot, quantity, price_ore, modifications_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [
+            itemId,
+            orderId,
+            it.productId || null,
+            it.productName ?? '',
+            it.quantity ?? 1,
+            it.price ?? 0,
+            it.modifications?.length ? JSON.stringify(it.modifications) : null,
+          ]
+        );
+      }
+      await db.query('UPDATE orders SET total_ore = ? WHERE id = ?', [totalOre, orderId]);
+
+      const result = await getOrderById(orderId);
+      if (!result) {
+        res.status(500).json({ error: 'Order created but fetch failed' });
+        return;
+      }
+      res.status(201).json(orderRowToOrder(result.order, result.items));
+    } catch (innerErr) {
+      // Something failed after we reserved stock — release it so the
+      // counters stay correct.
+      for (const [productId, info] of demand) {
+        await db.query(
+          'UPDATE products SET stock_quantity = stock_quantity + ?, updated_at = NOW() WHERE id = ? AND stock_quantity IS NOT NULL',
+          [info.qty, productId]
+        ).catch(() => undefined);
+      }
+      throw innerErr;
+    }
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Failed to create order' });
@@ -338,6 +458,15 @@ router.post('/admin/:id/delete', requireAdmin, async (req: Request, res: Respons
       res.status(401).json({ error: 'Felaktigt lösenord' });
       return;
     }
+
+    // If we're deleting an order that still has stock reserved (i.e. not yet
+    // served, cancelled, or refunded), release that stock back to the counter
+    // before the rows are gone.
+    const existing = await getOrderById(req.params.id);
+    if (existing && STOCK_RESERVED_STATUSES.has(String(existing.order.status))) {
+      await releaseStockForItems(existing.items);
+    }
+
     await db.query('DELETE FROM orders WHERE id = ?', [req.params.id]);
     res.status(204).end();
   } catch (e) {
@@ -358,6 +487,13 @@ router.post('/admin/:id/cancel', requireAdmin, async (req: Request, res: Respons
     if (!cancellationReason || !cancellationReason.trim()) {
       res.status(400).json({ error: 'cancellationReason is required' });
       return;
+    }
+
+    // Release any reserved stock back to the counter, but only if this is
+    // the first time the order is transitioning out of a reserved status.
+    const existing = await getOrderById(req.params.id);
+    if (existing && STOCK_RESERVED_STATUSES.has(String(existing.order.status))) {
+      await releaseStockForItems(existing.items);
     }
 
     await db.query(
@@ -398,6 +534,16 @@ router.patch('/admin/:id/status', requireAdmin, async (req: Request, res: Respon
       res.status(400).json({ error: 'cancellationReason is required when status is avbruten' });
       return;
     }
+
+    // If we're cancelling and the order currently has reserved stock, release
+    // it before updating so the counters reflect the cancellation.
+    if (status === 'avbruten') {
+      const existing = await getOrderById(req.params.id);
+      if (existing && STOCK_RESERVED_STATUSES.has(String(existing.order.status))) {
+        await releaseStockForItems(existing.items);
+      }
+    }
+
     const updates: string[] = ['status = ?', 'updated_at = NOW()'];
     const params: unknown[] = [status];
     if (estimatedReadyTime) {

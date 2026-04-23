@@ -447,6 +447,78 @@ function ConfirmDeleteAllHistoryModal({
     );
 }
 
+// One row in the Lager tab. Keeps its own input draft state so the admin can
+// type freely without triggering a save on every keystroke; the draft is
+// committed on blur or when Enter is pressed.
+function StockRow({
+    product,
+    onToggle,
+    onUpdateQuantity,
+}: {
+    product: Product;
+    onToggle: (product: Product) => void;
+    onUpdateQuantity: (product: Product, value: string) => void | Promise<void>;
+}) {
+    const stored = product.stockQuantity == null ? '' : String(product.stockQuantity);
+    const [draft, setDraft] = useState(stored);
+
+    useEffect(() => {
+        setDraft(stored);
+    }, [stored]);
+
+    const isTracked = product.stockQuantity != null;
+    const outOfStock = !product.inStock;
+    const outReason =
+        !product.inStock && isTracked && product.stockQuantity === 0
+            ? 'Slut'
+            : !product.inStock
+                ? 'Avstängd'
+                : null;
+
+    return (
+        <div className={`admin-stock-card ${outOfStock ? 'stock-card-out' : ''}`}>
+            <span className="stock-name">{product.name}</span>
+
+            <div className="stock-qty-wrapper">
+                <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    inputMode="numeric"
+                    className="stock-qty-input"
+                    placeholder="—"
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    onBlur={() => {
+                        if (draft !== stored) void onUpdateQuantity(product, draft);
+                    }}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                            (e.target as HTMLInputElement).blur();
+                        } else if (e.key === 'Escape') {
+                            setDraft(stored);
+                            (e.target as HTMLInputElement).blur();
+                        }
+                    }}
+                />
+                <span className="stock-qty-unit">st</span>
+            </div>
+
+            <label className="switch">
+                <input
+                    type="checkbox"
+                    checked={product.inStock}
+                    onChange={() => onToggle(product)}
+                />
+                <span className="slider round"></span>
+            </label>
+            <span className={`stock-status ${product.inStock ? 'text-success' : 'text-error'}`}>
+                {product.inStock ? 'I lager' : outReason ?? 'Slut'}
+            </span>
+        </div>
+    );
+}
+
 export const AdminDashboard: React.FC = () => {
     const { logout, admin } = useAuth();
     const navigate = useNavigate();
@@ -532,6 +604,15 @@ export const AdminDashboard: React.FC = () => {
         productApi.getAll().then(setProducts).finally(() => setLoadingProducts(false));
         adminApi.getSettings().then(setSettings);
     }, []);
+
+    // Refresh products while viewing the Lager tab so the stock counters
+    // reflect new orders placed by customers in (near) real time.
+    useEffect(() => {
+        if (activeTab !== 'stock') return;
+        const refresh = () => productApi.getAll().then(setProducts).catch(() => undefined);
+        const id = setInterval(refresh, 5000);
+        return () => clearInterval(id);
+    }, [activeTab]);
 
     // --- Fetch history when tab opens + poll while on tab ---
     useEffect(() => {
@@ -718,6 +799,29 @@ export const AdminDashboard: React.FC = () => {
         const result = await printReceipt(order);
         if (!result.success) {
             setError(result.error || 'Kunde inte skriva ut kvitto. Kontrollera skrivaren.');
+        }
+    };
+
+    // --- Stock quantity update (daily counter) ---
+    const handleUpdateStockQuantity = async (product: Product, value: string) => {
+        const trimmed = value.trim();
+        let qty: number | null;
+        if (trimmed === '') {
+            qty = null;
+        } else {
+            const parsed = Math.floor(Number(trimmed));
+            if (!Number.isFinite(parsed) || parsed < 0) {
+                setError('Antal måste vara 0 eller högre.');
+                return;
+            }
+            qty = parsed;
+        }
+        if ((product.stockQuantity ?? null) === qty) return;
+        try {
+            const updated = await productApi.updateStockQuantity(product.id, qty);
+            setProducts(prev => prev.map(p => p.id === product.id ? updated : p));
+        } catch {
+            setError('Kunde inte uppdatera antal i lager.');
         }
     };
 
@@ -1127,20 +1231,12 @@ export const AdminDashboard: React.FC = () => {
                             {loadingProducts ? (
                                 <p>Laddar produkter...</p>
                             ) : products.map(product => (
-                                <div key={product.id} className="admin-stock-card">
-                                    <span className="stock-name">{product.name}</span>
-                                    <label className="switch">
-                                        <input
-                                            type="checkbox"
-                                            checked={product.inStock}
-                                            onChange={() => handleToggleStock(product)}
-                                        />
-                                        <span className="slider round"></span>
-                                    </label>
-                                    <span className={`stock-status ${product.inStock ? 'text-success' : 'text-error'}`}>
-                                        {product.inStock ? 'I lager' : 'Slut'}
-                                    </span>
-                                </div>
+                                <StockRow
+                                    key={product.id}
+                                    product={product}
+                                    onToggle={handleToggleStock}
+                                    onUpdateQuantity={handleUpdateStockQuantity}
+                                />
                             ))}
                         </div>
                     )}

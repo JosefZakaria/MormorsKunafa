@@ -34,6 +34,17 @@ export const productApi = {
       token,
     });
   },
+
+  updateStockQuantity: async (id: string, stockQuantity: number | null): Promise<Product> => {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    return authenticatedRequest<Product>(`/products/${id}/stock-quantity`, {
+      method: 'PATCH',
+      body: JSON.stringify({ stockQuantity }),
+      token,
+    });
+  },
 };
 
 // Orders API
