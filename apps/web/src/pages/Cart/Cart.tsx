@@ -146,18 +146,6 @@ export const Cart: React.FC = () => {
             }
             if (errorMsg.toLowerCase().includes('pausade') || err.status === 403) {
                 setShowPausedPopup(true);
-            } else if (err.status === 409 && err.data?.outOfStock) {
-                // Item sold out between page load and checkout — remove it from
-                // the cart so the customer can continue with the rest.
-                const soldOutName: string = err.data.productName ?? '';
-                const stillAvailable: number = Number(err.data.available ?? 0);
-                const soldOutItem = items.find(i => i.productName === soldOutName);
-                if (soldOutItem) removeItem(soldOutItem.productId);
-                setError(
-                    stillAvailable > 0
-                        ? `Tyvärr finns bara ${stillAvailable} kvar av "${soldOutName}". Produkten har tagits bort från din varukorg, vänligen uppdatera beställningen.`
-                        : `Tyvärr är "${soldOutName}" slut i lager. Produkten har tagits bort från din varukorg.`
-                );
             } else {
                 setError(errorMsg);
             }

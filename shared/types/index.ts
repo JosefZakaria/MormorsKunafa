@@ -26,11 +26,6 @@ export interface Product {
   description: string;
   image: string;
   inStock: boolean;
-  // Daily stock counter. `null` means "not tracked" (always in stock unless
-  // manually toggled off). A positive number decrements each time the product
-  // is ordered; when it hits 0 the product is automatically reported as out of
-  // stock by the API.
-  stockQuantity: number | null;
   createdAt: string;
   updatedAt: string;
 }
