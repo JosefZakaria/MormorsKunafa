@@ -209,3 +209,24 @@
     font-weight: 700;
     letter-spacing: 0.1em;
 }
+
+/* Instagram Section */
+.landing__instagram {
+    padding: var(--spacing-2xl) var(--spacing-md);
+    background-color: var(--color-white);
+    color: var(--color-gray-900);
+    text-align: center;
+}
+
+.landing__instagram-title {
+    font-family: var(--font-family-display);
+    font-size: 2rem;
+    margin-bottom: var(--spacing-xl);
+    color: var(--color-gray-900);
+}
+
+.landing__instagram-feed {
+    max-width: 1200px;
+    margin: 0 auto;
+    width: 100%;
+}

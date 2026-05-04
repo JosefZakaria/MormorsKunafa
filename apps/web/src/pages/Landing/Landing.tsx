@@ -35,6 +35,9 @@ export const Landing: React.FC = () => {
     const navigate = useNavigate();
     const { t } = useLanguage();
 
+    // Byt ut denna URL mot den riktiga från LightWidget när du har den
+    const LIGHTWIDGET_URL = 'https://example.com';
+
     useEffect(() => {
         sessionStorage.removeItem('orderType');
     }, []);
@@ -87,6 +90,15 @@ export const Landing: React.FC = () => {
             <div className="landing__language">
                 <LanguageSelector />
             </div>
+
+            {/* Instagram Feed Section */}
+            <section id="instagram-section" className="landing__instagram">
+                <h2 className="landing__instagram-title">Följ oss på Instagram</h2>
+                <div className="landing__instagram-feed">
+                    {/* Klistra in iframe-taggen från LightWidget här nedan och använd variabeln LIGHTWIDGET_URL */}
+                    <iframe src={LIGHTWIDGET_URL} width="100%" height="400" style={{ border: 0, overflow: 'hidden' }} allowTransparency={true}></iframe>
+                </div>
+            </section>
         </div>
     );
 };
