@@ -16,6 +16,15 @@ Create a `.env` in `backend/` (or set in the shell). No `.env.example` is commit
 | `DB_DATABASE` | App database name | `mormors_kunafa` |
 | `JWT_SECRET` | Secret for admin JWT | _(set in production)_ |
 
+Order confirmation email (Resend):
+
+| Variable | Description |
+|----------|-------------|
+| `RESEND_API_KEY` | API key from Resend. If unset, no order email is sent. |
+| `RESEND_FROM_EMAIL` | Verified sender in Resend (`onboarding@resend.dev` is the SDK default for quick tests). |
+| `SITE_PUBLIC_URL` | Public site base URL **without trailing slash**, e.g. `https://example.se`. Logo in mail uses `{SITE_PUBLIC_URL}/images/logo.png` — the same path as `apps/web/public/images/logo.png` once deployed. Avoid `localhost` (mail clients cannot fetch it). |
+| `ORDER_EMAIL_LOGO_URL` | Optional absolute URL to the logo image only; overrides the path built from `SITE_PUBLIC_URL`. Use a direct image link if you need to test before a public domain exists. |
+
 Optional, for one-time WordPress migration only:
 
 | Variable | Description |

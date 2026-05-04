@@ -113,7 +113,8 @@ export interface CreateOrderRequest {
   orderType: OrderType;
   customerInfo?: CustomerInfo;
   deliveryInfo?: DeliveryInfo;
-  scheduledTime?: string; // For pre-orders
+  /** Naive `YYYY-MM-DDTHH:mm:ss` (Europe/Stockholm) or ISO with Z/offset */
+  scheduledTime?: string;
   paymentMethod: PaymentMethod;
 }
 
