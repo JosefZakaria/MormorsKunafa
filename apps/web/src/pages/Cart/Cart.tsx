@@ -11,7 +11,8 @@ import './Cart.css';
 export const Cart: React.FC = () => {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
-    const { t } = useLanguage();
+    const { t, language } = useLanguage();
+    const scheduleLocale = language === 'ar' ? 'ar-SA' : language === 'en' ? 'en-GB' : 'sv-SE';
     const { items, updateQuantity, removeItem, getTotal, clearCart } = useCart();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -43,6 +44,7 @@ export const Cart: React.FC = () => {
     const todayStr = formatDateInput(today);
     const maxDateStr = formatDateInput(maxDate);
     const [scheduledDate, setScheduledDate] = useState<string>(todayStr);
+    const [scheduledClock, setScheduledClock] = useState<string>('12:00');
 
     // Get delivery info from localStorage if available
     const getDeliveryInfo = () => {
@@ -116,12 +118,11 @@ export const Cart: React.FC = () => {
                 }
             }
 
-            // Build scheduledTime only if customer chose a future date
+            // Build scheduledTime only if customer chose a future date (naive datetime = Europe/Stockholm on server)
             let scheduledTime: string | undefined;
             if (scheduledDate && scheduledDate !== todayStr) {
-                // Noon local time on the chosen date — kept as a local ISO-like string
-                // (no Z suffix) so the server stores it in the restaurant's timezone.
-                scheduledTime = `${scheduledDate}T12:00:00`;
+                const hm = (scheduledClock || '12:00').slice(0, 5);
+                scheduledTime = `${scheduledDate}T${hm}:00`;
             }
 
             // Create order
@@ -326,10 +327,34 @@ export const Cart: React.FC = () => {
                                 max={maxDateStr}
                                 onChange={(e) => setScheduledDate(e.target.value || todayStr)}
                             />
+                            {scheduledDate !== todayStr && (
+                                <>
+                                    <label htmlFor="cart-schedule-time" className="cart-schedule__label cart-schedule__label--time">
+                                        {t('cart.schedule_time_label')}
+                                    </label>
+                                    <input
+                                        id="cart-schedule-time"
+                                        type="time"
+                                        className="cart-schedule__input"
+                                        value={scheduledClock}
+                                        step={60}
+                                        onChange={(e) => setScheduledClock(e.target.value || '12:00')}
+                                    />
+                                </>
+                            )}
                             <p className="cart-schedule__summary">
                                 {scheduledDate === todayStr
                                     ? t('cart.schedule_today')
-                                    : `${t('cart.schedule_future')} ${new Date(scheduledDate).toLocaleDateString('sv-SE', { weekday: 'long', day: 'numeric', month: 'long' })}`}
+                                    : (() => {
+                                        const [yy, mo, dd] = scheduledDate.split('-').map(Number);
+                                        const label = new Date(yy, mo - 1, dd).toLocaleDateString(scheduleLocale, {
+                                            weekday: 'long',
+                                            day: 'numeric',
+                                            month: 'long',
+                                        });
+                                        const hm = (scheduledClock || '12:00').slice(0, 5);
+                                        return `${t('cart.schedule_future')} ${label} ${hm}`;
+                                    })()}
                             </p>
                         </div>
                     </div>

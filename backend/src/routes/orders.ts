@@ -3,6 +3,7 @@ import { db, generateId, type Row } from '../db/connection.js';
 import { requireAdmin } from '../middleware/auth.js';
 import { PrinterService } from '../services/PrinterService.js';
 import { sendOrderConfirmationEmail } from '../services/OrderConfirmationEmail.js';
+import { parseOrderScheduledAt } from '../utils/stockholmWallTime.js';
 
 const router = Router();
 
@@ -110,7 +111,14 @@ router.post('/', async (req: Request, res: Response) => {
       ? Number(settings.default_preparation_time_minutes) || 30
       : 30;
 
-    const scheduledAt = body.scheduledTime ? new Date(body.scheduledTime) : null;
+    let scheduledAt: Date | null = null;
+    if (body.scheduledTime != null && String(body.scheduledTime).trim() !== '') {
+      scheduledAt = parseOrderScheduledAt(body.scheduledTime);
+      if (!scheduledAt || Number.isNaN(scheduledAt.getTime())) {
+        res.status(400).json({ error: 'Ogiltig förbeställningstid. Välj datum och tid igen.' });
+        return;
+      }
+    }
     const baseTime = scheduledAt && scheduledAt.getTime() > Date.now() ? scheduledAt : new Date();
     const estimatedReady = new Date(baseTime.getTime() + defaultPrep * 60 * 1000);
 

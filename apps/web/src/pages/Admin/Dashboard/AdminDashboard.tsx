@@ -131,6 +131,18 @@ function formatScheduledDate(iso: string | undefined): string {
     return capitalized;
 }
 
+function formatScheduledClock(iso: string | undefined): string {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleTimeString('sv-SE', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+        timeZone: 'Europe/Stockholm',
+    });
+}
+
 function daysUntil(iso: string | undefined): number | null {
     if (!iso) return null;
     const todayStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Stockholm' });
@@ -143,12 +155,13 @@ function daysUntil(iso: string | undefined): number | null {
     return Math.round((targetUtc - todayUtc) / (1000 * 60 * 60 * 24));
 }
 
-function PreOrderCard({ order, onEditNotes, onDelete }: {
+function PreOrderCard({ order, onEditNotes, onCancel }: {
     order: Order;
     onEditNotes: (order: Order) => void;
-    onDelete: (order: Order) => void;
+    onCancel: (order: Order) => void;
 }) {
     const dateLabel = formatScheduledDate(order.scheduledTime);
+    const clockLabel = formatScheduledClock(order.scheduledTime);
     const diffDays = daysUntil(order.scheduledTime);
     const relativeLabel =
         diffDays === 1 ? 'Imorgon' :
@@ -165,7 +178,10 @@ function PreOrderCard({ order, onEditNotes, onDelete }: {
                 </h3>
                 <div className="preorder-date-banner">
                     <span className="preorder-date-relative">{relativeLabel}</span>
-                    <span className="preorder-date-absolute">{dateLabel}</span>
+                    <span className="preorder-date-absolute">
+                        {dateLabel}
+                        {clockLabel ? ` · ${clockLabel}` : ''}
+                    </span>
                 </div>
                 <ul style={{ margin: '0.5rem 0', paddingLeft: '1.2rem' }}>
                     {order.items.map((item, i) => (
@@ -192,8 +208,8 @@ function PreOrderCard({ order, onEditNotes, onDelete }: {
                 <Button size="sm" variant="ghost" onClick={() => onEditNotes(order)}>
                     {order.internalNotes ? 'Ändra notis' : 'Lägg till notis'}
                 </Button>
-                <Button size="sm" variant="ghost" style={{ color: '#DC2626' }} onClick={() => onDelete(order)}>
-                    Ta bort
+                <Button size="sm" variant="ghost" style={{ color: '#DC2626' }} onClick={() => onCancel(order)}>
+                    Avbryt
                 </Button>
             </div>
         </div>
@@ -642,6 +658,8 @@ export const AdminDashboard: React.FC = () => {
         try {
             const updated = await orderApi.cancelOrder(cancelOrderId, cancelReason.trim(), cancelPassword.trim());
             setActiveOrders(prev => prev.filter(o => o.id !== cancelOrderId));
+            setPreOrders(prev => prev.filter(o => o.id !== cancelOrderId));
+            setPendingOrders(prev => prev.filter(o => o.id !== cancelOrderId));
             setHistoryOrders(prev => [updated, ...prev.filter(o => o.id !== cancelOrderId)]);
             closeCancelModal();
         } catch (e: any) {
@@ -1006,7 +1024,7 @@ export const AdminDashboard: React.FC = () => {
                                                         key={o.id}
                                                         order={o}
                                                         onEditNotes={openNotesModal}
-                                                        onDelete={openDeleteModal}
+                                                        onCancel={(order) => openCancelModal(order.id)}
                                                     />
                                                 ))}
                                             </div>
@@ -1050,7 +1068,7 @@ export const AdminDashboard: React.FC = () => {
                                             </div>
                                         </div>
                                         <div className="order-actions" style={{ flexDirection: 'column', gap: '0.5rem' }}>
-                                            <Button size="sm" variant="ghost" onClick={() => openCancelModal(order.id)}>
+                                            <Button size="sm" variant="ghost" style={{ color: '#DC2626' }} onClick={() => openCancelModal(order.id)}>
                                                 Avbryt
                                             </Button>
                                             <Button size="sm" variant="primary" onClick={() => handleUpdateStatus(order.id, 'klar')}>

@@ -260,6 +260,10 @@
     margin-bottom: var(--spacing-xs);
 }
 
+.cart-schedule__label--time {
+    margin-top: var(--spacing-md);
+}
+
 .cart-schedule__input {
     width: 100%;
     padding: 0.55rem 0.75rem;
