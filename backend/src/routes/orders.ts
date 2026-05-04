@@ -120,7 +120,7 @@ router.post('/', async (req: Request, res: Response) => {
     const orderId = generateId();
     await db.query(
       `INSERT INTO orders (id, order_number, status, order_type, payment_method, payment_status, total_ore, default_preparation_time_minutes, estimated_ready_at, scheduled_at, customer_name, customer_email, customer_phone, delivery_info_json)
-       VALUES (?, ?, 'ny', ?, ?, 'pending', 0, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, 'ny', ?, ?, 'pending', 0, ?, ?, ?, ?, ?, ?, ?)`,
       [
         orderId,
         orderNumber,
@@ -143,7 +143,7 @@ router.post('/', async (req: Request, res: Response) => {
       totalOre += lineTotal;
       await db.query(
         `INSERT INTO order_items (id, order_id, product_id, product_name_snapshot, quantity, price_ore, modifications_json)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
         [
           itemId,
           orderId,
@@ -338,6 +338,7 @@ router.post('/admin/:id/delete', requireAdmin, async (req: Request, res: Respons
       res.status(401).json({ error: 'Felaktigt lösenord' });
       return;
     }
+
     await db.query('DELETE FROM orders WHERE id = ?', [req.params.id]);
     res.status(204).end();
   } catch (e) {
@@ -398,6 +399,7 @@ router.patch('/admin/:id/status', requireAdmin, async (req: Request, res: Respon
       res.status(400).json({ error: 'cancellationReason is required when status is avbruten' });
       return;
     }
+
     const updates: string[] = ['status = ?', 'updated_at = NOW()'];
     const params: unknown[] = [status];
     if (estimatedReadyTime) {

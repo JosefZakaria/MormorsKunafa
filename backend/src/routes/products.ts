@@ -1,13 +1,21 @@
 import { Router, Request, Response } from 'express';
-import { db, generateId, type Row } from '../db/connection.js';
+import { db, type Row } from '../db/connection.js';
 import { requireAdmin } from '../middleware/auth.js';
 
 const router = Router();
 
-function rowToProduct(r: Row): { id: string; name: string; price: number; description: string; image: string; inStock: boolean; createdAt: string; updatedAt: string } {
+function rowToProduct(r: Row): {
+  id: string;
+  name: string;
+  price: number;
+  description: string;
+  image: string;
+  inStock: boolean;
+  createdAt: string;
+  updatedAt: string;
+} {
   const status = (r.stock_status as string) ?? 'instock';
-  const qty = r.stock_quantity as number | null;
-  const inStock = status === 'instock' && (qty === null || qty > 0);
+  const inStock = status === 'instock';
   return {
     id: String(r.id),
     name: String(r.name),
@@ -23,7 +31,7 @@ function rowToProduct(r: Row): { id: string; name: string; price: number; descri
 router.get('/', async (_req: Request, res: Response) => {
   try {
     const [rows] = (await db.query(
-      'SELECT id, name, slug, description, image_url, price_ore, stock_quantity, stock_status, created_at, updated_at FROM products ORDER BY name'
+      'SELECT id, name, slug, description, image_url, price_ore, stock_status, created_at, updated_at FROM products ORDER BY name'
     )) as [Row[], unknown];
     const list = Array.isArray(rows) ? rows : [];
     res.json(list.map(rowToProduct));
@@ -36,7 +44,7 @@ router.get('/', async (_req: Request, res: Response) => {
 router.get('/:id', async (req: Request, res: Response) => {
   try {
     const [rows] = (await db.query(
-      'SELECT id, name, slug, description, image_url, price_ore, stock_quantity, stock_status, created_at, updated_at FROM products WHERE id = ?',
+      'SELECT id, name, slug, description, image_url, price_ore, stock_status, created_at, updated_at FROM products WHERE id = ?',
       [req.params.id]
     )) as [Row[], unknown];
     const list = Array.isArray(rows) ? rows : [];
@@ -63,7 +71,7 @@ router.patch('/:id/stock', requireAdmin, async (req: Request, res: Response) => 
       [inStock ? 'instock' : 'outofstock', req.params.id]
     );
     const [rows] = (await db.query(
-      'SELECT id, name, slug, description, image_url, price_ore, stock_quantity, stock_status, created_at, updated_at FROM products WHERE id = ?',
+      'SELECT id, name, slug, description, image_url, price_ore, stock_status, created_at, updated_at FROM products WHERE id = ?',
       [req.params.id]
     )) as [Row[], unknown];
     const list = Array.isArray(rows) ? rows : [];

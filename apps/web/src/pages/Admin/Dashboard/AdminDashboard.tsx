@@ -5,6 +5,8 @@ import { Container } from '../../../components/common/Container/Container';
 import { Button } from '../../../components/common/Button/Button';
 import { orderApi, productApi, adminApi } from '../../../services/api';
 import { printKitchenTicket, printReceipt, testConnection, isPrinterConfigured, getPrinterConfig, setPrinterConfig } from '../../../services/printer';
+import { useLanguage } from '../../../contexts/LanguageContext';
+import { getDisplayName } from '../../../utils/productDisplayName';
 import type { Order, Product, AdminSettings } from '@shared/types';
 import '../Admin.css';
 
@@ -447,6 +449,35 @@ function ConfirmDeleteAllHistoryModal({
     );
 }
 
+function StockRow({
+    product,
+    onToggle,
+}: {
+    product: Product;
+    onToggle: (product: Product) => void;
+}) {
+    const { t } = useLanguage();
+    const outOfStock = !product.inStock;
+
+    return (
+        <div className={`admin-stock-card ${outOfStock ? 'stock-card-out' : ''}`}>
+            <span className="stock-name">{getDisplayName(product, t)}</span>
+
+            <label className="switch">
+                <input
+                    type="checkbox"
+                    checked={product.inStock}
+                    onChange={() => onToggle(product)}
+                />
+                <span className="slider round"></span>
+            </label>
+            <span className={`stock-status ${product.inStock ? 'text-success' : 'text-error'}`}>
+                {product.inStock ? 'I lager' : 'Avstängd'}
+            </span>
+        </div>
+    );
+}
+
 export const AdminDashboard: React.FC = () => {
     const { logout, admin } = useAuth();
     const navigate = useNavigate();
@@ -532,6 +563,13 @@ export const AdminDashboard: React.FC = () => {
         productApi.getAll().then(setProducts).finally(() => setLoadingProducts(false));
         adminApi.getSettings().then(setSettings);
     }, []);
+
+    useEffect(() => {
+        if (activeTab !== 'stock') return;
+        const refresh = () => productApi.getAll().then(setProducts).catch(() => undefined);
+        const id = setInterval(refresh, 5000);
+        return () => clearInterval(id);
+    }, [activeTab]);
 
     // --- Fetch history when tab opens + poll while on tab ---
     useEffect(() => {
@@ -1127,20 +1165,11 @@ export const AdminDashboard: React.FC = () => {
                             {loadingProducts ? (
                                 <p>Laddar produkter...</p>
                             ) : products.map(product => (
-                                <div key={product.id} className="admin-stock-card">
-                                    <span className="stock-name">{product.name}</span>
-                                    <label className="switch">
-                                        <input
-                                            type="checkbox"
-                                            checked={product.inStock}
-                                            onChange={() => handleToggleStock(product)}
-                                        />
-                                        <span className="slider round"></span>
-                                    </label>
-                                    <span className={`stock-status ${product.inStock ? 'text-success' : 'text-error'}`}>
-                                        {product.inStock ? 'I lager' : 'Slut'}
-                                    </span>
-                                </div>
+                                <StockRow
+                                    key={product.id}
+                                    product={product}
+                                    onToggle={handleToggleStock}
+                                />
                             ))}
                         </div>
                     )}
