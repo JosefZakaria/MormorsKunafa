@@ -20,7 +20,8 @@
     "express": "^4.21.0",
     "jsonwebtoken": "^9.0.2",
     "mysql2": "^3.11.0",
-    "node-thermal-printer": "^4.6.0"
+    "node-thermal-printer": "^4.6.0",
+    "resend": "^6.12.2"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { db, generateId, type Row } from '../db/connection.js';
 import { requireAdmin } from '../middleware/auth.js';
 import { PrinterService } from '../services/PrinterService.js';
+import { sendOrderConfirmationEmail } from '../services/OrderConfirmationEmail.js';
 
 const router = Router();
 
@@ -161,6 +162,12 @@ router.post('/', async (req: Request, res: Response) => {
     if (!result) {
       res.status(500).json({ error: 'Order created but fetch failed' });
       return;
+    }
+    const emailOut = String(result.order.customer_email ?? '').trim();
+    if (emailOut) {
+      void sendOrderConfirmationEmail({ order: result.order, items: result.items }).catch((err) =>
+        console.error('[order confirmation email]', err)
+      );
     }
     res.status(201).json(orderRowToOrder(result.order, result.items));
   } catch (e) {
