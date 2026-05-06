@@ -89,6 +89,12 @@
     width: 100%;
 }
 
+@media (max-width: 767px) {
+    .find-us__map-wrapper {
+        height: min(260px, 48vh);
+    }
+}
+
 .find-us__map {
     height: 100%;
     width: 100%;

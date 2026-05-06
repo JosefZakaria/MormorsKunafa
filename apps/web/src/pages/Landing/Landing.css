@@ -153,8 +153,8 @@
 
 @media (max-width: 767px) {
     .landing__language {
-        /* Mobil: knapparna är 100px höga, alltså sticker ut 50px */
-        margin-top: calc(50px + var(--spacing-md));
+        /* Mobil: half av knapphöjd (translateY 50%) så språkväljaren hamnar under */
+        margin-top: calc(43px + var(--spacing-md));
     }
 }
 
@@ -176,20 +176,26 @@
 
 @media (max-width: 767px) {
     .landing__actions {
-        padding: 0 var(--spacing-md);
+        padding: 0 var(--spacing-sm);
+        gap: 4px;
     }
 
     .landing__actions .landing__btn {
-        width: 120px;
-        min-width: 100px;
-        height: 100px;
-        min-height: 100px;
+        flex: 1 1 0;
+        min-width: 0;
+        max-width: 96px;
+        height: 86px;
+        min-height: 86px;
         border-radius: 8px;
+        padding: var(--spacing-sm);
+        font-size: 0.68rem;
+        letter-spacing: 0.03em;
+        gap: 6px;
     }
 
     .landing__btn-icon svg {
-        width: 32px;
-        height: 32px;
+        width: 26px;
+        height: 26px;
     }
 }
 
