@@ -30,7 +30,7 @@ export const Footer: React.FC = () => {
                                 src={MAP_EMBED_SRC}
                                 title={t('footer.find_us')}
                                 width="100%"
-                                height="340"
+                                height="250"
                                 allowFullScreen
                                 loading="lazy"
                                 referrerPolicy="no-referrer-when-downgrade"

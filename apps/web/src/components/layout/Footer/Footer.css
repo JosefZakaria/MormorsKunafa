@@ -65,6 +65,12 @@
     border: none;
 }
 
+@media (max-width: 767px) {
+    .footer__map {
+        height: 180px;
+    }
+}
+
 .footer__subheading {
     font-family: var(--font-family-display);
     font-size: 0.875rem;

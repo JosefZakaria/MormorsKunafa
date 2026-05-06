@@ -40,6 +40,21 @@
     margin: 0 auto;
 }
 
+/* Mobil: datum/tid före total och betalning */
+@media (max-width: 767px) {
+    .cart-items {
+        order: 0;
+    }
+
+    .cart-schedule {
+        order: 1;
+    }
+
+    .cart-summary {
+        order: 2;
+    }
+}
+
 @media (min-width: 768px) {
     .cart-content {
         grid-template-columns: 3fr 2fr;
