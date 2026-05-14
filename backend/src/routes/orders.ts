@@ -181,7 +181,7 @@ router.post('/', async (req: Request, res: Response) => {
 
     const phoneOut = String(result.order.customer_phone ?? '').trim();
     if (phoneOut) {
-      void sendSms(phoneOut, "Hej! Tack för din beställning från Mormors Kunafa. Vi behandlar den just nu!").catch((err) =>
+      void sendSms(phoneOut, "Tack för din beställning från Mormors Kunafa! Vi behandlar den just nu.").catch((err) =>
         console.error('[order confirmation sms]', err)
       );
     }
@@ -466,7 +466,7 @@ router.patch('/admin/:id/status', requireAdmin, async (req: Request, res: Respon
     if (status === 'klar') {
       const phoneOut = String(result.order.customer_phone ?? '').trim();
       if (phoneOut) {
-        void sendSms(phoneOut, "Hej! Din mat är nu redo att hämtas på Mormors Kunafa. Välkommen!").catch((err) =>
+        void sendSms(phoneOut, "Hej! Din beställning från Mormors Kunafa är nu klar och redo att hämtas. Välkommen!").catch((err) =>
           console.error('[order ready sms]', err)
         );
       }
