@@ -135,7 +135,7 @@ router.post('/statistics', requireAdmin, async (req: Request, res: Response) => 
         COALESCE(SUM(CASE WHEN o.id IS NOT NULL AND ? IS NOT NULL AND ? IS NOT NULL AND o.created_at BETWEEN ? AND ? THEN oi.price_ore * oi.quantity ELSE 0 END), 0) AS revenue_custom_ore
       FROM products p
       LEFT JOIN order_items oi ON (oi.product_id = p.id OR oi.product_name_snapshot = p.name)
-      LEFT JOIN orders o ON o.id = oi.order_id AND o.status IN ('klar', 'uthämtad', 'levererad')
+      LEFT JOIN orders o ON o.id = oi.order_id AND o.status IN ('klar', 'uthämtad', 'levererad') AND o.payment_status = 'paid'
       GROUP BY p.id, p.name
       ORDER BY p.name ASC
     `, [startStr, endStr, startStr, endStr, startStr, endStr, startStr, endStr])) as [Row[], unknown];
@@ -151,30 +151,30 @@ router.post('/statistics', requireAdmin, async (req: Request, res: Response) => 
         SUM(CASE WHEN ? IS NOT NULL AND ? IS NOT NULL AND o.created_at BETWEEN ? AND ? THEN oi.quantity ELSE 0 END) AS items_custom
       FROM orders o
       JOIN order_items oi ON oi.order_id = o.id
-      WHERE o.status IN ('klar', 'uthämtad', 'levererad')
+      WHERE o.status IN ('klar', 'uthämtad', 'levererad') AND o.payment_status = 'paid'
     `, [startStr, endStr, startStr, endStr])) as [Row[], unknown];
 
     // Totaler per period - Revenue, genomforda ordrar och avbrutna ordrar.
     const [orderTotalRows] = (await db.query(`
       SELECT
-        SUM(CASE WHEN status IN ('klar', 'uthämtad', 'levererad') THEN 1 ELSE 0 END) AS orders_total,
-        SUM(CASE WHEN status IN ('klar', 'uthämtad', 'levererad') AND DATE(created_at) = CURDATE() THEN 1 ELSE 0 END) AS orders_day,
-        SUM(CASE WHEN status IN ('klar', 'uthämtad', 'levererad') AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS orders_week,
-        SUM(CASE WHEN status IN ('klar', 'uthämtad', 'levererad') AND created_at >= DATE_SUB(NOW(), INTERVAL 1 MONTH) THEN 1 ELSE 0 END) AS orders_month,
-        SUM(CASE WHEN status IN ('klar', 'uthämtad', 'levererad') AND YEAR(created_at) = YEAR(NOW()) THEN 1 ELSE 0 END) AS orders_year,
-        SUM(CASE WHEN status IN ('klar', 'uthämtad', 'levererad') AND ? IS NOT NULL AND ? IS NOT NULL AND created_at BETWEEN ? AND ? THEN 1 ELSE 0 END) AS orders_custom,
+        SUM(CASE WHEN status IN ('klar', 'uthämtad', 'levererad') AND payment_status = 'paid' THEN 1 ELSE 0 END) AS orders_total,
+        SUM(CASE WHEN status IN ('klar', 'uthämtad', 'levererad') AND payment_status = 'paid' AND DATE(created_at) = CURDATE() THEN 1 ELSE 0 END) AS orders_day,
+        SUM(CASE WHEN status IN ('klar', 'uthämtad', 'levererad') AND payment_status = 'paid' AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS orders_week,
+        SUM(CASE WHEN status IN ('klar', 'uthämtad', 'levererad') AND payment_status = 'paid' AND created_at >= DATE_SUB(NOW(), INTERVAL 1 MONTH) THEN 1 ELSE 0 END) AS orders_month,
+        SUM(CASE WHEN status IN ('klar', 'uthämtad', 'levererad') AND payment_status = 'paid' AND YEAR(created_at) = YEAR(NOW()) THEN 1 ELSE 0 END) AS orders_year,
+        SUM(CASE WHEN status IN ('klar', 'uthämtad', 'levererad') AND payment_status = 'paid' AND ? IS NOT NULL AND ? IS NOT NULL AND created_at BETWEEN ? AND ? THEN 1 ELSE 0 END) AS orders_custom,
         SUM(CASE WHEN status = 'avbruten' THEN 1 ELSE 0 END) AS orders_cancelled_total,
         SUM(CASE WHEN status = 'avbruten' AND DATE(created_at) = CURDATE() THEN 1 ELSE 0 END) AS orders_cancelled_day,
         SUM(CASE WHEN status = 'avbruten' AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS orders_cancelled_week,
         SUM(CASE WHEN status = 'avbruten' AND created_at >= DATE_SUB(NOW(), INTERVAL 1 MONTH) THEN 1 ELSE 0 END) AS orders_cancelled_month,
         SUM(CASE WHEN status = 'avbruten' AND YEAR(created_at) = YEAR(NOW()) THEN 1 ELSE 0 END) AS orders_cancelled_year,
         SUM(CASE WHEN status = 'avbruten' AND ? IS NOT NULL AND ? IS NOT NULL AND created_at BETWEEN ? AND ? THEN 1 ELSE 0 END) AS orders_cancelled_custom,
-        SUM(CASE WHEN status IN ('klar', 'uthämtad', 'levererad') THEN total_ore ELSE 0 END) AS revenue_total_ore,
-        SUM(CASE WHEN status IN ('klar', 'uthämtad', 'levererad') AND DATE(created_at) = CURDATE() THEN total_ore ELSE 0 END) AS revenue_day_ore,
-        SUM(CASE WHEN status IN ('klar', 'uthämtad', 'levererad') AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN total_ore ELSE 0 END) AS revenue_week_ore,
-        SUM(CASE WHEN status IN ('klar', 'uthämtad', 'levererad') AND created_at >= DATE_SUB(NOW(), INTERVAL 1 MONTH) THEN total_ore ELSE 0 END) AS revenue_month_ore,
-        SUM(CASE WHEN status IN ('klar', 'uthämtad', 'levererad') AND YEAR(created_at) = YEAR(NOW()) THEN total_ore ELSE 0 END) AS revenue_year_ore,
-        SUM(CASE WHEN status IN ('klar', 'uthämtad', 'levererad') AND ? IS NOT NULL AND ? IS NOT NULL AND created_at BETWEEN ? AND ? THEN total_ore ELSE 0 END) AS revenue_custom_ore
+        SUM(CASE WHEN status IN ('klar', 'uthämtad', 'levererad') AND payment_status = 'paid' THEN total_ore ELSE 0 END) AS revenue_total_ore,
+        SUM(CASE WHEN status IN ('klar', 'uthämtad', 'levererad') AND payment_status = 'paid' AND DATE(created_at) = CURDATE() THEN total_ore ELSE 0 END) AS revenue_day_ore,
+        SUM(CASE WHEN status IN ('klar', 'uthämtad', 'levererad') AND payment_status = 'paid' AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN total_ore ELSE 0 END) AS revenue_week_ore,
+        SUM(CASE WHEN status IN ('klar', 'uthämtad', 'levererad') AND payment_status = 'paid' AND created_at >= DATE_SUB(NOW(), INTERVAL 1 MONTH) THEN total_ore ELSE 0 END) AS revenue_month_ore,
+        SUM(CASE WHEN status IN ('klar', 'uthämtad', 'levererad') AND payment_status = 'paid' AND YEAR(created_at) = YEAR(NOW()) THEN total_ore ELSE 0 END) AS revenue_year_ore,
+        SUM(CASE WHEN status IN ('klar', 'uthämtad', 'levererad') AND payment_status = 'paid' AND ? IS NOT NULL AND ? IS NOT NULL AND created_at BETWEEN ? AND ? THEN total_ore ELSE 0 END) AS revenue_custom_ore
       FROM orders
     `, [startStr, endStr, startStr, endStr, startStr, endStr, startStr, endStr, startStr, endStr, startStr, endStr])) as [Row[], unknown];
 

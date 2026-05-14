@@ -34,7 +34,7 @@ export const OrderStatus: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
 
-    // Fetch order and poll every 5s
+    // Fetch order and poll (faster while awaiting Stripe payment confirmation)
     useEffect(() => {
         if (!orderId) {
             setError('Inget order-ID hittades.');
@@ -54,10 +54,15 @@ export const OrderStatus: React.FC = () => {
             }
         };
 
-        fetchOrder();
-        const pollId = setInterval(fetchOrder, 5000);
+        void fetchOrder();
+        const awaitingPayment =
+            order?.paymentMethod === 'app' && order?.paymentStatus === 'pending';
+        const intervalMs = awaitingPayment ? 2500 : 5000;
+        const pollId = setInterval(() => {
+            void fetchOrder();
+        }, intervalMs);
         return () => clearInterval(pollId);
-    }, [orderId]);
+    }, [orderId, order?.paymentMethod, order?.paymentStatus]);
 
     // Live countdown timer
     useEffect(() => {
@@ -68,6 +73,8 @@ export const OrderStatus: React.FC = () => {
     }, [order?.estimatedReadyTime]);
 
     const isCancelled = order?.status === 'avbruten';
+    const isAwaitingPayment =
+        order?.paymentMethod === 'app' && order?.paymentStatus === 'pending';
     const isPending = order?.status === 'ny' || order?.status === 'mottagen';
     const isCompleted = order?.status === 'klar' || order?.status === 'uthämtad' || order?.status === 'levererad';
     const isDelayed = !!order?.estimatedReadyTime && new Date(order.estimatedReadyTime).getTime() < Date.now();
@@ -139,9 +146,11 @@ export const OrderStatus: React.FC = () => {
                             <h1 className="text-display-md status-title">
                                 {isCompleted
                                     ? 'Din beställning är klar! 🎉'
-                                    : isPending
-                                        ? 'Väntar på bekräftelse'
-                                        : 'Förbereder din beställning'}
+                                    : isAwaitingPayment
+                                        ? 'Bekräftar din betalning…'
+                                        : isPending
+                                            ? 'Väntar på bekräftelse'
+                                            : 'Förbereder din beställning'}
                             </h1>
 
                             {!isCompleted && !isPending && (
@@ -167,9 +176,11 @@ export const OrderStatus: React.FC = () => {
                             <p className="text-center status-message">
                                 {isCompleted
                                     ? 'Du kan hämta din Kunafa nu!'
-                                    : isPending
-                                        ? 'Din beställning har skickats och väntar på att bli accepterad.'
-                                        : 'Vi förbereder din färska Kunafa!'}
+                                    : isAwaitingPayment
+                                        ? 'Vi bekräftar din betalning. Sidan uppdateras automatiskt om några sekunder.'
+                                        : isPending
+                                            ? 'Din beställning har skickats och väntar på att bli accepterad.'
+                                            : 'Vi förbereder din färska Kunafa!'}
                             </p>
                         </>
                     )}

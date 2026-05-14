@@ -4,11 +4,15 @@ import cors from 'cors';
 import productsRouter from './routes/products.js';
 import ordersRouter from './routes/orders.js';
 import adminRouter from './routes/admin.js';
+import { handleStripeWebhook } from './routes/stripeWebhook.js';
 
 const app = express();
 const port = Number(process.env.PORT) || 3001;
 
 app.use(cors({ origin: true, credentials: true }));
+app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), (req, res) => {
+  void handleStripeWebhook(req, res);
+});
 app.use(express.json());
 
 app.use('/api/products', productsRouter);
