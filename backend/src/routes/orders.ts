@@ -3,6 +3,7 @@ import { db, generateId, type Row } from '../db/connection.js';
 import { requireAdmin } from '../middleware/auth.js';
 import { PrinterService } from '../services/PrinterService.js';
 import { sendOrderConfirmationEmail } from '../services/OrderConfirmationEmail.js';
+import { sendSms } from '../services/SmsService.js';
 import { parseOrderScheduledAt } from '../utils/stockholmWallTime.js';
 
 const router = Router();
@@ -177,6 +178,14 @@ router.post('/', async (req: Request, res: Response) => {
         console.error('[order confirmation email]', err)
       );
     }
+
+    const phoneOut = String(result.order.customer_phone ?? '').trim();
+    if (phoneOut) {
+      void sendSms(phoneOut, "Hej! Tack för din beställning från Mormors Kunafa. Vi behandlar den just nu!").catch((err) =>
+        console.error('[order confirmation sms]', err)
+      );
+    }
+
     res.status(201).json(orderRowToOrder(result.order, result.items));
   } catch (e) {
     console.error(e);
@@ -240,6 +249,19 @@ router.patch('/admin/:id/accept', requireAdmin, async (req: Request, res: Respon
       res.status(500).json({ error: 'Accept succeeded but fetch failed' });
       return;
     }
+
+    const phoneOut = String(updated.order.customer_phone ?? '').trim();
+    if (phoneOut) {
+      const readyTimeStr = estimatedReady.toLocaleTimeString('sv-SE', {
+        timeZone: 'Europe/Stockholm',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+      void sendSms(phoneOut, `Hej! Din order är mottagen och beräknas vara klar kl ${readyTimeStr}.`).catch((err) =>
+        console.error('[order accepted sms]', err)
+      );
+    }
+
     res.json(orderRowToOrder(updated.order, updated.items));
   } catch (e) {
     console.error(e);
@@ -440,6 +462,16 @@ router.patch('/admin/:id/status', requireAdmin, async (req: Request, res: Respon
       res.status(404).json({ error: 'Order not found' });
       return;
     }
+
+    if (status === 'klar') {
+      const phoneOut = String(result.order.customer_phone ?? '').trim();
+      if (phoneOut) {
+        void sendSms(phoneOut, "Hej! Din mat är nu redo att hämtas på Mormors Kunafa. Välkommen!").catch((err) =>
+          console.error('[order ready sms]', err)
+        );
+      }
+    }
+
     res.json(orderRowToOrder(result.order, result.items));
   } catch (e) {
     console.error(e);
