@@ -135,11 +135,9 @@ export const Cart: React.FC = () => {
                 paymentMethod: 'app' as PaymentMethod, // Default to app payment
             });
 
-            // Clear cart
+            const { url } = await orderApi.createCheckoutSession(order.id);
             clearCart();
-
-            // Navigate to order status page with order ID
-            navigate(`/status?orderId=${order.id}`);
+            window.location.href = url;
         } catch (err: any) {
             let errorMsg = err.message || 'Kunde inte skapa beställning. Försök igen.';
             if (err.data && err.data.error) {
