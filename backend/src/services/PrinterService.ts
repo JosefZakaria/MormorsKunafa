@@ -18,6 +18,43 @@ export class PrinterService {
     });
   }
 
+  private printDeliveryBlock(order: {
+    orderType?: string;
+    customerInfo?: { name?: string; phone?: string; email?: string };
+    deliveryInfo?: {
+      name?: string;
+      address?: string;
+      postalCode?: string;
+      city?: string;
+      phone?: string;
+      email?: string;
+    };
+    scheduledTime?: string;
+  }): void {
+    if (order.orderType !== 'delivery') return;
+
+    const d = order.deliveryInfo;
+    const name = order.customerInfo?.name?.trim() || d?.name?.trim() || '';
+    const phone = order.customerInfo?.phone?.trim() || d?.phone?.trim() || '';
+    const email = order.customerInfo?.email?.trim() || d?.email?.trim() || '';
+    const postalCity = d ? `${d.postalCode || ''} ${d.city || ''}`.trim() : '';
+    if (!name && !phone && !email && !d?.address && !postalCity) return;
+
+    this.printer.newLine();
+    this.printer.bold(true);
+    this.printer.println('Leverans:');
+    this.printer.bold(false);
+    if (name) this.printer.println(name);
+    if (d?.address) this.printer.println(d.address);
+    if (postalCity) this.printer.println(postalCity);
+    if (phone) this.printer.println(`Tel: ${phone}`);
+    if (email) this.printer.println(email);
+    if (!order.scheduledTime) {
+      this.printer.println('Leverans: 1-2 arbetsdagar');
+    }
+    this.printer.drawLine();
+  }
+
   /**
    * Kontrollerar om vi kan nå Sunmi-skrivaren via nätverket.
    */
@@ -57,8 +94,10 @@ export class PrinterService {
       this.printer.alignLeft();
       this.printer.bold(true);
       this.printer.println(`Order: #${order.orderNumber || order.id || 'N/A'}`);
-      if (order.customerInfo?.name) {
-        this.printer.println(`Kund: ${order.customerInfo.name}`);
+      const custName =
+        order.customerInfo?.name?.trim() || order.deliveryInfo?.name?.trim() || '';
+      if (custName && order.orderType !== 'delivery') {
+        this.printer.println(`Kund: ${custName}`);
       }
       this.printer.bold(false);
 
@@ -90,19 +129,7 @@ export class PrinterService {
 
       this.printer.drawLine();
 
-      // -- LEVERANSINFO (om hemleverans) --
-      if (order.orderType === 'delivery' && order.deliveryInfo) {
-        this.printer.newLine();
-        this.printer.bold(true);
-        this.printer.println("Leveransinfo:");
-        this.printer.bold(false);
-        if (order.deliveryInfo.address) this.printer.println(order.deliveryInfo.address);
-        if (order.deliveryInfo.postalCode || order.deliveryInfo.city) {
-          this.printer.println(`${order.deliveryInfo.postalCode || ''} ${order.deliveryInfo.city || ''}`.trim());
-        }
-        if (order.deliveryInfo.phone) this.printer.println(`Tel: ${order.deliveryInfo.phone}`);
-        this.printer.drawLine();
-      }
+      this.printDeliveryBlock(order);
 
       this.printer.newLine();
       this.printer.cut();
@@ -148,8 +175,17 @@ export class PrinterService {
       // -- ORDERINFO --
       this.printer.alignLeft();
       this.printer.bold(false);
-      this.printer.println(`Order ID: #${order.id || 'N/A'}`);
-      this.printer.drawLine(); // Ritad linje ---------
+      this.printer.println(`Order: #${order.orderNumber || order.id || 'N/A'}`);
+      const orderTypeLabels: Record<string, string> = {
+        'eat-here': 'Ata har',
+        'takeaway': 'Ta med',
+        'delivery': 'Hemleverans',
+      };
+      this.printer.println(`Typ: ${orderTypeLabels[order.orderType] || order.orderType || 'Okand'}`);
+      this.printDeliveryBlock(order);
+      if (order.orderType !== 'delivery') {
+        this.printer.drawLine();
+      }
 
       // -- PRODUKTER --
       // Byt ut logiken nedan så den matchar vad du har i dina order items

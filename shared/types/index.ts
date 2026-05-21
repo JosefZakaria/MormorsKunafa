@@ -41,6 +41,7 @@ export interface OrderItem {
 
 // Delivery Information
 export interface DeliveryInfo {
+  name?: string;
   city: string;
   address: string;
   postalCode: string;

@@ -30,6 +30,47 @@ const ORDER_TYPE_LABELS: Record<string, string> = {
   'delivery': 'Hemleverans',
 };
 
+function deliveryCustomerName(order: Order): string {
+  return order.customerInfo?.name?.trim() || order.deliveryInfo?.name?.trim() || '';
+}
+
+function deliveryPhone(order: Order): string {
+  return order.customerInfo?.phone?.trim() || order.deliveryInfo?.phone?.trim() || '';
+}
+
+function deliveryEmail(order: Order): string {
+  return order.customerInfo?.email?.trim() || order.deliveryInfo?.email?.trim() || '';
+}
+
+/** Leveransblock för kökslapp och kvitto (hemleverans). */
+function appendDeliveryBlockXml(xml: string, order: Order): string {
+  if (order.orderType !== 'delivery') return xml;
+
+  const d = order.deliveryInfo;
+  const name = deliveryCustomerName(order);
+  const phone = deliveryPhone(order);
+  const email = deliveryEmail(order);
+  const postalCity = d ? [d.postalCode, d.city].filter(Boolean).join(' ').trim() : '';
+  const hasContent = !!(name || phone || email || d?.address || postalCity);
+
+  if (!hasContent) return xml;
+
+  xml += `<feed unit="12"/>`;
+  xml += `<text align="left" em="true">Leverans:&#10;</text>`;
+  xml += `<text align="left" em="false">`;
+  if (name) xml += `${escapeXml(name)}&#10;`;
+  if (d?.address) xml += `${escapeXml(d.address)}&#10;`;
+  if (postalCity) xml += `${escapeXml(postalCity)}&#10;`;
+  if (phone) xml += `Tel: ${escapeXml(phone)}&#10;`;
+  if (email) xml += `${escapeXml(email)}&#10;`;
+  if (!order.scheduledTime) {
+    xml += `Leverans: 1-2 arbetsdagar&#10;`;
+  }
+  xml += `</text>`;
+  xml += `<text>--------------------------------&#10;</text>`;
+  return xml;
+}
+
 function escapeXml(str: string): string {
   return str
     .replace(/&/g, '&amp;')
@@ -121,8 +162,9 @@ export async function printKitchenTicket(order: Order): Promise<{ success: boole
 
   // Order info
   xml += `<text align="left" em="true">Order: #${escapeXml(order.orderNumber || order.id)}&#10;</text>`;
-  if (order.customerInfo?.name) {
-    xml += `<text align="left" em="true">Kund: ${escapeXml(order.customerInfo.name)}&#10;</text>`;
+  const custName = deliveryCustomerName(order);
+  if (custName && order.orderType !== 'delivery') {
+    xml += `<text align="left" em="true">Kund: ${escapeXml(custName)}&#10;</text>`;
   }
   xml += `<text align="left" em="false">Typ: ${escapeXml(ORDER_TYPE_LABELS[order.orderType] || order.orderType)}&#10;</text>`;
 
@@ -150,18 +192,7 @@ export async function printKitchenTicket(order: Order): Promise<{ success: boole
   // Separator
   xml += `<text>--------------------------------&#10;</text>`;
 
-  // Delivery info
-  if (order.orderType === 'delivery' && order.deliveryInfo) {
-    xml += `<feed unit="12"/>`;
-    xml += `<text align="left" em="true">Leveransinfo:&#10;</text>`;
-    xml += `<text align="left" em="false">`;
-    if (order.deliveryInfo.address) xml += `${escapeXml(order.deliveryInfo.address)}&#10;`;
-    const postalCity = [order.deliveryInfo.postalCode, order.deliveryInfo.city].filter(Boolean).join(' ');
-    if (postalCity) xml += `${escapeXml(postalCity)}&#10;`;
-    if (order.deliveryInfo.phone) xml += `Tel: ${escapeXml(order.deliveryInfo.phone)}&#10;`;
-    xml += `</text>`;
-    xml += `<text>--------------------------------&#10;</text>`;
-  }
+  xml = appendDeliveryBlockXml(xml, order);
 
   xml += `<feed unit="24"/>`;
   xml += `<cut type="feed"/>`;
@@ -186,7 +217,11 @@ export async function printReceipt(order: Order): Promise<{ success: boolean; er
 
   // Order info
   xml += `<text align="left">Order: #${escapeXml(order.orderNumber || order.id)}&#10;</text>`;
-  xml += `<text>--------------------------------&#10;</text>`;
+  xml += `<text align="left">Typ: ${escapeXml(ORDER_TYPE_LABELS[order.orderType] || order.orderType)}&#10;</text>`;
+  xml = appendDeliveryBlockXml(xml, order);
+  if (order.orderType !== 'delivery') {
+    xml += `<text>--------------------------------&#10;</text>`;
+  }
 
   // Items with prices
   if (order.items && order.items.length > 0) {
