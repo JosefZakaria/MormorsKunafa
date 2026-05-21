@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from 'express';
-import { db, type Row } from '../db/connection.js';
+import { supabase, type Row, logSupabaseError } from '../db/connection.js';
+import { fetchOrderRow } from '../db/orderRepository.js';
 import { markOrderPaid } from '../services/markOrderPaid.js';
 import {
   createSwishPaymentRequest,
@@ -9,12 +10,6 @@ import {
   swishPaymentPageUrl,
 } from '../services/swishClient.js';
 import { isSwishPayment, normalizeSwishPayerAlias } from '../utils/paymentMethod.js';
-
-async function fetchOrder(id: string): Promise<Row | null> {
-  const [rows] = (await db.query('SELECT * FROM orders WHERE id = ?', [id])) as [Row[], unknown];
-  const list = Array.isArray(rows) ? rows : [];
-  return list[0] ?? null;
-}
 
 const router = Router();
 
@@ -26,7 +21,7 @@ router.post('/:orderId', async (req: Request, res: Response) => {
     }
 
     const orderId = req.params.orderId;
-    const order = await fetchOrder(orderId);
+    const order = await fetchOrderRow(orderId);
     if (!order) {
       res.status(404).json({ error: 'Order not found' });
       return;
@@ -58,7 +53,16 @@ router.post('/:orderId', async (req: Request, res: Response) => {
       payeePaymentReference: orderId.slice(0, 35),
     });
 
-    await db.query('UPDATE orders SET swish_instruction_id = ? WHERE id = ?', [instructionId, orderId]);
+    const { error } = await supabase
+      .from('orders')
+      .update({ swish_instruction_id: instructionId })
+      .eq('id', orderId);
+
+    if (error) {
+      logSupabaseError('swish payment create update', error);
+      res.status(500).json({ error: 'Failed to save Swish instruction' });
+      return;
+    }
 
     res.json({
       instructionId,
@@ -78,7 +82,7 @@ router.post('/:orderId', async (req: Request, res: Response) => {
 router.get('/:orderId/status', async (req: Request, res: Response) => {
   try {
     const orderId = req.params.orderId;
-    const order = await fetchOrder(orderId);
+    const order = await fetchOrderRow(orderId);
     if (!order) {
       res.status(404).json({ error: 'Order not found' });
       return;

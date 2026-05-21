@@ -1,9 +1,40 @@
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
-import { db, type Row } from '../db/connection.js';
+import { supabase, type Row, logSupabaseError, nowIso } from '../db/connection.js';
 import { requireAdmin, signToken } from '../middleware/auth.js';
 
 const router = Router();
+
+const COMPLETED_STATUSES = ['klar', 'uthämtad', 'levererad'] as const;
+
+function toStockholmDateString(value: Date | string | null | undefined): string | null {
+  if (value == null) return null;
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString('sv-SE', { timeZone: 'Europe/Stockholm' });
+}
+
+function todayInStockholm(): string {
+  return new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Stockholm' });
+}
+
+function daysAgoStockholm(days: number): Date {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return d;
+}
+
+function startOfYearStockholm(): Date {
+  const y = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Stockholm', year: 'numeric' });
+  return new Date(`${y}-01-01T00:00:00`);
+}
+
+function inRange(createdAt: string, start: Date | null, end: Date | null): boolean {
+  const t = new Date(createdAt).getTime();
+  if (start && t < start.getTime()) return false;
+  if (end && t >= end.getTime()) return false;
+  return true;
+}
 
 router.post('/login', async (req: Request, res: Response) => {
   try {
@@ -12,41 +43,69 @@ router.post('/login', async (req: Request, res: Response) => {
       res.status(400).json({ error: 'Email and password required' });
       return;
     }
-    const [rows] = (await db.query(
-      'SELECT id, email, password_hash, display_name FROM admin_users WHERE email = ?',
-      [email]
-    )) as [Row[], unknown];
-    const list = Array.isArray(rows) ? rows : [];
-    if (list.length === 0) {
+
+    const { data: user, error } = await supabase
+      .from('admin_users')
+      .select('id, email, password_hash, display_name')
+      .eq('email', email)
+      .maybeSingle();
+
+    if (error) {
+      logSupabaseError('POST /admin/login', error);
+      res.status(500).json({ error: 'Login failed', details: error.message });
+      return;
+    }
+
+    if (!user) {
       res.status(401).json({ error: 'Invalid credentials' });
       return;
     }
-    const user = list[0] as Row;
-    const ok = await bcrypt.compare(password, String(user.password_hash));
+
+    const ok = await bcrypt.compare(password, String((user as Row).password_hash));
     if (!ok) {
       res.status(401).json({ error: 'Invalid credentials' });
       return;
     }
-    await db.query('UPDATE admin_users SET last_login_at = NOW() WHERE id = ?', [user.id]);
-    const token = signToken({ adminId: String(user.id), email: String(user.email) });
+
+    const { error: loginUpdateError } = await supabase
+      .from('admin_users')
+      .update({ last_login_at: nowIso() })
+      .eq('id', (user as Row).id);
+
+    if (loginUpdateError) {
+      logSupabaseError('POST /admin/login last_login_at', loginUpdateError);
+    }
+
+    const token = signToken({
+      adminId: String((user as Row).id),
+      email: String((user as Row).email),
+    });
     res.json({
       token,
       admin: {
-        id: user.id,
-        email: user.email,
-        name: String(user.display_name ?? user.email),
+        id: (user as Row).id,
+        email: (user as Row).email,
+        name: String((user as Row).display_name ?? (user as Row).email),
       },
     });
   } catch (e) {
-    console.error(e);
+    console.error('[POST /admin/login]', e);
     res.status(500).json({ error: 'Login failed' });
   }
 });
 
+async function fetchAdminSettingsRow(): Promise<Row | null> {
+  const { data, error } = await supabase.from('admin_settings').select('*').limit(1).maybeSingle();
+  if (error) {
+    logSupabaseError('admin_settings', error);
+    throw error;
+  }
+  return data as Row | null;
+}
+
 router.get('/settings', requireAdmin, async (_req: Request, res: Response) => {
   try {
-    const [rows] = (await db.query('SELECT * FROM admin_settings LIMIT 1')) as [Row[], unknown];
-    const r = Array.isArray(rows) && rows[0] ? (rows[0] as Row) : null;
+    const r = await fetchAdminSettingsRow();
     if (!r) {
       res.status(404).json({ error: 'Settings not found' });
       return;
@@ -56,7 +115,7 @@ router.get('/settings', requireAdmin, async (_req: Request, res: Response) => {
       isPaused: Boolean(r.is_paused),
     });
   } catch (e) {
-    console.error(e);
+    console.error('[GET /admin/settings]', e);
     res.status(500).json({ error: 'Failed to fetch settings' });
   }
 });
@@ -64,21 +123,32 @@ router.get('/settings', requireAdmin, async (_req: Request, res: Response) => {
 router.patch('/settings', requireAdmin, async (req: Request, res: Response) => {
   try {
     const body = req.body as { defaultPreparationTime?: number; isPaused?: boolean };
-    const updates: string[] = [];
-    const params: unknown[] = [];
+    const patch: Record<string, unknown> = { updated_at: nowIso() };
     if (typeof body.defaultPreparationTime === 'number') {
-      updates.push('default_preparation_time_minutes = ?');
-      params.push(body.defaultPreparationTime);
+      patch.default_preparation_time_minutes = body.defaultPreparationTime;
     }
     if (typeof body.isPaused === 'boolean') {
-      updates.push('is_paused = ?');
-      params.push(body.isPaused ? 1 : 0);
+      patch.is_paused = body.isPaused;
     }
-    if (params.length > 0) {
-      await db.query(`UPDATE admin_settings SET ${updates.join(', ')} WHERE id = 1`, params);
+
+    if (Object.keys(patch).length > 1) {
+      const settings = await fetchAdminSettingsRow();
+      if (!settings?.id) {
+        res.status(404).json({ error: 'Settings not found' });
+        return;
+      }
+      const { error } = await supabase
+        .from('admin_settings')
+        .update(patch)
+        .eq('id', settings.id);
+      if (error) {
+        logSupabaseError('PATCH /admin/settings', error);
+        res.status(500).json({ error: 'Failed to update settings', details: error.message });
+        return;
+      }
     }
-    const [rows] = (await db.query('SELECT * FROM admin_settings LIMIT 1')) as [Row[], unknown];
-    const r = Array.isArray(rows) && rows[0] ? (rows[0] as Row) : null;
+
+    const r = await fetchAdminSettingsRow();
     if (!r) {
       res.status(500).json({ error: 'Settings not found' });
       return;
@@ -88,12 +158,11 @@ router.patch('/settings', requireAdmin, async (req: Request, res: Response) => {
       isPaused: Boolean(r.is_paused),
     });
   } catch (e) {
-    console.error(e);
+    console.error('[PATCH /admin/settings]', e);
     res.status(500).json({ error: 'Failed to update settings' });
   }
 });
 
-// Notifications stub (return empty until F.Notis is implemented)
 router.get('/notifications', requireAdmin, async (_req: Request, res: Response) => {
   res.json([]);
 });
@@ -102,10 +171,13 @@ router.patch('/notifications/:id/read', requireAdmin, async (_req: Request, res:
   res.status(204).send();
 });
 
-// Statistics (extra password protected)
 router.post('/statistics', requireAdmin, async (req: Request, res: Response) => {
   try {
-    const { password, startDate, endDate } = req.body as { password?: string, startDate?: string, endDate?: string };
+    const { password, startDate, endDate } = req.body as {
+      password?: string;
+      startDate?: string;
+      endDate?: string;
+    };
     const statsPassword = process.env.STATS_PASSWORD;
     if (!statsPassword || !password || password !== statsPassword) {
       res.status(401).json({ error: 'Felaktigt lösenord' });
@@ -113,122 +185,265 @@ router.post('/statistics', requireAdmin, async (req: Request, res: Response) => 
     }
 
     const hasCustomRange = !!(startDate && endDate);
-    const startStr = startDate ? `${startDate} 00:00:00` : null;
-    const endStr = endDate ? `${endDate} 23:59:59` : null;
+    const customStart = startDate ? new Date(`${startDate}T00:00:00`) : null;
+    const customEnd = endDate
+      ? new Date(new Date(`${endDate}T23:59:59`).getTime() + 1000)
+      : null;
 
-    // Per-produkt: alla produkter i menyn inkl. varianter, matcha pa id ELLER namn.
-    // Endast genomforda ordrar raknas som forsaljning.
-    const [productRows] = (await db.query(`
-      SELECT
-        p.name AS name,
-        COALESCE(SUM(CASE WHEN o.id IS NOT NULL AND DATE(o.created_at) = CURDATE() THEN oi.quantity ELSE 0 END), 0) AS sold_day,
-        COALESCE(SUM(CASE WHEN o.id IS NOT NULL AND o.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN oi.quantity ELSE 0 END), 0) AS sold_week,
-        COALESCE(SUM(CASE WHEN o.id IS NOT NULL AND o.created_at >= DATE_SUB(NOW(), INTERVAL 1 MONTH) THEN oi.quantity ELSE 0 END), 0) AS sold_month,
-        COALESCE(SUM(CASE WHEN o.id IS NOT NULL AND YEAR(o.created_at) = YEAR(NOW()) THEN oi.quantity ELSE 0 END), 0) AS sold_year,
-        COALESCE(SUM(CASE WHEN o.id IS NOT NULL THEN oi.quantity ELSE 0 END), 0) AS sold_total,
-        COALESCE(SUM(CASE WHEN o.id IS NOT NULL AND ? IS NOT NULL AND ? IS NOT NULL AND o.created_at BETWEEN ? AND ? THEN oi.quantity ELSE 0 END), 0) AS sold_custom,
-        COALESCE(SUM(CASE WHEN o.id IS NOT NULL AND DATE(o.created_at) = CURDATE() THEN oi.price_ore * oi.quantity ELSE 0 END), 0) AS revenue_day_ore,
-        COALESCE(SUM(CASE WHEN o.id IS NOT NULL AND o.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN oi.price_ore * oi.quantity ELSE 0 END), 0) AS revenue_week_ore,
-        COALESCE(SUM(CASE WHEN o.id IS NOT NULL AND o.created_at >= DATE_SUB(NOW(), INTERVAL 1 MONTH) THEN oi.price_ore * oi.quantity ELSE 0 END), 0) AS revenue_month_ore,
-        COALESCE(SUM(CASE WHEN o.id IS NOT NULL AND YEAR(o.created_at) = YEAR(NOW()) THEN oi.price_ore * oi.quantity ELSE 0 END), 0) AS revenue_year_ore,
-        COALESCE(SUM(CASE WHEN o.id IS NOT NULL THEN oi.price_ore * oi.quantity ELSE 0 END), 0) AS revenue_total_ore,
-        COALESCE(SUM(CASE WHEN o.id IS NOT NULL AND ? IS NOT NULL AND ? IS NOT NULL AND o.created_at BETWEEN ? AND ? THEN oi.price_ore * oi.quantity ELSE 0 END), 0) AS revenue_custom_ore
-      FROM products p
-      LEFT JOIN order_items oi ON (oi.product_id = p.id OR oi.product_name_snapshot = p.name)
-      LEFT JOIN orders o ON o.id = oi.order_id AND o.status IN ('klar', 'uthämtad', 'levererad') AND o.payment_status = 'paid'
-      GROUP BY p.id, p.name
-      ORDER BY p.name ASC
-    `, [startStr, endStr, startStr, endStr, startStr, endStr, startStr, endStr])) as [Row[], unknown];
+    const today = todayInStockholm();
+    const weekStart = daysAgoStockholm(7);
+    const monthStart = daysAgoStockholm(30);
+    const yearStart = startOfYearStockholm();
 
-    // Totaler per period - Items (kräver join)
-    const [itemTotalRows] = (await db.query(`
-      SELECT
-        SUM(oi.quantity) AS items_total,
-        SUM(CASE WHEN DATE(o.created_at) = CURDATE() THEN oi.quantity ELSE 0 END) AS items_day,
-        SUM(CASE WHEN o.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN oi.quantity ELSE 0 END) AS items_week,
-        SUM(CASE WHEN o.created_at >= DATE_SUB(NOW(), INTERVAL 1 MONTH) THEN oi.quantity ELSE 0 END) AS items_month,
-        SUM(CASE WHEN YEAR(o.created_at) = YEAR(NOW()) THEN oi.quantity ELSE 0 END) AS items_year,
-        SUM(CASE WHEN ? IS NOT NULL AND ? IS NOT NULL AND o.created_at BETWEEN ? AND ? THEN oi.quantity ELSE 0 END) AS items_custom
-      FROM orders o
-      JOIN order_items oi ON oi.order_id = o.id
-      WHERE o.status IN ('klar', 'uthämtad', 'levererad') AND o.payment_status = 'paid'
-    `, [startStr, endStr, startStr, endStr])) as [Row[], unknown];
+    const { data: products, error: productsError } = await supabase
+      .from('products')
+      .select('id, name')
+      .order('name', { ascending: true });
 
-    // Totaler per period - Revenue, genomforda ordrar och avbrutna ordrar.
-    const [orderTotalRows] = (await db.query(`
-      SELECT
-        SUM(CASE WHEN status IN ('klar', 'uthämtad', 'levererad') AND payment_status = 'paid' THEN 1 ELSE 0 END) AS orders_total,
-        SUM(CASE WHEN status IN ('klar', 'uthämtad', 'levererad') AND payment_status = 'paid' AND DATE(created_at) = CURDATE() THEN 1 ELSE 0 END) AS orders_day,
-        SUM(CASE WHEN status IN ('klar', 'uthämtad', 'levererad') AND payment_status = 'paid' AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS orders_week,
-        SUM(CASE WHEN status IN ('klar', 'uthämtad', 'levererad') AND payment_status = 'paid' AND created_at >= DATE_SUB(NOW(), INTERVAL 1 MONTH) THEN 1 ELSE 0 END) AS orders_month,
-        SUM(CASE WHEN status IN ('klar', 'uthämtad', 'levererad') AND payment_status = 'paid' AND YEAR(created_at) = YEAR(NOW()) THEN 1 ELSE 0 END) AS orders_year,
-        SUM(CASE WHEN status IN ('klar', 'uthämtad', 'levererad') AND payment_status = 'paid' AND ? IS NOT NULL AND ? IS NOT NULL AND created_at BETWEEN ? AND ? THEN 1 ELSE 0 END) AS orders_custom,
-        SUM(CASE WHEN status = 'avbruten' THEN 1 ELSE 0 END) AS orders_cancelled_total,
-        SUM(CASE WHEN status = 'avbruten' AND DATE(created_at) = CURDATE() THEN 1 ELSE 0 END) AS orders_cancelled_day,
-        SUM(CASE WHEN status = 'avbruten' AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS orders_cancelled_week,
-        SUM(CASE WHEN status = 'avbruten' AND created_at >= DATE_SUB(NOW(), INTERVAL 1 MONTH) THEN 1 ELSE 0 END) AS orders_cancelled_month,
-        SUM(CASE WHEN status = 'avbruten' AND YEAR(created_at) = YEAR(NOW()) THEN 1 ELSE 0 END) AS orders_cancelled_year,
-        SUM(CASE WHEN status = 'avbruten' AND ? IS NOT NULL AND ? IS NOT NULL AND created_at BETWEEN ? AND ? THEN 1 ELSE 0 END) AS orders_cancelled_custom,
-        SUM(CASE WHEN status IN ('klar', 'uthämtad', 'levererad') AND payment_status = 'paid' THEN total_ore ELSE 0 END) AS revenue_total_ore,
-        SUM(CASE WHEN status IN ('klar', 'uthämtad', 'levererad') AND payment_status = 'paid' AND DATE(created_at) = CURDATE() THEN total_ore ELSE 0 END) AS revenue_day_ore,
-        SUM(CASE WHEN status IN ('klar', 'uthämtad', 'levererad') AND payment_status = 'paid' AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN total_ore ELSE 0 END) AS revenue_week_ore,
-        SUM(CASE WHEN status IN ('klar', 'uthämtad', 'levererad') AND payment_status = 'paid' AND created_at >= DATE_SUB(NOW(), INTERVAL 1 MONTH) THEN total_ore ELSE 0 END) AS revenue_month_ore,
-        SUM(CASE WHEN status IN ('klar', 'uthämtad', 'levererad') AND payment_status = 'paid' AND YEAR(created_at) = YEAR(NOW()) THEN total_ore ELSE 0 END) AS revenue_year_ore,
-        SUM(CASE WHEN status IN ('klar', 'uthämtad', 'levererad') AND payment_status = 'paid' AND ? IS NOT NULL AND ? IS NOT NULL AND created_at BETWEEN ? AND ? THEN total_ore ELSE 0 END) AS revenue_custom_ore
-      FROM orders
-    `, [startStr, endStr, startStr, endStr, startStr, endStr, startStr, endStr, startStr, endStr, startStr, endStr])) as [Row[], unknown];
+    if (productsError) {
+      logSupabaseError('POST /admin/statistics products', productsError);
+      res.status(500).json({ error: 'Failed to fetch statistics', details: productsError.message });
+      return;
+    }
 
-    const itemTotals = (itemTotalRows as Row[])[0] || {};
-    const orderTotals = (orderTotalRows as Row[])[0] || {};
-    const totals = { ...itemTotals, ...orderTotals };
-    const products = (Array.isArray(productRows) ? productRows : []) as Row[];
+    const { data: lineRows, error: linesError } = await supabase
+      .from('order_items')
+      .select(
+        'quantity, price_ore, product_id, product_name_snapshot, orders!inner(id, status, payment_status, created_at)'
+      );
+
+    if (linesError) {
+      logSupabaseError('POST /admin/statistics order_items', linesError);
+      res.status(500).json({ error: 'Failed to fetch statistics', details: linesError.message });
+      return;
+    }
+
+    const { data: allOrders, error: ordersError } = await supabase
+      .from('orders')
+      .select('id, status, payment_status, total_ore, created_at');
+
+    if (ordersError) {
+      logSupabaseError('POST /admin/statistics orders', ordersError);
+      res.status(500).json({ error: 'Failed to fetch statistics', details: ordersError.message });
+      return;
+    }
+
+    type ProductAgg = {
+      name: string;
+      soldDay: number;
+      soldWeek: number;
+      soldMonth: number;
+      soldYear: number;
+      soldTotal: number;
+      soldCustom: number;
+      revenueDayOre: number;
+      revenueWeekOre: number;
+      revenueMonthOre: number;
+      revenueYearOre: number;
+      revenueTotalOre: number;
+      revenueCustomOre: number;
+    };
+
+    const aggByProduct = new Map<string, ProductAgg>();
+    for (const p of products ?? []) {
+      const name = String((p as Row).name);
+      aggByProduct.set(String((p as Row).id), {
+        name,
+        soldDay: 0,
+        soldWeek: 0,
+        soldMonth: 0,
+        soldYear: 0,
+        soldTotal: 0,
+        soldCustom: 0,
+        revenueDayOre: 0,
+        revenueWeekOre: 0,
+        revenueMonthOre: 0,
+        revenueYearOre: 0,
+        revenueTotalOre: 0,
+        revenueCustomOre: 0,
+      });
+      aggByProduct.set(name, aggByProduct.get(String((p as Row).id))!);
+    }
+
+    const bump = (agg: ProductAgg, qty: number, rev: number, createdAt: string) => {
+      const dayStr = toStockholmDateString(createdAt);
+      agg.soldTotal += qty;
+      agg.revenueTotalOre += rev;
+      if (dayStr === today) {
+        agg.soldDay += qty;
+        agg.revenueDayOre += rev;
+      }
+      if (new Date(createdAt) >= weekStart) {
+        agg.soldWeek += qty;
+        agg.revenueWeekOre += rev;
+      }
+      if (new Date(createdAt) >= monthStart) {
+        agg.soldMonth += qty;
+        agg.revenueMonthOre += rev;
+      }
+      if (new Date(createdAt) >= yearStart) {
+        agg.soldYear += qty;
+        agg.revenueYearOre += rev;
+      }
+      if (hasCustomRange && customStart && customEnd && inRange(createdAt, customStart, customEnd)) {
+        agg.soldCustom += qty;
+        agg.revenueCustomOre += rev;
+      }
+    };
+
+    for (const row of lineRows ?? []) {
+      const r = row as Row;
+      const order = r.orders as Row | undefined;
+      if (!order) continue;
+      if (!COMPLETED_STATUSES.includes(order.status as (typeof COMPLETED_STATUSES)[number])) continue;
+      if (order.payment_status !== 'paid') continue;
+
+      const qty = Number(r.quantity ?? 0);
+      const rev = Number(r.price_ore ?? 0) * qty;
+      const createdAt = String(order.created_at);
+      const productId = String(r.product_id ?? '');
+      const snapshotName = String(r.product_name_snapshot ?? '');
+
+      let agg = aggByProduct.get(productId) ?? aggByProduct.get(snapshotName);
+      if (!agg) {
+        agg = {
+          name: snapshotName || 'Okänd produkt',
+          soldDay: 0,
+          soldWeek: 0,
+          soldMonth: 0,
+          soldYear: 0,
+          soldTotal: 0,
+          soldCustom: 0,
+          revenueDayOre: 0,
+          revenueWeekOre: 0,
+          revenueMonthOre: 0,
+          revenueYearOre: 0,
+          revenueTotalOre: 0,
+          revenueCustomOre: 0,
+        };
+        aggByProduct.set(snapshotName, agg);
+      }
+      bump(agg, qty, rev, createdAt);
+    }
+
+    const uniqueProducts = new Map<string, ProductAgg>();
+    for (const p of products ?? []) {
+      const id = String((p as Row).id);
+      const agg = aggByProduct.get(id);
+      if (agg) uniqueProducts.set(id, agg);
+    }
+
+    const totals = {
+      ordersDay: 0,
+      ordersWeek: 0,
+      ordersMonth: 0,
+      ordersYear: 0,
+      ordersTotal: 0,
+      ordersCustom: 0,
+      ordersCancelledDay: 0,
+      ordersCancelledWeek: 0,
+      ordersCancelledMonth: 0,
+      ordersCancelledYear: 0,
+      ordersCancelledTotal: 0,
+      ordersCancelledCustom: 0,
+      itemsDay: 0,
+      itemsWeek: 0,
+      itemsMonth: 0,
+      itemsYear: 0,
+      itemsTotal: 0,
+      itemsCustom: 0,
+      revenueDayOre: 0,
+      revenueWeekOre: 0,
+      revenueMonthOre: 0,
+      revenueYearOre: 0,
+      revenueTotalOre: 0,
+      revenueCustomOre: 0,
+    };
+
+    for (const row of lineRows ?? []) {
+      const r = row as Row;
+      const order = r.orders as Row | undefined;
+      if (!order) continue;
+      if (!COMPLETED_STATUSES.includes(order.status as (typeof COMPLETED_STATUSES)[number])) continue;
+      if (order.payment_status !== 'paid') continue;
+      const qty = Number(r.quantity ?? 0);
+      const createdAt = String(order.created_at);
+      totals.itemsTotal += qty;
+      if (toStockholmDateString(createdAt) === today) totals.itemsDay += qty;
+      if (new Date(createdAt) >= weekStart) totals.itemsWeek += qty;
+      if (new Date(createdAt) >= monthStart) totals.itemsMonth += qty;
+      if (new Date(createdAt) >= yearStart) totals.itemsYear += qty;
+      if (hasCustomRange && customStart && customEnd && inRange(createdAt, customStart, customEnd)) {
+        totals.itemsCustom += qty;
+      }
+    }
+
+    for (const o of allOrders ?? []) {
+      const order = o as Row;
+      const createdAt = String(order.created_at);
+      const isCompleted =
+        COMPLETED_STATUSES.includes(order.status as (typeof COMPLETED_STATUSES)[number]) &&
+        order.payment_status === 'paid';
+      const isCancelled = order.status === 'avbruten';
+
+      if (isCompleted) {
+        totals.ordersTotal += 1;
+        totals.revenueTotalOre += Number(order.total_ore ?? 0);
+        if (toStockholmDateString(createdAt) === today) {
+          totals.ordersDay += 1;
+          totals.revenueDayOre += Number(order.total_ore ?? 0);
+        }
+        if (new Date(createdAt) >= weekStart) {
+          totals.ordersWeek += 1;
+          totals.revenueWeekOre += Number(order.total_ore ?? 0);
+        }
+        if (new Date(createdAt) >= monthStart) {
+          totals.ordersMonth += 1;
+          totals.revenueMonthOre += Number(order.total_ore ?? 0);
+        }
+        if (new Date(createdAt) >= yearStart) {
+          totals.ordersYear += 1;
+          totals.revenueYearOre += Number(order.total_ore ?? 0);
+        }
+        if (hasCustomRange && customStart && customEnd && inRange(createdAt, customStart, customEnd)) {
+          totals.ordersCustom += 1;
+          totals.revenueCustomOre += Number(order.total_ore ?? 0);
+        }
+      }
+
+      if (isCancelled) {
+        totals.ordersCancelledTotal += 1;
+        if (toStockholmDateString(createdAt) === today) totals.ordersCancelledDay += 1;
+        if (new Date(createdAt) >= weekStart) totals.ordersCancelledWeek += 1;
+        if (new Date(createdAt) >= monthStart) totals.ordersCancelledMonth += 1;
+        if (new Date(createdAt) >= yearStart) totals.ordersCancelledYear += 1;
+        if (hasCustomRange && customStart && customEnd && inRange(createdAt, customStart, customEnd)) {
+          totals.ordersCancelledCustom += 1;
+        }
+      }
+    }
 
     res.json({
-      products: products.map(p => ({
+      products: Array.from(uniqueProducts.values()).map((p) => ({
         name: p.name,
-        soldDay: Number(p.sold_day) || 0,
-        soldWeek: Number(p.sold_week) || 0,
-        soldMonth: Number(p.sold_month) || 0,
-        soldYear: Number(p.sold_year) || 0,
-        soldTotal: Number(p.sold_total) || 0,
-        soldCustom: Number(p.sold_custom) || 0,
-        revenueDayOre: Number(p.revenue_day_ore) || 0,
-        revenueWeekOre: Number(p.revenue_week_ore) || 0,
-        revenueMonthOre: Number(p.revenue_month_ore) || 0,
-        revenueYearOre: Number(p.revenue_year_ore) || 0,
-        revenueTotalOre: Number(p.revenue_total_ore) || 0,
-        revenueCustomOre: Number(p.revenue_custom_ore) || 0,
+        soldDay: p.soldDay,
+        soldWeek: p.soldWeek,
+        soldMonth: p.soldMonth,
+        soldYear: p.soldYear,
+        soldTotal: p.soldTotal,
+        soldCustom: p.soldCustom,
+        revenueDayOre: p.revenueDayOre,
+        revenueWeekOre: p.revenueWeekOre,
+        revenueMonthOre: p.revenueMonthOre,
+        revenueYearOre: p.revenueYearOre,
+        revenueTotalOre: p.revenueTotalOre,
+        revenueCustomOre: p.revenueCustomOre,
       })),
-      totals: {
-        ordersDay: Number(totals.orders_day) || 0,
-        ordersWeek: Number(totals.orders_week) || 0,
-        ordersMonth: Number(totals.orders_month) || 0,
-        ordersYear: Number(totals.orders_year) || 0,
-        ordersTotal: Number(totals.orders_total) || 0,
-        ordersCustom: Number(totals.orders_custom) || 0,
-        ordersCancelledDay: Number(totals.orders_cancelled_day) || 0,
-        ordersCancelledWeek: Number(totals.orders_cancelled_week) || 0,
-        ordersCancelledMonth: Number(totals.orders_cancelled_month) || 0,
-        ordersCancelledYear: Number(totals.orders_cancelled_year) || 0,
-        ordersCancelledTotal: Number(totals.orders_cancelled_total) || 0,
-        ordersCancelledCustom: Number(totals.orders_cancelled_custom) || 0,
-        itemsDay: Number(totals.items_day) || 0,
-        itemsWeek: Number(totals.items_week) || 0,
-        itemsMonth: Number(totals.items_month) || 0,
-        itemsYear: Number(totals.items_year) || 0,
-        itemsTotal: Number(totals.items_total) || 0,
-        itemsCustom: Number(totals.items_custom) || 0,
-        revenueDayOre: Number(totals.revenue_day_ore) || 0,
-        revenueWeekOre: Number(totals.revenue_week_ore) || 0,
-        revenueMonthOre: Number(totals.revenue_month_ore) || 0,
-        revenueYearOre: Number(totals.revenue_year_ore) || 0,
-        revenueTotalOre: Number(totals.revenue_total_ore) || 0,
-        revenueCustomOre: Number(totals.revenue_custom_ore) || 0,
-      },
-      hasCustomRange
+      totals,
+      hasCustomRange,
     });
   } catch (e) {
-    console.error(e);
+    console.error('[POST /admin/statistics]', e);
     res.status(500).json({ error: 'Failed to fetch statistics' });
   }
 });
