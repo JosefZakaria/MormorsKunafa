@@ -6,8 +6,16 @@ import { sendOrderConfirmationEmail } from '../services/OrderConfirmationEmail.j
 import { sendSms } from '../services/SmsService.js';
 import { getStripe } from '../services/stripeClient.js';
 import { parseOrderScheduledAt } from '../utils/stockholmWallTime.js';
+import {
+  isAllowedPaymentMethod,
+  isCardPayment,
+  isOnlinePayment,
+} from '../utils/paymentMethod.js';
+import swishPaymentRouter from './swishPayment.js';
 
 const router = Router();
+
+router.use('/swish-payment', swishPaymentRouter);
 
 const ACTIVE_STATUSES = ['mottagen', 'påbörjad'] as const;
 
@@ -100,6 +108,12 @@ router.post('/', async (req: Request, res: Response) => {
       return;
     }
 
+    const paymentMethod = String(body.paymentMethod ?? 'cash').trim().toLowerCase();
+    if (!isAllowedPaymentMethod(paymentMethod)) {
+      res.status(400).json({ error: 'Invalid payment method' });
+      return;
+    }
+
     const [countResult] = (await db.query(
       "SELECT COALESCE(MAX(CAST(SUBSTRING(order_number, 2) AS UNSIGNED)), 0) + 1 AS n FROM orders WHERE order_number LIKE '#%'"
     )) as [Row[], unknown];
@@ -147,7 +161,7 @@ router.post('/', async (req: Request, res: Response) => {
         orderId,
         orderNumber,
         body.orderType ?? 'takeaway',
-        body.paymentMethod ?? 'cash',
+        paymentMethod,
         defaultPrep,
         estimatedReady,
         scheduledAt,
@@ -185,8 +199,7 @@ router.post('/', async (req: Request, res: Response) => {
       return;
     }
     const emailOut = String(result.order.customer_email ?? '').trim();
-    const payWithApp = (body.paymentMethod ?? 'cash') === 'app';
-    if (emailOut && !payWithApp) {
+    if (emailOut && !isOnlinePayment(paymentMethod)) {
       void sendOrderConfirmationEmail({ order: result.order, items: result.items }).catch((err) =>
         console.error('[order confirmation email]', err)
       );
@@ -225,8 +238,8 @@ router.post('/checkout-session/:orderId', async (req: Request, res: Response) =>
     }
 
     const { order, items } = result;
-    if (String(order.payment_method ?? '') !== 'app') {
-      res.status(400).json({ error: 'Order does not use app payment' });
+    if (!isCardPayment(String(order.payment_method ?? ''))) {
+      res.status(400).json({ error: 'Order does not use card payment' });
       return;
     }
     if (String(order.payment_status ?? '') !== 'pending') {
@@ -262,6 +275,7 @@ router.post('/checkout-session/:orderId', async (req: Request, res: Response) =>
 
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
+      payment_method_types: ['card'],
       ...(custEmail ? { customer_email: custEmail } : {}),
       line_items: lineItems,
       metadata: { orderId },
@@ -327,7 +341,7 @@ router.patch('/admin/:id/accept', requireAdmin, async (req: Request, res: Respon
 
     const payMethod = String(result.order.payment_method ?? '');
     const payStatus = String(result.order.payment_status ?? '');
-    if (payMethod === 'app' && payStatus !== 'paid') {
+    if (isOnlinePayment(payMethod) && payStatus !== 'paid') {
       res.status(400).json({ error: 'Beställningen är inte betald ännu.' });
       return;
     }

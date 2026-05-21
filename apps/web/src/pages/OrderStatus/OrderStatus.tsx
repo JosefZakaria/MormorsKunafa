@@ -3,6 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Container } from '../../components/common/Container/Container';
 import { orderApi } from '../../services/api';
 import type { Order } from '@shared/types';
+import { isAwaitingOnlinePayment } from '../../utils/payment';
 import './OrderStatus.css';
 
 function getCountdown(isoTime: string | undefined): string {
@@ -180,8 +181,7 @@ function SimpleConfirmationView({
 }
 
 function LivePickupView({ order, countdown }: { order: Order; countdown: string }) {
-    const isAwaitingPayment =
-        order.paymentMethod === 'app' && order.paymentStatus === 'pending';
+    const isAwaitingPayment = isAwaitingOnlinePayment(order);
     const isPending = order.status === 'ny' || order.status === 'mottagen';
     const isCompleted =
         order.status === 'klar' || order.status === 'uthämtad' || order.status === 'levererad';
@@ -274,8 +274,7 @@ export const OrderStatus: React.FC = () => {
 
         void fetchOrder();
 
-        const awaitingPayment =
-            order?.paymentMethod === 'app' && order?.paymentStatus === 'pending';
+        const awaitingPayment = order ? isAwaitingOnlinePayment(order) : false;
         let intervalMs: number;
         if (awaitingPayment) intervalMs = 2500;
         else if (order && !usesLivePickupTracking(order)) intervalMs = 60_000;
@@ -295,8 +294,7 @@ export const OrderStatus: React.FC = () => {
     }, [liveTracking, order?.estimatedReadyTime]);
 
     const isCancelled = order?.status === 'avbruten';
-    const isAwaitingPayment =
-        order?.paymentMethod === 'app' && order?.paymentStatus === 'pending';
+    const isAwaitingPayment = order ? isAwaitingOnlinePayment(order) : false;
     const isCompleted =
         order?.status === 'klar' ||
         order?.status === 'uthämtad' ||

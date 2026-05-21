@@ -51,6 +51,34 @@ export const orderApi = {
     });
   },
 
+  createSwishPayment: async (
+    orderId: string,
+    body?: { phone?: string }
+  ): Promise<{
+    instructionId: string;
+    status: string;
+    paymentPageUrl?: string;
+    token?: string;
+    amountOre: number;
+    orderNumber: string;
+  }> => {
+    return apiRequest(`/orders/swish-payment/${orderId}`, {
+      method: 'POST',
+      body: JSON.stringify(body ?? {}),
+    });
+  },
+
+  getSwishPaymentStatus: async (
+    orderId: string
+  ): Promise<{
+    paymentStatus: string;
+    swishStatus: string | null;
+    paymentPageUrl?: string;
+    token?: string;
+  }> => {
+    return apiRequest(`/orders/swish-payment/${orderId}/status`);
+  },
+
   getById: async (id: string): Promise<Order> => {
     return apiRequest<Order>(`/orders/${id}`);
   },
