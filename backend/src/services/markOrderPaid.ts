@@ -1,14 +1,6 @@
-import type { ResultSetHeader } from 'mysql2/promise';
-import { db, type Row } from '../db/connection.js';
+import { supabase, type Row, logSupabaseError, nowIso } from '../db/connection.js';
+import { getOrderById } from '../db/orderRepository.js';
 import { sendOrderConfirmationEmail } from './OrderConfirmationEmail.js';
-
-async function getOrderById(id: string): Promise<{ order: Row; items: Row[] } | null> {
-  const [orderRows] = (await db.query('SELECT * FROM orders WHERE id = ?', [id])) as [Row[], unknown];
-  const orderList = Array.isArray(orderRows) ? orderRows : [];
-  if (orderList.length === 0) return null;
-  const [itemRows] = (await db.query('SELECT * FROM order_items WHERE order_id = ?', [id])) as [Row[], unknown];
-  return { order: orderList[0], items: Array.isArray(itemRows) ? itemRows : [] };
-}
 
 export type MarkOrderPaidOptions = {
   expectedAmountOre?: number;
@@ -34,13 +26,19 @@ export async function markOrderPaid(orderId: string, options?: MarkOrderPaidOpti
     return false;
   }
 
-  const [updateResult] = (await db.query(
-    `UPDATE orders SET payment_status = 'paid', updated_at = NOW() WHERE id = ? AND payment_status = 'pending'`,
-    [orderId]
-  )) as [ResultSetHeader, unknown];
+  const { data, error } = await supabase
+    .from('orders')
+    .update({ payment_status: 'paid', updated_at: nowIso() })
+    .eq('id', orderId)
+    .eq('payment_status', 'pending')
+    .select('id');
 
-  const affected = Number(updateResult.affectedRows ?? 0);
-  if (affected === 0) return false;
+  if (error) {
+    logSupabaseError('markOrderPaid', error);
+    throw error;
+  }
+
+  if (!data || data.length === 0) return false;
 
   const refreshed = await getOrderById(orderId);
   if (!refreshed) return true;
@@ -56,10 +54,18 @@ export async function markOrderPaid(orderId: string, options?: MarkOrderPaidOpti
 }
 
 export async function getOrderIdBySwishInstructionId(instructionId: string): Promise<string | null> {
-  const [rows] = (await db.query('SELECT id FROM orders WHERE swish_instruction_id = ? LIMIT 1', [
-    instructionId,
-  ])) as [Row[], unknown];
-  const list = Array.isArray(rows) ? rows : [];
-  if (list.length === 0) return null;
-  return String(list[0].id ?? '');
+  const { data, error } = await supabase
+    .from('orders')
+    .select('id')
+    .eq('swish_instruction_id', instructionId)
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    logSupabaseError('getOrderIdBySwishInstructionId', error);
+    throw error;
+  }
+
+  if (!data) return null;
+  return String((data as Row).id ?? '');
 }

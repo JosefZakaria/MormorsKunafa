@@ -1,5 +1,7 @@
 import { Router, Request, Response } from 'express';
-import { db, generateId, type Row } from '../db/connection.js';
+import { supabase, generateId, type Row, logSupabaseError, nowIso } from '../db/connection.js';
+import { getOrderById, getNextOrderNumber, updateOrder } from '../db/orderRepository.js';
+import { orderRowToOrder, rowsToOrders } from '../db/ordersList.js';
 import { requireAdmin } from '../middleware/auth.js';
 import { PrinterService } from '../services/PrinterService.js';
 import { sendOrderConfirmationEmail } from '../services/OrderConfirmationEmail.js';
@@ -40,58 +42,6 @@ function publicWebAppUrl(): string {
   return 'http://localhost:5173';
 }
 
-function orderRowToOrder(r: Row, items: Row[]): Record<string, unknown> {
-  const deliveryInfo = r.delivery_info_json != null
-    ? (typeof r.delivery_info_json === 'string' ? JSON.parse(r.delivery_info_json as string) : r.delivery_info_json)
-    : undefined;
-  const customerInfo = (r.customer_name || r.customer_phone || r.customer_email)
-    ? {
-        name: (r.customer_name as string) ?? '',
-        phone: (r.customer_phone as string) ?? '',
-        ...(r.customer_email ? { email: r.customer_email as string } : {}),
-      }
-    : undefined;
-  return {
-    id: r.id,
-    orderNumber: r.order_number,
-    status: r.status,
-    orderType: r.order_type,
-    paymentMethod: r.payment_method,
-    paymentStatus: r.payment_status,
-    totalPrice: r.total_ore,
-    defaultPreparationTime: r.default_preparation_time_minutes,
-    estimatedReadyTime: (r.estimated_ready_at as Date)?.toISOString?.() ?? r.estimated_ready_at,
-    scheduledTime: (r.scheduled_at as Date)?.toISOString?.() ?? r.scheduled_at,
-    customerInfo,
-    deliveryInfo,
-    createdAt: (r.created_at as Date)?.toISOString?.() ?? r.created_at,
-    updatedAt: (r.updated_at as Date)?.toISOString?.() ?? r.updated_at,
-    startedAt: (r.started_at as Date)?.toISOString?.() ?? r.started_at,
-    completedAt: (r.completed_at as Date)?.toISOString?.() ?? r.completed_at,
-    cancellationReason: r.cancellation_reason ?? undefined,
-    cancelledAt: (r.cancelled_at as Date)?.toISOString?.() ?? r.cancelled_at,
-    refundStatus: r.refund_status ?? 'none',
-    internalNotes: r.internal_notes ?? undefined,
-    items: items.map((i) => ({
-      productId: i.product_id ?? '',
-      productName: i.product_name_snapshot,
-      quantity: i.quantity,
-      price: i.price_ore,
-      modifications: i.modifications_json != null
-        ? (typeof i.modifications_json === 'string' ? JSON.parse(i.modifications_json as string) : i.modifications_json)
-        : undefined,
-    })),
-  };
-}
-
-async function getOrderById(id: string): Promise<{ order: Row; items: Row[] } | null> {
-  const [orderRows] = (await db.query('SELECT * FROM orders WHERE id = ?', [id])) as [Row[], unknown];
-  const orderList = Array.isArray(orderRows) ? orderRows : [];
-  if (orderList.length === 0) return null;
-  const [itemRows] = (await db.query('SELECT * FROM order_items WHERE order_id = ?', [id])) as [Row[], unknown];
-  return { order: orderList[0], items: Array.isArray(itemRows) ? itemRows : [] };
-}
-
 // Create order (public)
 router.post('/', async (req: Request, res: Response) => {
   try {
@@ -114,15 +64,21 @@ router.post('/', async (req: Request, res: Response) => {
       return;
     }
 
-    const [countResult] = (await db.query(
-      "SELECT COALESCE(MAX(CAST(SUBSTRING(order_number, 2) AS UNSIGNED)), 0) + 1 AS n FROM orders WHERE order_number LIKE '#%'"
-    )) as [Row[], unknown];
-    const countRow = Array.isArray(countResult) && countResult[0] ? countResult[0] : null;
-    const nextNum = (countRow as Row)?.n ?? 1;
-    const orderNumber = `#${String(nextNum).padStart(4, '0')}`;
+    const orderNumber = await getNextOrderNumber();
 
-    const [settingsRows] = (await db.query('SELECT default_preparation_time_minutes, is_paused FROM admin_settings LIMIT 1')) as [Row[], unknown];
-    const settings = Array.isArray(settingsRows) && settingsRows[0] ? (settingsRows[0] as Row) : null;
+    const { data: settingsRows, error: settingsError } = await supabase
+      .from('admin_settings')
+      .select('default_preparation_time_minutes, is_paused')
+      .limit(1);
+
+    if (settingsError) {
+      logSupabaseError('POST /api/orders settings', settingsError);
+      res.status(500).json({ error: 'Failed to fetch settings', details: settingsError.message });
+      return;
+    }
+
+    const settings =
+      Array.isArray(settingsRows) && settingsRows[0] ? (settingsRows[0] as Row) : null;
     
     if (settings && settings.is_paused) {
       res.status(403).json({ error: 'Beställningar är för tillfället pausade, försök igen senare.' });
@@ -154,44 +110,64 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     const orderId = generateId();
-    await db.query(
-      `INSERT INTO orders (id, order_number, status, order_type, payment_method, payment_status, total_ore, default_preparation_time_minutes, estimated_ready_at, scheduled_at, customer_name, customer_email, customer_phone, delivery_info_json)
-         VALUES (?, ?, 'ny', ?, ?, 'pending', 0, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        orderId,
-        orderNumber,
-        body.orderType ?? 'takeaway',
-        paymentMethod,
-        defaultPrep,
-        estimatedReady,
-        scheduledAt,
-        customerName,
-        customerEmail,
-        customerPhone,
-        body.deliveryInfo ? JSON.stringify(body.deliveryInfo) : null,
-      ]
-    );
+    const orderInsert = {
+      id: orderId,
+      order_number: orderNumber,
+      status: 'ny',
+      order_type: body.orderType ?? 'takeaway',
+      payment_method: paymentMethod,
+      payment_status: 'pending',
+      total_ore: 0,
+      default_preparation_time_minutes: defaultPrep,
+      estimated_ready_at: estimatedReady.toISOString(),
+      scheduled_at: scheduledAt ? scheduledAt.toISOString() : null,
+      customer_name: customerName,
+      customer_email: customerEmail,
+      customer_phone: customerPhone,
+      delivery_info_json: body.deliveryInfo ?? null,
+    };
+
+    const { error: orderInsertError } = await supabase.from('orders').insert(orderInsert);
+    if (orderInsertError) {
+      logSupabaseError('POST /api/orders insert', orderInsertError);
+      res.status(500).json({ error: 'Failed to create order', details: orderInsertError.message });
+      return;
+    }
 
     let totalOre = 0;
+    const itemRows = [];
     for (const it of body.items) {
       const itemId = generateId();
       const lineTotal = (it.price ?? 0) * (it.quantity ?? 1);
       totalOre += lineTotal;
-      await db.query(
-        `INSERT INTO order_items (id, order_id, product_id, product_name_snapshot, quantity, price_ore, modifications_json)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [
-          itemId,
-          orderId,
-          it.productId || null,
-          it.productName ?? '',
-          it.quantity ?? 1,
-          it.price ?? 0,
-          it.modifications?.length ? JSON.stringify(it.modifications) : null,
-        ]
-      );
+      itemRows.push({
+        id: itemId,
+        order_id: orderId,
+        product_id: it.productId || null,
+        product_name_snapshot: it.productName ?? '',
+        quantity: it.quantity ?? 1,
+        price_ore: it.price ?? 0,
+        modifications_json: it.modifications?.length ? it.modifications : null,
+      });
     }
-    await db.query('UPDATE orders SET total_ore = ? WHERE id = ?', [totalOre, orderId]);
+
+    const { error: itemsError } = await supabase.from('order_items').insert(itemRows);
+    if (itemsError) {
+      logSupabaseError('POST /api/orders items', itemsError);
+      res.status(500).json({ error: 'Failed to create order items', details: itemsError.message });
+      return;
+    }
+
+    const { error: totalError } = await supabase
+      .from('orders')
+      .update({ total_ore: totalOre })
+      .eq('id', orderId);
+
+    if (totalError) {
+      logSupabaseError('POST /api/orders total', totalError);
+      res.status(500).json({ error: 'Failed to update order total', details: totalError.message });
+      return;
+    }
 
     const result = await getOrderById(orderId);
     if (!result) {
@@ -283,7 +259,16 @@ router.post('/checkout-session/:orderId', async (req: Request, res: Response) =>
       cancel_url: cancelUrl,
     });
 
-    await db.query('UPDATE orders SET stripe_checkout_session_id = ? WHERE id = ?', [session.id, orderId]);
+    const { error: stripeUpdateError } = await supabase
+      .from('orders')
+      .update({ stripe_checkout_session_id: session.id })
+      .eq('id', orderId);
+
+    if (stripeUpdateError) {
+      logSupabaseError('checkout-session stripe id', stripeUpdateError);
+      res.status(500).json({ error: 'Failed to save checkout session' });
+      return;
+    }
 
     if (!session.url) {
       res.status(500).json({ error: 'Checkout session missing URL' });
@@ -303,23 +288,27 @@ router.post('/checkout-session/:orderId', async (req: Request, res: Response) =>
 // Excludes pre-orders scheduled for a future date (in Europe/Stockholm time).
 router.get('/admin/pending', requireAdmin, async (_req: Request, res: Response) => {
   try {
-    const [rows] = (await db.query(
-      "SELECT * FROM orders WHERE status = 'ny' AND payment_status = 'paid' ORDER BY created_at ASC"
-    )) as [Row[], unknown];
-    const list = Array.isArray(rows) ? rows : [];
+    const { data, error } = await supabase
+      .from('orders')
+      .select('*')
+      .eq('status', 'ny')
+      .eq('payment_status', 'paid')
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      logSupabaseError('GET /admin/pending', error);
+      res.status(500).json({ error: 'Failed to fetch pending orders', details: error.message });
+      return;
+    }
+
     const today = todayInStockholm();
-    const sameDay = list.filter((r) => {
-      const schedDate = toStockholmDateString(r.scheduled_at as Date | string | null);
+    const sameDay = (data ?? []).filter((r) => {
+      const schedDate = toStockholmDateString((r as Row).scheduled_at as Date | string | null);
       return schedDate == null || schedDate <= today;
     });
-    const out = [];
-    for (const o of sameDay) {
-      const [items] = (await db.query('SELECT * FROM order_items WHERE order_id = ?', [o.id])) as [Row[], unknown];
-      out.push(orderRowToOrder(o, Array.isArray(items) ? items : []));
-    }
-    res.json(out);
+    res.json(await rowsToOrders(sameDay as Row[]));
   } catch (e) {
-    console.error(e);
+    console.error('[GET /admin/pending]', e);
     res.status(500).json({ error: 'Failed to fetch pending orders' });
   }
 });
@@ -350,10 +339,10 @@ router.patch('/admin/:id/accept', requireAdmin, async (req: Request, res: Respon
     const totalMinutes = defaultPrep + (extraMinutes ?? 0);
     const estimatedReady = new Date(Date.now() + totalMinutes * 60 * 1000);
 
-    await db.query(
-      `UPDATE orders SET status = 'mottagen', estimated_ready_at = ?, updated_at = NOW() WHERE id = ?`,
-      [estimatedReady, req.params.id]
-    );
+    await updateOrder(req.params.id, {
+      status: 'mottagen',
+      estimated_ready_at: estimatedReady.toISOString(),
+    });
 
     const updated = await getOrderById(req.params.id);
     if (!updated) {
@@ -383,18 +372,21 @@ router.patch('/admin/:id/accept', requireAdmin, async (req: Request, res: Respon
 // Admin: active orders
 router.get('/admin/active', requireAdmin, async (_req: Request, res: Response) => {
   try {
-    const [rows] = (await db.query(
-      "SELECT * FROM orders WHERE status IN ('mottagen', 'påbörjad') AND payment_status = 'paid' ORDER BY created_at ASC"
-    )) as [Row[], unknown];
-    const list = Array.isArray(rows) ? rows : [];
-    const out = [];
-    for (const o of list) {
-      const [items] = (await db.query('SELECT * FROM order_items WHERE order_id = ?', [o.id])) as [Row[], unknown];
-      out.push(orderRowToOrder(o, Array.isArray(items) ? items : []));
+    const { data, error } = await supabase
+      .from('orders')
+      .select('*')
+      .in('status', ['mottagen', 'påbörjad'])
+      .eq('payment_status', 'paid')
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      logSupabaseError('GET /admin/active', error);
+      res.status(500).json({ error: 'Failed to fetch active orders', details: error.message });
+      return;
     }
-    res.json(out);
+    res.json(await rowsToOrders((data ?? []) as Row[]));
   } catch (e) {
-    console.error(e);
+    console.error('[GET /admin/active]', e);
     res.status(500).json({ error: 'Failed to fetch active orders' });
   }
 });
@@ -403,23 +395,28 @@ router.get('/admin/active', requireAdmin, async (_req: Request, res: Response) =
 // Includes both unaccepted ('ny') and accepted ('mottagen', 'påbörjad') pre-orders.
 router.get('/admin/pre-orders', requireAdmin, async (_req: Request, res: Response) => {
   try {
-    const [rows] = (await db.query(
-      "SELECT * FROM orders WHERE scheduled_at IS NOT NULL AND status IN ('ny', 'mottagen', 'påbörjad') AND payment_status = 'paid' ORDER BY scheduled_at ASC"
-    )) as [Row[], unknown];
-    const list = Array.isArray(rows) ? rows : [];
+    const { data, error } = await supabase
+      .from('orders')
+      .select('*')
+      .not('scheduled_at', 'is', null)
+      .in('status', ['ny', 'mottagen', 'påbörjad'])
+      .eq('payment_status', 'paid')
+      .order('scheduled_at', { ascending: true });
+
+    if (error) {
+      logSupabaseError('GET /admin/pre-orders', error);
+      res.status(500).json({ error: 'Failed to fetch pre-orders', details: error.message });
+      return;
+    }
+
     const today = todayInStockholm();
-    const futureOnly = list.filter((r) => {
-      const schedDate = toStockholmDateString(r.scheduled_at as Date | string | null);
+    const futureOnly = (data ?? []).filter((r) => {
+      const schedDate = toStockholmDateString((r as Row).scheduled_at as Date | string | null);
       return schedDate != null && schedDate > today;
     });
-    const out = [];
-    for (const o of futureOnly) {
-      const [items] = (await db.query('SELECT * FROM order_items WHERE order_id = ?', [o.id])) as [Row[], unknown];
-      out.push(orderRowToOrder(o, Array.isArray(items) ? items : []));
-    }
-    res.json(out);
+    res.json(await rowsToOrders(futureOnly as Row[]));
   } catch (e) {
-    console.error(e);
+    console.error('[GET /admin/pre-orders]', e);
     res.status(500).json({ error: 'Failed to fetch pre-orders' });
   }
 });
@@ -431,28 +428,29 @@ router.get('/admin/history', requireAdmin, async (req: Request, res: Response) =
     const dateFrom = req.query.from as string | undefined;
     const dateTo = req.query.to as string | undefined;
 
-    let sql = "SELECT * FROM orders WHERE status IN ('klar', 'avbruten', 'uthämtad', 'levererad')";
-    const params: unknown[] = [];
+    let query = supabase
+      .from('orders')
+      .select('*')
+      .in('status', ['klar', 'avbruten', 'uthämtad', 'levererad'])
+      .order('created_at', { ascending: false })
+      .limit(limit);
 
     if (dateFrom) {
-      sql += ' AND created_at >= ?';
-      params.push(dateFrom);
+      query = query.gte('created_at', `${dateFrom}T00:00:00.000Z`);
     }
     if (dateTo) {
-      sql += ' AND created_at < DATE_ADD(?, INTERVAL 1 DAY)';
-      params.push(dateTo);
+      const end = new Date(`${dateTo}T00:00:00.000Z`);
+      end.setUTCDate(end.getUTCDate() + 1);
+      query = query.lt('created_at', end.toISOString());
     }
-    sql += ' ORDER BY created_at DESC LIMIT ?';
-    params.push(limit);
 
-    const [rows] = (await db.query(sql, params)) as [Row[], unknown];
-    const list = Array.isArray(rows) ? rows : [];
-    const out = [];
-    for (const o of list) {
-      const [items] = (await db.query('SELECT * FROM order_items WHERE order_id = ?', [o.id])) as [Row[], unknown];
-      out.push(orderRowToOrder(o, Array.isArray(items) ? items : []));
+    const { data, error } = await query;
+    if (error) {
+      logSupabaseError('GET /admin/history', error);
+      res.status(500).json({ error: 'Failed to fetch history', details: error.message });
+      return;
     }
-    res.json(out);
+    res.json(await rowsToOrders((data ?? []) as Row[]));
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Failed to fetch history' });
@@ -469,7 +467,16 @@ router.post('/admin/history/all/delete', requireAdmin, async (req: Request, res:
       res.status(401).json({ error: 'Felaktigt lösenord' });
       return;
     }
-    await db.query("DELETE FROM orders WHERE status IN ('klar', 'avbruten', 'uthämtad', 'levererad')");
+    const { error } = await supabase
+      .from('orders')
+      .delete()
+      .in('status', ['klar', 'avbruten', 'uthämtad', 'levererad']);
+
+    if (error) {
+      logSupabaseError('DELETE /admin/history/all', error);
+      res.status(500).json({ error: 'Failed to clear history', details: error.message });
+      return;
+    }
     res.status(204).end();
   } catch (e) {
     console.error(e);
@@ -487,7 +494,12 @@ router.post('/admin/:id/delete', requireAdmin, async (req: Request, res: Respons
       return;
     }
 
-    await db.query('DELETE FROM orders WHERE id = ?', [req.params.id]);
+    const { error } = await supabase.from('orders').delete().eq('id', req.params.id);
+    if (error) {
+      logSupabaseError('DELETE /admin/:id', error);
+      res.status(500).json({ error: 'Failed to delete order', details: error.message });
+      return;
+    }
     res.status(204).end();
   } catch (e) {
     console.error(e);
@@ -509,15 +521,14 @@ router.post('/admin/:id/cancel', requireAdmin, async (req: Request, res: Respons
       return;
     }
 
-    await db.query(
-      `UPDATE orders
-       SET status = 'avbruten',
-           cancelled_at = COALESCE(cancelled_at, NOW()),
-           cancellation_reason = ?,
-           updated_at = NOW()
-       WHERE id = ?`,
-      [cancellationReason.trim(), req.params.id]
-    );
+    const existing = await getOrderById(req.params.id);
+    await updateOrder(req.params.id, {
+      status: 'avbruten',
+      cancelled_at: existing?.order.cancelled_at
+        ? String(existing.order.cancelled_at)
+        : nowIso(),
+      cancellation_reason: cancellationReason.trim(),
+    });
 
     const result = await getOrderById(req.params.id);
     if (!result) {
@@ -548,25 +559,26 @@ router.patch('/admin/:id/status', requireAdmin, async (req: Request, res: Respon
       return;
     }
 
-    const updates: string[] = ['status = ?', 'updated_at = NOW()'];
-    const params: unknown[] = [status];
+    const existing = await getOrderById(req.params.id);
+    const patch: Record<string, unknown> = { status };
     if (estimatedReadyTime) {
-      updates.push('estimated_ready_at = ?');
-      params.push(new Date(estimatedReadyTime));
+      patch.estimated_ready_at = new Date(estimatedReadyTime).toISOString();
     }
     if (status === 'påbörjad') {
-      updates.push('started_at = COALESCE(started_at, NOW())');
+      patch.started_at = existing?.order.started_at ? String(existing.order.started_at) : nowIso();
     }
     if (status === 'klar') {
-      updates.push('completed_at = COALESCE(completed_at, NOW())');
+      patch.completed_at = existing?.order.completed_at
+        ? String(existing.order.completed_at)
+        : nowIso();
     }
     if (status === 'avbruten') {
-      updates.push('cancelled_at = COALESCE(cancelled_at, NOW())');
-      updates.push('cancellation_reason = ?');
-      params.push(cancellationReason?.trim() ?? null);
+      patch.cancelled_at = existing?.order.cancelled_at
+        ? String(existing.order.cancelled_at)
+        : nowIso();
+      patch.cancellation_reason = cancellationReason?.trim() ?? null;
     }
-    params.push(req.params.id);
-    await db.query(`UPDATE orders SET ${updates.join(', ')} WHERE id = ?`, params);
+    await updateOrder(req.params.id, patch);
 
     const result = await getOrderById(req.params.id);
     if (!result) {
@@ -594,22 +606,18 @@ router.patch('/admin/:id/status', requireAdmin, async (req: Request, res: Respon
 router.patch('/admin/:id/time', requireAdmin, async (req: Request, res: Response) => {
   try {
     const { estimatedReadyTime, preparationTime } = req.body as { estimatedReadyTime?: string; preparationTime?: number };
-    const updates: string[] = ['updated_at = NOW()'];
-    const params: unknown[] = [];
+    const patch: Record<string, unknown> = {};
     if (estimatedReadyTime) {
-      updates.push('estimated_ready_at = ?');
-      params.push(new Date(estimatedReadyTime));
+      patch.estimated_ready_at = new Date(estimatedReadyTime).toISOString();
     }
     if (typeof preparationTime === 'number') {
-      updates.push('default_preparation_time_minutes = ?');
-      params.push(preparationTime);
+      patch.default_preparation_time_minutes = preparationTime;
     }
-    if (params.length <= 0) {
+    if (Object.keys(patch).length === 0) {
       res.status(400).json({ error: 'estimatedReadyTime or preparationTime required' });
       return;
     }
-    params.push(req.params.id);
-    await db.query(`UPDATE orders SET ${updates.join(', ')} WHERE id = ?`, params);
+    await updateOrder(req.params.id, patch);
 
     const result = await getOrderById(req.params.id);
     if (!result) {
@@ -628,10 +636,9 @@ router.patch('/admin/:id/notes', requireAdmin, async (req: Request, res: Respons
   try {
     const { internalNotes } = req.body as { internalNotes?: string };
     const trimmed = typeof internalNotes === 'string' ? internalNotes.trim() : '';
-    await db.query(
-      'UPDATE orders SET internal_notes = ?, updated_at = NOW() WHERE id = ?',
-      [trimmed.length > 0 ? trimmed : null, req.params.id]
-    );
+    await updateOrder(req.params.id, {
+      internal_notes: trimmed.length > 0 ? trimmed : null,
+    });
 
     const result = await getOrderById(req.params.id);
     if (!result) {

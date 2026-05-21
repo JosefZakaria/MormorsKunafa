@@ -1,20 +1,23 @@
-import mysql from 'mysql2/promise';
+import type { PostgrestError } from '@supabase/supabase-js';
+import { supabase } from './supabase.js';
 
-const pool = mysql.createPool({
-  host: process.env.DB_HOST ?? 'localhost',
-  port: Number(process.env.DB_PORT) || 3306,
-  user: process.env.DB_USER ?? 'root',
-  password: process.env.DB_PASSWORD ?? '',
-  database: process.env.DB_DATABASE ?? 'mormors_kunafa',
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
-  charset: 'utf8mb4',
-});
-
+export { supabase };
 export type Row = Record<string, unknown>;
-export const db = pool;
 
 export function generateId(): string {
   return crypto.randomUUID();
+}
+
+export function logSupabaseError(context: string, error: PostgrestError | null | undefined): void {
+  if (!error) return;
+  console.error(`[${context}] Supabase error:`, {
+    message: error.message,
+    code: error.code,
+    details: error.details,
+    hint: error.hint,
+  });
+}
+
+export function nowIso(): string {
+  return new Date().toISOString();
 }
