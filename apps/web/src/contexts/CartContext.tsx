@@ -1,5 +1,11 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import type { Product } from '@shared/types';
+import {
+  getVariantPriceOre,
+  getFixedWeight,
+  isBreadProduct,
+  parseBreadQuantity,
+} from '../utils/productVariantPrices';
 
 export interface CartItem {
   productId: string;
@@ -41,32 +47,39 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const addItem = (product: Product, quantity: number = 1, option?: string) => {
     setItems((prevItems) => {
-      const uniqueId = option ? `${product.id}-${option}` : product.id;
-      const displayName = option ? `${product.name} - ${option}` : product.name;
+      const fixedWeight = getFixedWeight(product);
+      const resolvedOption = option ?? fixedWeight ?? undefined;
+      const uniqueId = resolvedOption ? `${product.id}-${resolvedOption}` : product.id;
+      const displayName = resolvedOption ? `${product.name} - ${resolvedOption}` : product.name;
+
+      const unitPriceOre =
+        getVariantPriceOre(product, resolvedOption ?? '') ??
+        product.price;
+
+      const lineQuantity = isBreadProduct(product) && resolvedOption
+        ? parseBreadQuantity(resolvedOption)
+        : quantity;
 
       const existingItem = prevItems.find((item) => item.productId === uniqueId);
 
       if (existingItem) {
-        // Update quantity if item already exists
         return prevItems.map((item) =>
           item.productId === uniqueId
-            ? { ...item, quantity: item.quantity + quantity }
+            ? { ...item, quantity: item.quantity + lineQuantity }
             : item
         );
-      } else {
-        // Add new item
-        // Product price is already in öre from backend
-        return [
-          ...prevItems,
-          {
-            productId: uniqueId,
-            productName: displayName,
-            price: product.price, // Already in öre
-            quantity,
-            image: product.image,
-          },
-        ];
       }
+
+      return [
+        ...prevItems,
+        {
+          productId: uniqueId,
+          productName: displayName,
+          price: unitPriceOre,
+          quantity: lineQuantity,
+          image: product.image,
+        },
+      ];
     });
   };
 
