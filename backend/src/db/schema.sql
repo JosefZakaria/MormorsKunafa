@@ -59,7 +59,7 @@ CREATE TABLE IF NOT EXISTS `orders` (
   `scheduled_at` datetime DEFAULT NULL,
   `customer_name` varchar(255) DEFAULT NULL,
   `customer_email` varchar(255) DEFAULT NULL,
-  `customer_phone` varchar(64) DEFAULT NULL,
+  `customer_phone` varchar(64) NOT NULL,
   `delivery_info_json` json DEFAULT NULL,
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

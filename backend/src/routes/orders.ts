@@ -123,9 +123,14 @@ router.post('/', async (req: Request, res: Response) => {
     const baseTime = scheduledAt && scheduledAt.getTime() > Date.now() ? scheduledAt : new Date();
     const estimatedReady = new Date(baseTime.getTime() + defaultPrep * 60 * 1000);
 
-    const customerName = body.customerInfo?.name ?? body.deliveryInfo?.name ?? null;
-    const customerEmail = body.customerInfo?.email ?? body.deliveryInfo?.email ?? null;
-    const customerPhone = body.customerInfo?.phone ?? body.deliveryInfo?.phone ?? null;
+    const customerName = String(body.customerInfo?.name ?? body.deliveryInfo?.name ?? '').trim() || null;
+    const customerEmail = String(body.customerInfo?.email ?? body.deliveryInfo?.email ?? '').trim() || null;
+    const customerPhone = String(body.customerInfo?.phone ?? body.deliveryInfo?.phone ?? '').trim();
+
+    if (!customerPhone) {
+      res.status(400).json({ error: 'Telefonnummer krävs för beställning.' });
+      return;
+    }
 
     const orderId = generateId();
     await db.query(

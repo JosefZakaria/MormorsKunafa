@@ -104,18 +104,32 @@ export const Cart: React.FC = () => {
             // Get delivery info if order type is delivery
             const deliveryInfo = orderType === 'delivery' ? getDeliveryInfo() : undefined;
 
-            // For delivery, derive customer info from the delivery form data
-            if (orderType === 'delivery' && deliveryInfo) {
+            // For delivery, derive customer info from the delivery form data.
+            if (orderType === 'delivery') {
+                if (!deliveryInfo) {
+                    setError('Leveransinformationen saknas. Fyll i uppgifterna igen.');
+                    return;
+                }
+
                 const name = (deliveryInfo.name || '').trim();
                 const phone = (deliveryInfo.phone || '').trim();
                 const email = (deliveryInfo.email || '').trim();
-                if (name || phone || email) {
-                    customerInfo = {
-                        name,
-                        phone,
-                        ...(email ? { email } : {}),
-                    };
+
+                if (!name || !phone) {
+                    setError(t('cart.customer_info_required'));
+                    return;
                 }
+
+                customerInfo = {
+                    name,
+                    phone,
+                    ...(email ? { email } : {}),
+                };
+            }
+
+            if (!customerInfo) {
+                setError(t('cart.customer_info_required'));
+                return;
             }
 
             // Build scheduledTime only if customer chose a future date (naive datetime = Europe/Stockholm on server)
