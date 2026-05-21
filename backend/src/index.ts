@@ -8,9 +8,14 @@ import { handleStripeWebhook } from './routes/stripeWebhook.js';
 import { handleSwishCallback } from './routes/swishCallback.js';
 
 const app = express();
-const port = Number(process.env.PORT) || 3001;
 
-app.use(cors({ origin: true, credentials: true }));
+app.use(
+  cors({
+    origin: process.env.FRONTEND_URL || 'https://mormorskunafa-frontend.vercel.app',
+    credentials: true,
+  })
+);
+
 app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), (req, res) => {
   void handleStripeWebhook(req, res);
 });
@@ -27,6 +32,11 @@ app.get('/api/health', (_req, res) => {
   res.json({ ok: true });
 });
 
-app.listen(port, () => {
-  console.log(`Backend listening on http://localhost:${port}`);
-});
+if (process.env.NODE_ENV !== 'production') {
+  const PORT = Number(process.env.PORT) || 3001;
+  app.listen(PORT, () => {
+    console.log(`Backend listening on http://localhost:${PORT}`);
+  });
+}
+
+export default app;
