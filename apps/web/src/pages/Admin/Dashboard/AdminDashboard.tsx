@@ -7,7 +7,7 @@ import { orderApi, productApi, adminApi } from '../../../services/api';
 import { printKitchenTicket, printReceipt, testConnection, isPrinterConfigured, getPrinterConfig, setPrinterConfig } from '../../../services/printer';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { getDisplayName } from '../../../utils/productDisplayName';
-import type { Order, Product, AdminSettings } from '@shared/types';
+import type { DeliveryInfo, Order, Product, AdminSettings } from '@shared/types';
 import '../Admin.css';
 
 // --- Helper: countdown string from ISO time ---
@@ -20,6 +20,68 @@ function getCountdown(isoTime: string | undefined): string {
     const secs = Math.floor((absoluteDiff % 60000) / 1000);
     const formatted = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
     return isOverdue ? `-${formatted}` : formatted;
+}
+
+function deliveryCustomerName(order: Order): string {
+    const fromCustomer = order.customerInfo?.name?.trim();
+    if (fromCustomer) return fromCustomer;
+    return order.deliveryInfo?.name?.trim() ?? '';
+}
+
+function deliveryPhone(order: Order): string {
+    return order.customerInfo?.phone?.trim() || order.deliveryInfo?.phone?.trim() || '';
+}
+
+function deliveryEmail(order: Order): string {
+    return order.customerInfo?.email?.trim() || order.deliveryInfo?.email?.trim() || '';
+}
+
+/** Contact / delivery address for admin cards (hemleverans + övriga med kundinfo). */
+function OrderContactPanel({ order }: { order: Order }) {
+    if (order.orderType === 'delivery') {
+        const d: DeliveryInfo | undefined = order.deliveryInfo;
+        const name = deliveryCustomerName(order);
+        const phone = deliveryPhone(order);
+        const email = deliveryEmail(order);
+        const hasAddress = !!(d?.address?.trim() || d?.postalCode?.trim() || d?.city?.trim());
+        if (!name && !phone && !email && !hasAddress) {
+            return (
+                <div className="delivery-info-panel">
+                    <p className="delivery-info-panel__title">Leverans</p>
+                    <p style={{ color: '#888' }}>Ingen leveransinfo sparad på ordern.</p>
+                </div>
+            );
+        }
+        const postalCity = [d?.postalCode, d?.city].filter(Boolean).join(' ').trim();
+        const scheduledLabel =
+            order.scheduledTime
+                ? `${formatScheduledDate(order.scheduledTime)}${formatScheduledClock(order.scheduledTime) ? ` · ${formatScheduledClock(order.scheduledTime)}` : ''}`
+                : null;
+        return (
+            <div className="delivery-info-panel">
+                <p className="delivery-info-panel__title">Leverans</p>
+                {name && <p><strong>{name}</strong></p>}
+                {hasAddress && d?.address && <p>{d.address}</p>}
+                {postalCity && <p>{postalCity}</p>}
+                {phone && <p>Tel: {phone}</p>}
+                {email && <p>E-post: {email}</p>}
+                {scheduledLabel ? (
+                    <p className="delivery-info-panel__window">Önskad tid: {scheduledLabel}</p>
+                ) : (
+                    <p className="delivery-info-panel__window">Leverans: 1–2 arbetsdagar (Sverige)</p>
+                )}
+            </div>
+        );
+    }
+    if (order.customerInfo?.name || order.customerInfo?.phone) {
+        return (
+            <p className="order-customer-line">
+                Kund: {order.customerInfo?.name ?? '—'}
+                {order.customerInfo?.phone ? ` · ${order.customerInfo.phone}` : ''}
+            </p>
+        );
+    }
+    return null;
 }
 
 function OrderTypeLabel({ type }: { type: string }) {
@@ -189,12 +251,7 @@ function PreOrderCard({ order, onEditNotes, onCancel }: {
                     ))}
                 </ul>
                 <p className="order-total">{(order.totalPrice / 100).toFixed(0)} kr</p>
-                {order.customerInfo?.name && (
-                    <p style={{ fontSize: '0.85rem', color: '#444', margin: '0.25rem 0 0' }}>
-                        Kund: {order.customerInfo.name}
-                        {order.customerInfo.phone ? ` · ${order.customerInfo.phone}` : ''}
-                    </p>
-                )}
+                <OrderContactPanel order={order} />
                 {order.internalNotes && (
                     <div className="preorder-notes">
                         <span className="preorder-notes-label">Notis:</span> {order.internalNotes}
@@ -239,6 +296,7 @@ function PendingOrderCard({ order, defaultPrepTime, onAccept }: {
                     ))}
                 </ul>
                 <p className="order-total">{(order.totalPrice / 100).toFixed(0)} kr</p>
+                <OrderContactPanel order={order} />
                 <p style={{ fontSize: '0.8rem', color: '#888', marginTop: '0.25rem' }}>
                     Beställd {new Date(order.createdAt).toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' })}
                 </p>
@@ -1055,6 +1113,12 @@ export const AdminDashboard: React.FC = () => {
                                                 <OrderTimer estimatedReadyTime={order.estimatedReadyTime} />
                                                 <span className={`status-badge status-${order.status}`}>{order.status}</span>
                                             </div>
+                                            {order.orderType === 'delivery' && (
+                                                <p style={{ fontSize: '0.8rem', color: '#6b5f52', margin: '0.25rem 0 0' }}>
+                                                    Nedräkning: tillagning i köket
+                                                </p>
+                                            )}
+                                            <OrderContactPanel order={order} />
                                             <ul style={{ margin: '0.5rem 0', paddingLeft: '1.2rem' }}>
                                                 {order.items.map((item, i) => (
                                                     <li key={i}>{item.quantity}x {item.productName} – {(item.price * item.quantity / 100).toFixed(0)} kr</li>
@@ -1139,6 +1203,7 @@ export const AdminDashboard: React.FC = () => {
                                                 ))}
                                             </ul>
                                             <p className="order-total">{(order.totalPrice / 100).toFixed(0)} kr</p>
+                                            <OrderContactPanel order={order} />
                                             <p style={{ fontSize: '0.8rem', color: '#888', margin: 0 }}>{new Date(order.createdAt).toLocaleString('sv-SE')}</p>
                                             {order.status === 'avbruten' && (
                                                 <>
