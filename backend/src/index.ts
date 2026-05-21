@@ -11,7 +11,7 @@ const app = express();
 
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || 'https://mormorskunafa-frontend.vercel.app',
+    origin: process.env.FRONTEND_URL || 'https://mormorskunafa.se',
     credentials: true,
   })
 );
