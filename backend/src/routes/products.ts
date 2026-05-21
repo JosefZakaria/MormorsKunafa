@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { resolveProductImage } from '../utils/productImage.js';
 import { supabase, type Row, logSupabaseError, nowIso } from '../db/connection.js';
 import { requireAdmin } from '../middleware/auth.js';
 
@@ -26,7 +27,7 @@ function rowToProduct(r: Row): {
     name: String(r.name),
     price: Number(r.price_ore),
     description: String(r.description ?? ''),
-    image: String(r.image_url ?? ''),
+    image: resolveProductImage(String(r.id), r.image_url as string | null, r.slug as string | null),
     inStock,
     createdAt:
       createdAt instanceof Date ? createdAt.toISOString() : String(createdAt ?? ''),

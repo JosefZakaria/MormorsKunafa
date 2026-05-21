@@ -7,6 +7,7 @@ import { useCart } from '../../contexts/CartContext';
 import { useToast } from '../../contexts/ToastContext';
 import { productApi } from '../../services/api';
 import { API_CONFIG } from '@shared/api';
+import { resolveProductImage } from '@shared/utils/productImage';
 import type { Product } from '@shared/types';
 import { getDisplayName, getTranslationIndex } from '../../utils/productDisplayName';
 import {
@@ -189,9 +190,14 @@ export const Menu: React.FC = () => {
                 const data = await productApi.getAll();
                 if (!cancelled) {
                     setProducts(
-                        data.filter(
-                            (p) => !MENU_EXCLUDE_PRODUCT_IDS.has(p.id) && !isMenuExcluded(p)
-                        )
+                        data
+                            .filter(
+                                (p) => !MENU_EXCLUDE_PRODUCT_IDS.has(p.id) && !isMenuExcluded(p)
+                            )
+                            .map((p) => ({
+                                ...p,
+                                image: resolveProductImage(p.id, p.image),
+                            }))
                     );
                 }
             } catch (err) {
