@@ -8,6 +8,18 @@ import { useToast } from '../../contexts/ToastContext';
 import { productApi } from '../../services/api';
 import type { Product } from '@shared/types';
 import { getDisplayName, getTranslationIndex } from '../../utils/productDisplayName';
+import {
+    BREAD_UNIT_PRICE_ORE,
+    formatBreadOption,
+    getBreadDisplayPriceOre,
+    getDisplayPriceOre,
+    getFixedWeight,
+    getOptionSelectorType,
+    getProductOptions,
+    hasVariantPricing,
+    isBreadProduct,
+    isMenuExcluded,
+} from '../../utils/productVariantPrices';
 import './Menu.css';
 
 const SHORT_DESC_LENGTH = 100;
@@ -88,18 +100,6 @@ function stripLeadingProductName(html: string, displayName: string): string {
 /** Product id to exclude from menu (Mormors Box – En Gåva av äkta Smaker). */
 const MENU_EXCLUDE_PRODUCT_IDS = new Set(['f05b6a24-7b90-4dfb-8f2f-be67a475cbfa']);
 
-/** Products that are sold only in one fixed weight (no dropdown). */
-const FIXED_WEIGHT_BY_INDEX: Record<string, string> = {
-    '12': '1 kg',      // Mormorsbox - BaklawaMix
-    '14': '1350 gram', // Pistagemix
-};
-
-function getFixedWeight(product: Product): string | null {
-    const idx = getTranslationIndex(product);
-    if (idx && FIXED_WEIGHT_BY_INDEX[idx]) return FIXED_WEIGHT_BY_INDEX[idx];
-    return null;
-}
-
 /** Translated short description when we have a translation index; else normalized API description (no raw \r\n). */
 function getDisplayShortDesc(product: Product, t: (key: string) => string): string {
     const idx = getTranslationIndex(product);
@@ -117,90 +117,37 @@ function getDisplayShortDesc(product: Product, t: (key: string) => string): stri
         : normalized.slice(0, SHORT_DESC_LENGTH).trim() + '…';
 }
 
-// Mock products fallback (when backend is not available)
+// Mock products fallback (when backend is not available) — real UUIDs for variant pricing
 const getMockProducts = (t: (key: string) => string): Product[] => {
     const now = new Date().toISOString();
+    const mock = (
+        id: string,
+        nameKey: string,
+        descKey: string,
+        image: string,
+        priceOre: number
+    ): Product => ({
+        id,
+        name: t(nameKey),
+        price: priceOre,
+        description: t(descKey),
+        image,
+        inStock: true,
+        createdAt: now,
+        updatedAt: now,
+    });
     return [
-        {
-            id: '1',
-            name: t('products.1.name'),
-            price: 12900, // 129 kr in öre
-            description: t('products.1.desc'),
-            image: '/images/pistage-baklawa.jpg',
-            inStock: true,
-            createdAt: now,
-            updatedAt: now,
-        },
-        {
-            id: '2',
-            name: t('products.2.name'),
-            price: 12900,
-            description: t('products.2.desc'),
-            image: '/images/walnut-baklawa.jpg',
-            inStock: true,
-            createdAt: now,
-            updatedAt: now,
-        },
-        {
-            id: '3',
-            name: t('products.3.name'),
-            price: 11900,
-            description: t('products.3.desc'),
-            image: '/images/finmald-kunafa.jpg',
-            inStock: true,
-            createdAt: now,
-            updatedAt: now,
-        },
-        {
-            id: '4',
-            name: t('products.4.name'),
-            price: 8500,
-            description: t('products.4.desc'),
-            image: '/images/kaake-kunafa.jpg',
-            inStock: true,
-            createdAt: now,
-            updatedAt: now,
-        },
-        {
-            id: '5',
-            name: t('products.5.name'),
-            price: 11900,
-            description: t('products.5.desc'),
-            image: '/images/kunafa-ashta.jpg',
-            inStock: true,
-            createdAt: now,
-            updatedAt: now,
-        },
-        {
-            id: '6',
-            name: t('products.6.name'),
-            price: 13900,
-            description: t('products.6.desc'),
-            image: '/images/harise-ashta.jpg',
-            inStock: true,
-            createdAt: now,
-            updatedAt: now,
-        },
-        {
-            id: '7',
-            name: t('products.7.name'),
-            price: 14900,
-            description: t('products.7.desc'),
-            image: '/images/ostkaka.jpg',
-            inStock: true,
-            createdAt: now,
-            updatedAt: now,
-        },
-        {
-            id: '8',
-            name: t('products.8.name'),
-            price: 11900,
-            description: t('products.8.desc'),
-            image: '/images/krispig-kunafa.jpg',
-            inStock: true,
-            createdAt: now,
-            updatedAt: now,
-        },
+        mock('1ae3fd7a-0042-4220-b330-b27b3147a0a6', 'products.1.name', 'products.1.desc', '/images/pistage-baklawa.jpg', 8900),
+        mock('054b4adf-4da3-42c0-aa9b-b939023aafad', 'products.2.name', 'products.2.desc', '/images/walnut-baklawa.jpg', 6900),
+        mock('77048580-fd68-454d-b34b-395b351a96d4', 'products.3.name', 'products.3.desc', '/images/finmald-kunafa.jpg', 14900),
+        mock('fc469599-82e8-4ea3-aa18-0436bc2a2afd', 'products.5.name', 'products.5.desc', '/images/kunafa-ashta.jpg', 14900),
+        mock('6c1efa0e-149c-4259-9bd0-f85fd35f4b62', 'products.7.name', 'products.7.desc', '/images/ostkaka.jpg', 7900),
+        mock('37b8b656-2604-4ca6-9745-e0d6f52338c1', 'products.8.name', 'products.8.desc', '/images/krispig-kunafa.jpg', 14900),
+        mock('856b591e-08b3-40ec-b505-cb3b143293bb', 'products.9.name', 'products.9.desc', '/images/kaake-kunafa.jpg', 1500),
+        mock('94fd4a72-2685-4bc4-8813-0f5e5eaa4a1c', 'products.11.name', 'products.11.desc', '/images/harise-ashta.jpg', 7900),
+        mock('c005c8af-3f2e-401c-923f-7dac0f682cda', 'products.12.name', 'products.12.desc', '/images/pistage-baklawa.jpg', 29900),
+        mock('6312f48a-b156-431b-9f6d-103cc30bc9f8', 'products.13.name', 'products.13.desc', '/images/pistage-baklawa.jpg', 17900),
+        mock('9e6d210b-8637-4deb-889c-0726060288aa', 'products.14.name', 'products.14.desc', '/images/pistage-baklawa.jpg', 49900),
     ];
 };
 
@@ -214,12 +161,18 @@ export const Menu: React.FC = () => {
     const [usingMockData, setUsingMockData] = useState(false);
     const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
     const [selectedOption, setSelectedOption] = useState<string>('');
+    const [breadQuantity, setBreadQuantity] = useState(1);
     const tRef = useRef(t);
 
     useEffect(() => {
         if (selectedProduct) {
             const fixed = getFixedWeight(selectedProduct);
-            setSelectedOption(fixed ?? '');
+            if (isBreadProduct(selectedProduct)) {
+                setBreadQuantity(1);
+                setSelectedOption('');
+            } else {
+                setSelectedOption(fixed ?? '');
+            }
         }
     }, [selectedProduct]);
     tRef.current = t;
@@ -234,7 +187,11 @@ export const Menu: React.FC = () => {
                 setUsingMockData(false);
                 const data = await productApi.getAll();
                 if (!cancelled) {
-                    setProducts(data.filter((p) => !MENU_EXCLUDE_PRODUCT_IDS.has(p.id)));
+                    setProducts(
+                        data.filter(
+                            (p) => !MENU_EXCLUDE_PRODUCT_IDS.has(p.id) && !isMenuExcluded(p)
+                        )
+                    );
                 }
             } catch (err) {
                 if (cancelled) return;
@@ -255,9 +212,21 @@ export const Menu: React.FC = () => {
             alert('Denna produkt är tyvärr slut i lager.');
             return;
         }
-        addItem(product, 1, option);
+        const fixed = getFixedWeight(product);
+        const resolvedOption = option || fixed || undefined;
+        addItem(product, 1, resolvedOption);
         showToast(t('menu.added_to_cart').replace('{name}', getDisplayName(product, t)), 'success');
     };
+
+    const selectedIsBread = selectedProduct ? isBreadProduct(selectedProduct) : false;
+    const modalPriceOre = selectedProduct
+        ? selectedIsBread
+            ? getBreadDisplayPriceOre(breadQuantity)
+            : getDisplayPriceOre(selectedProduct, selectedOption)
+        : 0;
+    const canAddToCart =
+        selectedProduct?.inStock &&
+        (selectedIsBread || !!selectedOption || !!getFixedWeight(selectedProduct));
 
     if (loading) {
         return (
@@ -343,7 +312,9 @@ export const Menu: React.FC = () => {
                                         disabled={!product.inStock}
                                     >
                                         {product.inStock
-                                            ? (getFixedWeight(product) ? 'Visa produkt' : 'Välj alternativ')
+                                            ? (getFixedWeight(product) || !hasVariantPricing(product)
+                                                ? 'Visa produkt'
+                                                : 'Välj alternativ')
                                             : t('menu.out_of_stock')}
                                     </Button>
                                 </div>
@@ -393,22 +364,51 @@ export const Menu: React.FC = () => {
                                             </>
                                         );
                                     }
-                                    const isCountBased = /kunafa|ostkaka/i.test(selectedProduct.name);
+                                    const selectorType = getOptionSelectorType(selectedProduct);
+                                    if (selectorType === 'bread') {
+                                        return (
+                                            <>
+                                                <label className="menu-modal__options-label">Välj antal</label>
+                                                <div className="menu-modal__quantity" role="group" aria-label="Antal bröd">
+                                                    <button
+                                                        type="button"
+                                                        className="menu-modal__quantity-btn"
+                                                        onClick={() => setBreadQuantity((q) => Math.max(1, q - 1))}
+                                                        disabled={breadQuantity <= 1}
+                                                        aria-label="Minska antal"
+                                                    >
+                                                        −
+                                                    </button>
+                                                    <span className="menu-modal__quantity-value" aria-live="polite">
+                                                        {breadQuantity}
+                                                    </span>
+                                                    <button
+                                                        type="button"
+                                                        className="menu-modal__quantity-btn"
+                                                        onClick={() => setBreadQuantity((q) => q + 1)}
+                                                        aria-label="Öka antal"
+                                                    >
+                                                        +
+                                                    </button>
+                                                </div>
+                                            </>
+                                        );
+                                    }
+                                    const options = getProductOptions(selectedProduct);
+                                    const label =
+                                        selectorType === 'persons'
+                                            ? 'Välj antal personer'
+                                            : 'Välj vikt';
                                     return (
                                         <>
-                                            <label className="menu-modal__options-label">
-                                                {isCountBased ? 'Välj antal' : 'Välj vikt'}
-                                            </label>
+                                            <label className="menu-modal__options-label">{label}</label>
                                             <select
                                                 className="menu-modal__select"
                                                 value={selectedOption}
                                                 onChange={(e) => setSelectedOption(e.target.value)}
                                             >
                                                 <option value="" disabled>Välj...</option>
-                                                {(isCountBased
-                                                    ? ['2 personer', '4 personer']
-                                                    : ['250 gram', '500 gram', '1 kg']
-                                                ).map((opt) => (
+                                                {options.map((opt) => (
                                                     <option key={opt} value={opt}>{opt}</option>
                                                 ))}
                                             </select>
@@ -422,7 +422,13 @@ export const Menu: React.FC = () => {
                                 {getDisplayName(selectedProduct, t)}
                             </h2>
                             <p className="menu-modal__price">
-                                {(selectedProduct.price / 100).toFixed(0)} kr
+                                {(modalPriceOre / 100).toFixed(0)} kr
+                                {selectedIsBread && breadQuantity > 1 && (
+                                    <span className="menu-modal__price-detail">
+                                        {' '}
+                                        ({breadQuantity} × {(BREAD_UNIT_PRICE_ORE / 100).toFixed(0)} kr)
+                                    </span>
+                                )}
                             </p>
                             {(() => {
                                 const sanitizedApiDescription = sanitizeHtml(selectedProduct.description || '');
@@ -485,14 +491,20 @@ export const Menu: React.FC = () => {
                                 fullWidth
                                 className="menu-modal__btn"
                                 onClick={() => {
-                                    if (!selectedOption) return;
-                                    handleAddToCart(selectedProduct, selectedOption);
+                                    const fixed = getFixedWeight(selectedProduct);
+                                    const option = selectedIsBread
+                                        ? formatBreadOption(breadQuantity)
+                                        : selectedOption || fixed || '';
+                                    if (!option) return;
+                                    handleAddToCart(selectedProduct, option);
                                     setSelectedProduct(null);
                                 }}
-                                disabled={!selectedProduct.inStock || !selectedOption}
+                                disabled={!canAddToCart}
                             >
                                 {selectedProduct.inStock
-                                    ? selectedOption ? t('menu.add_to_cart') : 'Välj ett alternativ'
+                                    ? canAddToCart
+                                        ? t('menu.add_to_cart')
+                                        : 'Välj ett alternativ'
                                     : t('menu.out_of_stock')}
                             </Button>
                         </div>
