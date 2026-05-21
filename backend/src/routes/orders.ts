@@ -4,6 +4,7 @@ import { requireAdmin } from '../middleware/auth.js';
 import { PrinterService } from '../services/PrinterService.js';
 import { sendOrderConfirmationEmail } from '../services/OrderConfirmationEmail.js';
 import { sendSms } from '../services/SmsService.js';
+import { getStripe } from '../services/stripeClient.js';
 import { parseOrderScheduledAt } from '../utils/stockholmWallTime.js';
 
 const router = Router();
@@ -23,6 +24,12 @@ function toStockholmDateString(value: Date | string | null | undefined): string 
 
 function todayInStockholm(): string {
   return new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Stockholm' });
+}
+
+function publicWebAppUrl(): string {
+  const u = process.env.PUBLIC_WEB_APP_URL?.trim().replace(/\/$/, '');
+  if (u) return u;
+  return 'http://localhost:5173';
 }
 
 function orderRowToOrder(r: Row, items: Row[]): Record<string, unknown> {
@@ -178,7 +185,8 @@ router.post('/', async (req: Request, res: Response) => {
       return;
     }
     const emailOut = String(result.order.customer_email ?? '').trim();
-    if (emailOut) {
+    const payWithApp = (body.paymentMethod ?? 'cash') === 'app';
+    if (emailOut && !payWithApp) {
       void sendOrderConfirmationEmail({ order: result.order, items: result.items }).catch((err) =>
         console.error('[order confirmation email]', err)
       );
@@ -198,6 +206,83 @@ router.post('/', async (req: Request, res: Response) => {
   }
 });
 
+// Stripe Checkout: start payment for an existing order (must be before GET /:id)
+router.post('/checkout-session/:orderId', async (req: Request, res: Response) => {
+  try {
+    let stripe;
+    try {
+      stripe = getStripe();
+    } catch {
+      res.status(503).json({ error: 'Betalning är inte konfigurerad.' });
+      return;
+    }
+
+    const orderId = req.params.orderId;
+    const result = await getOrderById(orderId);
+    if (!result) {
+      res.status(404).json({ error: 'Order not found' });
+      return;
+    }
+
+    const { order, items } = result;
+    if (String(order.payment_method ?? '') !== 'app') {
+      res.status(400).json({ error: 'Order does not use app payment' });
+      return;
+    }
+    if (String(order.payment_status ?? '') !== 'pending') {
+      res.status(400).json({ error: 'Order is not awaiting payment' });
+      return;
+    }
+
+    const totalOre = Number(order.total_ore ?? 0);
+    if (totalOre <= 0) {
+      res.status(400).json({ error: 'Order has no payable total' });
+      return;
+    }
+
+    const base = publicWebAppUrl();
+    const successUrl = `${base}/status?orderId=${encodeURIComponent(orderId)}&session_id={CHECKOUT_SESSION_ID}`;
+    const cancelUrl = `${base}/cart`;
+
+    const lineItems = items.map((it) => {
+      const name = String(it.product_name_snapshot ?? 'Product').slice(0, 500);
+      const unitAmount = Number(it.price_ore ?? 0);
+      const quantity = Math.max(1, Number(it.quantity ?? 1));
+      return {
+        quantity,
+        price_data: {
+          currency: 'sek',
+          unit_amount: unitAmount,
+          product_data: { name },
+        },
+      };
+    });
+
+    const custEmail = order.customer_email ? String(order.customer_email).trim() : '';
+
+    const session = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      ...(custEmail ? { customer_email: custEmail } : {}),
+      line_items: lineItems,
+      metadata: { orderId },
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+    });
+
+    await db.query('UPDATE orders SET stripe_checkout_session_id = ? WHERE id = ?', [session.id, orderId]);
+
+    if (!session.url) {
+      res.status(500).json({ error: 'Checkout session missing URL' });
+      return;
+    }
+
+    res.json({ url: session.url });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to create checkout session' });
+  }
+});
+
 // Admin routes must be before /:id so /admin/active is not matched as id=admin
 
 // Admin: pending orders (status 'ny', waiting for acceptance).
@@ -205,7 +290,7 @@ router.post('/', async (req: Request, res: Response) => {
 router.get('/admin/pending', requireAdmin, async (_req: Request, res: Response) => {
   try {
     const [rows] = (await db.query(
-      "SELECT * FROM orders WHERE status = 'ny' ORDER BY created_at ASC"
+      "SELECT * FROM orders WHERE status = 'ny' AND payment_status = 'paid' ORDER BY created_at ASC"
     )) as [Row[], unknown];
     const list = Array.isArray(rows) ? rows : [];
     const today = todayInStockholm();
@@ -237,6 +322,13 @@ router.patch('/admin/:id/accept', requireAdmin, async (req: Request, res: Respon
     }
     if (result.order.status !== 'ny') {
       res.status(400).json({ error: 'Order is not in pending state' });
+      return;
+    }
+
+    const payMethod = String(result.order.payment_method ?? '');
+    const payStatus = String(result.order.payment_status ?? '');
+    if (payMethod === 'app' && payStatus !== 'paid') {
+      res.status(400).json({ error: 'Beställningen är inte betald ännu.' });
       return;
     }
 
@@ -278,7 +370,7 @@ router.patch('/admin/:id/accept', requireAdmin, async (req: Request, res: Respon
 router.get('/admin/active', requireAdmin, async (_req: Request, res: Response) => {
   try {
     const [rows] = (await db.query(
-      "SELECT * FROM orders WHERE status IN ('mottagen', 'påbörjad') ORDER BY created_at ASC"
+      "SELECT * FROM orders WHERE status IN ('mottagen', 'påbörjad') AND payment_status = 'paid' ORDER BY created_at ASC"
     )) as [Row[], unknown];
     const list = Array.isArray(rows) ? rows : [];
     const out = [];
@@ -298,7 +390,7 @@ router.get('/admin/active', requireAdmin, async (_req: Request, res: Response) =
 router.get('/admin/pre-orders', requireAdmin, async (_req: Request, res: Response) => {
   try {
     const [rows] = (await db.query(
-      "SELECT * FROM orders WHERE scheduled_at IS NOT NULL AND status IN ('ny', 'mottagen', 'påbörjad') ORDER BY scheduled_at ASC"
+      "SELECT * FROM orders WHERE scheduled_at IS NOT NULL AND status IN ('ny', 'mottagen', 'påbörjad') AND payment_status = 'paid' ORDER BY scheduled_at ASC"
     )) as [Row[], unknown];
     const list = Array.isArray(rows) ? rows : [];
     const today = todayInStockholm();

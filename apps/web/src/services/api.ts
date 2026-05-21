@@ -45,6 +45,12 @@ export const orderApi = {
     });
   },
 
+  createCheckoutSession: async (orderId: string): Promise<{ url: string }> => {
+    return apiRequest<{ url: string }>(`/orders/checkout-session/${orderId}`, {
+      method: 'POST',
+    });
+  },
+
   getById: async (id: string): Promise<Order> => {
     return apiRequest<Order>(`/orders/${id}`);
   },

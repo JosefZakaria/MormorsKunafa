@@ -123,3 +123,82 @@
     font-size: 1.125rem;
     color: var(--color-gray-800);
 }
+
+.status-hint {
+    margin: var(--spacing-md) 0;
+    padding: var(--spacing-sm) var(--spacing-md);
+    background: #f5f2eb;
+    border-radius: var(--radius-sm);
+    font-size: 1rem;
+    color: #1a3d32;
+    font-weight: 600;
+}
+
+.status-info-panel {
+    margin: var(--spacing-lg) 0;
+    padding: var(--spacing-md);
+    background: #f5f2eb;
+    border-radius: var(--radius-sm);
+    border: 1px solid #e8e3db;
+    text-align: left;
+    font-size: 0.95rem;
+    line-height: 1.5;
+}
+
+.status-info-panel__title {
+    font-weight: 600;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #6b5f52;
+    margin: 0 0 0.5rem;
+}
+
+.status-info-panel p {
+    margin: 0.2rem 0;
+}
+
+.status-order-summary {
+    margin: var(--spacing-lg) 0;
+    text-align: left;
+    padding: var(--spacing-md);
+    border-top: 1px solid var(--color-gray-200);
+}
+
+.status-order-summary__title {
+    font-weight: 600;
+    margin: 0 0 0.5rem;
+    font-size: 0.9rem;
+    color: #444;
+}
+
+.status-order-summary ul {
+    margin: 0;
+    padding-left: 1.2rem;
+    color: var(--color-gray-800);
+}
+
+.status-order-summary__total {
+    margin: 0.75rem 0 0;
+    font-weight: 700;
+}
+
+.status-email-note {
+    font-size: 0.9rem;
+    color: var(--color-gray-500);
+    margin-top: var(--spacing-md);
+}
+
+.status-back-btn {
+    margin-top: var(--spacing-lg);
+    cursor: pointer;
+    padding: 0.6rem 1.5rem;
+    border-radius: 8px;
+    border: 1px solid #ccc;
+    background: #fff;
+    font-size: 1rem;
+}
+
+.status-back-btn:hover {
+    background: var(--color-gray-100);
+}

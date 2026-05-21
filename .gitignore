@@ -37,3 +37,7 @@ npm-debug.log*
 coverage/
 
 node_modules
+
+# Stripe CLI (lokal nedladdning – ska inte committas)
+stripe_*.zip
+stripe_*_windows_x86_64/

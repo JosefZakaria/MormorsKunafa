@@ -280,7 +280,8 @@
     }
 
     .menu-modal__select,
-    .menu-modal__fixed-weight {
+    .menu-modal__fixed-weight,
+    .menu-modal__quantity {
         max-width: none;
     }
 }
@@ -357,6 +358,53 @@
     letter-spacing: 0.02em;
 }
 
+.menu-modal__quantity {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    width: 100%;
+    max-width: 220px;
+    border: 2px solid #5C2A2F;
+    border-radius: 8px;
+    overflow: hidden;
+    background-color: #faf5f5;
+    box-shadow: 0 4px 6px rgba(92, 42, 47, 0.08);
+}
+
+.menu-modal__quantity-btn {
+    flex: 0 0 48px;
+    height: 48px;
+    border: none;
+    background-color: #5C2A2F;
+    color: #fff;
+    font-size: 1.5rem;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+    transition: background-color 0.2s ease, opacity 0.2s ease;
+    font-family: inherit;
+}
+
+.menu-modal__quantity-btn:hover:not(:disabled) {
+    background-color: #7a3a40;
+}
+
+.menu-modal__quantity-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+.menu-modal__quantity-value {
+    flex: 1;
+    min-width: 3rem;
+    text-align: center;
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #5C2A2F;
+    user-select: none;
+}
+
 .menu-modal__body {
     padding: var(--spacing-md) var(--spacing-lg) var(--spacing-lg);
     overflow-y: auto;
@@ -366,6 +414,12 @@
 
 .menu-modal__title {
     margin-bottom: var(--spacing-xs);
+}
+
+.menu-modal__price-detail {
+    font-size: 0.85em;
+    font-weight: 400;
+    opacity: 0.85;
 }
 
 .menu-modal__price {

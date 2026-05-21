@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS `orders` (
   `order_type` varchar(20) NOT NULL DEFAULT 'takeaway',
   `payment_method` varchar(20) NOT NULL DEFAULT 'cash',
   `payment_status` varchar(20) NOT NULL DEFAULT 'pending',
+  `stripe_checkout_session_id` varchar(255) DEFAULT NULL,
   `total_ore` int NOT NULL DEFAULT 0,
   `default_preparation_time_minutes` int NOT NULL DEFAULT 30,
   `estimated_ready_at` datetime DEFAULT NULL,
