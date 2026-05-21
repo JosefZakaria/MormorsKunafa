@@ -1,0 +1,100 @@
+# Backend
+
+Express API for Mormors Kunafa: products, orders, and admin (JWT). Data is stored in MySQL; prices in öre.
+
+## Environment variables
+
+Create a `.env` in `backend/` (or set in the shell). No `.env.example` is committed; use:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `PORT` | Server port | `3001` |
+| `DB_HOST` | MySQL host | `localhost` |
+| `DB_PORT` | MySQL port | `3306` |
+| `DB_USER` | MySQL user | `root` |
+| `DB_PASSWORD` | MySQL password | _(empty)_ |
+| `DB_DATABASE` | App database name | `mormors_kunafa` |
+| `JWT_SECRET` | Secret for admin JWT | _(set in production)_ |
+
+Optional, for one-time WordPress migration only:
+
+| Variable | Description |
+|----------|-------------|
+| `WP_DB_DATABASE` | WordPress/WooCommerce database name |
+| `WP_DB_HOST` | (optional) WP DB host; falls back to `DB_HOST` |
+| `WP_DB_PORT` | (optional) WP DB port |
+| `WP_DB_USER` | (optional) WP DB user |
+| `WP_DB_PASSWORD` | (optional) WP DB password |
+| `WP_TABLE_PREFIX` | (optional) WP table prefix; default `wp_` |
+
+## Setup
+
+1. **Create the app database** (e.g. in MySQL):
+
+   ```sql
+   CREATE DATABASE mormors_kunafa CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+   ```
+
+2. **Install and run schema** (from repo root or `backend/`):
+
+   ```bash
+   npm install
+   npm run db:migrate --workspace=@mormors-kunafa/backend
+   ```
+
+   This runs `backend/src/db/schema.sql` against `DB_DATABASE`.
+
+3. **(Optional) Migrate from WordPress**
+
+   - Restore your WordPress/WooCommerce SQL dump into a MySQL database.
+   - Set `WP_DB_DATABASE` (and other `WP_DB_*` if needed) in `.env`.
+   - Run:
+
+   ```bash
+   npm run db:seed-wp --workspace=@mormors-kunafa/backend
+   ```
+
+   Products and orders are copied; admin users are created with **new** bcrypt passwords. The script prints temporary passwords; change them after first login.
+
+4. **Start the server**
+
+   ```bash
+   npm run dev --workspace=@mormors-kunafa/backend
+   ```
+
+   API base URL: `http://localhost:3001/api` (or `PORT` you set).
+
+## Web app and API URL
+
+The shared API config defaults to `http://localhost:3000/api`. To use this backend (e.g. on port 3001), either:
+
+- Run the backend on port 3000 (`PORT=3000`), or
+- Set the web app env (e.g. in `apps/web/.env`):  
+  `VITE_API_BASE_URL=http://localhost:3001/api`  
+  (The shared helper reads `API_BASE_URL` / `VITE_API_BASE_URL`.)
+
+## Scripts
+
+| Script | Description |
+|--------|-------------|
+| `npm run dev` | Start with `tsx watch` (development) |
+| `npm run build` | Compile TypeScript to `dist/` |
+| `npm run start` | Run `node dist/index.js` (production) |
+| `npm run db:migrate` | Apply `src/db/schema.sql` to `DB_DATABASE` |
+| `npm run db:seed-wp` | One-time migration from WordPress DB (requires `WP_DB_*`) |
+| `npm run db:generate-product-sql` | Read WordPress dump file, output `backend/generated-products.sql` for the `products` table (no DB connection) |
+
+### Product SQL from WordPress dump (no DB connection)
+
+If you have the WordPress SQL dump file (e.g. `Database/845466_...sql`) but no remote DB access:
+
+1. Run: `npm run db:generate-product-sql --workspace=@mormors-kunafa/backend`
+2. Open `backend/generated-products.sql` and run its contents in phpMyAdmin on your target database to insert products.
+
+## API overview
+
+- **Products**: `GET /api/products`, `GET /api/products/:id`, `PATCH /api/products/:id/stock` (admin).
+- **Orders**: `POST /api/orders`, `GET /api/orders/:id`; admin: `GET /api/orders/admin/active`, `/api/orders/admin/pre-orders`, `/api/orders/admin/history`, `PATCH /api/orders/admin/:id/status`, `PATCH /api/orders/admin/:id/time`.
+- **Admin**: `POST /api/admin/login` (returns `{ token, admin }`), `GET/PATCH /api/admin/settings`, `GET /api/admin/notifications`, `PATCH /api/admin/notifications/:id/read` (notifications stubbed).
+
+Admin routes require header: `Authorization: Bearer <token>`.

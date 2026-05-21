@@ -7,7 +7,7 @@ import { useCart } from '../../contexts/CartContext';
 import { useToast } from '../../contexts/ToastContext';
 import { productApi } from '../../services/api';
 import { API_CONFIG } from '@shared/api';
-import { resolveProductImage } from '@shared/utils/productImage';
+import { resolveProductImage } from '@shared/utils/productImage.ts';
 import type { Product } from '@shared/types';
 import { getDisplayName, getTranslationIndex } from '../../utils/productDisplayName';
 import {
@@ -147,9 +147,9 @@ const getMockProducts = (t: (key: string) => string): Product[] => {
         mock('37b8b656-2604-4ca6-9745-e0d6f52338c1', 'products.8.name', 'products.8.desc', '/images/krispig-kunafa.jpg', 14900),
         mock('856b591e-08b3-40ec-b505-cb3b143293bb', 'products.9.name', 'products.9.desc', '/images/kaake-kunafa.jpg', 1500),
         mock('94fd4a72-2685-4bc4-8813-0f5e5eaa4a1c', 'products.11.name', 'products.11.desc', '/images/harise-ashta.jpg', 7900),
-        mock('c005c8af-3f2e-401c-923f-7dac0f682cda', 'products.12.name', 'products.12.desc', '/images/pistage-baklawa.jpg', 29900),
-        mock('6312f48a-b156-431b-9f6d-103cc30bc9f8', 'products.13.name', 'products.13.desc', '/images/pistage-baklawa.jpg', 17900),
-        mock('9e6d210b-8637-4deb-889c-0726060288aa', 'products.14.name', 'products.14.desc', '/images/pistage-baklawa.jpg', 49900),
+        mock('c005c8af-3f2e-401c-923f-7dac0f682cda', 'products.12.name', 'products.12.desc', '/images/mormorsbox-mix.jpg', 29900),
+        mock('6312f48a-b156-431b-9f6d-103cc30bc9f8', 'products.13.name', 'products.13.desc', '/images/mamoul-pistage.jpg', 17900),
+        mock('9e6d210b-8637-4deb-889c-0726060288aa', 'products.14.name', 'products.14.desc', '/images/pistagemix.jpg', 49900),
     ];
 };
 
