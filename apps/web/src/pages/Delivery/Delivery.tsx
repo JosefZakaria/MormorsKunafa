@@ -20,7 +20,26 @@ export const Delivery: React.FC = () => {
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        const info = { name: `${firstName} ${lastName}`, email, address, postalCode, city: ort, phone };
+        const trimmedFirstName = firstName.trim();
+        const trimmedLastName = lastName.trim();
+        const trimmedPhone = phone.trim();
+        const trimmedEmail = email.trim();
+        const trimmedAddress = address.trim();
+        const trimmedPostalCode = postalCode.trim();
+        const trimmedOrt = ort.trim();
+
+        if (!trimmedFirstName || !trimmedLastName || !trimmedAddress || !trimmedPostalCode || !trimmedOrt || !trimmedPhone) {
+            return;
+        }
+
+        const info = {
+            name: `${trimmedFirstName} ${trimmedLastName}`,
+            email: trimmedEmail,
+            address: trimmedAddress,
+            postalCode: trimmedPostalCode,
+            city: trimmedOrt,
+            phone: trimmedPhone,
+        };
         localStorage.setItem('deliveryInfo', JSON.stringify(info));
         sessionStorage.setItem('orderType', 'delivery');
 

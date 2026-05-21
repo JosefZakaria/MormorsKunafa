@@ -3,6 +3,7 @@ import { db, generateId, type Row } from '../db/connection.js';
 import { requireAdmin } from '../middleware/auth.js';
 import { PrinterService } from '../services/PrinterService.js';
 import { sendOrderConfirmationEmail } from '../services/OrderConfirmationEmail.js';
+import { sendSms } from '../services/SmsService.js';
 import { getStripe } from '../services/stripeClient.js';
 import { parseOrderScheduledAt } from '../utils/stockholmWallTime.js';
 
@@ -129,9 +130,14 @@ router.post('/', async (req: Request, res: Response) => {
     const baseTime = scheduledAt && scheduledAt.getTime() > Date.now() ? scheduledAt : new Date();
     const estimatedReady = new Date(baseTime.getTime() + defaultPrep * 60 * 1000);
 
-    const customerName = body.customerInfo?.name ?? body.deliveryInfo?.name ?? null;
-    const customerEmail = body.customerInfo?.email ?? body.deliveryInfo?.email ?? null;
-    const customerPhone = body.customerInfo?.phone ?? body.deliveryInfo?.phone ?? null;
+    const customerName = String(body.customerInfo?.name ?? body.deliveryInfo?.name ?? '').trim() || null;
+    const customerEmail = String(body.customerInfo?.email ?? body.deliveryInfo?.email ?? '').trim() || null;
+    const customerPhone = String(body.customerInfo?.phone ?? body.deliveryInfo?.phone ?? '').trim();
+
+    if (!customerPhone) {
+      res.status(400).json({ error: 'Telefonnummer krävs för beställning.' });
+      return;
+    }
 
     const orderId = generateId();
     await db.query(
@@ -185,6 +191,14 @@ router.post('/', async (req: Request, res: Response) => {
         console.error('[order confirmation email]', err)
       );
     }
+
+    const phoneOut = String(result.order.customer_phone ?? '').trim();
+    if (phoneOut) {
+      void sendSms(phoneOut, "Tack för din beställning från Mormors Kunafa! Vi behandlar den just nu.").catch((err) =>
+        console.error('[order confirmation sms]', err)
+      );
+    }
+
     res.status(201).json(orderRowToOrder(result.order, result.items));
   } catch (e) {
     console.error(e);
@@ -332,6 +346,19 @@ router.patch('/admin/:id/accept', requireAdmin, async (req: Request, res: Respon
       res.status(500).json({ error: 'Accept succeeded but fetch failed' });
       return;
     }
+
+    const phoneOut = String(updated.order.customer_phone ?? '').trim();
+    if (phoneOut) {
+      const readyTimeStr = estimatedReady.toLocaleTimeString('sv-SE', {
+        timeZone: 'Europe/Stockholm',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+      void sendSms(phoneOut, `Hej! Din order är mottagen och beräknas vara klar kl ${readyTimeStr}.`).catch((err) =>
+        console.error('[order accepted sms]', err)
+      );
+    }
+
     res.json(orderRowToOrder(updated.order, updated.items));
   } catch (e) {
     console.error(e);
@@ -532,6 +559,16 @@ router.patch('/admin/:id/status', requireAdmin, async (req: Request, res: Respon
       res.status(404).json({ error: 'Order not found' });
       return;
     }
+
+    if (status === 'klar') {
+      const phoneOut = String(result.order.customer_phone ?? '').trim();
+      if (phoneOut) {
+        void sendSms(phoneOut, "Hej! Din beställning från Mormors Kunafa är nu klar och redo att hämtas. Välkommen!").catch((err) =>
+          console.error('[order ready sms]', err)
+        );
+      }
+    }
+
     res.json(orderRowToOrder(result.order, result.items));
   } catch (e) {
     console.error(e);

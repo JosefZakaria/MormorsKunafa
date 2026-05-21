@@ -112,7 +112,7 @@ export interface SalesHistoryEntry {
 export interface CreateOrderRequest {
   items: OrderItem[];
   orderType: OrderType;
-  customerInfo?: CustomerInfo;
+  customerInfo: CustomerInfo;
   deliveryInfo?: DeliveryInfo;
   /** Naive `YYYY-MM-DDTHH:mm:ss` (Europe/Stockholm) or ISO with Z/offset */
   scheduledTime?: string;
