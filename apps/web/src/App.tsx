@@ -5,6 +5,7 @@ import { Landing } from './pages/Landing/Landing';
 import { Menu } from './pages/Menu/Menu';
 import { Cart } from './pages/Cart/Cart';
 import { OrderStatus } from './pages/OrderStatus/OrderStatus';
+import { SwishPay } from './pages/SwishPay/SwishPay';
 import { FindUs } from './pages/FindUs/FindUs';
 import { Delivery } from './pages/Delivery/Delivery';
 import { SelectLocation } from './pages/SelectLocation/SelectLocation';
@@ -36,6 +37,7 @@ function App() {
               <Route path="menu" element={<Menu />} />
               <Route path="cart" element={<Cart />} />
               <Route path="status" element={<OrderStatus />} />
+              <Route path="pay/swish" element={<SwishPay />} />
               <Route path="find-us" element={<FindUs />} />
               <Route path="delivery" element={<Delivery />} />
               <Route path="select-location" element={<SelectLocation />} />

@@ -14,8 +14,10 @@ export type OrderStatus = 'ny' | 'mottagen' | 'påbörjad' | 'klar' | 'avbruten'
 // Order Type
 export type OrderType = 'eat-here' | 'takeaway' | 'delivery';
 
-// Payment Method
-export type PaymentMethod = 'app' | 'cash';
+// Payment Method — `app` is legacy (treated as card on the server)
+export type PaymentMethod = 'card' | 'swish' | 'cash' | 'app';
+
+export type CheckoutPaymentChoice = 'card' | 'swish';
 export type RefundStatus = 'none' | 'pending' | 'refunded' | 'failed';
 
 // Product Interface

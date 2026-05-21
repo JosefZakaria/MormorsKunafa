@@ -5,7 +5,7 @@ import { Button } from '../../components/common/Button/Button';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useCart } from '../../contexts/CartContext';
 import { orderApi } from '../../services/api';
-import type { CustomerInfo, OrderType, PaymentMethod } from '@shared/types';
+import type { CheckoutPaymentChoice, CustomerInfo, OrderType } from '@shared/types';
 import './Cart.css';
 
 export const Cart: React.FC = () => {
@@ -28,6 +28,7 @@ export const Cart: React.FC = () => {
     const [customerPhone, setCustomerPhone] = useState('');
     const [customerEmail, setCustomerEmail] = useState('');
     const [customerInfoError, setCustomerInfoError] = useState<string | null>(null);
+    const [paymentChoice, setPaymentChoice] = useState<CheckoutPaymentChoice>('card');
 
     const needsInlineCustomerInfo = orderType === 'eat-here' || orderType === 'takeaway';
 
@@ -125,19 +126,36 @@ export const Cart: React.FC = () => {
                 scheduledTime = `${scheduledDate}T${hm}:00`;
             }
 
-            // Create order
+            if (paymentChoice === 'swish') {
+                const phoneForSwish =
+                    customerInfo?.phone?.trim() ||
+                    (deliveryInfo?.phone as string | undefined)?.trim() ||
+                    '';
+                if (!phoneForSwish) {
+                    setError('Ange telefonnummer för Swish-betalning.');
+                    setIsSubmitting(false);
+                    return;
+                }
+                sessionStorage.setItem('swishPayerPhone', phoneForSwish);
+            }
+
             const order = await orderApi.create({
                 items: orderItems,
                 orderType: orderType as OrderType,
                 customerInfo,
                 deliveryInfo: deliveryInfo,
                 scheduledTime,
-                paymentMethod: 'app' as PaymentMethod, // Default to app payment
+                paymentMethod: paymentChoice,
             });
 
-            const { url } = await orderApi.createCheckoutSession(order.id);
             clearCart();
-            window.location.href = url;
+
+            if (paymentChoice === 'card') {
+                const { url } = await orderApi.createCheckoutSession(order.id);
+                window.location.href = url;
+            } else {
+                navigate(`/pay/swish?orderId=${encodeURIComponent(order.id)}`);
+            }
         } catch (err: any) {
             let errorMsg = err.message || 'Kunde inte skapa beställning. Försök igen.';
             if (err.data && err.data.error) {
@@ -297,6 +315,30 @@ export const Cart: React.FC = () => {
                                 <span className="text-heading-md font-bold text-primary">
                                     {total.toFixed(0)} kr
                                 </span>
+                            </div>
+
+                            <div className="payment-method-selector">
+                                <span className="order-type-label">Betalning</span>
+                                <label className="payment-method-option">
+                                    <input
+                                        type="radio"
+                                        name="payment"
+                                        value="card"
+                                        checked={paymentChoice === 'card'}
+                                        onChange={() => setPaymentChoice('card')}
+                                    />
+                                    Kortbetalning
+                                </label>
+                                <label className="payment-method-option">
+                                    <input
+                                        type="radio"
+                                        name="payment"
+                                        value="swish"
+                                        checked={paymentChoice === 'swish'}
+                                        onChange={() => setPaymentChoice('swish')}
+                                    />
+                                    Swish
+                                </label>
                             </div>
 
                             <Button

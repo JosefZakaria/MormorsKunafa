@@ -1,17 +1,7 @@
 import type { Request, Response } from 'express';
-import type { ResultSetHeader } from 'mysql2/promise';
 import Stripe from 'stripe';
-import { db, type Row } from '../db/connection.js';
 import { getStripe } from '../services/stripeClient.js';
-import { sendOrderConfirmationEmail } from '../services/OrderConfirmationEmail.js';
-
-async function getOrderById(id: string): Promise<{ order: Row; items: Row[] } | null> {
-  const [orderRows] = (await db.query('SELECT * FROM orders WHERE id = ?', [id])) as [Row[], unknown];
-  const orderList = Array.isArray(orderRows) ? orderRows : [];
-  if (orderList.length === 0) return null;
-  const [itemRows] = (await db.query('SELECT * FROM order_items WHERE order_id = ?', [id])) as [Row[], unknown];
-  return { order: orderList[0], items: Array.isArray(itemRows) ? itemRows : [] };
-}
+import { markOrderPaid } from '../services/markOrderPaid.js';
 
 async function markOrderPaidFromSession(session: Stripe.Checkout.Session): Promise<void> {
   const orderId = session.metadata?.orderId?.trim();
@@ -26,37 +16,7 @@ async function markOrderPaidFromSession(session: Stripe.Checkout.Session): Promi
     return;
   }
 
-  const result = await getOrderById(orderId);
-  if (!result) {
-    console.warn('[stripe webhook] order not found', orderId);
-    return;
-  }
-
-  const expectedOre = Number(result.order.total_ore ?? 0);
-  if (expectedOre > 0 && amountTotal !== expectedOre) {
-    console.error('[stripe webhook] amount mismatch', { orderId, amountTotal, expectedOre, sessionId: session.id });
-    return;
-  }
-
-  const [updateResult] = (await db.query(
-    `UPDATE orders SET payment_status = 'paid', updated_at = NOW() WHERE id = ? AND payment_status = 'pending'`,
-    [orderId]
-  )) as [ResultSetHeader, unknown];
-
-  const affected = Number(updateResult.affectedRows ?? 0);
-  if (affected === 0) {
-    return;
-  }
-
-  const refreshed = await getOrderById(orderId);
-  if (!refreshed) return;
-
-  const emailOut = String(refreshed.order.customer_email ?? '').trim();
-  if (emailOut) {
-    void sendOrderConfirmationEmail({ order: refreshed.order, items: refreshed.items }).catch((err) =>
-      console.error('[order confirmation email after payment]', err)
-    );
-  }
+  await markOrderPaid(orderId, { paidAmountOre: amountTotal });
 }
 
 export async function handleStripeWebhook(req: Request, res: Response): Promise<void> {

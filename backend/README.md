@@ -25,6 +25,28 @@ Order confirmation email (Resend):
 | `SITE_PUBLIC_URL` | Public site base URL **without trailing slash**, e.g. `https://example.se`. Logo in mail uses `{SITE_PUBLIC_URL}/images/logo.png` — the same path as `apps/web/public/images/logo.png` once deployed. Avoid `localhost` (mail clients cannot fetch it). |
 | `ORDER_EMAIL_LOGO_URL` | Optional absolute URL to the logo image only; overrides the path built from `SITE_PUBLIC_URL`. Use a direct image link if you need to test before a public domain exists. |
 
+Stripe (card payments):
+
+| Variable | Description |
+|----------|-------------|
+| `STRIPE_SECRET_KEY` | Secret key (`sk_test_` / `sk_live_`) |
+| `STRIPE_WEBHOOK_SECRET` | Webhook signing secret (`whsec_`) |
+| `PUBLIC_WEB_APP_URL` | Frontend URL for Checkout redirect (e.g. `http://localhost:5173`) |
+
+Swish (direct API — requires Swish Handel + bank certificates):
+
+| Variable | Description |
+|----------|-------------|
+| `SWISH_ENV` | `test` (default, MSS) or `prod` |
+| `SWISH_PAYEE_ALIAS` | Your merchant Swish number |
+| `SWISH_CERT_PATH` | Path to PEM client certificate |
+| `SWISH_KEY_PATH` | Path to PEM private key |
+| `SWISH_KEY_PASSPHRASE` | Optional key passphrase |
+| `SWISH_CA_PATH` | Optional CA bundle PEM |
+| `SWISH_CALLBACK_BASE_URL` | Public HTTPS base URL of this API (no trailing slash), e.g. `https://api.example.se` — Swish POSTs to `{base}/api/swish/callback` |
+
+Run `npm run db:migrate:swish` after deploy to add `orders.swish_instruction_id`.
+
 Optional, for one-time WordPress migration only:
 
 | Variable | Description |
@@ -91,6 +113,7 @@ The shared API config defaults to `http://localhost:3000/api`. To use this backe
 | `npm run start` | Run `node dist/index.js` (production) |
 | `npm run db:migrate` | Apply `src/db/schema.sql` to `DB_DATABASE` |
 | `npm run db:migrate:remove-rush-time-adjustment` | Drop `admin_settings.rush_time_adjustment_minutes` if it exists |
+| `npm run db:migrate:swish` | Add `orders.swish_instruction_id` for Swish payments |
 | `npm run db:seed-wp` | One-time migration from WordPress DB (requires `WP_DB_*`) |
 | `npm run db:generate-product-sql` | Read WordPress dump file, output `backend/generated-products.sql` for the `products` table (no DB connection) |
 

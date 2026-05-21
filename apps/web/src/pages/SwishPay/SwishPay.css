@@ -1,0 +1,61 @@
+.swish-pay-page {
+  min-height: 60vh;
+  padding: 2rem 0;
+}
+
+.swish-pay-card {
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 2rem;
+  background: var(--color-surface, #fbf7f0);
+  border-radius: 16px;
+  border: 1px solid #ded8cf;
+  text-align: center;
+}
+
+.swish-pay-card h1 {
+  font-size: 1.5rem;
+  margin-bottom: 0.5rem;
+  color: #1a3d32;
+}
+
+.swish-pay-amount {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #c17e61;
+  margin-bottom: 1rem;
+}
+
+.swish-pay-link {
+  display: inline-block;
+  margin: 1rem 0;
+  padding: 0.75rem 1.5rem;
+  background: #1a3d32;
+  color: #fff;
+  border-radius: 8px;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.swish-pay-link:hover {
+  background: #2d5a4a;
+}
+
+.swish-pay-hint {
+  font-size: 0.9rem;
+  color: #555;
+  line-height: 1.5;
+  margin-top: 1rem;
+}
+
+.swish-pay-legal {
+  font-size: 0.75rem;
+  color: #666;
+  margin-top: 1.25rem;
+  line-height: 1.4;
+}
+
+.swish-pay-error {
+  color: #c00;
+  margin-bottom: 1rem;
+}
