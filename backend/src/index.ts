@@ -9,9 +9,36 @@ import { handleSwishCallback } from './routes/swishCallback.js';
 
 const app = express();
 
+function allowedFrontendOrigins(): string[] {
+  const defaults = ['https://mormorskunafa.se', 'https://www.mormorskunafa.se'];
+  const fromEnv = [
+    process.env.FRONTEND_URL,
+    process.env.FRONTEND_URLS,
+    process.env.PUBLIC_WEB_APP_URL,
+  ]
+    .filter(Boolean)
+    .join(',');
+
+  const origins = new Set<string>(defaults);
+  for (const part of fromEnv.split(',')) {
+    const trimmed = part.trim().replace(/\/$/, '');
+    if (trimmed) origins.add(trimmed);
+  }
+  return [...origins];
+}
+
+const frontendOrigins = allowedFrontendOrigins();
+
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || 'https://mormorskunafa.se',
+    origin(origin, callback) {
+      if (!origin || frontendOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+      console.warn('[CORS] Blocked origin:', origin, 'Allowed:', frontendOrigins);
+      callback(null, false);
+    },
     credentials: true,
   })
 );

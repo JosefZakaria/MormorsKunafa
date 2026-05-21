@@ -14,42 +14,56 @@ declare const process: any;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 declare const Constants: any; // Expo Constants
 
+function normalizeBaseUrl(url: string): string {
+  return url.trim().replace(/\/+$/, '');
+}
+
 const getEnvVar = (key: string, fallback: string): string => {
+  let value: string | undefined;
+
   // Check for Expo/React Native environment
   try {
     if (typeof Constants !== 'undefined' && Constants.expoConfig?.extra?.[key]) {
-      return Constants.expoConfig.extra[key] as string;
+      value = Constants.expoConfig.extra[key] as string;
     }
-  } catch (e) {
+  } catch {
     // Ignore if Constants is not available
   }
 
   // Check for Vite environment (web)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const meta = (import.meta as any);
-  if (typeof meta !== 'undefined' && meta.env && meta.env[key]) {
-    return meta.env[key] as string;
-  }
-  // Check for Vite environment with VITE_ prefix (common convention)
-  if (typeof meta !== 'undefined' && meta.env && meta.env[`VITE_${key}`]) {
-    return meta.env[`VITE_${key}`] as string;
+  const meta = import.meta as { env?: Record<string, string | boolean> };
+  if (!value && typeof meta !== 'undefined' && meta.env) {
+    const direct = meta.env[key];
+    const prefixed = meta.env[`VITE_${key}`];
+    if (typeof direct === 'string' && direct.trim()) value = direct;
+    else if (typeof prefixed === 'string' && prefixed.trim()) value = prefixed;
   }
 
   // Check for Node.js environment
-  try {
-    if (typeof process !== 'undefined' && process.env && process.env[key]) {
-      return process.env[key] as string;
+  if (!value) {
+    try {
+      if (typeof process !== 'undefined' && process.env?.[key]) {
+        value = process.env[key] as string;
+      }
+    } catch {
+      // Ignore errors if process is not defined
     }
-  } catch (e) {
-    // Ignore errors if process is not defined
   }
 
-  return fallback;
+  const raw = (value?.trim() || fallback).trim();
+  return key === 'API_BASE_URL' ? normalizeBaseUrl(raw) : raw;
 };
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const viteProd = (import.meta as any)?.env?.PROD === true;
+const defaultApiBaseUrl = viteProd
+  ? 'https://mormors-kunafa-backend.vercel.app/api'
+  : 'http://localhost:3001/api';
 
 // API configuration - works for both web and mobile
 export const API_CONFIG = {
-  baseUrl: getEnvVar('API_BASE_URL', 'http://localhost:3001/api'),
+  baseUrl: getEnvVar('API_BASE_URL', defaultApiBaseUrl),
   timeout: 10000,
 };
 

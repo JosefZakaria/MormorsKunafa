@@ -6,6 +6,7 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { useCart } from '../../contexts/CartContext';
 import { useToast } from '../../contexts/ToastContext';
 import { productApi } from '../../services/api';
+import { API_CONFIG } from '@shared/api';
 import type { Product } from '@shared/types';
 import { getDisplayName, getTranslationIndex } from '../../utils/productDisplayName';
 import {
@@ -195,9 +196,22 @@ export const Menu: React.FC = () => {
                 }
             } catch (err) {
                 if (cancelled) return;
-                console.warn('API not available, using mock data:', err);
-                setUsingMockData(true);
-                setProducts(getMockProducts(tRef.current));
+                const message =
+                    err instanceof Error ? err.message : 'Kunde inte hämta produkter';
+                console.error('Failed to load products from API:', {
+                    baseUrl: API_CONFIG.baseUrl,
+                    err,
+                });
+                if (import.meta.env.PROD) {
+                    setError(
+                        `Kunde inte ladda menyn (${message}). Kontrollera API: ${API_CONFIG.baseUrl}`
+                    );
+                    setProducts([]);
+                } else {
+                    console.warn('API not available, using mock data:', err);
+                    setUsingMockData(true);
+                    setProducts(getMockProducts(tRef.current));
+                }
             } finally {
                 if (!cancelled) setLoading(false);
             }
