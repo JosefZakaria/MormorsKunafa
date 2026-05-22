@@ -51,6 +51,14 @@ export const orderApi = {
     });
   },
 
+  /** After Stripe redirect — marks order paid if webhook has not run yet. */
+  confirmStripeCheckout: async (orderId: string, sessionId: string): Promise<Order> => {
+    return apiRequest<Order>('/orders/stripe-confirm', {
+      method: 'POST',
+      body: JSON.stringify({ orderId, sessionId }),
+    });
+  },
+
   createSwishPayment: async (
     orderId: string,
     body?: { phone?: string }

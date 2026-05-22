@@ -6,6 +6,7 @@ import ordersRouter from './routes/orders.js';
 import adminRouter from './routes/admin.js';
 import { handleStripeWebhook } from './routes/stripeWebhook.js';
 import { handleSwishCallback } from './routes/swishCallback.js';
+import { getPublicWebAppUrlDiagnostics } from './utils/publicWebAppUrl.js';
 
 const app = express();
 
@@ -67,7 +68,15 @@ app.get('/api/health', (_req, res) => {
     });
     return;
   }
-  res.json({ ok: true, supabase: true, jwtConfigured: hasJwt });
+  const web = getPublicWebAppUrlDiagnostics();
+  res.json({
+    ok: true,
+    supabase: true,
+    jwtConfigured: hasJwt,
+    stripeWebhookConfigured: Boolean(process.env.STRIPE_WEBHOOK_SECRET?.trim()),
+    publicWebAppUrl: web.effectiveUrl,
+    deployWarnings: web.warnings,
+  });
 });
 
 if (process.env.NODE_ENV !== 'production') {

@@ -245,11 +245,13 @@ export const OrderStatus: React.FC = () => {
     const [searchParams] = useSearchParams();
     const navigate = useNavigate();
     const orderId = searchParams.get('orderId');
+    const stripeSessionId = searchParams.get('session_id');
 
     const [order, setOrder] = useState<Order | null>(null);
     const [countdown, setCountdown] = useState('--:--');
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
+    const [confirmingPayment, setConfirmingPayment] = useState(Boolean(stripeSessionId));
 
     const liveTracking = order ? usesLivePickupTracking(order) : false;
 
@@ -272,7 +274,24 @@ export const OrderStatus: React.FC = () => {
             }
         };
 
-        void fetchOrder();
+        const bootstrap = async () => {
+            if (stripeSessionId) {
+                try {
+                    const confirmed = await orderApi.confirmStripeCheckout(orderId, stripeSessionId);
+                    setOrder(confirmed);
+                    setError(null);
+                    setLoading(false);
+                    setConfirmingPayment(false);
+                    return;
+                } catch (e) {
+                    console.warn('[OrderStatus] stripe-confirm failed, falling back to poll:', e);
+                    setConfirmingPayment(false);
+                }
+            }
+            await fetchOrder();
+        };
+
+        void bootstrap();
 
         const awaitingPayment = order ? isAwaitingOnlinePayment(order) : false;
         let intervalMs: number;
@@ -284,7 +303,7 @@ export const OrderStatus: React.FC = () => {
             void fetchOrder();
         }, intervalMs);
         return () => clearInterval(pollId);
-    }, [orderId, order?.paymentMethod, order?.paymentStatus, order?.orderType, order?.scheduledTime]);
+    }, [orderId, stripeSessionId, order?.paymentMethod, order?.paymentStatus, order?.orderType, order?.scheduledTime]);
 
     useEffect(() => {
         if (!liveTracking || !order?.estimatedReadyTime) return;
@@ -315,11 +334,13 @@ export const OrderStatus: React.FC = () => {
                     ? 'delayed'
                     : 'on-time';
 
-    if (loading) {
+    if (loading || confirmingPayment) {
         return (
             <div className="status-page">
                 <Container className="status-container">
-                    <p style={{ textAlign: 'center', padding: '2rem' }}>Hämtar beställningsstatus...</p>
+                    <p style={{ textAlign: 'center', padding: '2rem' }}>
+                        {confirmingPayment ? 'Bekräftar din betalning…' : 'Hämtar beställningsstatus...'}
+                    </p>
                 </Container>
             </div>
         );

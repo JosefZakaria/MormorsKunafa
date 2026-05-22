@@ -16,6 +16,7 @@ Kopiera värden från lokal `backend/.env` till **Vercel → Project → Setting
 - `JWT_SECRET` (sätt ett starkt hemligt värde i produktion)
 - `FRONTEND_URL` eller `PUBLIC_WEB_APP_URL` = `https://mormorskunafa.se`
 - `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` (om kortbetalning ska fungera)
+- `PUBLIC_WEB_APP_URL=https://mormorskunafa.se` (**krävs** för Stripe-återvändning efter kortbetalning — annars hamnar kunden på `localhost:5173`)
 - `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `SITE_PUBLIC_URL` (om ordermail ska skickas)
 
 Se `backend/.env.example` för full lista.
@@ -23,7 +24,8 @@ Se `backend/.env.example` för full lista.
 ## Verifiera efter deploy
 
 1. Öppna `https://mormors-kunafa-backend.vercel.app/api/health`
-   - **OK:** `{"ok":true,"supabase":true,"jwtConfigured":true}`
+   - **OK:** `{"ok":true,"publicWebAppUrl":"https://mormorskunafa.se","stripeWebhookConfigured":true,"deployWarnings":[]}`
+   - **`deployWarnings` innehåller text** → läs varningarna (t.ex. saknad `PUBLIC_WEB_APP_URL` eller webhook)
    - **Saknar Supabase:** `503` med tydligt felmeddelande → lägg till env och **Redeploy**
 2. Öppna `https://mormors-kunafa-backend.vercel.app/api/products` → JSON med produkter
 3. Ladda `https://mormorskunafa.se/menu`
@@ -59,6 +61,8 @@ Gå till **Settings → General → Build & Development Settings** och ta bort `
 | Health 503 + Supabase-meddelande | Env saknas på Vercel | Lägg till `SUPABASE_*`, redeploy |
 | Meny: `Failed to fetch` | Backend nere eller CORS | Fixa backend först; kontrollera `FRONTEND_URL` |
 | Admin login funkar inte | `JWT_SECRET` saknas/ändrats | Samma `JWT_SECRET` som vid skapande av admin-token |
+| Efter kortbetalning: `localhost:5173` / ingen bekräftelse | `PUBLIC_WEB_APP_URL` saknas på Vercel-backend | Sätt `https://mormorskunafa.se`, redeploy backend + webb |
+| Status står kvar på "Bekräftar betalning" | Stripe-webhook når inte API | Stripe Dashboard → Webhooks → `https://mormors-kunafa-backend.vercel.app/api/stripe/webhook` + rätt `whsec_` |
 
 ## Redeploy
 

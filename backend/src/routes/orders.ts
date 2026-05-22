@@ -14,6 +14,8 @@ import {
   isOnlinePayment,
 } from '../utils/paymentMethod.js';
 import { resolveProductIdFromLineId } from '../utils/resolveProductId.js';
+import { getPublicWebAppUrl } from '../utils/publicWebAppUrl.js';
+import { confirmStripeCheckoutSession } from '../utils/confirmStripeCheckout.js';
 import swishPaymentRouter from './swishPayment.js';
 
 const router = Router();
@@ -35,12 +37,6 @@ function toStockholmDateString(value: Date | string | null | undefined): string 
 
 function todayInStockholm(): string {
   return new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Stockholm' });
-}
-
-function publicWebAppUrl(): string {
-  const u = process.env.PUBLIC_WEB_APP_URL?.trim().replace(/\/$/, '');
-  if (u) return u;
-  return 'http://localhost:5173';
 }
 
 // Create order (public)
@@ -235,9 +231,10 @@ router.post('/checkout-session/:orderId', async (req: Request, res: Response) =>
       return;
     }
 
-    const base = publicWebAppUrl();
+    const base = getPublicWebAppUrl();
     const successUrl = `${base}/status?orderId=${encodeURIComponent(orderId)}&session_id={CHECKOUT_SESSION_ID}`;
     const cancelUrl = `${base}/cart`;
+    console.info('[checkout-session] redirect base URL:', base);
 
     const lineItems = items.map((it) => {
       const name = String(it.product_name_snapshot ?? 'Product').slice(0, 500);
@@ -285,6 +282,35 @@ router.post('/checkout-session/:orderId', async (req: Request, res: Response) =>
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Failed to create checkout session' });
+  }
+});
+
+/** Confirm card payment after Stripe redirect (backup when webhook is slow/missing). */
+router.post('/stripe-confirm', async (req: Request, res: Response) => {
+  try {
+    const orderId = String(req.body?.orderId ?? '').trim();
+    const sessionId = String(req.body?.sessionId ?? '').trim();
+    if (!orderId || !sessionId) {
+      res.status(400).json({ error: 'orderId and sessionId required' });
+      return;
+    }
+
+    const outcome = await confirmStripeCheckoutSession(orderId, sessionId);
+    if (!outcome.ok) {
+      const status = outcome.error === 'Order not found' ? 404 : 400;
+      res.status(status).json({ error: outcome.error ?? 'Could not confirm payment', paymentStatus: outcome.paymentStatus });
+      return;
+    }
+
+    const result = await getOrderById(orderId);
+    if (!result) {
+      res.status(404).json({ error: 'Order not found' });
+      return;
+    }
+    res.json(orderRowToOrder(result.order, result.items));
+  } catch (e) {
+    console.error('[stripe-confirm]', e);
+    res.status(500).json({ error: 'Failed to confirm payment' });
   }
 });
 
