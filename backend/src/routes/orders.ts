@@ -13,6 +13,7 @@ import {
   isCardPayment,
   isOnlinePayment,
 } from '../utils/paymentMethod.js';
+import { resolveProductIdFromLineId } from '../utils/resolveProductId.js';
 import swishPaymentRouter from './swishPayment.js';
 
 const router = Router();
@@ -143,7 +144,7 @@ router.post('/', async (req: Request, res: Response) => {
       itemRows.push({
         id: itemId,
         order_id: orderId,
-        product_id: it.productId || null,
+        product_id: resolveProductIdFromLineId(it.productId),
         product_name_snapshot: it.productName ?? '',
         quantity: it.quantity ?? 1,
         price_ore: it.price ?? 0,
@@ -154,7 +155,11 @@ router.post('/', async (req: Request, res: Response) => {
     const { error: itemsError } = await supabase.from('order_items').insert(itemRows);
     if (itemsError) {
       logSupabaseError('POST /api/orders items', itemsError);
-      res.status(500).json({ error: 'Failed to create order items', details: itemsError.message });
+      await supabase.from('orders').delete().eq('id', orderId);
+      res.status(500).json({
+        error: 'Kunde inte spara orderrader',
+        details: itemsError.message,
+      });
       return;
     }
 
