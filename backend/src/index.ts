@@ -56,7 +56,18 @@ app.use('/api/orders', ordersRouter);
 app.use('/api/admin', adminRouter);
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true });
+  const hasSupabase = Boolean(
+    process.env.SUPABASE_URL?.trim() && process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
+  );
+  const hasJwt = Boolean(process.env.JWT_SECRET?.trim());
+  if (!hasSupabase) {
+    res.status(503).json({
+      ok: false,
+      error: 'Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in deployment environment',
+    });
+    return;
+  }
+  res.json({ ok: true, supabase: true, jwtConfigured: hasJwt });
 });
 
 if (process.env.NODE_ENV !== 'production') {

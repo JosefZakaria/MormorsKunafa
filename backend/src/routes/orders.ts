@@ -182,9 +182,9 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     const phoneOut = String(result.order.customer_phone ?? '').trim();
-    const customerName = String(result.order.customer_name ?? '').trim();
+    const smsCustomerName = String(result.order.customer_name ?? '').trim();
     if (phoneOut) {
-      void sendSms(phoneOut, `Tack för din beställning från Mormors Kunafa${customerName ? ', ' + customerName : ''}! Vi tar snart emot din beställning.`).catch((err) =>
+      void sendSms(phoneOut, `Tack för din beställning från Mormors Kunafa${smsCustomerName ? ', ' + smsCustomerName : ''}! Vi tar snart emot din beställning.`).catch((err) =>
         console.error('[order confirmation sms]', err)
       );
     }

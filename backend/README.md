@@ -1,20 +1,17 @@
 # Backend
 
-Express API for Mormors Kunafa: products, orders, and admin (JWT). Data is stored in MySQL; prices in öre.
+Express API for Mormors Kunafa: products, orders, and admin (JWT). Data is stored in **Supabase**; prices in öre.
 
 ## Environment variables
 
-Create a `.env` in `backend/` (or set in the shell). No `.env.example` is committed; use:
+Copy `backend/.env.example` to `backend/.env` and fill in values. For Vercel, set the same variables in the project dashboard (see `Docs/VERCEL_DEPLOY.md`).
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `PORT` | Server port | `3001` |
-| `DB_HOST` | MySQL host | `localhost` |
-| `DB_PORT` | MySQL port | `3306` |
-| `DB_USER` | MySQL user | `root` |
-| `DB_PASSWORD` | MySQL password | _(empty)_ |
-| `DB_DATABASE` | App database name | `mormors_kunafa` |
-| `JWT_SECRET` | Secret for admin JWT | _(set in production)_ |
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `SUPABASE_URL` | Supabase project URL | Yes |
+| `SUPABASE_SERVICE_ROLE_KEY` | Service role key (server only) | Yes |
+| `JWT_SECRET` | Secret for admin JWT | Yes (production) |
+| `PORT` | Server port (local dev) | No (`3001`) |
 
 Order confirmation email (Resend):
 
