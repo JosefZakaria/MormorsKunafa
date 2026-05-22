@@ -8,12 +8,15 @@ import { printKitchenTicket, printReceipt, testConnection, isPrinterConfigured, 
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { getDisplayName } from '../../../utils/productDisplayName';
 import type { DeliveryInfo, Order, Product, AdminSettings } from '@shared/types';
+import { parseApiTimestamp } from '@shared/utils/parseApiTimestamp';
 import '../Admin.css';
 
 // --- Helper: countdown string from ISO time ---
 function getCountdown(isoTime: string | undefined): string {
     if (!isoTime) return '--:--';
-    const diff = new Date(isoTime).getTime() - Date.now();
+    const target = parseApiTimestamp(isoTime);
+    if (!target) return '--:--';
+    const diff = target.getTime() - Date.now();
     const isOverdue = diff < 0;
     const absoluteDiff = Math.abs(diff);
     const mins = Math.floor(absoluteDiff / 60000);
@@ -96,7 +99,7 @@ function OrderTypeLabel({ type }: { type: string }) {
 // --- Per-order timer component ---
 function OrderTimer({ estimatedReadyTime }: { estimatedReadyTime: string }) {
     const [countdown, setCountdown] = useState(() => getCountdown(estimatedReadyTime));
-    const isOverdue = new Date(estimatedReadyTime).getTime() < Date.now();
+    const isOverdue = (parseApiTimestamp(estimatedReadyTime)?.getTime() ?? 0) < Date.now();
 
     useEffect(() => {
         setCountdown(getCountdown(estimatedReadyTime));
@@ -814,7 +817,7 @@ export const AdminDashboard: React.FC = () => {
     };
 
     const handleAddTime = async (order: Order, extraMinutes: number) => {
-        const current = new Date(order.estimatedReadyTime).getTime();
+        const current = parseApiTimestamp(order.estimatedReadyTime)?.getTime() ?? Date.now();
         const newTime = new Date(current + extraMinutes * 60000).toISOString();
         try {
             const updated = await orderApi.updateTime(order.id, { estimatedReadyTime: newTime });

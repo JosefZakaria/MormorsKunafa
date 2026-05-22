@@ -395,7 +395,9 @@ router.patch('/admin/:id/accept', requireAdmin, async (req: Request, res: Respon
       );
     }
 
-    res.json(orderRowToOrder(updated.order, updated.items));
+    const payload = orderRowToOrder(updated.order, updated.items);
+    payload.estimatedReadyTime = estimatedReady.toISOString();
+    res.json(payload);
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Failed to accept order' });

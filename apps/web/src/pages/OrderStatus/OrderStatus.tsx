@@ -4,11 +4,14 @@ import { Container } from '../../components/common/Container/Container';
 import { orderApi } from '../../services/api';
 import type { Order } from '@shared/types';
 import { isAwaitingOnlinePayment } from '../../utils/payment';
+import { parseApiTimestamp } from '@shared/utils/parseApiTimestamp';
 import './OrderStatus.css';
 
 function getCountdown(isoTime: string | undefined): string {
     if (!isoTime) return '--:--';
-    const diff = new Date(isoTime).getTime() - Date.now();
+    const target = parseApiTimestamp(isoTime);
+    if (!target) return '--:--';
+    const diff = target.getTime() - Date.now();
     const isOverdue = diff < 0;
     const absoluteDiff = Math.abs(diff);
     const mins = Math.floor(absoluteDiff / 60000);
@@ -186,7 +189,8 @@ function LivePickupView({ order, countdown }: { order: Order; countdown: string 
     const isCompleted =
         order.status === 'klar' || order.status === 'uthämtad' || order.status === 'levererad';
     const isDelayed =
-        !!order.estimatedReadyTime && new Date(order.estimatedReadyTime).getTime() < Date.now();
+        !!order.estimatedReadyTime &&
+        (parseApiTimestamp(order.estimatedReadyTime)?.getTime() ?? 0) < Date.now();
 
     const stepIndex = STATUS_STEPS.indexOf(order.status as Order['status']);
     const currentStepIndex = stepIndex >= 0 ? stepIndex : order.status === 'mottagen' ? 1 : 0;
@@ -322,7 +326,7 @@ export const OrderStatus: React.FC = () => {
     const isDelayed =
         liveTracking &&
         !!order?.estimatedReadyTime &&
-        new Date(order.estimatedReadyTime).getTime() < Date.now();
+        (parseApiTimestamp(order.estimatedReadyTime)?.getTime() ?? 0) < Date.now();
 
     const statusClass = isCancelled
         ? 'cancelled'

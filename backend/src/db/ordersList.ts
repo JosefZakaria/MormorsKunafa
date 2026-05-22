@@ -1,5 +1,6 @@
 import type { Row } from './connection.js';
 import { getOrderById } from './orderRepository.js';
+import { dbTimestampToIso } from '../utils/dbTimestamp.js';
 
 export async function rowsToOrders(orderRows: Row[]): Promise<Record<string, unknown>[]> {
   const out: Record<string, unknown>[] = [];
@@ -28,12 +29,6 @@ export function orderRowToOrder(r: Row, items: Row[]): Record<string, unknown> {
         }
       : undefined;
 
-  const toIso = (value: unknown): string | undefined => {
-    if (value == null) return undefined;
-    if (value instanceof Date) return value.toISOString();
-    return String(value);
-  };
-
   return {
     id: r.id,
     orderNumber: r.order_number,
@@ -43,16 +38,16 @@ export function orderRowToOrder(r: Row, items: Row[]): Record<string, unknown> {
     paymentStatus: r.payment_status,
     totalPrice: r.total_ore,
     defaultPreparationTime: r.default_preparation_time_minutes,
-    estimatedReadyTime: toIso(r.estimated_ready_at),
-    scheduledTime: toIso(r.scheduled_at),
+    estimatedReadyTime: dbTimestampToIso(r.estimated_ready_at),
+    scheduledTime: dbTimestampToIso(r.scheduled_at),
     customerInfo,
     deliveryInfo,
-    createdAt: toIso(r.created_at),
-    updatedAt: toIso(r.updated_at),
-    startedAt: toIso(r.started_at),
-    completedAt: toIso(r.completed_at),
+    createdAt: dbTimestampToIso(r.created_at),
+    updatedAt: dbTimestampToIso(r.updated_at),
+    startedAt: dbTimestampToIso(r.started_at),
+    completedAt: dbTimestampToIso(r.completed_at),
     cancellationReason: r.cancellation_reason ?? undefined,
-    cancelledAt: toIso(r.cancelled_at),
+    cancelledAt: dbTimestampToIso(r.cancelled_at),
     refundStatus: r.refund_status ?? 'none',
     internalNotes: r.internal_notes ?? undefined,
     items: items.map((i) => ({
