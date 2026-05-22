@@ -8,6 +8,9 @@ import { orderApi } from '../../services/api';
 import type { CheckoutPaymentChoice, CustomerInfo, OrderType } from '@shared/types';
 import './Cart.css';
 
+/** Set to true when Swish checkout is ready for customers. */
+const SWISH_CHECKOUT_ENABLED = false;
+
 export const Cart: React.FC = () => {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
@@ -343,16 +346,18 @@ export const Cart: React.FC = () => {
                                     />
                                     Kortbetalning
                                 </label>
-                                <label className="payment-method-option">
-                                    <input
-                                        type="radio"
-                                        name="payment"
-                                        value="swish"
-                                        checked={paymentChoice === 'swish'}
-                                        onChange={() => setPaymentChoice('swish')}
-                                    />
-                                    Swish
-                                </label>
+                                {SWISH_CHECKOUT_ENABLED && (
+                                    <label className="payment-method-option">
+                                        <input
+                                            type="radio"
+                                            name="payment"
+                                            value="swish"
+                                            checked={paymentChoice === 'swish'}
+                                            onChange={() => setPaymentChoice('swish')}
+                                        />
+                                        Swish
+                                    </label>
+                                )}
                             </div>
 
                             <Button
