@@ -182,8 +182,9 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     const phoneOut = String(result.order.customer_phone ?? '').trim();
+    const customerName = String(result.order.customer_name ?? '').trim();
     if (phoneOut) {
-      void sendSms(phoneOut, "Tack för din beställning från Mormors Kunafa! Vi behandlar den just nu.").catch((err) =>
+      void sendSms(phoneOut, `Tack för din beställning från Mormors Kunafa${customerName ? ', ' + customerName : ''}! Vi tar snart emot din beställning.`).catch((err) =>
         console.error('[order confirmation sms]', err)
       );
     }
@@ -351,13 +352,14 @@ router.patch('/admin/:id/accept', requireAdmin, async (req: Request, res: Respon
     }
 
     const phoneOut = String(updated.order.customer_phone ?? '').trim();
+    const customerName = String(updated.order.customer_name ?? '').trim();
     if (phoneOut) {
       const readyTimeStr = estimatedReady.toLocaleTimeString('sv-SE', {
         timeZone: 'Europe/Stockholm',
         hour: '2-digit',
         minute: '2-digit',
       });
-      void sendSms(phoneOut, `Hej! Din order är mottagen och beräknas vara klar kl ${readyTimeStr}.`).catch((err) =>
+      void sendSms(phoneOut, `Hej${customerName ? ', ' + customerName : ''}! Din order är mottagen och beräknas vara klar kl ${readyTimeStr}.`).catch((err) =>
         console.error('[order accepted sms]', err)
       );
     }
@@ -588,8 +590,9 @@ router.patch('/admin/:id/status', requireAdmin, async (req: Request, res: Respon
 
     if (status === 'klar') {
       const phoneOut = String(result.order.customer_phone ?? '').trim();
+      const customerName = String(result.order.customer_name ?? '').trim();
       if (phoneOut) {
-        void sendSms(phoneOut, "Hej! Din beställning från Mormors Kunafa är nu klar och redo att hämtas. Välkommen!").catch((err) =>
+        void sendSms(phoneOut, `Hej${customerName ? ', ' + customerName : ''}! Din beställning från Mormors Kunafa är nu klar och redo att hämtas. Välkommen!`).catch((err) =>
           console.error('[order ready sms]', err)
         );
       }
