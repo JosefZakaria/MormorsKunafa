@@ -30,8 +30,12 @@ Stripe (card payments):
 | Variable | Description |
 |----------|-------------|
 | `STRIPE_SECRET_KEY` | Secret key (`sk_test_` / `sk_live_`) |
-| `STRIPE_WEBHOOK_SECRET` | Webhook signing secret (`whsec_`) |
-| `PUBLIC_WEB_APP_URL` | Frontend URL for Checkout redirect (e.g. `http://localhost:5173`) |
+| `STRIPE_WEBHOOK_SECRET` | Signing secret (`whsec_`) from the **live** webhook endpoint (not test CLI) |
+| `PUBLIC_WEB_APP_URL` | Storefront URL for Checkout `success_url` / `cancel_url` (no trailing slash), e.g. `https://mormorskunafa.se` |
+| `FRONTEND_URL` | Also used for CORS; should match the live storefront |
+
+Live webhook: `POST https://<backend-host>/api/stripe/webhook` with event `checkout.session.completed`.  
+See [docs/STRIPE_GO_LIVE.md](../docs/STRIPE_GO_LIVE.md) and `backend/.env.example`.
 
 Swish (direct API — requires Swish Handel + bank certificates):
 
