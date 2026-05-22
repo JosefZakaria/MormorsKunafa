@@ -39,10 +39,22 @@ VITE_STRIPE_PUBLIC_KEY=pk_live_...
 
 `.env` i repot påverkar bara lokal build om du inte sätter samma variabler i Vercel.
 
+## Vercel Project Settings (viktigt)
+
+Felet *"No Output Directory named **public** found"* betyder att fel inställning används i dashboard.
+
+| Projekt | Root Directory | Output Directory | Framework |
+|---------|----------------|------------------|-----------|
+| **Backend** (`mormors-kunafa-backend`) | `backend` | **Tom / Override off** — ingen statisk mapp | Other (eller låt `vercel.json` styra) |
+| **Webb** (mormorskunafa.se) | `apps/web` | **`dist`** (styrs av `apps/web/vercel.json`) | Vite |
+
+Gå till **Settings → General → Build & Development Settings** och ta bort `public` om det står där. Spara och **Redeploy**.
+
 ## Vanliga fel
 
 | Symptom | Orsak | Åtgärd |
 |---------|--------|--------|
+| `No Output Directory named "public"` | Fel Root Directory eller Output = `public` i Vercel | Backend: root `backend`, tom output. Webb: root `apps/web`, output `dist` |
 | `FUNCTION_INVOCATION_FAILED` / 500 på alla routes | TypeScript-fel i kod eller krasch vid import | Kör `npm run build --workspace=@mormors-kunafa/backend` lokalt; fixa fel; push + redeploy |
 | Health 503 + Supabase-meddelande | Env saknas på Vercel | Lägg till `SUPABASE_*`, redeploy |
 | Meny: `Failed to fetch` | Backend nere eller CORS | Fixa backend först; kontrollera `FRONTEND_URL` |
