@@ -6,6 +6,7 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { useCart } from '../../contexts/CartContext';
 import { orderApi } from '../../services/api';
 import type { CheckoutPaymentChoice, CustomerInfo, OrderType } from '@shared/types';
+import { DELIVERY_FEE_SEK } from '@shared/constants/delivery';
 import './Cart.css';
 
 /** Set to true when Swish checkout is ready for customers. */
@@ -56,7 +57,10 @@ export const Cart: React.FC = () => {
         return stored ? JSON.parse(stored) : null;
     };
 
-    const total = getTotal() / 100; // Convert from öre to kr
+    const subtotalKr = getTotal() / 100;
+    const isDeliveryOrder = orderType === 'delivery';
+    const deliveryFeeKr = isDeliveryOrder ? DELIVERY_FEE_SEK : 0;
+    const totalKr = subtotalKr + deliveryFeeKr;
 
     const handleOrderTypeChange = (value: string) => {
         setOrderTypeError(null);
@@ -322,15 +326,23 @@ export const Cart: React.FC = () => {
                                 </div>
                             )}
 
-                            <div className="cart-summary__row">
-                                <span className="text-body-lg">{t('cart.total')}</span>
-                                <span className="text-body-lg font-bold">{total.toFixed(0)} kr</span>
-                            </div>
-                            <hr className="cart-divider" />
+                            {isDeliveryOrder ? (
+                                <>
+                                    <div className="cart-summary__row">
+                                        <span className="text-body-lg">{t('cart.subtotal')}</span>
+                                        <span className="text-body-lg">{subtotalKr.toFixed(0)} kr</span>
+                                    </div>
+                                    <div className="cart-summary__row">
+                                        <span className="text-body-lg">{t('cart.delivery_fee')}</span>
+                                        <span className="text-body-lg">{deliveryFeeKr.toFixed(0)} kr</span>
+                                    </div>
+                                    <hr className="cart-divider" />
+                                </>
+                            ) : null}
                             <div className="cart-summary__row cart-summary__total">
                                 <span className="text-heading-md">{t('cart.total')}</span>
                                 <span className="text-heading-md font-bold text-primary">
-                                    {total.toFixed(0)} kr
+                                    {totalKr.toFixed(0)} kr
                                 </span>
                             </div>
 

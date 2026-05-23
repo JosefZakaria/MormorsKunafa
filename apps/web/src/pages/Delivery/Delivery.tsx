@@ -63,6 +63,7 @@ export const Delivery: React.FC = () => {
                         <Truck className="delivery-time__icon" aria-hidden />
                         <span>{t('delivery.delivery_time')}</span>
                     </div>
+                    <p className="delivery-fee-note">{t('delivery.fee_note')}</p>
 
                     <form onSubmit={handleSubmit} className="delivery-form">
                         <div className="delivery-form__row delivery-form__row--half">

@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { supabase, type Row, logSupabaseError, nowIso } from '../db/connection.js';
 import { requireAdmin, signToken } from '../middleware/auth.js';
+import { isDeliveryFeeLineItem } from '../constants/deliveryFee.js';
 
 const router = Router();
 
@@ -303,6 +304,10 @@ router.post('/statistics', requireAdmin, async (req: Request, res: Response) => 
       const createdAt = String(order.created_at);
       const productId = String(r.product_id ?? '');
       const snapshotName = String(r.product_name_snapshot ?? '');
+
+      if (isDeliveryFeeLineItem({ productId: productId || null, productName: snapshotName })) {
+        continue;
+      }
 
       let agg = aggByProduct.get(productId) ?? aggByProduct.get(snapshotName);
       if (!agg) {

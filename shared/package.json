@@ -8,7 +8,8 @@
     "./types": "./types/index.ts",
     "./api": "./api/index.ts",
     "./validation": "./validation/index.ts",
-    "./utils/productImage": "./utils/productImage.ts"
+    "./utils/productImage": "./utils/productImage.ts",
+    "./constants/delivery": "./constants/delivery.ts"
   },
   "devDependencies": {
     "typescript": "~5.6.2"

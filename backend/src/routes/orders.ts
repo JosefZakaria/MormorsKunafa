@@ -14,6 +14,11 @@ import {
   isOnlinePayment,
 } from '../utils/paymentMethod.js';
 import { resolveProductIdFromLineId } from '../utils/resolveProductId.js';
+import {
+  DELIVERY_FEE_ORE,
+  DELIVERY_FEE_LINE_NAME,
+  isDeliveryFeeLineItem,
+} from '../constants/deliveryFee.js';
 import { getPublicWebAppUrl } from '../utils/publicWebAppUrl.js';
 import { confirmStripeCheckoutSession } from '../utils/confirmStripeCheckout.js';
 import swishPaymentRouter from './swishPayment.js';
@@ -52,6 +57,18 @@ router.post('/', async (req: Request, res: Response) => {
     };
     if (!body.items?.length) {
       res.status(400).json({ error: 'items required' });
+      return;
+    }
+
+    const orderType = String(body.orderType ?? 'takeaway').trim();
+    const isDelivery = orderType === 'delivery';
+    const productItems = body.items.filter((it) => !isDeliveryFeeLineItem(it));
+    if (!productItems.length) {
+      res.status(400).json({ error: 'items required' });
+      return;
+    }
+    if (isDelivery && !body.deliveryInfo) {
+      res.status(400).json({ error: 'Leveransinformation krävs för hemleverans.' });
       return;
     }
 
@@ -111,7 +128,7 @@ router.post('/', async (req: Request, res: Response) => {
       id: orderId,
       order_number: orderNumber,
       status: 'ny',
-      order_type: body.orderType ?? 'takeaway',
+      order_type: orderType,
       payment_method: paymentMethod,
       payment_status: 'pending',
       total_ore: 0,
@@ -133,7 +150,7 @@ router.post('/', async (req: Request, res: Response) => {
 
     let totalOre = 0;
     const itemRows = [];
-    for (const it of body.items) {
+    for (const it of productItems) {
       const itemId = generateId();
       const lineTotal = (it.price ?? 0) * (it.quantity ?? 1);
       totalOre += lineTotal;
@@ -145,6 +162,19 @@ router.post('/', async (req: Request, res: Response) => {
         quantity: it.quantity ?? 1,
         price_ore: it.price ?? 0,
         modifications_json: it.modifications?.length ? it.modifications : null,
+      });
+    }
+
+    if (isDelivery) {
+      totalOre += DELIVERY_FEE_ORE;
+      itemRows.push({
+        id: generateId(),
+        order_id: orderId,
+        product_id: null,
+        product_name_snapshot: DELIVERY_FEE_LINE_NAME,
+        quantity: 1,
+        price_ore: DELIVERY_FEE_ORE,
+        modifications_json: null,
       });
     }
 
