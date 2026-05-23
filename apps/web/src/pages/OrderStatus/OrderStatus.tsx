@@ -87,6 +87,8 @@ function OrderItemsSummary({ order }: { order: Order }) {
                 {order.items.map((item, i) => (
                     <li key={i}>
                         {item.quantity}× {item.productName}
+                        {' — '}
+                        {((item.price * item.quantity) / 100).toFixed(0)} kr
                     </li>
                 ))}
             </ul>
