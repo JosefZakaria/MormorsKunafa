@@ -57,18 +57,24 @@ function appendDeliveryBlockXml(xml: string, order: Order): string {
 
   xml += `<feed unit="12"/>`;
   xml += `<text align="left" em="true">Leverans:&#10;</text>`;
-  xml += `<text align="left" em="false">`;
-  if (name) xml += `${escapeXml(name)}&#10;`;
-  if (d?.address) xml += `${escapeXml(d.address)}&#10;`;
-  if (postalCity) xml += `${escapeXml(postalCity)}&#10;`;
-  if (phone) xml += `Tel: ${escapeXml(phone)}&#10;`;
-  if (email) xml += `${escapeXml(email)}&#10;`;
+  if (name) xml += `<text align="left">${escapeXml(name)}&#10;</text>`;
+  if (d?.address) xml += `<text align="left">${escapeXml(d.address)}&#10;</text>`;
+  if (postalCity) xml += `<text align="left">${escapeXml(postalCity)}&#10;</text>`;
+  if (phone) xml += `<text align="left">Tel: ${escapeXml(phone)}&#10;</text>`;
+  if (email) xml += `<text align="left">${escapeXml(email)}&#10;</text>`;
   if (!order.scheduledTime) {
-    xml += `Leverans: 1-2 arbetsdagar&#10;`;
+    xml += `<text align="left">Leverans: 1-2 arbetsdagar&#10;</text>`;
   }
-  xml += `</text>`;
   xml += `<text>--------------------------------&#10;</text>`;
   return xml;
+}
+
+/** Epson ePOS-Print kräver textinnehåll i varje &lt;text&gt;-element. */
+function textLine(content: string, attrs: Record<string, string> = {}): string {
+  const attrStr = Object.entries(attrs)
+    .map(([k, v]) => `${k}="${escapeXml(v)}"`)
+    .join(' ');
+  return `<text${attrStr ? ` ${attrStr}` : ''}>${content}&#10;</text>`;
 }
 
 function escapeXml(str: string): string {
@@ -139,7 +145,7 @@ async function sendToPrinter(soapXml: string): Promise<{ success: boolean; error
       };
 
       xhr.ontimeout = () => {
-        resolve({ success: false, error: 'Timeout — skrivaren svarade inte inom 15 sekunder.' });
+        resolve({ success: false, error: 'Timeout - skrivaren svarade inte inom 15 sekunder.' });
       };
 
       xhr.send(soapXml);
@@ -155,23 +161,23 @@ async function sendToPrinter(soapXml: string): Promise<{ success: boolean; error
 export async function printKitchenTicket(order: Order): Promise<{ success: boolean; error?: string }> {
   let xml = '';
 
-  // Header
-  xml += `<text align="center" dw="true" dh="true" em="true">KOKSLAPP&#10;</text>`;
-  xml += `<text align="center" dw="false" dh="false" em="false">${escapeXml(new Date().toLocaleString('sv-SE'))}&#10;</text>`;
+  // Header (dw/dh="false" är ogiltigt i ePOS-schemat — utelämna attribut för normal storlek)
+  xml += textLine('KOKSLAPP', { align: 'center', dw: 'true', dh: 'true', em: 'true' });
+  xml += textLine(escapeXml(new Date().toLocaleString('sv-SE')), { align: 'center' });
   xml += `<feed unit="24"/>`;
 
   // Order info
-  xml += `<text align="left" em="true">Order: #${escapeXml(order.orderNumber || order.id)}&#10;</text>`;
+  xml += textLine(`Order: #${escapeXml(order.orderNumber || order.id)}`, { align: 'left', em: 'true' });
   const custName = deliveryCustomerName(order);
   if (custName && order.orderType !== 'delivery') {
-    xml += `<text align="left" em="true">Kund: ${escapeXml(custName)}&#10;</text>`;
+    xml += textLine(`Kund: ${escapeXml(custName)}`, { align: 'left', em: 'true' });
   }
-  xml += `<text align="left" em="false">Typ: ${escapeXml(ORDER_TYPE_LABELS[order.orderType] || order.orderType)}&#10;</text>`;
+  xml += textLine(`Typ: ${escapeXml(ORDER_TYPE_LABELS[order.orderType] || order.orderType)}`, { align: 'left' });
 
   if (order.estimatedReadyTime) {
     const ready = new Date(order.estimatedReadyTime);
     const timeStr = ready.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' });
-    xml += `<text align="left">Fardig: ${escapeXml(timeStr)}&#10;</text>`;
+    xml += textLine(`Fardig: ${escapeXml(timeStr)}`, { align: 'left' });
   }
 
   // Separator
@@ -210,14 +216,14 @@ export async function printReceipt(order: Order): Promise<{ success: boolean; er
   let xml = '';
 
   // Header
-  xml += `<text align="center" dw="true" dh="true" em="true">Mormors Kunafa&#10;</text>`;
-  xml += `<text align="center" dw="false" dh="false" em="false">Order-Kvitto&#10;</text>`;
-  xml += `<text align="center">${escapeXml(new Date().toLocaleString('sv-SE'))}&#10;</text>`;
+  xml += textLine('Mormors Kunafa', { align: 'center', dw: 'true', dh: 'true', em: 'true' });
+  xml += textLine('Order-Kvitto', { align: 'center' });
+  xml += textLine(escapeXml(new Date().toLocaleString('sv-SE')), { align: 'center' });
   xml += `<feed unit="24"/>`;
 
   // Order info
-  xml += `<text align="left">Order: #${escapeXml(order.orderNumber || order.id)}&#10;</text>`;
-  xml += `<text align="left">Typ: ${escapeXml(ORDER_TYPE_LABELS[order.orderType] || order.orderType)}&#10;</text>`;
+  xml += textLine(`Order: #${escapeXml(order.orderNumber || order.id)}`, { align: 'left' });
+  xml += textLine(`Typ: ${escapeXml(ORDER_TYPE_LABELS[order.orderType] || order.orderType)}`, { align: 'left' });
   xml = appendDeliveryBlockXml(xml, order);
   if (order.orderType !== 'delivery') {
     xml += `<text>--------------------------------&#10;</text>`;
@@ -247,12 +253,11 @@ export async function printReceipt(order: Order): Promise<{ success: boolean; er
   const totalLeft = 'Totalt:';
   const totalRight = `${total} kr`;
   const totalPadding = Math.max(1, 32 - totalLeft.length - totalRight.length);
-  xml += `<text align="left" em="true">${totalLeft}${' '.repeat(totalPadding)}${totalRight}&#10;</text>`;
-  xml += `<text em="false"/>`;
+  xml += textLine(`${totalLeft}${' '.repeat(totalPadding)}${totalRight}`, { align: 'left', em: 'true' });
   xml += `<feed unit="24"/>`;
 
   // Footer
-  xml += `<text align="center">Tack for din bestallning!&#10;</text>`;
+  xml += textLine('Tack for din bestallning!', { align: 'center' });
   xml += `<feed unit="48"/>`;
   xml += `<cut type="feed"/>`;
   xml += `<sound pattern="1" repeat="1"/>`;
@@ -266,7 +271,8 @@ export async function printReceipt(order: Order): Promise<{ success: boolean; er
  * Testar anslutningen genom att skicka tom utskriftsdata.
  */
 export async function testConnection(): Promise<{ success: boolean; error?: string }> {
-  const printXml = buildEposPrintXml('');
+  const xml = textLine('Testutskrift OK', { align: 'center' }) + `<feed unit="24"/><cut type="feed"/>`;
+  const printXml = buildEposPrintXml(xml);
   const soap = wrapInSoap(printXml);
   return sendToPrinter(soap);
 }
