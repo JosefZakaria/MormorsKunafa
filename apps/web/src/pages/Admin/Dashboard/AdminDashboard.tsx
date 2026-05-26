@@ -672,9 +672,10 @@ export const AdminDashboard: React.FC = () => {
             setActiveOrders(prev => [...prev, accepted]);
 
             if (isPrinterConfigured()) {
-                printKitchenTicket(accepted).then(res => {
-                    if (!res.success) console.error('[Auto-print]', res.error);
-                });
+                const printRes = await printKitchenTicket(accepted);
+                if (!printRes.success) {
+                    setError(printRes.error || 'Kunde inte skriva ut kokslapp. Kontrollera skrivaren.');
+                }
             }
         } catch {
             setError('Kunde inte acceptera ordern.');
