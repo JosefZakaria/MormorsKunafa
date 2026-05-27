@@ -214,7 +214,7 @@ router.post('/', async (req: Request, res: Response) => {
 
     const phoneOut = String(result.order.customer_phone ?? '').trim();
     const smsCustomerName = String(result.order.customer_name ?? '').trim();
-    if (phoneOut) {
+    if (phoneOut && !isOnlinePayment(paymentMethod)) {
       void sendSms(phoneOut, `Tack för din beställning från Mormors Kunafa${smsCustomerName ? ', ' + smsCustomerName : ''}! Vi tar snart emot din beställning.`).catch((err) =>
         console.error('[order confirmation sms]', err)
       );
