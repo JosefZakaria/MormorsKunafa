@@ -1,6 +1,7 @@
 import { supabase, type Row, logSupabaseError, nowIso } from '../db/connection.js';
 import { getOrderById } from '../db/orderRepository.js';
 import { sendOrderConfirmationEmail } from './OrderConfirmationEmail.js';
+import { sendSms } from './SmsService.js';
 
 export type MarkOrderPaidOptions = {
   expectedAmountOre?: number;
@@ -8,7 +9,7 @@ export type MarkOrderPaidOptions = {
 };
 
 /**
- * Sets payment_status to paid (idempotent) and sends confirmation email when applicable.
+ * Sets payment_status to paid (idempotent) and sends confirmation email/SMS when applicable.
  * @returns true if the order was newly marked paid
  */
 export async function markOrderPaid(orderId: string, options?: MarkOrderPaidOptions): Promise<boolean> {
@@ -47,6 +48,14 @@ export async function markOrderPaid(orderId: string, options?: MarkOrderPaidOpti
   if (emailOut) {
     void sendOrderConfirmationEmail({ order: refreshed.order, items: refreshed.items }).catch((err) =>
       console.error('[order confirmation email after payment]', err)
+    );
+  }
+
+  const phoneOut = String(refreshed.order.customer_phone ?? '').trim();
+  const smsCustomerName = String(refreshed.order.customer_name ?? '').trim();
+  if (phoneOut) {
+    void sendSms(phoneOut, `Tack för din beställning från Mormors Kunafa${smsCustomerName ? ', ' + smsCustomerName : ''}! Vi tar snart emot din beställning.`).catch((err) =>
+      console.error('[order confirmation sms after payment]', err)
     );
   }
 
