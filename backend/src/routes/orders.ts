@@ -21,6 +21,7 @@ import {
 } from '../constants/deliveryFee.js';
 import { getPublicWebAppUrl } from '../utils/publicWebAppUrl.js';
 import { confirmStripeCheckoutSession } from '../utils/confirmStripeCheckout.js';
+import { sanitizeProductName } from '../utils/sanitizeProductName.js';
 import swishPaymentRouter from './swishPayment.js';
 
 const router = Router();
@@ -158,7 +159,7 @@ router.post('/', async (req: Request, res: Response) => {
         id: itemId,
         order_id: orderId,
         product_id: resolveProductIdFromLineId(it.productId),
-        product_name_snapshot: it.productName ?? '',
+        product_name_snapshot: sanitizeProductName(String(it.productName ?? '')),
         quantity: it.quantity ?? 1,
         price_ore: it.price ?? 0,
         modifications_json: it.modifications?.length ? it.modifications : null,
