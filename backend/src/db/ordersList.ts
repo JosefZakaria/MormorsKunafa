@@ -1,6 +1,7 @@
 import type { Row } from './connection.js';
 import { getOrderById } from './orderRepository.js';
 import { dbTimestampToIso } from '../utils/dbTimestamp.js';
+import { sanitizeProductName } from '../utils/sanitizeProductName.js';
 
 export async function rowsToOrders(orderRows: Row[]): Promise<Record<string, unknown>[]> {
   const out: Record<string, unknown>[] = [];
@@ -52,7 +53,7 @@ export function orderRowToOrder(r: Row, items: Row[]): Record<string, unknown> {
     internalNotes: r.internal_notes ?? undefined,
     items: items.map((i) => ({
       productId: i.product_id ?? '',
-      productName: i.product_name_snapshot,
+      productName: sanitizeProductName(String(i.product_name_snapshot ?? '')),
       quantity: i.quantity,
       price: i.price_ore,
       modifications:
