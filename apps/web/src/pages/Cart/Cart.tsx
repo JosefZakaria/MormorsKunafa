@@ -143,7 +143,9 @@ export const Cart: React.FC = () => {
             // Build scheduledTime only if customer chose a future date (naive datetime = Europe/Stockholm on server)
             let scheduledTime: string | undefined;
             if (scheduledDate && scheduledDate !== todayStr) {
-                const hm = (scheduledClock || '12:00').slice(0, 5);
+                // Hemleverans väljer endast datum; tiden låses till ett fast värde
+                // så att kunden inte väljer en tid som kan skapa missförstånd.
+                const hm = isDeliveryOrder ? '12:00' : (scheduledClock || '12:00').slice(0, 5);
                 scheduledTime = `${scheduledDate}T${hm}:00`;
             }
 
@@ -398,7 +400,7 @@ export const Cart: React.FC = () => {
                                 max={maxDateStr}
                                 onChange={(e) => setScheduledDate(e.target.value || todayStr)}
                             />
-                            {scheduledDate !== todayStr && (
+                            {scheduledDate !== todayStr && !isDeliveryOrder && (
                                 <>
                                     <label htmlFor="cart-schedule-time" className="cart-schedule__label cart-schedule__label--time">
                                         {t('cart.schedule_time_label')}
@@ -423,6 +425,9 @@ export const Cart: React.FC = () => {
                                             day: 'numeric',
                                             month: 'long',
                                         });
+                                        if (isDeliveryOrder) {
+                                            return `${t('cart.schedule_future')} ${label}`;
+                                        }
                                         const hm = (scheduledClock || '12:00').slice(0, 5);
                                         return `${t('cart.schedule_future')} ${label} ${hm}`;
                                     })()}
