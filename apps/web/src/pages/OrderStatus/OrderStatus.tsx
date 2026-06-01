@@ -132,7 +132,9 @@ function SimpleConfirmationView({
     const isKitchenDone = order.status === 'klar' && isDelivery;
 
     const scheduledLabel = order.scheduledTime
-        ? `${formatScheduledDate(order.scheduledTime)}${formatScheduledClock(order.scheduledTime) ? ` kl. ${formatScheduledClock(order.scheduledTime)}` : ''}`
+        ? isDelivery
+            ? formatScheduledDate(order.scheduledTime)
+            : `${formatScheduledDate(order.scheduledTime)}${formatScheduledClock(order.scheduledTime) ? ` kl. ${formatScheduledClock(order.scheduledTime)}` : ''}`
         : null;
 
     let title = 'Tack för din beställning!';
