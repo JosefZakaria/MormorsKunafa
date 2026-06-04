@@ -652,16 +652,6 @@ router.patch('/admin/:id/status', requireAdmin, async (req: Request, res: Respon
       return;
     }
 
-    if (status === 'klar') {
-      const phoneOut = String(result.order.customer_phone ?? '').trim();
-      const customerName = String(result.order.customer_name ?? '').trim();
-      if (phoneOut) {
-        void sendSms(phoneOut, `Hej${customerName ? ', ' + customerName : ''}! Din beställning från Mormors Kunafa är nu klar och redo att hämtas. Välkommen!`).catch((err) =>
-          console.error('[order ready sms]', err)
-        );
-      }
-    }
-
     res.json(orderRowToOrder(result.order, result.items));
   } catch (e) {
     console.error(e);
