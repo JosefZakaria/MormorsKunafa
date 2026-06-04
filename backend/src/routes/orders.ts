@@ -215,7 +215,8 @@ router.post('/', async (req: Request, res: Response) => {
 
     const phoneOut = String(result.order.customer_phone ?? '').trim();
     const smsCustomerName = String(result.order.customer_name ?? '').trim();
-    if (phoneOut && !isOnlinePayment(paymentMethod)) {
+    // Hemleverans får inga SMS – endast "Ta med" och "Äta här".
+    if (phoneOut && !isOnlinePayment(paymentMethod) && !isDelivery) {
       void sendSms(phoneOut, `Tack för din beställning från Mormors Kunafa${smsCustomerName ? ', ' + smsCustomerName : ''}! Vi tar snart emot din beställning.`).catch((err) =>
         console.error('[order confirmation sms]', err)
       );
@@ -415,7 +416,8 @@ router.patch('/admin/:id/accept', requireAdmin, async (req: Request, res: Respon
 
     const phoneOut = String(updated.order.customer_phone ?? '').trim();
     const customerName = String(updated.order.customer_name ?? '').trim();
-    if (phoneOut) {
+    // Hemleverans får inga SMS – endast "Ta med" och "Äta här".
+    if (phoneOut && String(updated.order.order_type ?? '') !== 'delivery') {
       const readyTimeStr = estimatedReady.toLocaleTimeString('sv-SE', {
         timeZone: 'Europe/Stockholm',
         hour: '2-digit',
