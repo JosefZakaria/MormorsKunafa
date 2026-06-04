@@ -609,6 +609,13 @@ export const AdminDashboard: React.FC = () => {
     const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const statsAuthPasswordRef = useRef('');
 
+    // Spårar vilka inkommande ordrar som redan skrivits ut (kökslapp) så att
+    // pollingen inte skriver ut samma order flera gånger.
+    const printedOrderIdsRef = useRef<Set<string>>(new Set());
+    // Vid första laddningen "seedar" vi befintliga inkommande ordrar utan att
+    // skriva ut dem – endast ordrar som kommer in efter detta skrivs ut.
+    const printSeedDoneRef = useRef(false);
+
     // --- Fetch pending + active + pre-orders ---
     const fetchOrders = useCallback(async () => {
         try {
@@ -634,6 +641,37 @@ export const AdminDashboard: React.FC = () => {
         pollingRef.current = setInterval(fetchOrders, 3000);
         return () => { if (pollingRef.current) clearInterval(pollingRef.current); };
     }, [fetchOrders]);
+
+    // --- Auto-skriv ut kökslapp så fort en ny order dyker upp i "inkommande" ---
+    useEffect(() => {
+        // Vänta på första hämtningen innan vi gör något.
+        if (loadingOrders) return;
+
+        // Första gången: markera nuvarande inkommande ordrar som redan "kända"
+        // så att de inte skrivs ut. Endast ordrar som kommer in efteråt skrivs ut.
+        if (!printSeedDoneRef.current) {
+            for (const o of pendingOrders) printedOrderIdsRef.current.add(o.id);
+            printSeedDoneRef.current = true;
+            return;
+        }
+
+        if (!isPrinterConfigured()) return;
+
+        for (const order of pendingOrders) {
+            if (printedOrderIdsRef.current.has(order.id)) continue;
+            // Markera FÖRE await så att nästa polling inte startar en dubbel utskrift.
+            printedOrderIdsRef.current.add(order.id);
+            printKitchenTicket(order)
+                .then(res => {
+                    if (!res.success) {
+                        setError(res.error || 'Kunde inte skriva ut kokslapp. Kontrollera skrivaren.');
+                    }
+                })
+                .catch(() => {
+                    setError('Kunde inte skriva ut kokslapp. Kontrollera skrivaren.');
+                });
+        }
+    }, [pendingOrders, loadingOrders]);
 
     // --- Fetch products + settings on mount ---
     useEffect(() => {
@@ -670,13 +708,8 @@ export const AdminDashboard: React.FC = () => {
             const accepted = await orderApi.acceptOrder(orderId, extraMinutes);
             setPendingOrders(prev => prev.filter(o => o.id !== orderId));
             setActiveOrders(prev => [...prev, accepted]);
-
-            if (isPrinterConfigured()) {
-                const printRes = await printKitchenTicket(accepted);
-                if (!printRes.success) {
-                    setError(printRes.error || 'Kunde inte skriva ut kokslapp. Kontrollera skrivaren.');
-                }
-            }
+            // Kökslappen skrivs numera ut automatiskt när ordern dyker upp i
+            // "inkommande" (se auto-print-effekten ovan), inte vid accept.
         } catch {
             setError('Kunde inte acceptera ordern.');
         }
