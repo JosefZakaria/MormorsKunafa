@@ -53,7 +53,8 @@ export async function markOrderPaid(orderId: string, options?: MarkOrderPaidOpti
 
   const phoneOut = String(refreshed.order.customer_phone ?? '').trim();
   const smsCustomerName = String(refreshed.order.customer_name ?? '').trim();
-  if (phoneOut) {
+  // Hemleverans får inga SMS – endast "Ta med" och "Äta här".
+  if (phoneOut && String(refreshed.order.order_type ?? '') !== 'delivery') {
     void sendSms(phoneOut, `Tack för din beställning från Mormors Kunafa${smsCustomerName ? ', ' + smsCustomerName : ''}! Vi tar snart emot din beställning.`).catch((err) =>
       console.error('[order confirmation sms after payment]', err)
     );
