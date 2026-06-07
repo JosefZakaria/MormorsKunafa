@@ -39,8 +39,13 @@ export function configureWebPush(): void {
     return;
   }
 
-  webpush.setVapidDetails(subject, publicKey, privateKey);
-  vapidConfigured = true;
+  try {
+    webpush.setVapidDetails(subject, publicKey, privateKey);
+    vapidConfigured = true;
+  } catch (error: any) {
+    console.error('[push] Failed to configure Web Push VAPID details:', error?.message || error);
+    vapidConfigured = false;
+  }
 }
 
 export function isWebPushConfigured(): boolean {
