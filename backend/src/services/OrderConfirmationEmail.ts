@@ -141,7 +141,7 @@ export async function sendOrderConfirmationEmail(ctx: OrderConfirmationRowContex
     <div style="background:#FBF7F0;border-radius:16px;padding:36px 28px 28px;border:1px solid #ded8cf;box-shadow:0 12px 32px rgba(26,61,50,0.08)">
       ${logoBlock}
       <p style="margin:0 0 14px;line-height:1.55">${greeting}</p>
-      <p style="margin:0 0 10px;line-height:1.55">Tack för att du har beställt hos Mormors Kunafa — vi är glada att kunna laga lite gott åt dig.</p>
+      <p style="margin:0 0 10px;line-height:1.55">Tack för att du har beställt hos Mormors Kunafa, vi är glada att kunna laga lite gott åt dig.</p>
       <p style="margin:12px 0;color:#555;font-size:15px;line-height:1.5">Vi har tagit emot din beställning <strong>${escapeHtml(orderNumber)}</strong>.</p>
       <p style="margin:4px 0 8px;line-height:1.5"><strong>Typ:</strong> ${escapeHtml(orderType)}</p>
       ${receiptDateSv ? `<p style="margin:4px 0 8px;line-height:1.5"><strong>Kvittodatum:</strong> ${escapeHtml(receiptDateSv)} (svensk tid)</p>` : ''}
