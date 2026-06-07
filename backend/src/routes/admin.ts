@@ -1,12 +1,49 @@
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { supabase, type Row, logSupabaseError, nowIso } from '../db/connection.js';
-import { requireAdmin, signToken } from '../middleware/auth.js';
+import { requireAdmin, signToken, verifyAdminToken } from '../middleware/auth.js';
 import { isDeliveryFeeLineItem } from '../constants/deliveryFee.js';
+import {
+  disablePushSubscriptionById,
+  listActivePushSubscriptions,
+  upsertPushSubscription,
+} from '../db/pushSubscriptionsRepository.js';
+import { getRealtimeStatus, registerRealtimeClient } from '../services/realtimeEvents.js';
+import { isWebPushConfigured } from '../services/pushNotifications.js';
 
 const router = Router();
 
 const COMPLETED_STATUSES = ['klar', 'uthämtad', 'levererad'] as const;
+
+const pushRateWindowMs = 60 * 1000;
+const pushRateLimit = 30;
+const pushRateMap = new Map<string, number[]>();
+
+function isRateLimited(adminId: string): boolean {
+  const now = Date.now();
+  const bucket = pushRateMap.get(adminId) ?? [];
+  const recent = bucket.filter((ts) => now - ts < pushRateWindowMs);
+  if (recent.length >= pushRateLimit) {
+    pushRateMap.set(adminId, recent);
+    return true;
+  }
+  recent.push(now);
+  pushRateMap.set(adminId, recent);
+  return false;
+}
+
+function getAdminFromRequest(req: Request): { adminId: string; email: string } | null {
+  const fromMiddleware = (req as Request & { admin?: { adminId?: string; email?: string } }).admin;
+  if (fromMiddleware?.adminId && fromMiddleware?.email) {
+    return { adminId: fromMiddleware.adminId, email: fromMiddleware.email };
+  }
+
+  const token = String(req.query.token ?? '').trim();
+  if (!token) return null;
+  const decoded = verifyAdminToken(token);
+  if (!decoded) return null;
+  return decoded;
+}
 
 function toStockholmDateString(value: Date | string | null | undefined): string | null {
   if (value == null) return null;
@@ -93,6 +130,120 @@ router.post('/login', async (req: Request, res: Response) => {
     console.error('[POST /admin/login]', e);
     res.status(500).json({ error: 'Login failed' });
   }
+});
+
+router.get('/events', (req: Request, res: Response) => {
+  const admin = getAdminFromRequest(req);
+  if (!admin?.adminId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  const cleanup = registerRealtimeClient(admin.adminId, res);
+  req.on('close', cleanup);
+});
+
+router.get('/notifications/health', requireAdmin, (_req: Request, res: Response) => {
+  const status = getRealtimeStatus();
+  res.json({
+    ok: true,
+    webPushConfigured: isWebPushConfigured(),
+    realtime: status,
+  });
+});
+
+router.get('/push-subscriptions', requireAdmin, async (req: Request, res: Response) => {
+  const admin = getAdminFromRequest(req);
+  if (!admin?.adminId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const subscriptions = await listActivePushSubscriptions(admin.adminId);
+  res.json(
+    subscriptions.map((it) => ({
+      id: it.id,
+      endpoint: it.endpoint,
+      deviceLabel: it.device_label,
+      userAgent: it.user_agent,
+      createdAt: it.created_at,
+      updatedAt: it.updated_at,
+      lastSuccessAt: it.last_success_at,
+      lastFailureAt: it.last_failure_at,
+      lastFailureReason: it.last_failure_reason,
+    }))
+  );
+});
+
+router.post('/push-subscriptions', requireAdmin, async (req: Request, res: Response) => {
+  const admin = getAdminFromRequest(req);
+  if (!admin?.adminId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  if (isRateLimited(admin.adminId)) {
+    res.status(429).json({ error: 'Too many requests. Try again shortly.' });
+    return;
+  }
+
+  const subscription = req.body?.subscription as
+    | {
+        endpoint?: string;
+        keys?: { p256dh?: string; auth?: string };
+      }
+    | undefined;
+  const deviceLabel = String(req.body?.deviceLabel ?? '').trim();
+  const endpoint = String(subscription?.endpoint ?? '').trim();
+  const p256dh = String(subscription?.keys?.p256dh ?? '').trim();
+  const auth = String(subscription?.keys?.auth ?? '').trim();
+
+  if (!endpoint || !p256dh || !auth) {
+    res.status(400).json({ error: 'Invalid subscription payload' });
+    return;
+  }
+
+  const saved = await upsertPushSubscription({
+    adminId: admin.adminId,
+    endpoint,
+    p256dh,
+    auth,
+    deviceLabel,
+    userAgent: String(req.headers['user-agent'] ?? '').trim() || undefined,
+  });
+
+  if (!saved) {
+    res.status(500).json({ error: 'Failed to save subscription' });
+    return;
+  }
+
+  res.status(201).json({
+    id: saved.id,
+    endpoint: saved.endpoint,
+    deviceLabel: saved.device_label,
+    createdAt: saved.created_at,
+    updatedAt: saved.updated_at,
+  });
+});
+
+router.delete('/push-subscriptions/:id', requireAdmin, async (req: Request, res: Response) => {
+  const admin = getAdminFromRequest(req);
+  if (!admin?.adminId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const ok = await disablePushSubscriptionById(String(req.params.id), admin.adminId);
+  if (!ok) {
+    res.status(500).json({ error: 'Failed to disable subscription' });
+    return;
+  }
+
+  res.status(204).send();
 });
 
 async function fetchAdminSettingsRow(): Promise<Row | null> {

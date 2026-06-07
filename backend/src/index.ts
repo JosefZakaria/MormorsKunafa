@@ -7,8 +7,10 @@ import adminRouter from './routes/admin.js';
 import { handleStripeWebhook } from './routes/stripeWebhook.js';
 import { handleSwishCallback } from './routes/swishCallback.js';
 import { getPublicWebAppUrlDiagnostics } from './utils/publicWebAppUrl.js';
+import { configureWebPush, isWebPushConfigured } from './services/pushNotifications.js';
 
 const app = express();
+configureWebPush();
 
 function allowedFrontendOrigins(): string[] {
   const defaults = ['https://mormorskunafa.se', 'https://www.mormorskunafa.se'];
@@ -73,6 +75,7 @@ app.get('/api/health', (_req, res) => {
     ok: true,
     supabase: true,
     jwtConfigured: hasJwt,
+    webPushConfigured: isWebPushConfigured(),
     stripeWebhookConfigured: Boolean(process.env.STRIPE_WEBHOOK_SECRET?.trim()),
     publicWebAppUrl: web.effectiveUrl,
     deployWarnings: web.warnings,
