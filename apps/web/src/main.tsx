@@ -7,6 +7,9 @@ import './styles/global.css'
 import './styles/typography.css'
 import './styles/animations.css'
 import { LanguageProvider } from './contexts/LanguageContext'
+import { registerServiceWorker } from './services/pwa'
+
+registerServiceWorker()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
