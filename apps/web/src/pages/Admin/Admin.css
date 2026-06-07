@@ -178,6 +178,8 @@
     gap: var(--spacing-sm);
 }
 
+
+
 .status-active {
     background-color: #D1FAE5;
     color: #059669;

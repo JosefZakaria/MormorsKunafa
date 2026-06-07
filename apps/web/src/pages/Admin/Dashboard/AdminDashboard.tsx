@@ -7,8 +7,16 @@ import { orderApi, productApi, adminApi } from '../../../services/api';
 import { printKitchenTicket, printReceipt, testConnection, isPrinterConfigured, getPrinterConfig, setPrinterConfig } from '../../../services/printer';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { getDisplayName } from '../../../utils/productDisplayName';
-import type { DeliveryInfo, Order, Product, AdminSettings } from '@shared/types';
+import type {
+    DeliveryInfo,
+    Order,
+    Product,
+    AdminSettings,
+    PushSubscriptionRecord,
+    OrderCreatedRealtimeEvent,
+} from '@shared/types';
 import { parseApiTimestamp } from '@shared/utils/parseApiTimestamp';
+import { urlBase64ToUint8Array } from '../../../services/pwa';
 import '../Admin.css';
 
 // --- Helper: countdown string from ISO time ---
@@ -115,6 +123,32 @@ function OrderTimer({ estimatedReadyTime }: { estimatedReadyTime: string }) {
 }
 
 type StatsData = Awaited<ReturnType<typeof adminApi.getStatistics>>;
+
+const VAPID_PUBLIC_KEY = String((import.meta as { env?: Record<string, string> }).env?.VITE_WEB_PUSH_VAPID_PUBLIC_KEY ?? '').trim();
+
+function playForegroundAttentionSound(): void {
+    if (typeof window === 'undefined' || document.visibilityState !== 'visible') return;
+
+    try {
+        const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+        if (!AudioCtx) return;
+        const ctx = new AudioCtx();
+        const oscillator = ctx.createOscillator();
+        const gainNode = ctx.createGain();
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(880, ctx.currentTime);
+        gainNode.gain.setValueAtTime(0.0001, ctx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + 0.02);
+        gainNode.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.24);
+        oscillator.connect(gainNode);
+        gainNode.connect(ctx.destination);
+        oscillator.start();
+        oscillator.stop(ctx.currentTime + 0.25);
+        void ctx.close();
+    } catch {
+        // Best effort only; iOS can block audio when no user gesture exists.
+    }
+}
 
 function PrinterSettings() {
     const config = getPrinterConfig();
@@ -605,9 +639,16 @@ export const AdminDashboard: React.FC = () => {
     const [deleteAllSubmitting, setDeleteAllSubmitting] = useState(false);
     const [deleteAllPassword, setDeleteAllPassword] = useState('');
     const [deleteAllError, setDeleteAllError] = useState<string | null>(null);
+    const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
+    const [pushSubscriptions, setPushSubscriptions] = useState<PushSubscriptionRecord[]>([]);
+    const [pushLoading, setPushLoading] = useState(false);
+    const [pushError, setPushError] = useState<string | null>(null);
+    const [lastRealtimeAt, setLastRealtimeAt] = useState<string | null>(null);
+    const [realtimeConnected, setRealtimeConnected] = useState(false);
 
     const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const statsAuthPasswordRef = useRef('');
+    const seenRealtimeEventIdsRef = useRef<Set<string>>(new Set());
 
     // Spårar vilka inkommande ordrar som redan skrivits ut (kökslapp) så att
     // pollingen inte skriver ut samma order flera gånger.
@@ -635,11 +676,124 @@ export const AdminDashboard: React.FC = () => {
         }
     }, []);
 
+    const fetchPushSubscriptions = useCallback(async () => {
+        try {
+            const subscriptions = await adminApi.getPushSubscriptions();
+            setPushSubscriptions(subscriptions);
+            setPushError(null);
+        } catch {
+            setPushError('Kunde inte hämta push-enheter.');
+        }
+    }, []);
+
+    const enablePushNotifications = useCallback(async () => {
+        if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+            setPushError('Den här enheten stödjer inte Web Push.');
+            return;
+        }
+        if (!VAPID_PUBLIC_KEY) {
+            setPushError('VAPID-nyckel saknas i web-miljön (VITE_WEB_PUSH_VAPID_PUBLIC_KEY).');
+            return;
+        }
+
+        setPushLoading(true);
+        setPushError(null);
+
+        try {
+            const permission = await Notification.requestPermission();
+            setNotificationPermission(permission);
+            if (permission !== 'granted') {
+                setPushError('Notiser nekades. Tillåt notiser i iPad/Safari-inställningar.');
+                setPushLoading(false);
+                return;
+            }
+
+            const registration = await navigator.serviceWorker.ready;
+            const existing = await registration.pushManager.getSubscription();
+            const subscription =
+                existing ??
+                (await registration.pushManager.subscribe({
+                    userVisibleOnly: true,
+                    applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+                }));
+
+            await adminApi.savePushSubscription(subscription, navigator.userAgent);
+            await fetchPushSubscriptions();
+        } catch (error) {
+            console.error('[push] enable failed', error);
+            setPushError('Kunde inte aktivera pushnotiser.');
+        } finally {
+            setPushLoading(false);
+        }
+    }, [fetchPushSubscriptions]);
+
+    useEffect(() => {
+        if (typeof Notification !== 'undefined') {
+            setNotificationPermission(Notification.permission);
+        }
+        void fetchPushSubscriptions();
+    }, [fetchPushSubscriptions]);
+
     // --- Polling every 5s ---
     useEffect(() => {
         fetchOrders();
         pollingRef.current = setInterval(fetchOrders, 3000);
         return () => { if (pollingRef.current) clearInterval(pollingRef.current); };
+    }, [fetchOrders]);
+
+    useEffect(() => {
+        let eventSource: EventSource | null = null;
+        let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+        let closed = false;
+
+        const connect = () => {
+            if (closed) return;
+            try {
+                const url = adminApi.getRealtimeEventsUrl();
+                eventSource = new EventSource(url);
+            } catch {
+                setPushError('Kunde inte starta realtidskanalen.');
+                return;
+            }
+
+            eventSource.onopen = () => {
+                setRealtimeConnected(true);
+            };
+
+            eventSource.addEventListener('ORDER_CREATED', (rawEvent) => {
+                try {
+                    const event = JSON.parse((rawEvent as MessageEvent).data) as OrderCreatedRealtimeEvent;
+                    if (seenRealtimeEventIdsRef.current.has(event.event_id)) return;
+
+                    seenRealtimeEventIdsRef.current.add(event.event_id);
+                    if (seenRealtimeEventIdsRef.current.size > 1000) {
+                        const first = seenRealtimeEventIdsRef.current.values().next().value;
+                        if (first) seenRealtimeEventIdsRef.current.delete(first);
+                    }
+
+                    setLastRealtimeAt(event.created_at);
+                    playForegroundAttentionSound();
+                    void fetchOrders();
+                } catch (error) {
+                    console.error('[realtime] ORDER_CREATED parse failed', error);
+                }
+            });
+
+            eventSource.onerror = () => {
+                eventSource?.close();
+                if (!closed) {
+                    reconnectTimer = setTimeout(connect, 1500);
+                }
+            };
+        };
+
+        connect();
+
+        return () => {
+            closed = true;
+            if (reconnectTimer) clearTimeout(reconnectTimer);
+            eventSource?.close();
+        };
     }, [fetchOrders]);
 
     // --- Auto-skriv ut kökslapp så fort en ny order dyker upp i "inkommande" ---
@@ -953,6 +1107,65 @@ export const AdminDashboard: React.FC = () => {
                         <span className={`status-badge ${isPaused ? 'status-paused' : 'status-active'}`}>
                             {isPaused ? '🔴 STOPPAD' : '🟢 ONLINE'}
                         </span>
+
+                        {/* Kompakt Ljud/Notis-indikator i headern */}
+                        <div style={{ marginLeft: '1rem', display: 'flex', flexDirection: 'column' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                {notificationPermission !== 'granted' ? (
+                                    <Button 
+                                        size="sm" 
+                                        variant="ghost" 
+                                        onClick={enablePushNotifications} 
+                                        disabled={pushLoading}
+                                        style={{ color: '#DC2626', background: '#FEE2E2', border: 'none', fontWeight: 'bold' }}
+                                    >
+                                        🔔 SLÅ PÅ LJUD & NOTISER
+                                    </Button>
+                                ) : (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#f8fafc', padding: '0.2rem 0.5rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                                        <span style={{ fontSize: '1.2rem' }} title="Ljud och notiser är på">🔔</span>
+                                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#059669', lineHeight: 1.2 }}>PÅ</span>
+                                            <span style={{ fontSize: '0.65rem', color: '#64748b' }}>
+                                                {realtimeConnected || lastRealtimeAt ? 'Uppkopplad' : 'Ansluter...'}
+                                            </span>
+                                        </div>
+                                        <Button 
+                                            variant="ghost" 
+                                            size="sm" 
+                                            style={{ padding: '0.2rem 0.4rem', marginLeft: '0.5rem', fontSize: '0.7rem', color: '#64748b' }}
+                                            onClick={async () => {
+                                                setPushLoading(true);
+                                                try {
+                                                    // Avregistrera lokalt i webbläsaren
+                                                    const registration = await navigator.serviceWorker.ready;
+                                                    const existing = await registration.pushManager.getSubscription();
+                                                    if (existing) await existing.unsubscribe();
+                                                    
+                                                    // Rensa från vår databas
+                                                    const localSub = pushSubscriptions.find(s => s.endpoint === existing?.endpoint || s.userAgent === navigator.userAgent);
+                                                    if (localSub) await adminApi.removePushSubscription(localSub.id);
+                                                    
+                                                    await fetchPushSubscriptions();
+                                                    setNotificationPermission('default'); // Tvingar UI:t att visa knappen igen
+                                                } catch (err) {
+                                                    console.error('Kunde inte stänga av push', err);
+                                                } finally {
+                                                    setPushLoading(false);
+                                                }
+                                            }} 
+                                            disabled={pushLoading}
+                                        >
+                                            Stäng av
+                                        </Button>
+                                    </div>
+                                )}
+                                {pushError && <span style={{ fontSize: '0.75rem', color: '#DC2626' }}>{pushError}</span>}
+                            </div>
+                            <span style={{ fontSize: '0.65rem', color: '#64748b', marginTop: '0.25rem', fontStyle: 'italic' }}>
+                                Obs: Ljud kan ibland blockeras. Håll ett öga på skärmen!
+                            </span>
+                        </div>
                     </div>
                     <div className="admin-header-actions">
                         <Button

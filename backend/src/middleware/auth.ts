@@ -8,6 +8,14 @@ export interface JwtPayload {
   email: string;
 }
 
+export function verifyAdminToken(token: string): JwtPayload | null {
+  try {
+    return jwt.verify(token, secret) as JwtPayload;
+  } catch {
+    return null;
+  }
+}
+
 export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
   const auth = req.headers.authorization;
   const token = auth?.startsWith('Bearer ') ? auth.slice(7) : null;
@@ -16,7 +24,11 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction): v
     return;
   }
   try {
-    const decoded = jwt.verify(token, secret) as JwtPayload;
+    const decoded = verifyAdminToken(token);
+    if (!decoded) {
+      res.status(401).json({ error: 'Invalid or expired token' });
+      return;
+    }
     (req as Request & { admin?: JwtPayload }).admin = decoded;
     next();
   } catch {

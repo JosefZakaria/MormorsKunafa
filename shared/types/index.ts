@@ -159,3 +159,23 @@ export interface Notification {
   createdAt: string;
   read: boolean;
 }
+
+export interface PushSubscriptionRecord {
+  id: string;
+  endpoint: string;
+  deviceLabel?: string | null;
+  userAgent?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lastSuccessAt?: string | null;
+  lastFailureAt?: string | null;
+  lastFailureReason?: string | null;
+}
+
+export interface OrderCreatedRealtimeEvent {
+  event_id: string;
+  event_type: 'ORDER_CREATED';
+  order_id: string;
+  order_number: string;
+  created_at: string;
+}

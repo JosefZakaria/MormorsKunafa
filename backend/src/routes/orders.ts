@@ -7,6 +7,8 @@ import { PrinterService } from '../services/PrinterService.js';
 import { sendOrderConfirmationEmail } from '../services/OrderConfirmationEmail.js';
 import { sendSms } from '../services/SmsService.js';
 import { getStripe } from '../services/stripeClient.js';
+import { broadcastOrderCreated, type OrderCreatedEvent } from '../services/realtimeEvents.js';
+import { sendOrderCreatedPush } from '../services/pushNotifications.js';
 import { parseOrderScheduledAt } from '../utils/stockholmWallTime.js';
 import {
   isAllowedPaymentMethod,
@@ -29,6 +31,25 @@ const router = Router();
 router.use('/swish-payment', swishPaymentRouter);
 
 const ACTIVE_STATUSES = ['mottagen', 'påbörjad'] as const;
+
+function dispatchOrderCreatedEvent(orderId: string, orderNumber: string): void {
+  const event: OrderCreatedEvent = {
+    event_id: generateId(),
+    event_type: 'ORDER_CREATED',
+    order_id: orderId,
+    order_number: orderNumber,
+    created_at: nowIso(),
+  };
+
+  broadcastOrderCreated(event);
+  void sendOrderCreatedPush(event).catch((error) => {
+    console.error('[push] sendOrderCreatedPush failed', {
+      eventId: event.event_id,
+      orderId: orderId,
+      error,
+    });
+  });
+}
 
 // Returns "YYYY-MM-DD" for the given date in the Europe/Stockholm timezone.
 // Used because the Namecheap DB server is not in Swedish time and lacks
@@ -221,6 +242,8 @@ router.post('/', async (req: Request, res: Response) => {
         console.error('[order confirmation sms]', err)
       );
     }
+
+    dispatchOrderCreatedEvent(orderId, String(result.order.order_number ?? orderNumber));
 
     res.status(201).json(orderRowToOrder(result.order, result.items));
   } catch (e) {
