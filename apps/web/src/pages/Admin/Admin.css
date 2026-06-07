@@ -178,6 +178,88 @@
     gap: var(--spacing-sm);
 }
 
+.push-status-card {
+    background: var(--color-white);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+    border-left: 4px solid var(--color-primary-red);
+    padding: var(--spacing-lg);
+    margin-bottom: var(--spacing-lg);
+}
+
+.push-status-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-md);
+    margin-bottom: 0.5rem;
+}
+
+.push-status-header h2 {
+    margin: 0;
+    font-family: var(--font-family-display);
+    font-size: 1.15rem;
+}
+
+.push-status-help {
+    margin: 0;
+    color: var(--color-gray-500);
+    font-size: 0.9rem;
+}
+
+.push-status-actions {
+    margin-top: var(--spacing-sm);
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    flex-wrap: wrap;
+}
+
+.push-realtime-indicator {
+    font-size: 0.85rem;
+    color: #334155;
+}
+
+.push-status-error {
+    margin: 0.5rem 0 0;
+    color: #b91c1c;
+    font-size: 0.85rem;
+}
+
+.push-device-list {
+    margin-top: var(--spacing-md);
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.push-device-item {
+    border: 1px solid var(--color-gray-200);
+    border-radius: var(--radius-sm);
+    padding: 0.65rem 0.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-sm);
+}
+
+.push-device-title {
+    margin: 0;
+    font-weight: 600;
+}
+
+.push-device-meta {
+    margin: 0;
+    font-size: 0.8rem;
+    color: var(--color-gray-500);
+}
+
+.push-device-empty {
+    margin: 0;
+    font-size: 0.9rem;
+    color: var(--color-gray-500);
+}
+
 .status-active {
     background-color: #D1FAE5;
     color: #059669;
