@@ -1,4 +1,4 @@
-import { apiRequest, authenticatedRequest } from '@shared/api';
+import { API_CONFIG, apiRequest, authenticatedRequest } from '@shared/api';
 import type {
   Product,
   Order,
@@ -7,6 +7,7 @@ import type {
   UpdateOrderTimeRequest,
   UpdateOrderNotesRequest,
   AdminSettings,
+  PushSubscriptionRecord,
 } from '@shared/types';
 
 // Get auth token from localStorage (web-specific)
@@ -255,6 +256,46 @@ export const adminApi = {
       method: 'PATCH',
       token,
     });
+  },
+
+  getPushSubscriptions: async (): Promise<PushSubscriptionRecord[]> => {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+    return authenticatedRequest<PushSubscriptionRecord[]>('/admin/push-subscriptions', { token });
+  },
+
+  savePushSubscription: async (
+    subscription: PushSubscription,
+    deviceLabel?: string
+  ): Promise<PushSubscriptionRecord> => {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    return authenticatedRequest<PushSubscriptionRecord>('/admin/push-subscriptions', {
+      method: 'POST',
+      body: JSON.stringify({
+        subscription,
+        deviceLabel,
+      }),
+      token,
+    });
+  },
+
+  removePushSubscription: async (id: string): Promise<void> => {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    return authenticatedRequest<void>(`/admin/push-subscriptions/${id}`, {
+      method: 'DELETE',
+      token,
+    });
+  },
+
+  getRealtimeEventsUrl: (): string => {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+    const base = API_CONFIG.baseUrl.replace(/\/+$/, '');
+    return `${base}/admin/events?token=${encodeURIComponent(token)}`;
   },
 
   getStatistics: async (password: string, startDate?: string, endDate?: string): Promise<{
