@@ -82,6 +82,27 @@ export async function sendOrderConfirmationEmail(ctx: OrderConfirmationRowContex
   const totalOre = Number(ctx.order.total_ore) || 0;
   const imgSrc = logoUrl();
 
+  // Förenklad faktura (kvitto): priserna inkluderar moms, så momsen räknas ut baklänges.
+  const VAT_RATE = 6;
+  const vatOre = Math.round((totalOre * VAT_RATE) / (100 + VAT_RATE));
+
+  // Kvittodatum: tidpunkten då köpet genomfördes.
+  const createdAtRaw = ctx.order.created_at as Date | string | null | undefined;
+  let receiptDateSv = '';
+  if (createdAtRaw != null) {
+    const d = createdAtRaw instanceof Date ? createdAtRaw : new Date(createdAtRaw);
+    if (!Number.isNaN(d.getTime())) {
+      receiptDateSv = new Intl.DateTimeFormat('sv-SE', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZone: 'Europe/Stockholm',
+      }).format(d);
+    }
+  }
+
   const rowsHtml = ctx.items.map((item) => {
     const qty = Number(item.quantity) || 0;
     const unitOre = Number(item.price_ore) || 0;
@@ -123,6 +144,7 @@ export async function sendOrderConfirmationEmail(ctx: OrderConfirmationRowContex
       <p style="margin:0 0 10px;line-height:1.55">Tack för att du har beställt hos Mormors Kunafa — vi är glada att kunna laga lite gott åt dig.</p>
       <p style="margin:12px 0;color:#555;font-size:15px;line-height:1.5">Vi har tagit emot din beställning <strong>${escapeHtml(orderNumber)}</strong>.</p>
       <p style="margin:4px 0 8px;line-height:1.5"><strong>Typ:</strong> ${escapeHtml(orderType)}</p>
+      ${receiptDateSv ? `<p style="margin:4px 0 8px;line-height:1.5"><strong>Kvittodatum:</strong> ${escapeHtml(receiptDateSv)} (svensk tid)</p>` : ''}
 
       <h2 style="font-size:16px;color:#C17E61;text-transform:uppercase;letter-spacing:1px;margin:32px 0 12px">Din order</h2>
       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse">
@@ -133,12 +155,21 @@ export async function sendOrderConfirmationEmail(ctx: OrderConfirmationRowContex
             <td style="padding-top:18px;font-size:17px;color:#1A3D32"><strong>Totalt</strong></td>
             <td style="padding-top:18px;text-align:right;font-size:17px;color:#1A3D32"><strong>${formatSekFromOre(totalOre)}</strong></td>
           </tr>
+          <tr>
+            <td style="padding-top:6px;font-size:13px;color:#555">Varav ${VAT_RATE}% moms</td>
+            <td style="padding-top:6px;text-align:right;font-size:13px;color:#555">${formatSekFromOre(vatOre)}</td>
+          </tr>
         </tbody>
       </table>
 
       <p style="margin:32px 0 8px;line-height:1.6;font-size:14px;color:#555">Har du frågor om din order? Återkom till oss med ditt ordernummer så hjälper vi dig gärna.</p>
       <p style="margin:0;line-height:1.6;color:#1A3D32;font-weight:600">Vi ses snart!</p>
       <p style="margin:22px 0 0;line-height:1.5;color:#888;font-size:12px">Med vänliga hälsningar,<br/>Mormors Kunafa</p>
+      <p style="margin:20px 0 0;padding-top:16px;border-top:1px solid #e8e3db;line-height:1.6;color:#999;font-size:11px">
+        Mormors Kunafa Aktiebolag<br/>
+        Organisationsnummer: 559424-4823<br/>
+        Karolingatan 1, 212 34 Malmö
+      </p>
     </div>
   </div>
 </body>
