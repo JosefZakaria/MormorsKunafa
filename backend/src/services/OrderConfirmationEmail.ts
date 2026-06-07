@@ -82,38 +82,6 @@ export async function sendOrderConfirmationEmail(ctx: OrderConfirmationRowContex
   const totalOre = Number(ctx.order.total_ore) || 0;
   const imgSrc = logoUrl();
 
-  let estimatedSv = '';
-  const est = ctx.order.estimated_ready_at as Date | string | null | undefined;
-  if (est != null) {
-    const d = est instanceof Date ? est : new Date(est);
-    if (!Number.isNaN(d.getTime())) {
-      estimatedSv = new Intl.DateTimeFormat('sv-SE', {
-        weekday: 'long',
-        day: 'numeric',
-        month: 'long',
-        hour: '2-digit',
-        minute: '2-digit',
-        timeZone: 'Europe/Stockholm',
-      }).format(d);
-    }
-  }
-
-  let scheduledSv = '';
-  const schedAt = ctx.order.scheduled_at as Date | string | null | undefined;
-  if (schedAt != null) {
-    const d = schedAt instanceof Date ? schedAt : new Date(schedAt);
-    if (!Number.isNaN(d.getTime())) {
-      scheduledSv = new Intl.DateTimeFormat('sv-SE', {
-        weekday: 'long',
-        day: 'numeric',
-        month: 'long',
-        hour: '2-digit',
-        minute: '2-digit',
-        timeZone: 'Europe/Stockholm',
-      }).format(d);
-    }
-  }
-
   const rowsHtml = ctx.items.map((item) => {
     const qty = Number(item.quantity) || 0;
     const unitOre = Number(item.price_ore) || 0;
@@ -139,14 +107,6 @@ export async function sendOrderConfirmationEmail(ctx: OrderConfirmationRowContex
     ? `<div style="text-align:center;margin-bottom:28px"><img src="${escapeHtml(imgSrc)}" alt="Mormors Kunafa" width="160" height="auto" style="max-width:220px;height:auto;display:inline-block"/></div>`
     : `<div style="text-align:center;margin-bottom:20px;font-size:26px;font-weight:800;color:#1A3D32;letter-spacing:0.5px">Mormors Kunafa</div>`;
 
-  const readyBlock = estimatedSv
-    ? `<p style="margin:14px 0 0;line-height:1.55;color:#2C2C2C">Beräknad klar tid är <strong>${escapeHtml(estimatedSv)}</strong> (tid angiven i Sverige).</p>`
-    : '';
-
-  const scheduledBlock = scheduledSv
-    ? `<p style="margin:10px 0 0;line-height:1.55;color:#2C2C2C">Önskad tid för upphämtning/leverans: <strong>${escapeHtml(scheduledSv)}</strong> (Sverige).</p>`
-    : '';
-
   const html = `
 <!DOCTYPE html>
 <html lang="sv">
@@ -163,8 +123,6 @@ export async function sendOrderConfirmationEmail(ctx: OrderConfirmationRowContex
       <p style="margin:0 0 10px;line-height:1.55">Tack för att du har beställt hos Mormors Kunafa — vi är glada att kunna laga lite gott åt dig.</p>
       <p style="margin:12px 0;color:#555;font-size:15px;line-height:1.5">Vi har tagit emot din beställning <strong>${escapeHtml(orderNumber)}</strong>.</p>
       <p style="margin:4px 0 8px;line-height:1.5"><strong>Typ:</strong> ${escapeHtml(orderType)}</p>
-      ${scheduledBlock}
-      ${readyBlock}
 
       <h2 style="font-size:16px;color:#C17E61;text-transform:uppercase;letter-spacing:1px;margin:32px 0 12px">Din order</h2>
       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse">
