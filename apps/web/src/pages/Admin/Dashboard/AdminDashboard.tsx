@@ -644,6 +644,7 @@ export const AdminDashboard: React.FC = () => {
     const [pushLoading, setPushLoading] = useState(false);
     const [pushError, setPushError] = useState<string | null>(null);
     const [lastRealtimeAt, setLastRealtimeAt] = useState<string | null>(null);
+    const [realtimeConnected, setRealtimeConnected] = useState(false);
 
     const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const statsAuthPasswordRef = useRef('');
@@ -767,6 +768,10 @@ export const AdminDashboard: React.FC = () => {
                 setPushError('Kunde inte starta realtidskanalen.');
                 return;
             }
+
+            eventSource.onopen = () => {
+                setRealtimeConnected(true);
+            };
 
             eventSource.addEventListener('ORDER_CREATED', (rawEvent) => {
                 try {
@@ -1115,6 +1120,65 @@ export const AdminDashboard: React.FC = () => {
                         <span className={`status-badge ${isPaused ? 'status-paused' : 'status-active'}`}>
                             {isPaused ? '🔴 STOPPAD' : '🟢 ONLINE'}
                         </span>
+
+                        {/* Kompakt Ljud/Notis-indikator i headern */}
+                        <div style={{ marginLeft: '1rem', display: 'flex', flexDirection: 'column' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                {notificationPermission !== 'granted' ? (
+                                    <Button 
+                                        size="sm" 
+                                        variant="ghost" 
+                                        onClick={enablePushNotifications} 
+                                        disabled={pushLoading}
+                                        style={{ color: '#059669', background: '#D1FAE5', border: 'none' }}
+                                    >
+                                        🔔 Slå på ljud & notiser
+                                    </Button>
+                                ) : (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#f8fafc', padding: '0.2rem 0.5rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                                        <span style={{ fontSize: '1.2rem' }} title="Ljud och notiser är på">🔔</span>
+                                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#059669', lineHeight: 1.2 }}>PÅ</span>
+                                            <span style={{ fontSize: '0.65rem', color: '#64748b' }}>
+                                                {realtimeConnected || lastRealtimeAt ? 'Uppkopplad' : 'Ansluter...'}
+                                            </span>
+                                        </div>
+                                        <Button 
+                                            variant="ghost" 
+                                            size="sm" 
+                                            style={{ padding: '0.2rem 0.4rem', marginLeft: '0.5rem', fontSize: '0.7rem', color: '#64748b' }}
+                                            onClick={async () => {
+                                                setPushLoading(true);
+                                                try {
+                                                    // Avregistrera lokalt i webbläsaren
+                                                    const registration = await navigator.serviceWorker.ready;
+                                                    const existing = await registration.pushManager.getSubscription();
+                                                    if (existing) await existing.unsubscribe();
+                                                    
+                                                    // Rensa från vår databas
+                                                    const localSub = pushSubscriptions.find(s => s.endpoint === existing?.endpoint || s.userAgent === navigator.userAgent);
+                                                    if (localSub) await adminApi.removePushSubscription(localSub.id);
+                                                    
+                                                    await fetchPushSubscriptions();
+                                                    setNotificationPermission('default'); // Tvingar UI:t att visa knappen igen
+                                                } catch (err) {
+                                                    console.error('Kunde inte stänga av push', err);
+                                                } finally {
+                                                    setPushLoading(false);
+                                                }
+                                            }} 
+                                            disabled={pushLoading}
+                                        >
+                                            Stäng av
+                                        </Button>
+                                    </div>
+                                )}
+                                {pushError && <span style={{ fontSize: '0.75rem', color: '#DC2626' }}>{pushError}</span>}
+                            </div>
+                            <span style={{ fontSize: '0.65rem', color: '#64748b', marginTop: '0.25rem', fontStyle: 'italic' }}>
+                                Obs: Ljud kan ibland blockeras. Håll ett öga på skärmen!
+                            </span>
+                        </div>
                     </div>
                     <div className="admin-header-actions">
                         <Button
@@ -1127,51 +1191,6 @@ export const AdminDashboard: React.FC = () => {
                         <Button variant="ghost" onClick={handleLogout}>Logga ut</Button>
                     </div>
                 </header>
-
-                <section className="push-status-card">
-                    <div className="push-status-header">
-                        <h2>Admin PWA Notifications</h2>
-                        <span className={`status-badge ${notificationPermission === 'granted' ? 'status-active' : 'status-paused'}`}>
-                            {notificationPermission === 'granted' ? 'Push aktiv' : 'Push inaktiv'}
-                        </span>
-                    </div>
-                    <p className="push-status-help">
-                        Aktivera notiser på iPad och lägg appen på hemskärmen för bakgrundsnotiser.
-                    </p>
-                    <div className="push-status-actions">
-                        <Button onClick={enablePushNotifications} disabled={pushLoading}>
-                            {pushLoading ? 'Aktiverar...' : 'Aktivera notiser'}
-                        </Button>
-                        <span className="push-realtime-indicator">
-                            Realtime: {lastRealtimeAt ? `senast ${new Date(lastRealtimeAt).toLocaleTimeString('sv-SE')}` : 'väntar på händelser'}
-                        </span>
-                    </div>
-                    {pushError && <p className="push-status-error">{pushError}</p>}
-                    <div className="push-device-list">
-                        {pushSubscriptions.length === 0 ? (
-                            <p className="push-device-empty">Inga registrerade enheter ännu.</p>
-                        ) : (
-                            pushSubscriptions.map((subscription) => (
-                                <div className="push-device-item" key={subscription.id}>
-                                    <div>
-                                        <p className="push-device-title">{subscription.deviceLabel || 'Okänd enhet'}</p>
-                                        <p className="push-device-meta">
-                                            Registrerad: {new Date(subscription.createdAt).toLocaleString('sv-SE')}
-                                        </p>
-                                    </div>
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => disablePushSubscription(subscription.id)}
-                                        disabled={pushLoading}
-                                    >
-                                        Avregistrera
-                                    </Button>
-                                </div>
-                            ))
-                        )}
-                    </div>
-                </section>
 
                 {error && (
                     <div style={{ padding: '0.75rem 1rem', background: '#fee', color: '#c00', borderRadius: '8px', marginBottom: '1rem' }}>
