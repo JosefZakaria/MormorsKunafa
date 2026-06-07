@@ -15,6 +15,7 @@ build/
 # Database and SQL dumps
 Database/
 *.sql
+!backend/src/db/migrations/*.sql
 
 # IDE
 .idea/

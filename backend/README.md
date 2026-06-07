@@ -31,6 +31,14 @@ Stripe (card payments):
 | `PUBLIC_WEB_APP_URL` | Storefront URL for Checkout `success_url` / `cancel_url` (no trailing slash), e.g. `https://mormorskunafa.se` |
 | `FRONTEND_URL` | Also used for CORS; should match the live storefront |
 
+Admin PWA notifications (Web Push):
+
+| Variable | Description |
+|----------|-------------|
+| `WEB_PUSH_SUBJECT` | Contact URI for VAPID, e.g. `mailto:admin@mormorskunafa.se` |
+| `WEB_PUSH_VAPID_PUBLIC_KEY` | Public VAPID key (shared with web app as `VITE_WEB_PUSH_VAPID_PUBLIC_KEY`) |
+| `WEB_PUSH_VAPID_PRIVATE_KEY` | Private VAPID key (server only) |
+
 Live webhook: `POST https://<backend-host>/api/stripe/webhook` with event `checkout.session.completed`.  
 See [docs/STRIPE_GO_LIVE.md](../docs/STRIPE_GO_LIVE.md) and `backend/.env.example`.
 
@@ -96,6 +104,31 @@ Optional, for one-time WordPress migration only:
 
    API base URL: `http://localhost:3001/api` (or `PORT` you set).
 
+## Admin PWA Notifications
+
+1. Apply SQL migration in Supabase SQL editor:
+
+   - `backend/src/db/migrations/2026-06-06-admin-pwa-notifications.sql`
+
+2. Configure Web Push env vars in backend and web:
+
+   - Backend: `WEB_PUSH_SUBJECT`, `WEB_PUSH_VAPID_PUBLIC_KEY`, `WEB_PUSH_VAPID_PRIVATE_KEY`
+   - Web (`apps/web/.env`): `VITE_WEB_PUSH_VAPID_PUBLIC_KEY`
+
+3. Build/deploy backend and web over HTTPS.
+
+4. On iPad:
+
+   - Open site in Safari.
+   - Add to Home Screen.
+   - Log in to admin dashboard.
+   - Press "Aktivera notiser".
+
+5. Verify flow:
+
+   - New order emits SSE event (`/api/admin/events`) for foreground sync.
+   - Push notification is sent for background/stängd app.
+
 ## Web app and API URL
 
 The shared API config defaults to `http://localhost:3000/api`. To use this backend (e.g. on port 3001), either:
@@ -130,5 +163,11 @@ If you have the WordPress SQL dump file (e.g. `Database/845466_...sql`) but no r
 - **Products**: `GET /api/products`, `GET /api/products/:id`, `PATCH /api/products/:id/stock` (admin).
 - **Orders**: `POST /api/orders`, `GET /api/orders/:id`; admin: `GET /api/orders/admin/active`, `/api/orders/admin/pre-orders`, `/api/orders/admin/history`, `PATCH /api/orders/admin/:id/status`, `PATCH /api/orders/admin/:id/time`.
 - **Admin**: `POST /api/admin/login` (returns `{ token, admin }`), `GET/PATCH /api/admin/settings`, `GET /api/admin/notifications`, `PATCH /api/admin/notifications/:id/read` (notifications stubbed).
+- **Admin Notifications**:
+   - `GET /api/admin/events?token=<jwt>` (SSE realtime stream)
+   - `GET /api/admin/push-subscriptions`
+   - `POST /api/admin/push-subscriptions`
+   - `DELETE /api/admin/push-subscriptions/:id`
+   - `GET /api/admin/notifications/health`
 
 Admin routes require header: `Authorization: Bearer <token>`.
