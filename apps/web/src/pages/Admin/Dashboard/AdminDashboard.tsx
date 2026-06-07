@@ -1130,9 +1130,9 @@ export const AdminDashboard: React.FC = () => {
                                         variant="ghost" 
                                         onClick={enablePushNotifications} 
                                         disabled={pushLoading}
-                                        style={{ color: '#059669', background: '#D1FAE5', border: 'none' }}
+                                        style={{ color: '#DC2626', background: '#FEE2E2', border: 'none', fontWeight: 'bold' }}
                                     >
-                                        🔔 Slå på ljud & notiser
+                                        🔔 SLÅ PÅ LJUD & NOTISER
                                     </Button>
                                 ) : (
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#f8fafc', padding: '0.2rem 0.5rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
