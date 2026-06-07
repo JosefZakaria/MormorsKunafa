@@ -727,19 +727,6 @@ export const AdminDashboard: React.FC = () => {
         }
     }, [fetchPushSubscriptions]);
 
-    const disablePushSubscription = useCallback(async (subscriptionId: string) => {
-        setPushLoading(true);
-        setPushError(null);
-        try {
-            await adminApi.removePushSubscription(subscriptionId);
-            await fetchPushSubscriptions();
-        } catch {
-            setPushError('Kunde inte avregistrera enheten.');
-        } finally {
-            setPushLoading(false);
-        }
-    }, [fetchPushSubscriptions]);
-
     useEffect(() => {
         if (typeof Notification !== 'undefined') {
             setNotificationPermission(Notification.permission);
