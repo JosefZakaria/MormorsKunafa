@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "npm run build --workspace=@mormors-kunafa/shared && tsc",
+    "build": "npm run build --workspace=@mormors-kunafa/shared && node scripts/sync-shared-dist.mjs src && tsc && node scripts/sync-shared-dist.mjs dist",
     "start": "node dist/index.js",
-    "dev": "tsx watch src/index.ts",
+    "dev": "npm run build --workspace=@mormors-kunafa/shared && node scripts/sync-shared-dist.mjs src && tsx watch src/index.ts",
     "db:migrate": "tsx src/scripts/run-schema.ts",
     "db:migrate:remove-rush-time-adjustment": "tsx src/scripts/migrate-remove-rush-time-adjustment.ts",
     "db:migrate:stripe-checkout-session": "tsx src/scripts/migrate-add-stripe-checkout-session-column.ts",

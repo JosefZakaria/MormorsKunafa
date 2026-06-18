@@ -2,20 +2,10 @@
   "version": 2,
   "installCommand": "cd .. && npm ci",
   "buildCommand": "npm run build",
-  "ignoreCommand": "git diff HEAD^ HEAD --quiet -- . ../shared",
-  "builds": [
+  "rewrites": [
     {
-      "src": "dist/index.js",
-      "use": "@vercel/node",
-      "config": {
-        "includeFiles": "../shared/dist/**"
-      }
-    }
-  ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "dist/index.js"
+      "source": "/(.*)",
+      "destination": "/api"
     }
   ]
 }
