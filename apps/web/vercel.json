@@ -2,6 +2,7 @@
   "framework": "vite",
   "installCommand": "cd ../.. && npm ci",
   "buildCommand": "npm run build",
+  "ignoreCommand": "git diff HEAD^ HEAD --quiet -- . ../../shared",
   "outputDirectory": "dist",
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
