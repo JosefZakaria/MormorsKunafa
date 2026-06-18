@@ -12,6 +12,12 @@ export function todayInStockholmDateString(at: Date = new Date()): string {
   return dateToStockholmInputValue(at);
 }
 
+function clockToMinutes(hm: string): number {
+  const [h, m] = hm.slice(0, 5).split(':').map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m)) return 0;
+  return h * 60 + m;
+}
+
 /**
  * Earliest selectable clock today: now + leadMinutes in Stockholm, rounded up to the next minute.
  * Returns "HH:mm".
@@ -28,4 +34,23 @@ export function defaultScheduledClock(
     minute: '2-digit',
     hour12: false,
   });
+}
+
+export function minScheduledClockToday(
+  leadMinutes = DEFAULT_ORDER_LEAD_MINUTES,
+  at: Date = new Date()
+): string {
+  return defaultScheduledClock(leadMinutes, at);
+}
+
+/** True when date is today (Stockholm) and clock is before now + leadMinutes. */
+export function isScheduledClockBeforeMinimum(
+  dateStr: string,
+  clockHm: string,
+  todayStr: string,
+  leadMinutes = DEFAULT_ORDER_LEAD_MINUTES,
+  at: Date = new Date()
+): boolean {
+  if (dateStr !== todayStr) return false;
+  return clockToMinutes(clockHm) < clockToMinutes(defaultScheduledClock(leadMinutes, at));
 }

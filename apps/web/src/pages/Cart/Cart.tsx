@@ -9,6 +9,9 @@ import type { CheckoutPaymentChoice, CustomerInfo, OrderType } from '@shared/typ
 import { DELIVERY_FEE_SEK } from '@shared/constants/delivery';
 import {
     dateToStockholmInputValue,
+    defaultScheduledClock,
+    isScheduledClockBeforeMinimum,
+    minScheduledClockToday,
     todayInStockholmDateString,
 } from '@shared/utils/scheduledTime';
 import {
@@ -74,7 +77,11 @@ export const Cart: React.FC = () => {
     };
 
     const resolveScheduledClock = (): string => {
-        const clock = clampScheduledClock(scheduledDate, scheduledClock);
+        let clock = (scheduledClock || defaultScheduledClock()).slice(0, 5);
+        if (isScheduledClockBeforeMinimum(scheduledDate, clock, todayStr)) {
+            clock = defaultScheduledClock();
+        }
+        clock = clampScheduledClock(scheduledDate, clock);
         if (clock !== scheduledClock) {
             setScheduledClock(clock);
         }
@@ -82,7 +89,7 @@ export const Cart: React.FC = () => {
     };
 
     const formatScheduleSummary = (): string => {
-        const hm = scheduledClock.slice(0, 5);
+        const hm = (scheduledClock || defaultScheduledClock()).slice(0, 5);
         if (scheduledDate === todayStr) {
             return t('cart.schedule_today_at').replace('{time}', hm);
         }
@@ -455,14 +462,14 @@ export const Cart: React.FC = () => {
                                 type="time"
                                 className="cart-schedule__input"
                                 value={scheduledClock}
-                                min={clockRange?.min}
+                                min={clockRange?.min ?? (scheduledDate === todayStr ? minScheduledClockToday() : undefined)}
                                 max={clockRange?.max}
                                 step={60}
                                 disabled={!clockRange}
                                 onChange={(e) => {
                                     const next = e.target.value;
                                     if (!next) {
-                                        if (clockRange) setScheduledClock(clockRange.min);
+                                        setScheduledClock(clockRange?.min ?? defaultScheduledClock());
                                         return;
                                     }
                                     setScheduledClock(clampScheduledClock(scheduledDate, next));

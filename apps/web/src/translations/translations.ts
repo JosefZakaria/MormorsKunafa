@@ -8,8 +8,15 @@ export const translations = {
         "nav.cart": "VARUKORG",
 
         // Footer
+        "footer.tagline": "Autentiska smaker, gjorda med kärlek.",
         "footer.copyright": "© 2024 Mormors Kunafa. Alla rättigheter förbehållna.",
+        "footer.address_label": "Adress:",
+        "footer.address": "Karolingatan 1, 212 34 Malmö",
+        "footer.phone_label": "Telefon:",
         "footer.phone": "072-868 25 92",
+        "footer.bookings_label": "Bokningar:",
+        "footer.hours_label": "Öppettider:",
+        "footer.hours": "Mån–Sön: 11:00–22:00",
         "footer.find_us": "Hitta hit",
         "footer.contact": "Kontakt",
         "footer.opening_hours": "Öppettider",
@@ -28,6 +35,8 @@ export const translations = {
         "findus.title": "Hitta till oss",
         "findus.address_title": "Adress",
         "findus.open_hours_title": "Öppettider",
+        "findus.hours_week": "Mån - Fre: 11:00 - 20:00",
+        "findus.hours_weekend": "Lör - Sön: 12:00 - 21:00",
         "findus.directions_btn": "Vägbeskrivning",
 
         // Menu
@@ -53,10 +62,13 @@ export const translations = {
         "cart.customer_email_placeholder": "namn@exempel.se",
         "cart.customer_info_required": "Vänligen fyll i namn och telefonnummer.",
         "cart.schedule_title": "När vill du ha din beställning?",
+        "cart.schedule_subtitle": "Default är idag. Välj annan dag och tid för att förbeställa.",
         "cart.schedule_label": "Datum",
         "cart.schedule_time_label": "Tid",
+        "cart.schedule_today": "Idag",
         "cart.schedule_today_at": "Idag kl. {time}",
         "cart.schedule_future": "Förbeställd till",
+        "cart.schedule_time_too_early": "Den valda tiden har passerat. Vi har uppdaterat till närmaste tillgängliga tid.",
         "cart.schedule_closed_day": "Inga tider kvar denna dag. Välj ett annat datum.",
 
         // Common
@@ -142,8 +154,15 @@ export const translations = {
         "nav.cart": "CART",
 
         // Footer
+        "footer.tagline": "Authentic flavors, made with love.",
         "footer.copyright": "© 2024 Mormors Kunafa. All rights reserved.",
+        "footer.address_label": "Address:",
+        "footer.address": "Karolingatan 1, 212 34 Malmö",
+        "footer.phone_label": "Phone:",
         "footer.phone": "072-868 25 92",
+        "footer.bookings_label": "Bookings:",
+        "footer.hours_label": "Opening hours:",
+        "footer.hours": "Mon–Sun: 11:00–22:00",
         "footer.find_us": "Find us",
         "footer.contact": "Contact",
         "footer.opening_hours": "Opening hours",
@@ -162,6 +181,8 @@ export const translations = {
         "findus.title": "Find Us",
         "findus.address_title": "Address",
         "findus.open_hours_title": "Opening Hours",
+        "findus.hours_week": "Mon - Fri: 11:00 - 20:00",
+        "findus.hours_weekend": "Sat - Sun: 12:00 - 21:00",
         "findus.directions_btn": "Get Directions",
 
         // Menu
@@ -187,10 +208,13 @@ export const translations = {
         "cart.customer_email_placeholder": "name@example.com",
         "cart.customer_info_required": "Please enter your name and phone number.",
         "cart.schedule_title": "When do you want your order?",
+        "cart.schedule_subtitle": "Default is today. Pick another day and time to pre-order.",
         "cart.schedule_label": "Date",
         "cart.schedule_time_label": "Time",
+        "cart.schedule_today": "Today",
         "cart.schedule_today_at": "Today at {time}",
         "cart.schedule_future": "Pre-ordered for",
+        "cart.schedule_time_too_early": "The selected time has passed. We updated it to the next available slot.",
         "cart.schedule_closed_day": "No times left on this day. Please choose another date.",
 
         // Common
@@ -289,8 +313,15 @@ export const translations = {
         "nav.cart": "السلة",
 
         // Footer
+        "footer.tagline": "نكهات أصيلة، صُنعت بحب.",
         "footer.copyright": "© 2024 كنافة جدتي. جميع الحقوق محفوظة.",
+        "footer.address_label": "العنوان:",
+        "footer.address": "Karolingatan 1, 212 34 Malmö",
+        "footer.phone_label": "الهاتف:",
         "footer.phone": "072-868 25 92",
+        "footer.bookings_label": "الحجوزات:",
+        "footer.hours_label": "ساعات العمل:",
+        "footer.hours": "الإثنين–الأحد: 11:00–22:00",
         "footer.find_us": "اعثر علينا",
         "footer.contact": "اتصل",
         "footer.opening_hours": "ساعات العمل",
@@ -309,6 +340,8 @@ export const translations = {
         "findus.title": "موقعنا",
         "findus.address_title": "العنوان",
         "findus.open_hours_title": "ساعات العمل",
+        "findus.hours_week": "الإثنين - الجمعة: 11:00 - 20:00",
+        "findus.hours_weekend": "السبت - الأحد: 12:00 - 21:00",
         "findus.directions_btn": "الاتجاهات",
 
         // Menu
@@ -334,10 +367,13 @@ export const translations = {
         "cart.customer_email_placeholder": "name@example.com",
         "cart.customer_info_required": "يرجى إدخال الاسم ورقم الهاتف.",
         "cart.schedule_title": "متى تريد طلبك؟",
+        "cart.schedule_subtitle": "الافتراضي هو اليوم. اختر يومًا ووقتًا آخرين للطلب المسبق.",
         "cart.schedule_label": "التاريخ",
         "cart.schedule_time_label": "الوقت",
+        "cart.schedule_today": "اليوم",
         "cart.schedule_today_at": "اليوم {time}",
         "cart.schedule_future": "طلب مسبق لـ",
+        "cart.schedule_time_too_early": "الوقت المحدد قد مضى. تم تحديثه إلى أقرب وقت متاح.",
         "cart.schedule_closed_day": "لا توجد أوقات متاحة في هذا اليوم. اختر تاريخًا آخر.",
 
         // Common

@@ -19,10 +19,11 @@ const DefaultIcon = L.icon({
 L.Marker.prototype.options.icon = DefaultIcon;
 
 import { useLanguage } from '../../contexts/LanguageContext';
-import { formatOpeningHoursCompact } from '@shared/utils/openingHours';
+import { formatOpeningHoursLines } from '@shared/utils/openingHours';
 
 export const FindUs: React.FC = () => {
     const { t, language } = useLanguage();
+    const hoursLines = formatOpeningHoursLines(language);
     const restaurantLocation: [number, number] = [55.58198, 13.065039];
 
     return (
@@ -45,7 +46,7 @@ export const FindUs: React.FC = () => {
                     <div className="find-us__details">
                         <h2 className="find-us__section-title">{t('findus.open_hours_title')}</h2>
                         <p className="find-us__text">
-                            {formatOpeningHoursCompact(language)}
+                            {hoursLines.join(' · ')}
                         </p>
                     </div>
                 </div>
