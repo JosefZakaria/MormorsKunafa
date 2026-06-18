@@ -330,6 +330,17 @@
     text-align: center;
 }
 
+.cart-schedule__closed-notice {
+    margin: 0 0 var(--spacing-md) 0;
+    padding: 0.65rem 0.75rem;
+    font-size: 0.85rem;
+    line-height: 1.45;
+    color: var(--color-gray-800);
+    background-color: #fff8e6;
+    border: 1px solid #f0d78c;
+    border-radius: var(--radius-md);
+}
+
 /* --- Paused Popup Overlay --- */
 .cart-popup-overlay {
     position: fixed;

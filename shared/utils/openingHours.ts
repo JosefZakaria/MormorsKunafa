@@ -85,7 +85,25 @@ export function getHoursForDate(dateStr: string): DayHours | null {
   return OPENING_HOURS_BY_WEEKDAY[weekdayInStockholm(dateStr)] ?? null;
 }
 
-/** Selectable clock range for a given date, or null when no slots remain. */
+/** Current clock in Europe/Stockholm as "HH:mm". */
+export function currentClockInStockholm(at: Date = new Date()): string {
+  return at.toLocaleTimeString('sv-SE', {
+    timeZone: STOCKHOLM_TZ,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+}
+
+/** True when the restaurant is within posted opening hours (open ≤ now < close). */
+export function isRestaurantOpenNow(at: Date = new Date()): boolean {
+  const todayStr = todayInStockholmDateString(at);
+  const hours = getHoursForDate(todayStr);
+  if (!hours) return false;
+  const now = clockToMinutes(currentClockInStockholm(at));
+  return now >= clockToMinutes(hours.open) && now < clockToMinutes(hours.close);
+}
+
 export function getOrderableClockRange(
   dateStr: string,
   leadMinutes = DEFAULT_ORDER_LEAD_MINUTES,
@@ -208,6 +226,26 @@ export function validateScheduledOrderTime(
   }
 
   return { valid: true };
+}
+
+/** Bump to the next valid slot when the current selection is stale or out of range. */
+export function resolveValidScheduledSlot(
+  dateStr: string,
+  clock: string,
+  leadMinutes = DEFAULT_ORDER_LEAD_MINUTES,
+  at: Date = new Date()
+): { dateStr: string; clock: string; wasAdjusted: boolean } {
+  const scheduledTime = `${dateStr}T${clock.slice(0, 5)}:00`;
+  const check = validateScheduledOrderTime(scheduledTime, leadMinutes, at);
+  if (check.valid) {
+    return {
+      dateStr,
+      clock: clampScheduledClock(dateStr, clock, leadMinutes, at),
+      wasAdjusted: false,
+    };
+  }
+  const slot = findNextOrderableSlot(leadMinutes, at);
+  return { ...slot, wasAdjusted: true };
 }
 
 export function formatOpeningHoursLines(lang: OpeningHoursLanguage): string[] {

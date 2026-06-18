@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Container } from '../../components/common/Container/Container';
 import { Button } from '../../components/common/Button/Button';
@@ -15,6 +15,8 @@ import {
     clampScheduledClock,
     findNextOrderableSlot,
     getOrderableClockRange,
+    isRestaurantOpenNow,
+    resolveValidScheduledSlot,
     validateScheduledOrderTime,
 } from '@shared/utils/openingHours';
 import './Cart.css';
@@ -60,6 +62,16 @@ export const Cart: React.FC = () => {
         [scheduledDate]
     );
 
+    const isOpenNow = isRestaurantOpenNow();
+
+    useEffect(() => {
+        const resolved = resolveValidScheduledSlot(scheduledDate, scheduledClock);
+        if (resolved.wasAdjusted) {
+            setScheduledDate(resolved.dateStr);
+            setScheduledClock(resolved.clock);
+        }
+    }, []);
+
     const handleScheduledDateChange = (value: string) => {
         const next = value || todayStr;
         setScheduledDate(next);
@@ -71,14 +83,6 @@ export const Cart: React.FC = () => {
             setScheduledDate(slot.dateStr);
             setScheduledClock(slot.clock);
         }
-    };
-
-    const resolveScheduledClock = (): string => {
-        const clock = clampScheduledClock(scheduledDate, scheduledClock);
-        if (clock !== scheduledClock) {
-            setScheduledClock(clock);
-        }
-        return clock;
     };
 
     const formatScheduleSummary = (): string => {
@@ -184,10 +188,15 @@ export const Cart: React.FC = () => {
                 return;
             }
 
-            const clock = resolveScheduledClock();
-            const scheduledTime = scheduledDate
-                ? `${scheduledDate}T${clock}:00`
-                : undefined;
+            const resolved = resolveValidScheduledSlot(scheduledDate, scheduledClock);
+            if (resolved.wasAdjusted) {
+                setScheduledDate(resolved.dateStr);
+                setScheduledClock(resolved.clock);
+            }
+
+            const clock = resolved.clock;
+            const dateForOrder = resolved.dateStr;
+            const scheduledTime = `${dateForOrder}T${clock}:00`;
 
             const hoursCheck = validateScheduledOrderTime(scheduledTime);
             if (!hoursCheck.valid) {
@@ -435,6 +444,14 @@ export const Cart: React.FC = () => {
 
                         <div className="cart-schedule">
                             <h3 className="cart-schedule__title">{t('cart.schedule_title')}</h3>
+                            {!isOpenNow && (
+                                <p className="cart-schedule__closed-notice">
+                                    {t('cart.schedule_closed_notice').replace(
+                                        '{schedule}',
+                                        formatScheduleSummary()
+                                    )}
+                                </p>
+                            )}
                             <label htmlFor="cart-schedule-date" className="cart-schedule__label">
                                 {t('cart.schedule_label')}
                             </label>

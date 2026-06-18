@@ -58,6 +58,7 @@ export const translations = {
         "cart.schedule_today_at": "Idag kl. {time}",
         "cart.schedule_future": "Förbeställd till",
         "cart.schedule_closed_day": "Inga tider kvar denna dag. Välj ett annat datum.",
+        "cart.schedule_closed_notice": "Vi har stängt just nu. Din beställning är schemalagd till {schedule}. Du kan välja en annan tid nedan.",
 
         // Common
         "loading": "Laddar...",
@@ -192,6 +193,7 @@ export const translations = {
         "cart.schedule_today_at": "Today at {time}",
         "cart.schedule_future": "Pre-ordered for",
         "cart.schedule_closed_day": "No times left on this day. Please choose another date.",
+        "cart.schedule_closed_notice": "We're closed right now. Your order is scheduled for {schedule}. You can choose a different time below.",
 
         // Common
         "loading": "Loading...",
@@ -339,6 +341,7 @@ export const translations = {
         "cart.schedule_today_at": "اليوم {time}",
         "cart.schedule_future": "طلب مسبق لـ",
         "cart.schedule_closed_day": "لا توجد أوقات متاحة في هذا اليوم. اختر تاريخًا آخر.",
+        "cart.schedule_closed_notice": "نحن مغلقون الآن. طلبك مجدول لـ {schedule}. يمكنك اختيار وقت آخر أدناه.",
 
         // Common
         "loading": "جار التحميل...",
