@@ -7,6 +7,13 @@ import { useCart } from '../../contexts/CartContext';
 import { orderApi } from '../../services/api';
 import type { CheckoutPaymentChoice, CustomerInfo, OrderType } from '@shared/types';
 import { DELIVERY_FEE_SEK } from '@shared/constants/delivery';
+import {
+    dateToStockholmInputValue,
+    defaultScheduledClock,
+    isScheduledClockBeforeMinimum,
+    minScheduledClockToday,
+    todayInStockholmDateString,
+} from '@shared/utils/scheduledTime';
 import './Cart.css';
 
 /** Set to true when Swish checkout is ready for customers. */
@@ -37,19 +44,43 @@ export const Cart: React.FC = () => {
     const needsInlineCustomerInfo = orderType === 'eat-here' || orderType === 'takeaway';
 
     // --- Scheduled pickup/delivery date ---
-    const formatDateInput = (d: Date) => {
-        const y = d.getFullYear();
-        const m = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
-        return `${y}-${m}-${day}`;
-    };
-    const today = new Date();
+    const todayStr = todayInStockholmDateString();
     const maxDate = new Date();
     maxDate.setDate(maxDate.getDate() + 30);
-    const todayStr = formatDateInput(today);
-    const maxDateStr = formatDateInput(maxDate);
+    const maxDateStr = dateToStockholmInputValue(maxDate);
     const [scheduledDate, setScheduledDate] = useState<string>(todayStr);
-    const [scheduledClock, setScheduledClock] = useState<string>('12:00');
+    const [scheduledClock, setScheduledClock] = useState(() => defaultScheduledClock());
+
+    const handleScheduledDateChange = (value: string) => {
+        const next = value || todayStr;
+        setScheduledDate(next);
+        if (next === todayStr) {
+            setScheduledClock(defaultScheduledClock());
+        }
+    };
+
+    const resolveScheduledClock = (): string => {
+        let clock = (scheduledClock || defaultScheduledClock()).slice(0, 5);
+        if (isScheduledClockBeforeMinimum(scheduledDate, clock, todayStr)) {
+            clock = defaultScheduledClock();
+            setScheduledClock(clock);
+        }
+        return clock;
+    };
+
+    const formatScheduleSummary = (): string => {
+        const hm = (scheduledClock || defaultScheduledClock()).slice(0, 5);
+        if (scheduledDate === todayStr) {
+            return t('cart.schedule_today_at').replace('{time}', hm);
+        }
+        const [yy, mo, dd] = scheduledDate.split('-').map(Number);
+        const label = new Date(yy, mo - 1, dd).toLocaleDateString(scheduleLocale, {
+            weekday: 'long',
+            day: 'numeric',
+            month: 'long',
+        });
+        return `${t('cart.schedule_future')} ${label} ${hm}`;
+    };
 
     // Get delivery info from localStorage if available
     const getDeliveryInfo = () => {
@@ -140,14 +171,10 @@ export const Cart: React.FC = () => {
                 return;
             }
 
-            // Build scheduledTime only if customer chose a future date (naive datetime = Europe/Stockholm on server)
-            let scheduledTime: string | undefined;
-            if (scheduledDate && scheduledDate !== todayStr) {
-                // Hemleverans väljer endast datum; tiden låses till ett fast värde
-                // så att kunden inte väljer en tid som kan skapa missförstånd.
-                const hm = isDeliveryOrder ? '12:00' : (scheduledClock || '12:00').slice(0, 5);
-                scheduledTime = `${scheduledDate}T${hm}:00`;
-            }
+            const clock = resolveScheduledClock();
+            const scheduledTime = scheduledDate
+                ? `${scheduledDate}T${clock}:00`
+                : undefined;
 
             if (paymentChoice === 'swish') {
                 const phoneForSwish =
@@ -398,39 +425,29 @@ export const Cart: React.FC = () => {
                                 value={scheduledDate}
                                 min={todayStr}
                                 max={maxDateStr}
-                                onChange={(e) => setScheduledDate(e.target.value || todayStr)}
+                                onChange={(e) => handleScheduledDateChange(e.target.value)}
                             />
-                            {scheduledDate !== todayStr && !isDeliveryOrder && (
-                                <>
-                                    <label htmlFor="cart-schedule-time" className="cart-schedule__label cart-schedule__label--time">
-                                        {t('cart.schedule_time_label')}
-                                    </label>
-                                    <input
-                                        id="cart-schedule-time"
-                                        type="time"
-                                        className="cart-schedule__input"
-                                        value={scheduledClock}
-                                        step={60}
-                                        onChange={(e) => setScheduledClock(e.target.value || '12:00')}
-                                    />
-                                </>
-                            )}
+                            <label htmlFor="cart-schedule-time" className="cart-schedule__label cart-schedule__label--time">
+                                {t('cart.schedule_time_label')}
+                            </label>
+                            <input
+                                id="cart-schedule-time"
+                                type="time"
+                                className="cart-schedule__input"
+                                value={scheduledClock}
+                                min={scheduledDate === todayStr ? minScheduledClockToday() : undefined}
+                                step={60}
+                                onChange={(e) => {
+                                    const next = e.target.value;
+                                    if (!next) {
+                                        setScheduledClock(defaultScheduledClock());
+                                        return;
+                                    }
+                                    setScheduledClock(next);
+                                }}
+                            />
                             <p className="cart-schedule__summary">
-                                {scheduledDate === todayStr
-                                    ? t('cart.schedule_today')
-                                    : (() => {
-                                        const [yy, mo, dd] = scheduledDate.split('-').map(Number);
-                                        const label = new Date(yy, mo - 1, dd).toLocaleDateString(scheduleLocale, {
-                                            weekday: 'long',
-                                            day: 'numeric',
-                                            month: 'long',
-                                        });
-                                        if (isDeliveryOrder) {
-                                            return `${t('cart.schedule_future')} ${label}`;
-                                        }
-                                        const hm = (scheduledClock || '12:00').slice(0, 5);
-                                        return `${t('cart.schedule_future')} ${label} ${hm}`;
-                                    })()}
+                                {formatScheduleSummary()}
                             </p>
                         </div>
                     </div>

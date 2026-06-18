@@ -132,9 +132,7 @@ function SimpleConfirmationView({
     const isKitchenDone = order.status === 'klar' && isDelivery;
 
     const scheduledLabel = order.scheduledTime
-        ? isDelivery
-            ? formatScheduledDate(order.scheduledTime)
-            : `${formatScheduledDate(order.scheduledTime)}${formatScheduledClock(order.scheduledTime) ? ` kl. ${formatScheduledClock(order.scheduledTime)}` : ''}`
+        ? `${formatScheduledDate(order.scheduledTime)}${formatScheduledClock(order.scheduledTime) ? ` kl. ${formatScheduledClock(order.scheduledTime)}` : ''}`
         : null;
 
     let title = 'Tack för din beställning!';
@@ -195,6 +193,7 @@ function LivePickupView({ order, countdown }: { order: Order; countdown: string 
     const isDelayed =
         !!order.estimatedReadyTime &&
         (parseApiTimestamp(order.estimatedReadyTime)?.getTime() ?? 0) < Date.now();
+    const scheduledClockLabel = formatScheduledClock(order.scheduledTime);
 
     const stepIndex = STATUS_STEPS.indexOf(order.status as Order['status']);
     const currentStepIndex = stepIndex >= 0 ? stepIndex : order.status === 'mottagen' ? 1 : 0;
@@ -216,6 +215,10 @@ function LivePickupView({ order, countdown }: { order: Order; countdown: string 
                     <span className="timer-value">{countdown}</span>
                     <span className="text-body-md timer-label">Minuter kvar</span>
                 </div>
+            )}
+
+            {scheduledClockLabel && !isAwaitingPayment && (
+                <p className="status-hint">Önskad upphämtning: kl. {scheduledClockLabel}</p>
             )}
 
             <div className="status-steps">

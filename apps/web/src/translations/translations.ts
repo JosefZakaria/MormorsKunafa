@@ -66,7 +66,9 @@ export const translations = {
         "cart.schedule_label": "Datum",
         "cart.schedule_time_label": "Tid",
         "cart.schedule_today": "Idag",
+        "cart.schedule_today_at": "Idag kl. {time}",
         "cart.schedule_future": "Förbeställd till",
+        "cart.schedule_time_too_early": "Den valda tiden har passerat. Vi har uppdaterat till närmaste tillgängliga tid.",
 
         // Common
         "loading": "Laddar...",
@@ -209,7 +211,9 @@ export const translations = {
         "cart.schedule_label": "Date",
         "cart.schedule_time_label": "Time",
         "cart.schedule_today": "Today",
+        "cart.schedule_today_at": "Today at {time}",
         "cart.schedule_future": "Pre-ordered for",
+        "cart.schedule_time_too_early": "The selected time has passed. We updated it to the next available slot.",
 
         // Common
         "loading": "Loading...",
@@ -365,7 +369,9 @@ export const translations = {
         "cart.schedule_label": "التاريخ",
         "cart.schedule_time_label": "الوقت",
         "cart.schedule_today": "اليوم",
+        "cart.schedule_today_at": "اليوم {time}",
         "cart.schedule_future": "طلب مسبق لـ",
+        "cart.schedule_time_too_early": "الوقت المحدد قد مضى. تم تحديثه إلى أقرب وقت متاح.",
 
         // Common
         "loading": "جار التحميل...",
