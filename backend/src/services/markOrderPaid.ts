@@ -1,5 +1,6 @@
 import { supabase, type Row, logSupabaseError, nowIso } from '../db/connection.js';
 import { getOrderById } from '../db/orderRepository.js';
+import { dispatchOrderCreatedEvent } from './orderCreatedNotifications.js';
 import { sendOrderConfirmationEmail } from './OrderConfirmationEmail.js';
 import { sendSms } from './SmsService.js';
 
@@ -59,6 +60,11 @@ export async function markOrderPaid(orderId: string, options?: MarkOrderPaidOpti
       console.error('[order confirmation sms after payment]', err)
     );
   }
+
+  dispatchOrderCreatedEvent(
+    orderId,
+    String(refreshed.order.order_number ?? orderId)
+  );
 
   return true;
 }
