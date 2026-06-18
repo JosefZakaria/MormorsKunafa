@@ -323,6 +323,13 @@
     text-align: center;
 }
 
+.cart-schedule__notice {
+    margin: var(--spacing-sm) 0 0 0;
+    font-size: 0.85rem;
+    color: #a33;
+    text-align: center;
+}
+
 /* --- Paused Popup Overlay --- */
 .cart-popup-overlay {
     position: fixed;

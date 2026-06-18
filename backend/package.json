@@ -17,6 +17,7 @@
     "db:cleanup-order-item-snapshots": "tsx src/scripts/cleanup-order-item-product-name-snapshots.ts"
   },
   "dependencies": {
+    "@mormors-kunafa/shared": "*",
     "@supabase/supabase-js": "^2.106.1",
     "@types/web-push": "^3.6.4",
     "bcryptjs": "^2.4.3",

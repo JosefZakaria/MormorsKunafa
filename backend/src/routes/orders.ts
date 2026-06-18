@@ -10,6 +10,7 @@ import { getStripe } from '../services/stripeClient.js';
 import { broadcastOrderCreated, type OrderCreatedEvent } from '../services/realtimeEvents.js';
 import { sendOrderCreatedPush } from '../services/pushNotifications.js';
 import { parseOrderScheduledAt } from '../utils/stockholmWallTime.js';
+import { validateScheduledOrderTime } from '@mormors-kunafa/shared/utils/openingHours';
 import {
   isAllowedPaymentMethod,
   isCardPayment,
@@ -133,6 +134,13 @@ router.post('/', async (req: Request, res: Response) => {
         return;
       }
     }
+
+    const hoursValidation = validateScheduledOrderTime(body.scheduledTime, defaultPrep);
+    if (!hoursValidation.valid) {
+      res.status(400).json({ error: hoursValidation.error });
+      return;
+    }
+
     const baseTime = scheduledAt && scheduledAt.getTime() > Date.now() ? scheduledAt : new Date();
     const estimatedReady = new Date(baseTime.getTime() + defaultPrep * 60 * 1000);
 

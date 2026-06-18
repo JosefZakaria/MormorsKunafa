@@ -4,6 +4,7 @@ import { Phone, Clock } from 'lucide-react';
 import './Footer.css';
 
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { formatOpeningHoursCompact } from '@shared/utils/openingHours';
 import { LanguageSelector } from '../../common/LanguageSelector/LanguageSelector';
 
 const TEL_LINK = 'tel:0728682592';
@@ -13,7 +14,7 @@ const MAP_EMBED_SRC =
     'https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d2250.558385447066!2d13.000932315316!3d55.595279680517!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x4653a1592751aac9%3A0x0!2sKarolingatan%201%2C%20212%2034%20Malm%C3%B6!5e0!3m2!1ssv!2sse';
 
 export const Footer: React.FC = () => {
-    const { t } = useLanguage();
+    const { t, language } = useLanguage();
     const { pathname } = useLocation();
     const hideLanguage = pathname === '/';
 
@@ -61,7 +62,7 @@ export const Footer: React.FC = () => {
                         <h4 className="footer__subheading">{t('footer.opening_hours')}</h4>
                         <div className="footer__item">
                             <Clock className="footer__icon" aria-hidden />
-                            <span className="footer__detail">{t('footer.hours')}</span>
+                            <span className="footer__detail">{formatOpeningHoursCompact(language)}</span>
                         </div>
                     </section>
                     <section className="footer__column" aria-labelledby="footer-about">

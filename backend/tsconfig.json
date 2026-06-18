@@ -10,7 +10,11 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "declaration": true,
-    "declarationMap": true
+    "declarationMap": true,
+    "baseUrl": ".",
+    "paths": {
+      "@mormors-kunafa/shared/*": ["../shared/*"]
+    }
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "src/scripts"]
