@@ -2,17 +2,11 @@
   "version": 2,
   "framework": null,
   "installCommand": "cd .. && npm ci",
-  "buildCommand": "npm run build",
-  "builds": [
+  "buildCommand": "npm run build && node -e \"require('fs').mkdirSync('public', { recursive: true })\"",
+  "rewrites": [
     {
-      "src": "src/index.ts",
-      "use": "@vercel/node"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "src/index.ts"
+      "source": "/(.*)",
+      "destination": "/api"
     }
   ]
 }

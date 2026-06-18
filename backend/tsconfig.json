@@ -16,6 +16,6 @@
       "@mormors-kunafa/shared/*": ["../shared/*"]
     }
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "api/**/*"],
   "exclude": ["node_modules", "dist", "src/scripts", "src/shared"]
 }
