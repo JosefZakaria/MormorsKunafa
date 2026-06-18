@@ -2,19 +2,50 @@
   "name": "@mormors-kunafa/shared",
   "version": "1.0.0",
   "private": true,
-  "main": "index.ts",
-  "types": "index.ts",
+  "type": "module",
+  "main": "dist/types/index.js",
+  "types": "types/index.ts",
+  "scripts": {
+    "build": "tsc"
+  },
   "exports": {
-    "./types": "./types/index.ts",
-    "./api": "./api/index.ts",
-    "./validation": "./validation/index.ts",
-    "./utils/productImage": "./utils/productImage.ts",
-    "./constants/delivery": "./constants/delivery.ts",
-    "./utils/scheduledTime": "./utils/scheduledTime.ts",
-    "./utils/openingHours": "./utils/openingHours.ts"
+    "./types": {
+      "types": "./types/index.ts",
+      "import": "./dist/types/index.js",
+      "default": "./dist/types/index.js"
+    },
+    "./api": {
+      "types": "./api/index.ts",
+      "import": "./dist/api/index.js",
+      "default": "./dist/api/index.js"
+    },
+    "./validation": {
+      "types": "./validation/index.ts",
+      "import": "./dist/validation/index.js",
+      "default": "./dist/validation/index.js"
+    },
+    "./utils/productImage": {
+      "types": "./utils/productImage.ts",
+      "import": "./dist/utils/productImage.js",
+      "default": "./dist/utils/productImage.js"
+    },
+    "./constants/delivery": {
+      "types": "./constants/delivery.ts",
+      "import": "./dist/constants/delivery.js",
+      "default": "./dist/constants/delivery.js"
+    },
+    "./utils/scheduledTime": {
+      "types": "./utils/scheduledTime.ts",
+      "import": "./dist/utils/scheduledTime.js",
+      "default": "./dist/utils/scheduledTime.js"
+    },
+    "./utils/openingHours": {
+      "types": "./utils/openingHours.ts",
+      "import": "./dist/utils/openingHours.js",
+      "default": "./dist/utils/openingHours.js"
+    }
   },
   "devDependencies": {
     "typescript": "~5.6.2"
   }
 }
-
