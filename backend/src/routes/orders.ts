@@ -9,7 +9,7 @@ import { sendSms } from '../services/SmsService.js';
 import { getStripe } from '../services/stripeClient.js';
 import { dispatchOrderCreatedEvent } from '../services/orderCreatedNotifications.js';
 import { parseOrderScheduledAt } from '../utils/stockholmWallTime.js';
-import { validateScheduledOrderTime } from '../../../shared/dist/utils/openingHours.js';
+import { validateScheduledOrderTime } from '@mormors-kunafa/shared/utils/openingHours';
 import {
   isAllowedPaymentMethod,
   isCardPayment,
