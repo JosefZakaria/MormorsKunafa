@@ -10,7 +10,7 @@ import { getStripe } from '../services/stripeClient.js';
 import { broadcastOrderCreated, type OrderCreatedEvent } from '../services/realtimeEvents.js';
 import { sendOrderCreatedPush } from '../services/pushNotifications.js';
 import { parseOrderScheduledAt } from '../utils/stockholmWallTime.js';
-import { validateScheduledOrderTime } from '@mormors-kunafa/shared/utils/openingHours';
+import { validateScheduledOrderTime } from '../../../shared/dist/utils/openingHours.js';
 import {
   isAllowedPaymentMethod,
   isCardPayment,
