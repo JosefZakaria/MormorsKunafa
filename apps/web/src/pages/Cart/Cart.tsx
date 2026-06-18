@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Container } from '../../components/common/Container/Container';
 import { Button } from '../../components/common/Button/Button';
@@ -14,6 +14,12 @@ import {
     minScheduledClockToday,
     todayInStockholmDateString,
 } from '@shared/utils/scheduledTime';
+import {
+    clampScheduledClock,
+    findNextOrderableSlot,
+    getOrderableClockRange,
+    validateScheduledOrderTime,
+} from '@shared/utils/openingHours';
 import './Cart.css';
 
 /** Set to true when Swish checkout is ready for customers. */
@@ -48,14 +54,25 @@ export const Cart: React.FC = () => {
     const maxDate = new Date();
     maxDate.setDate(maxDate.getDate() + 30);
     const maxDateStr = dateToStockholmInputValue(maxDate);
-    const [scheduledDate, setScheduledDate] = useState<string>(todayStr);
-    const [scheduledClock, setScheduledClock] = useState(() => defaultScheduledClock());
+    const initialSlot = findNextOrderableSlot();
+    const [scheduledDate, setScheduledDate] = useState<string>(initialSlot.dateStr);
+    const [scheduledClock, setScheduledClock] = useState(initialSlot.clock);
+
+    const clockRange = useMemo(
+        () => getOrderableClockRange(scheduledDate),
+        [scheduledDate]
+    );
 
     const handleScheduledDateChange = (value: string) => {
         const next = value || todayStr;
         setScheduledDate(next);
-        if (next === todayStr) {
-            setScheduledClock(defaultScheduledClock());
+        const range = getOrderableClockRange(next);
+        if (range) {
+            setScheduledClock((prev) => clampScheduledClock(next, prev));
+        } else {
+            const slot = findNextOrderableSlot();
+            setScheduledDate(slot.dateStr);
+            setScheduledClock(slot.clock);
         }
     };
 
@@ -63,6 +80,9 @@ export const Cart: React.FC = () => {
         let clock = (scheduledClock || defaultScheduledClock()).slice(0, 5);
         if (isScheduledClockBeforeMinimum(scheduledDate, clock, todayStr)) {
             clock = defaultScheduledClock();
+        }
+        clock = clampScheduledClock(scheduledDate, clock);
+        if (clock !== scheduledClock) {
             setScheduledClock(clock);
         }
         return clock;
@@ -175,6 +195,13 @@ export const Cart: React.FC = () => {
             const scheduledTime = scheduledDate
                 ? `${scheduledDate}T${clock}:00`
                 : undefined;
+
+            const hoursCheck = validateScheduledOrderTime(scheduledTime);
+            if (!hoursCheck.valid) {
+                setError(hoursCheck.error);
+                setIsSubmitting(false);
+                return;
+            }
 
             if (paymentChoice === 'swish') {
                 const phoneForSwish =
@@ -407,7 +434,7 @@ export const Cart: React.FC = () => {
                                 size="lg"
                                 className="checkout-btn"
                                 onClick={handleCheckout}
-                                disabled={isSubmitting}
+                                disabled={isSubmitting || !clockRange}
                             >
                                 {isSubmitting ? 'Skapar beställning...' : t('cart.checkout')}
                             </Button>
@@ -435,17 +462,22 @@ export const Cart: React.FC = () => {
                                 type="time"
                                 className="cart-schedule__input"
                                 value={scheduledClock}
-                                min={scheduledDate === todayStr ? minScheduledClockToday() : undefined}
+                                min={clockRange?.min ?? (scheduledDate === todayStr ? minScheduledClockToday() : undefined)}
+                                max={clockRange?.max}
                                 step={60}
+                                disabled={!clockRange}
                                 onChange={(e) => {
                                     const next = e.target.value;
                                     if (!next) {
-                                        setScheduledClock(defaultScheduledClock());
+                                        setScheduledClock(clockRange?.min ?? defaultScheduledClock());
                                         return;
                                     }
-                                    setScheduledClock(next);
+                                    setScheduledClock(clampScheduledClock(scheduledDate, next));
                                 }}
                             />
+                            {!clockRange && (
+                                <p className="cart-schedule__notice">{t('cart.schedule_closed_day')}</p>
+                            )}
                             <p className="cart-schedule__summary">
                                 {formatScheduleSummary()}
                             </p>
