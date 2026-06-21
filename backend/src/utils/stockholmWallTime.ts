@@ -98,3 +98,40 @@ export function parseOrderScheduledAt(input: string | undefined | null): Date | 
   const d = new Date(s);
   return Number.isNaN(d.getTime()) ? null : d;
 }
+
+export function formatStockholmDateTime(isoString: Date | string | null | undefined): string {
+  if (isoString == null) return '';
+  const d = isoString instanceof Date ? isoString : new Date(isoString);
+  if (Number.isNaN(d.getTime())) return '';
+
+  const formatter = new Intl.DateTimeFormat('sv-SE', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: 'Europe/Stockholm',
+  });
+
+  const parts = formatter.formatToParts(d);
+  let weekday = '';
+  let day = '';
+  let month = '';
+  let hour = '';
+  let minute = '';
+  for (const part of parts) {
+    if (part.type === 'weekday') weekday = part.value;
+    else if (part.type === 'day') day = part.value;
+    else if (part.type === 'month') month = part.value;
+    else if (part.type === 'hour') hour = part.value;
+    else if (part.type === 'minute') minute = part.value;
+  }
+
+  if (!weekday || !day || !month || !hour || !minute) {
+    return formatter.format(d);
+  }
+
+  const capitalizedWeekday = weekday.charAt(0).toUpperCase() + weekday.slice(1);
+  return `${capitalizedWeekday} ${day} ${month} kl. ${hour}:${minute}`;
+}

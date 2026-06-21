@@ -9,7 +9,7 @@ import { sendSms } from '../services/SmsService.js';
 import { getStripe } from '../services/stripeClient.js';
 import { broadcastOrderCreated, type OrderCreatedEvent } from '../services/realtimeEvents.js';
 import { sendOrderCreatedPush } from '../services/pushNotifications.js';
-import { parseOrderScheduledAt } from '../utils/stockholmWallTime.js';
+import { parseOrderScheduledAt, formatStockholmDateTime } from '../utils/stockholmWallTime.js';
 import { validateScheduledOrderTime } from '../shared/utils/openingHours.js';
 import {
   isAllowedPaymentMethod,
@@ -246,7 +246,9 @@ router.post('/', async (req: Request, res: Response) => {
     const smsCustomerName = String(result.order.customer_name ?? '').trim();
     // Hemleverans får inga SMS – endast "Ta med" och "Äta här".
     if (phoneOut && !isOnlinePayment(paymentMethod) && !isDelivery) {
-      void sendSms(phoneOut, `Tack för din beställning från Mormors Kunafa${smsCustomerName ? ', ' + smsCustomerName : ''}! Vi tar snart emot din beställning.`).catch((err) =>
+      const schedStr = result.order.scheduled_at ? formatStockholmDateTime(result.order.scheduled_at as string) : '';
+      const schedSuffix = schedStr ? ` Planerad upphämtning: ${schedStr}.` : '';
+      void sendSms(phoneOut, `Tack för din beställning från Mormors Kunafa${smsCustomerName ? ', ' + smsCustomerName : ''}! Vi tar snart emot din beställning.${schedSuffix}`).catch((err) =>
         console.error('[order confirmation sms]', err)
       );
     }
@@ -765,6 +767,35 @@ router.post('/admin/:id/print', requireAdmin, async (req: Request, res: Response
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Failed to print receipt' });
+  }
+});
+
+router.get('/settings', async (_req: Request, res: Response) => {
+  try {
+    const { data, error } = await supabase
+      .from('admin_settings')
+      .select('default_preparation_time_minutes, is_paused')
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      logSupabaseError('GET /api/orders/settings', error);
+      res.status(500).json({ error: 'Failed to fetch settings' });
+      return;
+    }
+
+    if (!data) {
+      res.status(404).json({ error: 'Settings not found' });
+      return;
+    }
+
+    res.json({
+      defaultPreparationTime: Number(data.default_preparation_time_minutes) || 30,
+      isPaused: Boolean(data.is_paused),
+    });
+  } catch (e) {
+    console.error('[GET /api/orders/settings]', e);
+    res.status(500).json({ error: 'Failed to fetch settings' });
   }
 });
 

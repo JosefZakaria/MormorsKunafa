@@ -85,6 +85,26 @@ export function getHoursForDate(dateStr: string): DayHours | null {
   return OPENING_HOURS_BY_WEEKDAY[weekdayInStockholm(dateStr)] ?? null;
 }
 
+export function isStoreClosedNow(at: Date = new Date()): boolean {
+  const dateStr = dateToStockholmInputValue(at);
+  const hours = getHoursForDate(dateStr);
+  if (!hours) return true;
+
+  const nowHm = at.toLocaleTimeString('sv-SE', {
+    timeZone: STOCKHOLM_TZ,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+
+  const nowMin = clockToMinutes(nowHm);
+  const openMin = clockToMinutes(hours.open);
+  const closeMin = clockToMinutes(hours.close);
+
+  return nowMin < openMin || nowMin >= closeMin;
+}
+
+
 /** Selectable clock range for a given date, or null when no slots remain. */
 export function getOrderableClockRange(
   dateStr: string,
@@ -161,6 +181,12 @@ export function validateScheduledOrderTime(
   at: Date = new Date()
 ): { valid: true } | { valid: false; error: string } {
   if (scheduledTime == null || String(scheduledTime).trim() === '') {
+    if (isStoreClosedNow(at)) {
+      return {
+        valid: false,
+        error: 'Vi har stängt just nu. Välj en tid under våra öppettider.',
+      };
+    }
     const todayStr = todayInStockholmDateString(at);
     const range = getOrderableClockRange(todayStr, leadMinutes, at);
     if (!range) {

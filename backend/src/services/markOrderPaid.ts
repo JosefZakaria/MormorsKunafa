@@ -2,6 +2,7 @@ import { supabase, type Row, logSupabaseError, nowIso } from '../db/connection.j
 import { getOrderById } from '../db/orderRepository.js';
 import { sendOrderConfirmationEmail } from './OrderConfirmationEmail.js';
 import { sendSms } from './SmsService.js';
+import { formatStockholmDateTime } from '../utils/stockholmWallTime.js';
 
 export type MarkOrderPaidOptions = {
   expectedAmountOre?: number;
@@ -55,7 +56,9 @@ export async function markOrderPaid(orderId: string, options?: MarkOrderPaidOpti
   const smsCustomerName = String(refreshed.order.customer_name ?? '').trim();
   // Hemleverans får inga SMS – endast "Ta med" och "Äta här".
   if (phoneOut && String(refreshed.order.order_type ?? '') !== 'delivery') {
-    void sendSms(phoneOut, `Tack för din beställning från Mormors Kunafa${smsCustomerName ? ', ' + smsCustomerName : ''}! Vi tar snart emot din beställning.`).catch((err) =>
+    const schedStr = refreshed.order.scheduled_at ? formatStockholmDateTime(refreshed.order.scheduled_at as string) : '';
+    const schedSuffix = schedStr ? ` Planerad upphämtning: ${schedStr}.` : '';
+    void sendSms(phoneOut, `Tack för din beställning från Mormors Kunafa${smsCustomerName ? ', ' + smsCustomerName : ''}! Vi tar snart emot din beställning.${schedSuffix}`).catch((err) =>
       console.error('[order confirmation sms after payment]', err)
     );
   }

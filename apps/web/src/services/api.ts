@@ -211,6 +211,10 @@ export const orderApi = {
       token,
     });
   },
+
+  getPublicSettings: async (): Promise<{ defaultPreparationTime: number; isPaused: boolean }> => {
+    return apiRequest<{ defaultPreparationTime: number; isPaused: boolean }>('/orders/settings');
+  },
 };
 
 // Admin API

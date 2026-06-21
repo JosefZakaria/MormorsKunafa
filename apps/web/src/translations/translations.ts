@@ -58,6 +58,11 @@ export const translations = {
         "cart.schedule_today_at": "Idag kl. {time}",
         "cart.schedule_future": "Förbeställd till",
         "cart.schedule_closed_day": "Inga tider kvar denna dag. Välj ett annat datum.",
+        "cart.closed_warning_title": "Vi har stängt just nu",
+        "cart.closed_warning_banner_message": "Vi har stängt just nu. Om du beställer nu kommer din beställning att vara klar för upphämtning tidigast {datetime}.",
+        "cart.closed_warning_popup_message": "Vi har för tillfället stängt. Om du lägger beställningen nu kommer den att vara klar för upphämtning tidigast {datetime} (öppningstid plus {prep} minuter tillagningstid).",
+        "cart.closed_warning_confirm": "Ja, jag vill att min beställning ska vara klar {datetime}",
+        "cart.closed_warning_cancel": "Avbryt",
 
         // Common
         "loading": "Laddar...",
@@ -192,6 +197,11 @@ export const translations = {
         "cart.schedule_today_at": "Today at {time}",
         "cart.schedule_future": "Pre-ordered for",
         "cart.schedule_closed_day": "No times left on this day. Please choose another date.",
+        "cart.closed_warning_title": "We are currently closed",
+        "cart.closed_warning_banner_message": "We are currently closed. If you place your order now, it will be ready for pickup at the earliest on {datetime}.",
+        "cart.closed_warning_popup_message": "We are currently closed. If you place your order now, it will be ready for pickup at the earliest on {datetime} (opening time plus {prep} minutes preparation time).",
+        "cart.closed_warning_confirm": "Yes, I want my order to be ready {datetime}",
+        "cart.closed_warning_cancel": "Cancel",
 
         // Common
         "loading": "Loading...",
@@ -339,6 +349,11 @@ export const translations = {
         "cart.schedule_today_at": "اليوم {time}",
         "cart.schedule_future": "طلب مسبق لـ",
         "cart.schedule_closed_day": "لا توجد أوقات متاحة في هذا اليوم. اختر تاريخًا آخر.",
+        "cart.closed_warning_title": "المطعم مغلق حالياً",
+        "cart.closed_warning_banner_message": "نحن مغلقون حالياً. إذا قمت بتقديم الطلب الآن، فسيكون جاهزاً للاستلام في أقرب وقت {datetime}.",
+        "cart.closed_warning_popup_message": "المطعم مغلق حالياً. إذا قمت بتقديم الطلب الآن، فسيكون جاهزاً للاستلام في أقرب وقت {datetime} (وقت الافتتاح بالإضافة إلى {prep} دقيقة لوقت التحضير).",
+        "cart.closed_warning_confirm": "نعم، أريد أن يكون طلبي جاهزاً {datetime}",
+        "cart.closed_warning_cancel": "إلغاء",
 
         // Common
         "loading": "جار التحميل...",
