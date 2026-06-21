@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Container } from '../../components/common/Container/Container';
 import { Button } from '../../components/common/Button/Button';
@@ -16,6 +16,7 @@ import {
     findNextOrderableSlot,
     getOrderableClockRange,
     validateScheduledOrderTime,
+    isStoreClosedNow,
 } from '@shared/utils/openingHours';
 import './Cart.css';
 
@@ -51,30 +52,66 @@ export const Cart: React.FC = () => {
     const maxDate = new Date();
     maxDate.setDate(maxDate.getDate() + 30);
     const maxDateStr = dateToStockholmInputValue(maxDate);
-    const initialSlot = findNextOrderableSlot();
+
+    const [prepTime, setPrepTime] = useState<number>(30);
+    const [isClosedNow, setIsClosedNow] = useState(() => isStoreClosedNow());
+    const [showClosedWarningPopup, setShowClosedWarningPopup] = useState(false);
+    const [hasConfirmedClosedWarning, setHasConfirmedClosedWarning] = useState(false);
+
+    const initialSlot = findNextOrderableSlot(30);
     const [scheduledDate, setScheduledDate] = useState<string>(initialSlot.dateStr);
     const [scheduledClock, setScheduledClock] = useState(initialSlot.clock);
 
+    // Fetch public settings on mount
+    useEffect(() => {
+        orderApi.getPublicSettings()
+            .then((settings) => {
+                if (settings) {
+                    const newPrepTime = settings.defaultPreparationTime;
+                    setPrepTime(newPrepTime);
+                    if (settings.isPaused) {
+                        setShowPausedPopup(true);
+                    }
+                    
+                    // Recalculate and set the initial slot with the correct prep time
+                    const slot = findNextOrderableSlot(newPrepTime);
+                    setScheduledDate(slot.dateStr);
+                    setScheduledClock(slot.clock);
+                }
+            })
+            .catch((err) => {
+                console.error('Failed to fetch public settings:', err);
+            });
+    }, []);
+
+    // Keep store closed status updated
+    useEffect(() => {
+        const timer = setInterval(() => {
+            setIsClosedNow(isStoreClosedNow());
+        }, 15000);
+        return () => clearInterval(timer);
+    }, []);
+
     const clockRange = useMemo(
-        () => getOrderableClockRange(scheduledDate),
-        [scheduledDate]
+        () => getOrderableClockRange(scheduledDate, prepTime),
+        [scheduledDate, prepTime]
     );
 
     const handleScheduledDateChange = (value: string) => {
         const next = value || todayStr;
         setScheduledDate(next);
-        const range = getOrderableClockRange(next);
+        const range = getOrderableClockRange(next, prepTime);
         if (range) {
-            setScheduledClock((prev) => clampScheduledClock(next, prev));
+            setScheduledClock((prev) => clampScheduledClock(next, prev, prepTime));
         } else {
-            const slot = findNextOrderableSlot();
+            const slot = findNextOrderableSlot(prepTime);
             setScheduledDate(slot.dateStr);
             setScheduledClock(slot.clock);
         }
     };
 
     const resolveScheduledClock = (): string => {
-        const clock = clampScheduledClock(scheduledDate, scheduledClock);
+        const clock = clampScheduledClock(scheduledDate, scheduledClock, prepTime);
         if (clock !== scheduledClock) {
             setScheduledClock(clock);
         }
@@ -93,6 +130,26 @@ export const Cart: React.FC = () => {
             month: 'long',
         });
         return `${t('cart.schedule_future')} ${label} ${hm}`;
+    };
+
+    const formatClosedDateTime = (): string => {
+        const hm = scheduledClock.slice(0, 5);
+        if (scheduledDate === todayStr) {
+            return t('cart.schedule_today_at').replace('{time}', hm).toLowerCase();
+        }
+        const [yy, mo, dd] = scheduledDate.split('-').map(Number);
+        const label = new Date(yy, mo - 1, dd).toLocaleDateString(scheduleLocale, {
+            weekday: 'long',
+            day: 'numeric',
+            month: 'long',
+        });
+        if (language === 'ar') {
+            return `${label} الساعة ${hm}`;
+        }
+        if (language === 'en') {
+            return `${label} at ${hm}`;
+        }
+        return `${label} kl. ${hm}`;
     };
 
     // Get delivery info from localStorage if available
@@ -117,13 +174,24 @@ export const Cart: React.FC = () => {
         setOrderType(value as OrderType);
     };
 
-    const handleCheckout = async () => {
+    const handleConfirmClosedWarning = () => {
+        setHasConfirmedClosedWarning(true);
+        setShowClosedWarningPopup(false);
+        void handleCheckout(true);
+    };
+
+    const handleCheckout = async (bypassClosedCheck = false) => {
         if (items.length === 0) {
             setError('Din varukorg är tom');
             return;
         }
         if (!orderType) {
             setOrderTypeError('Välj hur du vill få din beställning.');
+            return;
+        }
+
+        if (isClosedNow && !bypassClosedCheck) {
+            setShowClosedWarningPopup(true);
             return;
         }
 
@@ -247,6 +315,31 @@ export const Cart: React.FC = () => {
             <Container className="cart-container">
                 {items.length > 0 && (
                     <h1 className="text-display-md cart-title">{t('cart.title')}</h1>
+                )}
+
+                {isClosedNow && items.length > 0 && (
+                    <div className="cart-closed-banner animate-in" style={{
+                        padding: '1.25rem',
+                        background: '#fff9e6',
+                        color: '#856404',
+                        border: '1px solid #ffeeba',
+                        borderRadius: '12px',
+                        marginBottom: '1.5rem',
+                        display: 'flex',
+                        gap: '0.85rem',
+                        alignItems: 'flex-start',
+                        boxShadow: '0 2px 8px rgba(133,100,4,0.05)'
+                    }}>
+                        <span className="cart-closed-banner__icon" style={{ fontSize: '1.5rem', lineHeight: '1' }}>⚠️</span>
+                        <div className="cart-closed-banner__content">
+                            <strong className="cart-closed-banner__title" style={{ display: 'block', marginBottom: '0.35rem', fontSize: '1.05rem', fontFamily: 'var(--font-family-display)' }}>
+                                {t('cart.closed_warning_title')}
+                            </strong>
+                            <p className="cart-closed-banner__text" style={{ margin: 0, fontSize: '0.95rem', lineHeight: '1.45' }}>
+                                {t('cart.closed_warning_banner_message').replace('{datetime}', formatClosedDateTime())}
+                            </p>
+                        </div>
+                    </div>
                 )}
 
                 {error && (
@@ -490,6 +583,38 @@ export const Cart: React.FC = () => {
                         <Button variant="primary" onClick={() => setShowPausedPopup(false)} fullWidth>
                             Okej, jag förstår
                         </Button>
+                    </div>
+                </div>
+            )}
+
+            {showClosedWarningPopup && (
+                <div className="cart-popup-overlay animate-in">
+                    <div className="cart-popup-content" style={{ maxWidth: '480px' }}>
+                        <div className="cart-popup-icon">ℹ️</div>
+                        <h3 className="text-heading-md" style={{ marginBottom: '1rem' }}>
+                            {t('cart.closed_warning_title')}
+                        </h3>
+                        <p className="text-body-lg" style={{ marginBottom: '2rem', lineHeight: '1.5' }}>
+                            {t('cart.closed_warning_popup_message')
+                                .replace('{datetime}', formatClosedDateTime())
+                                .replace('{prep}', String(prepTime))}
+                        </p>
+                        <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }} className="cart-popup-buttons">
+                            <Button 
+                                variant="secondary" 
+                                onClick={() => setShowClosedWarningPopup(false)} 
+                                fullWidth
+                            >
+                                {t('cart.closed_warning_cancel')}
+                            </Button>
+                            <Button 
+                                variant="primary" 
+                                onClick={() => handleConfirmClosedWarning()} 
+                                fullWidth
+                            >
+                                {t('cart.closed_warning_confirm').replace('{datetime}', formatClosedDateTime())}
+                            </Button>
+                        </div>
                     </div>
                 </div>
             )}
