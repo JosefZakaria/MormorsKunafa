@@ -246,7 +246,7 @@ router.post('/', async (req: Request, res: Response) => {
     const smsCustomerName = String(result.order.customer_name ?? '').trim();
     // Hemleverans får inga SMS – endast "Ta med" och "Äta här".
     if (phoneOut && !isOnlinePayment(paymentMethod) && !isDelivery) {
-      const schedStr = result.order.scheduled_at ? formatStockholmDateTime(result.order.scheduled_at) : '';
+      const schedStr = result.order.scheduled_at ? formatStockholmDateTime(result.order.scheduled_at as string) : '';
       const schedSuffix = schedStr ? ` Planerad upphämtning: ${schedStr}.` : '';
       void sendSms(phoneOut, `Tack för din beställning från Mormors Kunafa${smsCustomerName ? ', ' + smsCustomerName : ''}! Vi tar snart emot din beställning.${schedSuffix}`).catch((err) =>
         console.error('[order confirmation sms]', err)

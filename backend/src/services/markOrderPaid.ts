@@ -56,7 +56,7 @@ export async function markOrderPaid(orderId: string, options?: MarkOrderPaidOpti
   const smsCustomerName = String(refreshed.order.customer_name ?? '').trim();
   // Hemleverans får inga SMS – endast "Ta med" och "Äta här".
   if (phoneOut && String(refreshed.order.order_type ?? '') !== 'delivery') {
-    const schedStr = refreshed.order.scheduled_at ? formatStockholmDateTime(refreshed.order.scheduled_at) : '';
+    const schedStr = refreshed.order.scheduled_at ? formatStockholmDateTime(refreshed.order.scheduled_at as string) : '';
     const schedSuffix = schedStr ? ` Planerad upphämtning: ${schedStr}.` : '';
     void sendSms(phoneOut, `Tack för din beställning från Mormors Kunafa${smsCustomerName ? ', ' + smsCustomerName : ''}! Vi tar snart emot din beställning.${schedSuffix}`).catch((err) =>
       console.error('[order confirmation sms after payment]', err)
