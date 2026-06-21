@@ -1,5 +1,6 @@
 import { Resend } from 'resend';
 import type { Row } from '../db/connection.js';
+import { formatStockholmDateTime } from '../utils/stockholmWallTime.js';
 
 /** Same asset as `apps/web/public/images/logo.png` (must resolve to an absolute public URL in email). */
 const ORDER_EMAIL_LOGO_PUBLIC_PATH = '/images/logo.png';
@@ -103,6 +104,12 @@ export async function sendOrderConfirmationEmail(ctx: OrderConfirmationRowContex
     }
   }
 
+  // Planerat datum/tid om angivet.
+  const scheduledAtRaw = ctx.order.scheduled_at as Date | string | null | undefined;
+  const scheduledAtSv = scheduledAtRaw ? formatStockholmDateTime(scheduledAtRaw) : '';
+  const isDelivery = String(ctx.order.order_type ?? '') === 'delivery';
+  const scheduleTypeLabel = isDelivery ? 'Planerad leveranstid' : 'Planerad upphämtning';
+
   const rowsHtml = ctx.items.map((item) => {
     const qty = Number(item.quantity) || 0;
     const unitOre = Number(item.price_ore) || 0;
@@ -145,6 +152,15 @@ export async function sendOrderConfirmationEmail(ctx: OrderConfirmationRowContex
       <p style="margin:12px 0;color:#555;font-size:15px;line-height:1.5">Vi har tagit emot din beställning <strong>${escapeHtml(orderNumber)}</strong>.</p>
       <p style="margin:4px 0 8px;line-height:1.5"><strong>Typ:</strong> ${escapeHtml(orderType)}</p>
       ${receiptDateSv ? `<p style="margin:4px 0 8px;line-height:1.5"><strong>Kvittodatum:</strong> ${escapeHtml(receiptDateSv)} (svensk tid)</p>` : ''}
+
+      ${scheduledAtSv ? `
+      <div style="background-color:#FFF5EE;border:1px solid #FFD39B;border-radius:8px;padding:16px;margin:20px 0;line-height:1.6">
+        <strong style="color:#C17E61;font-size:14px">${escapeHtml(scheduleTypeLabel)}:</strong><br/>
+        <span style="font-size:18px;color:#1A3D32"><strong>${escapeHtml(scheduledAtSv)}</strong></span>
+        <br/>
+        <span style="font-size:13px;color:#666">Observera: Din beställning förbereds till denna tidpunkt.</span>
+      </div>
+      ` : ''}
 
       <h2 style="font-size:16px;color:#C17E61;text-transform:uppercase;letter-spacing:1px;margin:32px 0 12px">Din order</h2>
       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse">
