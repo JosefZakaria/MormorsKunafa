@@ -373,3 +373,140 @@
     }
 }
 
+/* Custom Time Picker styles for premium look */
+.cart-schedule__time-picker {
+    position: relative;
+    width: 100%;
+}
+
+.cart-schedule__time-picker--disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.cart-schedule__time-trigger {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    padding: 0.55rem 0.75rem;
+    border: 1px solid var(--color-gray-200);
+    border-radius: var(--radius-md);
+    font-family: var(--font-family-display);
+    font-size: 0.95rem;
+    background-color: var(--color-white);
+    color: var(--color-gray-800);
+    cursor: pointer;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    text-align: left;
+}
+
+.cart-schedule__time-trigger:focus,
+.cart-schedule__time-trigger--open {
+    outline: none;
+    border-color: var(--color-primary-red);
+    box-shadow: 0 0 0 3px rgba(62, 30, 34, 0.1);
+}
+
+.cart-schedule__time-trigger:disabled {
+    cursor: not-allowed;
+    background-color: var(--color-gray-50);
+}
+
+.cart-schedule__time-value {
+    font-weight: 600;
+}
+
+.cart-schedule__time-icon {
+    color: var(--color-gray-400);
+    flex-shrink: 0;
+}
+
+.cart-schedule__time-dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    z-index: 100;
+    background-color: var(--color-white);
+    border: 1px solid var(--color-gray-200);
+    border-radius: var(--radius-md);
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+    display: flex;
+    padding: 0.75rem 0;
+    max-height: 280px;
+}
+
+.cart-schedule__time-column-wrapper {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.cart-schedule__time-column-header {
+    font-family: var(--font-family-display);
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-align: center;
+    color: var(--color-gray-400);
+    letter-spacing: 0.1em;
+    margin-bottom: 0.5rem;
+    user-select: none;
+}
+
+.cart-schedule__time-column {
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    padding: 0 0.5rem;
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-gray-200) transparent;
+}
+
+.cart-schedule__time-column::-webkit-scrollbar {
+    width: 4px;
+}
+
+.cart-schedule__time-column::-webkit-scrollbar-thumb {
+    background-color: var(--color-gray-200);
+    border-radius: 2px;
+}
+
+.cart-schedule__time-divider {
+    width: 1px;
+    background-color: var(--color-gray-100);
+    align-self: stretch;
+}
+
+.cart-schedule__time-item {
+    font-family: var(--font-family-display);
+    font-size: 0.95rem;
+    font-weight: 600;
+    text-align: center;
+    padding: 0.5rem 0;
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-sm);
+    color: var(--color-gray-800);
+    cursor: pointer;
+    transition: background-color 0.15s, color 0.15s;
+    margin-bottom: 2px;
+    outline: none;
+}
+
+.cart-schedule__time-item:hover:not(.cart-schedule__time-item--disabled) {
+    background-color: var(--color-gray-100);
+}
+
+.cart-schedule__time-item--active {
+    background-color: var(--color-primary-red) !important;
+    color: var(--color-white) !important;
+}
+
+.cart-schedule__time-item--disabled {
+    color: var(--color-gray-300) !important;
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
