@@ -360,3 +360,16 @@
     margin-bottom: 1rem;
 }
 
+.cart-popup-buttons {
+    display: flex;
+    gap: 1rem;
+    margin-top: 1.5rem;
+}
+
+@media (max-width: 480px) {
+    .cart-popup-buttons {
+        flex-direction: column-reverse;
+        gap: 0.75rem;
+    }
+}
+
