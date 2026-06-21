@@ -23,6 +23,20 @@ import './Cart.css';
 /** Set to true when Swish checkout is ready for customers. */
 const SWISH_CHECKOUT_ENABLED = false;
 
+function roundClockToNext5Min(clock: string): string {
+    const [hStr, mStr] = clock.split(':');
+    const h = parseInt(hStr, 10);
+    const m = parseInt(mStr, 10);
+    if (isNaN(h) || isNaN(m)) return clock;
+
+    const roundedM = Math.ceil(m / 5) * 5;
+    if (roundedM >= 60) {
+        const nextH = (h + 1) % 24;
+        return `${String(nextH).padStart(2, '0')}:00`;
+    }
+    return `${String(h).padStart(2, '0')}:${String(roundedM).padStart(2, '0')}`;
+}
+
 export const Cart: React.FC = () => {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
@@ -56,12 +70,27 @@ export const Cart: React.FC = () => {
     const [prepTime, setPrepTime] = useState<number>(30);
     const [isClosedNow, setIsClosedNow] = useState(() => isStoreClosedNow());
     const [showClosedWarningPopup, setShowClosedWarningPopup] = useState(false);
-    const [hasConfirmedClosedWarning, setHasConfirmedClosedWarning] = useState(false);
+    const [, setHasConfirmedClosedWarning] = useState(false);
 
     const initialSlot = findNextOrderableSlot(30);
     const [scheduledDate, setScheduledDate] = useState<string>(initialSlot.dateStr);
-    const [scheduledClock, setScheduledClock] = useState(initialSlot.clock);
+    const [scheduledClock, setScheduledClock] = useState(() => roundClockToNext5Min(initialSlot.clock));
 
+    const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+    const timePickerRef = React.useRef<HTMLDivElement>(null);
+
+    // Close dropdown on click outside
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (timePickerRef.current && !timePickerRef.current.contains(event.target as Node)) {
+                setIsDropdownOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, []);
     // Fetch public settings on mount
     useEffect(() => {
         orderApi.getPublicSettings()
@@ -76,7 +105,7 @@ export const Cart: React.FC = () => {
                     // Recalculate and set the initial slot with the correct prep time
                     const slot = findNextOrderableSlot(newPrepTime);
                     setScheduledDate(slot.dateStr);
-                    setScheduledClock(slot.clock);
+                    setScheduledClock(roundClockToNext5Min(slot.clock));
                 }
             })
             .catch((err) => {
@@ -97,21 +126,90 @@ export const Cart: React.FC = () => {
         [scheduledDate, prepTime]
     );
 
+    const hoursToDisplay = useMemo(() => {
+        if (!clockRange) return [];
+        const minHour = parseInt(clockRange.min.split(':')[0], 10);
+        const maxHour = parseInt(clockRange.max.split(':')[0], 10);
+        const start = Math.max(0, minHour - 3);
+        const end = Math.min(23, maxHour + 1);
+        const arr = [];
+        for (let i = start; i <= end; i++) {
+            arr.push(i);
+        }
+        return arr;
+    }, [clockRange]);
+
+    const minutesToDisplay = useMemo(() => [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55], []);
+
+    const hoursContainerRef = React.useRef<HTMLDivElement>(null);
+    const minutesContainerRef = React.useRef<HTMLDivElement>(null);
+
+    const isHourDisabled = (hour: number): boolean => {
+        if (!clockRange) return true;
+        const minHour = parseInt(clockRange.min.split(':')[0], 10);
+        const maxHour = parseInt(clockRange.max.split(':')[0], 10);
+        return hour < minHour || hour > maxHour;
+    };
+
+    const isMinuteDisabled = (minute: number, currentHour: number): boolean => {
+        if (!clockRange) return true;
+        const minTotal = parseInt(clockRange.min.split(':')[0], 10) * 60 + parseInt(clockRange.min.split(':')[1], 10);
+        const maxTotal = parseInt(clockRange.max.split(':')[0], 10) * 60 + parseInt(clockRange.max.split(':')[1], 10);
+        const currentTotal = currentHour * 60 + minute;
+        return currentTotal < minTotal || currentTotal > maxTotal;
+    };
+
+    const selectHour = (hourVal: number) => {
+        if (isHourDisabled(hourVal)) return;
+        const currentMinStr = scheduledClock.split(':')[1];
+        const newClockCandidate = `${String(hourVal).padStart(2, '0')}:${currentMinStr}`;
+        const clamped = clampScheduledClock(scheduledDate, newClockCandidate, prepTime);
+        setScheduledClock(roundClockToNext5Min(clamped));
+    };
+
+    const selectMinute = (minuteVal: number) => {
+        const hourStr = scheduledClock.split(':')[0];
+        const hourVal = parseInt(hourStr, 10);
+        if (isMinuteDisabled(minuteVal, hourVal)) return;
+        const newClockCandidate = `${hourStr}:${String(minuteVal).padStart(2, '0')}`;
+        const clamped = clampScheduledClock(scheduledDate, newClockCandidate, prepTime);
+        setScheduledClock(roundClockToNext5Min(clamped));
+    };
+
+    useEffect(() => {
+        if (isDropdownOpen) {
+            const hoursCol = hoursContainerRef.current;
+            if (hoursCol) {
+                const activeHourEl = hoursCol.querySelector('.cart-schedule__time-item--active');
+                if (activeHourEl) {
+                    activeHourEl.scrollIntoView({ block: 'nearest', behavior: 'auto' });
+                }
+            }
+            const minutesCol = minutesContainerRef.current;
+            if (minutesCol) {
+                const activeMinuteEl = minutesCol.querySelector('.cart-schedule__time-item--active');
+                if (activeMinuteEl) {
+                    activeMinuteEl.scrollIntoView({ block: 'nearest', behavior: 'auto' });
+                }
+            }
+        }
+    }, [isDropdownOpen, scheduledClock]);
+
     const handleScheduledDateChange = (value: string) => {
         const next = value || todayStr;
         setScheduledDate(next);
         const range = getOrderableClockRange(next, prepTime);
         if (range) {
-            setScheduledClock((prev) => clampScheduledClock(next, prev, prepTime));
+            setScheduledClock((prev) => roundClockToNext5Min(clampScheduledClock(next, prev, prepTime)));
         } else {
             const slot = findNextOrderableSlot(prepTime);
             setScheduledDate(slot.dateStr);
-            setScheduledClock(slot.clock);
+            setScheduledClock(roundClockToNext5Min(slot.clock));
         }
     };
 
     const resolveScheduledClock = (): string => {
-        const clock = clampScheduledClock(scheduledDate, scheduledClock, prepTime);
+        const clock = roundClockToNext5Min(clampScheduledClock(scheduledDate, scheduledClock, prepTime));
         if (clock !== scheduledClock) {
             setScheduledClock(clock);
         }
@@ -519,7 +617,7 @@ export const Cart: React.FC = () => {
                                 fullWidth
                                 size="lg"
                                 className="checkout-btn"
-                                onClick={handleCheckout}
+                                onClick={() => handleCheckout()}
                                 disabled={isSubmitting || !clockRange}
                             >
                                 {isSubmitting ? 'Skapar beställning...' : t('cart.checkout')}
@@ -540,27 +638,75 @@ export const Cart: React.FC = () => {
                                 max={maxDateStr}
                                 onChange={(e) => handleScheduledDateChange(e.target.value)}
                             />
-                            <label htmlFor="cart-schedule-time" className="cart-schedule__label cart-schedule__label--time">
+                            <label className="cart-schedule__label cart-schedule__label--time">
                                 {t('cart.schedule_time_label')}
                             </label>
-                            <input
-                                id="cart-schedule-time"
-                                type="time"
-                                className="cart-schedule__input"
-                                value={scheduledClock}
-                                min={clockRange?.min}
-                                max={clockRange?.max}
-                                step={60}
-                                disabled={!clockRange}
-                                onChange={(e) => {
-                                    const next = e.target.value;
-                                    if (!next) {
-                                        if (clockRange) setScheduledClock(clockRange.min);
-                                        return;
-                                    }
-                                    setScheduledClock(clampScheduledClock(scheduledDate, next));
-                                }}
-                            />
+                            <div 
+                                className={`cart-schedule__time-picker ${!clockRange ? 'cart-schedule__time-picker--disabled' : ''}`}
+                                ref={timePickerRef}
+                            >
+                                <button
+                                    type="button"
+                                    className={`cart-schedule__time-trigger ${isDropdownOpen ? 'cart-schedule__time-trigger--open' : ''}`}
+                                    disabled={!clockRange}
+                                    onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                                >
+                                    <span className="cart-schedule__time-value">{scheduledClock}</span>
+                                    <svg className="cart-schedule__time-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <circle cx="12" cy="12" r="10"></circle>
+                                        <polyline points="12 6 12 12 16 14"></polyline>
+                                    </svg>
+                                </button>
+                                
+                                {isDropdownOpen && clockRange && (
+                                    <div className="cart-schedule__time-dropdown">
+                                        <div className="cart-schedule__time-column-wrapper">
+                                            <div className="cart-schedule__time-column-header">TIMME</div>
+                                            <div className="cart-schedule__time-column" ref={hoursContainerRef}>
+                                                {hoursToDisplay.map((hour) => {
+                                                    const hourStr = String(hour).padStart(2, '0');
+                                                    const isSelected = scheduledClock.startsWith(hourStr);
+                                                    const disabled = isHourDisabled(hour);
+                                                    return (
+                                                        <button
+                                                            key={hour}
+                                                            type="button"
+                                                            className={`cart-schedule__time-item ${isSelected ? 'cart-schedule__time-item--active' : ''} ${disabled ? 'cart-schedule__time-item--disabled' : ''}`}
+                                                            disabled={disabled}
+                                                            onClick={() => selectHour(hour)}
+                                                        >
+                                                            {hourStr}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                        <div className="cart-schedule__time-divider"></div>
+                                        <div className="cart-schedule__time-column-wrapper">
+                                            <div className="cart-schedule__time-column-header">MINUT</div>
+                                            <div className="cart-schedule__time-column" ref={minutesContainerRef}>
+                                                {minutesToDisplay.map((minute) => {
+                                                    const minuteStr = String(minute).padStart(2, '0');
+                                                    const isSelected = scheduledClock.endsWith(minuteStr);
+                                                    const currentHour = parseInt(scheduledClock.split(':')[0], 10);
+                                                    const disabled = isMinuteDisabled(minute, currentHour);
+                                                    return (
+                                                        <button
+                                                            key={minute}
+                                                            type="button"
+                                                            className={`cart-schedule__time-item ${isSelected ? 'cart-schedule__time-item--active' : ''} ${disabled ? 'cart-schedule__time-item--disabled' : ''}`}
+                                                            disabled={disabled}
+                                                            onClick={() => selectMinute(minute)}
+                                                        >
+                                                            {minuteStr}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                             {!clockRange && (
                                 <p className="cart-schedule__notice">{t('cart.schedule_closed_day')}</p>
                             )}
