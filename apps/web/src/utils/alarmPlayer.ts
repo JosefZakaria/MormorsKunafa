@@ -55,10 +55,10 @@ export function getAudioState(): 'suspended' | 'running' | 'closed' | 'not_initi
 
 /**
  * Updates the alarm volume.
- * @param volume Value between 0.0 (silent) and 1.0 (maximum)
+ * @param volume Value between 0.8 (minimum) and 1.0 (maximum)
  */
 export function setAlarmVolume(volume: number): void {
-  currentVolume = Math.max(0, Math.min(1, volume));
+  currentVolume = Math.max(0.8, Math.min(1, volume));
   if (mainGainNode && audioCtx) {
     mainGainNode.gain.setValueAtTime(currentVolume, audioCtx.currentTime);
   }
@@ -102,6 +102,9 @@ export function startAlarm(type: AlarmType): void {
 
   const playTick = () => {
     if (!isLooping || !audioCtx || !mainGainNode) return;
+    
+    // Clean up previous interval nodes to prevent memory leak
+    stopActiveSounds();
     
     const now = audioCtx.currentTime;
 
