@@ -19,7 +19,7 @@ import { parseApiTimestamp } from '@shared/utils/parseApiTimestamp';
 import { urlBase64ToUint8Array } from '../../../services/pwa';
 import '../Admin.css';
 import { requestWakeLock, releaseWakeLock } from '../../../utils/wakeLock';
-import { startAlarm, stopAlarm, setAlarmVolume, AlarmType } from '../../../utils/alarmPlayer';
+import { startAlarm, stopAlarm, setAlarmVolume, AlarmType, getAudioState, unlockAudio, isAlarmActive } from '../../../utils/alarmPlayer';
 
 // --- Helper: countdown string from ISO time ---
 function getCountdown(isoTime: string | undefined): string {
@@ -669,6 +669,7 @@ export const AdminDashboard: React.FC = () => {
         const saved = localStorage.getItem('admin_alarm_volume');
         return saved !== null ? parseFloat(saved) : 0.8;
     });
+    const [audioLocked, setAudioLocked] = useState<boolean>(true);
 
     const alarmSeedDoneRef = useRef(false);
     const seenOrderIdsRef = useRef<Set<string>>(new Set());
@@ -865,6 +866,33 @@ export const AdminDashboard: React.FC = () => {
         return () => {
             document.removeEventListener('visibilitychange', handleVisibilityChange);
             void releaseWakeLock();
+        };
+    }, []);
+
+    // Check if audio context is locked by the browser
+    useEffect(() => {
+        const checkAudioLock = () => {
+            const state = getAudioState();
+            setAudioLocked(state === 'suspended' || state === 'not_initialized');
+        };
+        
+        checkAudioLock();
+        
+        // Try to unlock audio on any document click
+        const handleDocumentClick = async () => {
+            const unlocked = await unlockAudio();
+            if (unlocked) {
+                setAudioLocked(false);
+                document.removeEventListener('click', handleDocumentClick);
+            }
+        };
+
+        document.addEventListener('click', handleDocumentClick);
+        const interval = setInterval(checkAudioLock, 2000);
+
+        return () => {
+            document.removeEventListener('click', handleDocumentClick);
+            clearInterval(interval);
         };
     }, []);
 
@@ -1257,6 +1285,20 @@ export const AdminDashboard: React.FC = () => {
                 {error && (
                     <div style={{ padding: '0.75rem 1rem', background: '#fee', color: '#c00', borderRadius: '8px', marginBottom: '1rem' }}>
                         {error} <button onClick={() => setError(null)} style={{ marginLeft: '1rem', cursor: 'pointer' }}>✕</button>
+                    </div>
+                )}
+
+                {/* --- Autoplay warning banner --- */}
+                {audioLocked && (
+                    <div className="audio-unlock-banner" onClick={async () => {
+                        const unlocked = await unlockAudio();
+                        if (unlocked) setAudioLocked(false);
+                    }}>
+                        <div className="audio-unlock-content">
+                            <span className="icon">⚠️</span>
+                            <span>Ljudlarmet kan vara blockerat av webbläsaren. Klicka här för att aktivera ljudet!</span>
+                        </div>
+                        <button className="audio-unlock-btn" type="button">Aktivera</button>
                     </div>
                 )}
 
@@ -1764,6 +1806,85 @@ export const AdminDashboard: React.FC = () => {
                                 </div>
                             </div>
                             <PrinterSettings />
+
+                            {/* --- Ljudinställningar för inkommande ordrar --- */}
+                            <div className="alarm-settings-card">
+                                <h3 className="settings-section-title" style={{ marginTop: 0 }}>Ljud- & Larmsignaler</h3>
+                                <p style={{ fontSize: '0.9rem', color: '#666', marginBottom: '1rem' }}>
+                                    Konfigurera hur surfplattan ska varna för nya inkommande ordrar.
+                                </p>
+                                
+                                <div className="alarm-settings-row">
+                                    <label htmlFor="alarm-type-select">Larmsignal</label>
+                                    <select
+                                        id="alarm-type-select"
+                                        value={alarmType}
+                                        onChange={(e) => {
+                                            const type = e.target.value as AlarmType;
+                                            setAlarmType(type);
+                                            localStorage.setItem('admin_alarm_type', type);
+                                            if (isAlarmActive()) {
+                                                startAlarm(type);
+                                            }
+                                        }}
+                                    >
+                                        <option value="timer">Kökstimer (Pulserande dubbelbeep)</option>
+                                        <option value="ring">Retro ringsignal (Ring Ring)</option>
+                                        <option value="siren">Sirenljud (Svepande pitch)</option>
+                                        <option value="buzzer">Intensivt surr (Buzzer)</option>
+                                    </select>
+                                </div>
+
+                                <div className="alarm-settings-row">
+                                    <label htmlFor="alarm-volume-input">Volym</label>
+                                    <div className="volume-slider-container">
+                                        <input
+                                            id="alarm-volume-input"
+                                            type="range"
+                                            className="volume-slider"
+                                            min="0"
+                                            max="1"
+                                            step="0.05"
+                                            value={alarmVolume}
+                                            onChange={(e) => {
+                                                const vol = parseFloat(e.target.value);
+                                                setAlarmVolumeState(vol);
+                                                setAlarmVolume(vol);
+                                                localStorage.setItem('admin_alarm_volume', String(vol));
+                                            }}
+                                        />
+                                        <span className="volume-value">{Math.round(alarmVolume * 100)}%</span>
+                                    </div>
+                                </div>
+
+                                <div style={{ marginTop: '1.25rem', display: 'flex', gap: '0.5rem' }}>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={async () => {
+                                            await unlockAudio();
+                                            startAlarm(alarmType);
+                                            setAlarmVolume(alarmVolume);
+                                            setTimeout(() => {
+                                                stopAlarm();
+                                            }, 3000);
+                                        }}
+                                    >
+                                        🔊 Testa ljud (3 sek)
+                                    </Button>
+                                    
+                                    {isAlarmActive() && (
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            style={{ color: '#DC2626', borderColor: '#DC2626' }}
+                                            onClick={handleSilenceAlarm}
+                                        >
+                                            ⏹ Stoppa test
+                                        </Button>
+                                    )}
+                                </div>
+                            </div>
                         </div>
                     )}
                 </div>
