@@ -18,6 +18,8 @@ import type {
 import { parseApiTimestamp } from '@shared/utils/parseApiTimestamp';
 import { urlBase64ToUint8Array } from '../../../services/pwa';
 import '../Admin.css';
+import { requestWakeLock, releaseWakeLock } from '../../../utils/wakeLock';
+import { startAlarm, stopAlarm, setAlarmVolume, AlarmType } from '../../../utils/alarmPlayer';
 
 // --- Helper: countdown string from ISO time ---
 function getCountdown(isoTime: string | undefined): string {
@@ -657,6 +659,26 @@ export const AdminDashboard: React.FC = () => {
     // skriva ut dem – endast ordrar som kommer in efter detta skrivs ut.
     const printSeedDoneRef = useRef(false);
 
+    // Alarm state & settings
+    const [activeAlarmOrder, setActiveAlarmOrder] = useState<Order | null>(null);
+    const [alarmType, setAlarmType] = useState<AlarmType>(() => {
+        const saved = localStorage.getItem('admin_alarm_type');
+        return (saved as AlarmType) || 'timer';
+    });
+    const [alarmVolume, setAlarmVolumeState] = useState<number>(() => {
+        const saved = localStorage.getItem('admin_alarm_volume');
+        return saved !== null ? parseFloat(saved) : 0.8;
+    });
+
+    const alarmSeedDoneRef = useRef(false);
+    const seenOrderIdsRef = useRef<Set<string>>(new Set());
+
+    // Mute helper
+    const handleSilenceAlarm = () => {
+        stopAlarm();
+        setActiveAlarmOrder(null);
+    };
+
     // --- Fetch pending + active + pre-orders ---
     const fetchOrders = useCallback(async () => {
         try {
@@ -826,6 +848,59 @@ export const AdminDashboard: React.FC = () => {
                 });
         }
     }, [pendingOrders, loadingOrders]);
+
+    // --- Screen Wake Lock API Setup ---
+    useEffect(() => {
+        void requestWakeLock();
+
+        // Re-request when page gains visibility (browser releases lock when hidden)
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                void requestWakeLock();
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            void releaseWakeLock();
+        };
+    }, []);
+
+    // --- Ljudlarm för nya inkommande ordrar ---
+    useEffect(() => {
+        if (loadingOrders) return;
+
+        // Första gången: seeda nuvarande inkommande ordrar så att de inte sätter igång larmet
+        if (!alarmSeedDoneRef.current) {
+            for (const o of pendingOrders) {
+                seenOrderIdsRef.current.add(o.id);
+            }
+            alarmSeedDoneRef.current = true;
+            return;
+        }
+
+        let newOrderToAlert: Order | null = null;
+        for (const order of pendingOrders) {
+            if (seenOrderIdsRef.current.has(order.id)) continue;
+            seenOrderIdsRef.current.add(order.id);
+            newOrderToAlert = order;
+        }
+
+        if (newOrderToAlert) {
+            setActiveAlarmOrder(newOrderToAlert);
+            // Apply volume setting
+            setAlarmVolume(alarmVolume);
+            // Start the looping sound
+            startAlarm(alarmType);
+        }
+
+        return () => {
+            // Cleanup: stop sound if component unmounts
+            stopAlarm();
+        };
+    }, [pendingOrders, loadingOrders, alarmType, alarmVolume]);
 
     // --- Fetch products + settings on mount ---
     useEffect(() => {
@@ -1693,6 +1768,38 @@ export const AdminDashboard: React.FC = () => {
                     )}
                 </div>
             </Container>
+
+            {/* --- Flashing Order Alarm Overlay --- */}
+            {activeAlarmOrder && (
+                <div className="alarm-overlay">
+                    <div className="alarm-overlay-card">
+                        <div className="alarm-overlay-header">
+                            <span className="alarm-overlay-icon">🔔</span>
+                            <h2>Ny Beställning!</h2>
+                        </div>
+                        <div className="alarm-overlay-details">
+                            <div className="alarm-order-header">
+                                <span className="alarm-order-number">{activeAlarmOrder.orderNumber}</span>
+                                <span className="alarm-order-type">
+                                    {activeAlarmOrder.orderType === 'eat-here' ? 'Äta här' : 
+                                     activeAlarmOrder.orderType === 'takeaway' ? 'Ta med' : 'Leverans'}
+                                </span>
+                            </div>
+                            <ul className="alarm-order-items">
+                                {activeAlarmOrder.items.map((item, i) => (
+                                    <li key={i}>{item.quantity}x {item.productName}</li>
+                                ))}
+                            </ul>
+                            <div className="alarm-order-total">
+                                Summa: {(activeAlarmOrder.totalPrice / 100).toFixed(0)} kr
+                            </div>
+                        </div>
+                        <button className="alarm-silence-btn" onClick={handleSilenceAlarm}>
+                            Tysta larm
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
