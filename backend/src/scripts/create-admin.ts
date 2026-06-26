@@ -22,7 +22,7 @@ async function main() {
   try {
     const email = process.env.DEFAULT_ADMIN_EMAIL ?? 'admin@mormorskunafe.se';
     const password = process.env.DEFAULT_ADMIN_PASSWORD ?? 'admin123';
-    
+
     console.log(`⏳ Testar databasanslutning...`);
 
     // Kolla om kontot redan finns
@@ -42,7 +42,7 @@ async function main() {
       );
       console.log('✅ Nytt admin-konto är skapat och redo att användas lokalt!');
     }
-    
+
     console.log(`----------------------------------------`);
     console.log(` 📧 E-post:   ${email}`);
     console.log(` 🔑 Lösenord: ${password}`);
