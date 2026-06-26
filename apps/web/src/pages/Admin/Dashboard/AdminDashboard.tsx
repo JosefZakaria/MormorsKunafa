@@ -12,12 +12,12 @@ import type {
     Order,
     Product,
     AdminSettings,
-    PushSubscriptionRecord,
     OrderCreatedRealtimeEvent,
 } from '@shared/types';
 import { parseApiTimestamp } from '@shared/utils/parseApiTimestamp';
-import { urlBase64ToUint8Array } from '../../../services/pwa';
 import '../Admin.css';
+import { requestWakeLock, releaseWakeLock } from '../../../utils/wakeLock';
+import { startAlarm, stopAlarm, setAlarmVolume, AlarmType, getAudioState, unlockAudio, isAlarmActive } from '../../../utils/alarmPlayer';
 
 // --- Helper: countdown string from ISO time ---
 function getCountdown(isoTime: string | undefined): string {
@@ -123,8 +123,6 @@ function OrderTimer({ estimatedReadyTime }: { estimatedReadyTime: string }) {
 }
 
 type StatsData = Awaited<ReturnType<typeof adminApi.getStatistics>>;
-
-const VAPID_PUBLIC_KEY = String((import.meta as { env?: Record<string, string> }).env?.VITE_WEB_PUSH_VAPID_PUBLIC_KEY ?? '').trim();
 
 function playForegroundAttentionSound(): void {
     if (typeof window === 'undefined' || document.visibilityState !== 'visible') return;
@@ -639,12 +637,6 @@ export const AdminDashboard: React.FC = () => {
     const [deleteAllSubmitting, setDeleteAllSubmitting] = useState(false);
     const [deleteAllPassword, setDeleteAllPassword] = useState('');
     const [deleteAllError, setDeleteAllError] = useState<string | null>(null);
-    const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
-    const [pushSubscriptions, setPushSubscriptions] = useState<PushSubscriptionRecord[]>([]);
-    const [pushLoading, setPushLoading] = useState(false);
-    const [pushError, setPushError] = useState<string | null>(null);
-    const [lastRealtimeAt, setLastRealtimeAt] = useState<string | null>(null);
-    const [realtimeConnected, setRealtimeConnected] = useState(false);
 
     const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const statsAuthPasswordRef = useRef('');
@@ -656,6 +648,24 @@ export const AdminDashboard: React.FC = () => {
     // Vid första laddningen "seedar" vi befintliga inkommande ordrar utan att
     // skriva ut dem – endast ordrar som kommer in efter detta skrivs ut.
     const printSeedDoneRef = useRef(false);
+
+    // Alarm state & settings
+    const [activeAlarmOrder, setActiveAlarmOrder] = useState<Order | null>(null);
+    const alarmType: AlarmType = 'ring';
+    const [alarmVolume, setAlarmVolumeState] = useState<number>(() => {
+        const saved = localStorage.getItem('admin_alarm_volume');
+        return saved !== null ? Math.max(0.8, parseFloat(saved)) : 0.8;
+    });
+    const [audioLocked, setAudioLocked] = useState<boolean>(true);
+
+    const alarmSeedDoneRef = useRef(false);
+    const seenOrderIdsRef = useRef<Set<string>>(new Set());
+
+    // Mute helper
+    const handleSilenceAlarm = () => {
+        stopAlarm();
+        setActiveAlarmOrder(null);
+    };
 
     // --- Fetch pending + active + pre-orders ---
     const fetchOrders = useCallback(async () => {
@@ -676,63 +686,6 @@ export const AdminDashboard: React.FC = () => {
         }
     }, []);
 
-    const fetchPushSubscriptions = useCallback(async () => {
-        try {
-            const subscriptions = await adminApi.getPushSubscriptions();
-            setPushSubscriptions(subscriptions);
-            setPushError(null);
-        } catch {
-            setPushError('Kunde inte hämta push-enheter.');
-        }
-    }, []);
-
-    const enablePushNotifications = useCallback(async () => {
-        if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
-            setPushError('Den här enheten stödjer inte Web Push.');
-            return;
-        }
-        if (!VAPID_PUBLIC_KEY) {
-            setPushError('VAPID-nyckel saknas i web-miljön (VITE_WEB_PUSH_VAPID_PUBLIC_KEY).');
-            return;
-        }
-
-        setPushLoading(true);
-        setPushError(null);
-
-        try {
-            const permission = await Notification.requestPermission();
-            setNotificationPermission(permission);
-            if (permission !== 'granted') {
-                setPushError('Notiser nekades. Tillåt notiser i iPad/Safari-inställningar.');
-                setPushLoading(false);
-                return;
-            }
-
-            const registration = await navigator.serviceWorker.ready;
-            const existing = await registration.pushManager.getSubscription();
-            const subscription =
-                existing ??
-                (await registration.pushManager.subscribe({
-                    userVisibleOnly: true,
-                    applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
-                }));
-
-            await adminApi.savePushSubscription(subscription, navigator.userAgent);
-            await fetchPushSubscriptions();
-        } catch (error) {
-            console.error('[push] enable failed', error);
-            setPushError('Kunde inte aktivera pushnotiser.');
-        } finally {
-            setPushLoading(false);
-        }
-    }, [fetchPushSubscriptions]);
-
-    useEffect(() => {
-        if (typeof Notification !== 'undefined') {
-            setNotificationPermission(Notification.permission);
-        }
-        void fetchPushSubscriptions();
-    }, [fetchPushSubscriptions]);
 
     // --- Polling every 5s ---
     useEffect(() => {
@@ -752,13 +705,10 @@ export const AdminDashboard: React.FC = () => {
                 const url = adminApi.getRealtimeEventsUrl();
                 eventSource = new EventSource(url);
             } catch {
-                setPushError('Kunde inte starta realtidskanalen.');
+                setError('Kunde inte starta realtidskanalen.');
                 return;
             }
 
-            eventSource.onopen = () => {
-                setRealtimeConnected(true);
-            };
 
             eventSource.addEventListener('ORDER_CREATED', (rawEvent) => {
                 try {
@@ -771,7 +721,6 @@ export const AdminDashboard: React.FC = () => {
                         if (first) seenRealtimeEventIdsRef.current.delete(first);
                     }
 
-                    setLastRealtimeAt(event.created_at);
                     playForegroundAttentionSound();
                     void fetchOrders();
                 } catch (error) {
@@ -826,6 +775,88 @@ export const AdminDashboard: React.FC = () => {
                 });
         }
     }, [pendingOrders, loadingOrders]);
+
+    // --- Screen Wake Lock API Setup ---
+    useEffect(() => {
+        void requestWakeLock();
+
+        // Re-request when page gains visibility (browser releases lock when hidden)
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                void requestWakeLock();
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            void releaseWakeLock();
+        };
+    }, []);
+
+    // Check if audio context is locked by the browser
+    useEffect(() => {
+        const checkAudioLock = () => {
+            const state = getAudioState();
+            setAudioLocked(state === 'suspended' || state === 'not_initialized');
+        };
+        
+        checkAudioLock();
+        
+        // Try to unlock audio on any document click
+        const handleDocumentClick = async () => {
+            const unlocked = await unlockAudio();
+            if (unlocked) {
+                setAudioLocked(false);
+                document.removeEventListener('click', handleDocumentClick);
+            }
+        };
+
+        document.addEventListener('click', handleDocumentClick);
+        const interval = setInterval(checkAudioLock, 2000);
+
+        return () => {
+            document.removeEventListener('click', handleDocumentClick);
+            clearInterval(interval);
+        };
+    }, []);
+
+    // --- Ljudlarm för nya inkommande ordrar ---
+    useEffect(() => {
+        if (loadingOrders) return;
+
+        // Första gången: seeda nuvarande inkommande ordrar så att de inte sätter igång larmet
+        if (!alarmSeedDoneRef.current) {
+            for (const o of pendingOrders) {
+                seenOrderIdsRef.current.add(o.id);
+            }
+            alarmSeedDoneRef.current = true;
+            return;
+        }
+
+        let newOrderToAlert: Order | null = null;
+        for (const order of pendingOrders) {
+            if (seenOrderIdsRef.current.has(order.id)) continue;
+            seenOrderIdsRef.current.add(order.id);
+            newOrderToAlert = order;
+        }
+
+        if (newOrderToAlert) {
+            setActiveAlarmOrder(newOrderToAlert);
+            // Apply volume setting
+            setAlarmVolume(alarmVolume);
+            // Start the looping sound
+            startAlarm(alarmType);
+        }
+    }, [pendingOrders, loadingOrders, alarmType, alarmVolume]);
+
+    // Stop alarm when dashboard component unmounts
+    useEffect(() => {
+        return () => {
+            stopAlarm();
+        };
+    }, []);
 
     // --- Fetch products + settings on mount ---
     useEffect(() => {
@@ -1108,62 +1139,54 @@ export const AdminDashboard: React.FC = () => {
                             {isPaused ? '🔴 STOPPAD' : '🟢 ONLINE'}
                         </span>
 
-                        {/* Kompakt Ljud/Notis-indikator i headern */}
+                        {/* Ljudlarm-indikator i headern */}
                         <div style={{ marginLeft: '1rem', display: 'flex', flexDirection: 'column' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                {notificationPermission !== 'granted' ? (
-                                    <Button 
-                                        size="sm" 
-                                        variant="ghost" 
-                                        onClick={enablePushNotifications} 
-                                        disabled={pushLoading}
-                                        style={{ color: '#DC2626', background: '#FEE2E2', border: 'none', fontWeight: 'bold' }}
-                                    >
-                                        🔔 SLÅ PÅ LJUD & NOTISER
-                                    </Button>
-                                ) : (
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#f8fafc', padding: '0.2rem 0.5rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                                        <span style={{ fontSize: '1.2rem' }} title="Ljud och notiser är på">🔔</span>
+                                {audioLocked ? (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#FEE2E2', padding: '0.2rem 0.5rem', borderRadius: '8px', border: '1px solid #FCA5A5' }}>
+                                        <span style={{ fontSize: '1.2rem' }}>⚠️</span>
                                         <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#059669', lineHeight: 1.2 }}>PÅ</span>
-                                            <span style={{ fontSize: '0.65rem', color: '#64748b' }}>
-                                                {realtimeConnected || lastRealtimeAt ? 'Uppkopplad' : 'Ansluter...'}
-                                            </span>
+                                            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#DC2626', lineHeight: 1.2 }}>AVSTÄNGT</span>
+                                            <span style={{ fontSize: '0.65rem', color: '#7f1d1d' }}>Ljud blockerat</span>
+                                        </div>
+                                        <Button 
+                                            size="sm" 
+                                            variant="ghost" 
+                                            onClick={async () => {
+                                                const unlocked = await unlockAudio();
+                                                if (unlocked) setAudioLocked(false);
+                                            }}
+                                            style={{ padding: '0.2rem 0.5rem', marginLeft: '0.5rem', fontSize: '0.75rem', color: '#ffffff', background: '#DC2626', border: 'none', fontWeight: 'bold' }}
+                                        >
+                                            SLÅ PÅ
+                                        </Button>
+                                    </div>
+                                ) : (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#D1FAE5', padding: '0.2rem 0.5rem', borderRadius: '8px', border: '1px solid #A7F3D0' }}>
+                                        <span style={{ fontSize: '1.2rem' }}>🔔</span>
+                                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#059669', lineHeight: 1.2 }}>AKTIVT</span>
+                                            <span style={{ fontSize: '0.65rem', color: '#047857' }}>Redo för ordrar</span>
                                         </div>
                                         <Button 
                                             variant="ghost" 
                                             size="sm" 
-                                            style={{ padding: '0.2rem 0.4rem', marginLeft: '0.5rem', fontSize: '0.7rem', color: '#64748b' }}
+                                            style={{ padding: '0.2rem 0.4rem', marginLeft: '0.5rem', fontSize: '0.7rem', color: '#047857', border: '1px dashed #059669' }}
                                             onClick={async () => {
-                                                setPushLoading(true);
-                                                try {
-                                                    // Avregistrera lokalt i webbläsaren
-                                                    const registration = await navigator.serviceWorker.ready;
-                                                    const existing = await registration.pushManager.getSubscription();
-                                                    if (existing) await existing.unsubscribe();
-                                                    
-                                                    // Rensa från vår databas
-                                                    const localSub = pushSubscriptions.find(s => s.endpoint === existing?.endpoint || s.userAgent === navigator.userAgent);
-                                                    if (localSub) await adminApi.removePushSubscription(localSub.id);
-                                                    
-                                                    await fetchPushSubscriptions();
-                                                    setNotificationPermission('default'); // Tvingar UI:t att visa knappen igen
-                                                } catch (err) {
-                                                    console.error('Kunde inte stänga av push', err);
-                                                } finally {
-                                                    setPushLoading(false);
-                                                }
-                                            }} 
-                                            disabled={pushLoading}
+                                                startAlarm(alarmType);
+                                                setAlarmVolume(alarmVolume);
+                                                setTimeout(() => {
+                                                    stopAlarm();
+                                                }, 2000);
+                                            }}
                                         >
-                                            Stäng av
+                                            Testa
                                         </Button>
                                     </div>
                                 )}
-                                {pushError && <span style={{ fontSize: '0.75rem', color: '#DC2626' }}>{pushError}</span>}
                             </div>
                             <span style={{ fontSize: '0.65rem', color: '#64748b', marginTop: '0.25rem', fontStyle: 'italic' }}>
-                                Obs: Ljud kan ibland blockeras. Håll ett öga på skärmen!
+                                Obs: Håll surfplattans volym på max!
                             </span>
                         </div>
                     </div>
@@ -1182,6 +1205,20 @@ export const AdminDashboard: React.FC = () => {
                 {error && (
                     <div style={{ padding: '0.75rem 1rem', background: '#fee', color: '#c00', borderRadius: '8px', marginBottom: '1rem' }}>
                         {error} <button onClick={() => setError(null)} style={{ marginLeft: '1rem', cursor: 'pointer' }}>✕</button>
+                    </div>
+                )}
+
+                {/* --- Autoplay warning banner --- */}
+                {audioLocked && (
+                    <div className="audio-unlock-banner" onClick={async () => {
+                        const unlocked = await unlockAudio();
+                        if (unlocked) setAudioLocked(false);
+                    }}>
+                        <div className="audio-unlock-content">
+                            <span className="icon">⚠️</span>
+                            <span>Ljudlarmet är blockerat av webbläsaren. Klicka på "SLÅ PÅ" i menyn högst upp för att aktivera larmet!</span>
+                        </div>
+                        <button className="audio-unlock-btn" type="button">Aktivera här</button>
                     </div>
                 )}
 
@@ -1689,10 +1726,102 @@ export const AdminDashboard: React.FC = () => {
                                 </div>
                             </div>
                             <PrinterSettings />
+
+                            {/* --- Ljudinställningar för inkommande ordrar --- */}
+                            <div className="alarm-settings-card">
+                                <h3 className="settings-section-title" style={{ marginTop: 0 }}>Ljud- & Larmsignaler</h3>
+                                <p style={{ fontSize: '0.9rem', color: '#666', marginBottom: '1rem' }}>
+                                    Konfigurera hur surfplattan ska varna för nya inkommande ordrar.
+                                </p>
+                                
+
+
+                                <div className="alarm-settings-row">
+                                    <label htmlFor="alarm-volume-input">Volym</label>
+                                    <div className="volume-slider-container">
+                                        <input
+                                            id="alarm-volume-input"
+                                            type="range"
+                                            className="volume-slider"
+                                            min="0.8"
+                                            max="1"
+                                            step="0.02"
+                                            value={alarmVolume}
+                                            onChange={(e) => {
+                                                const vol = parseFloat(e.target.value);
+                                                setAlarmVolumeState(vol);
+                                                setAlarmVolume(vol);
+                                                localStorage.setItem('admin_alarm_volume', String(vol));
+                                            }}
+                                        />
+                                        <span className="volume-value">{Math.round(alarmVolume * 100)}%</span>
+                                    </div>
+                                </div>
+
+                                <div style={{ marginTop: '1.25rem', display: 'flex', gap: '0.5rem' }}>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={async () => {
+                                            await unlockAudio();
+                                            startAlarm(alarmType);
+                                            setAlarmVolume(alarmVolume);
+                                            setTimeout(() => {
+                                                stopAlarm();
+                                            }, 3000);
+                                        }}
+                                    >
+                                        🔊 Testa ljud (3 sek)
+                                    </Button>
+                                    
+                                    {isAlarmActive() && (
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            style={{ color: '#DC2626', borderColor: '#DC2626' }}
+                                            onClick={handleSilenceAlarm}
+                                        >
+                                            ⏹ Stoppa test
+                                        </Button>
+                                    )}
+                                </div>
+                            </div>
                         </div>
                     )}
                 </div>
             </Container>
+
+            {/* --- Flashing Order Alarm Overlay --- */}
+            {activeAlarmOrder && (
+                <div className="alarm-overlay">
+                    <div className="alarm-overlay-card">
+                        <div className="alarm-overlay-header">
+                            <span className="alarm-overlay-icon">🔔</span>
+                            <h2>Ny Beställning!</h2>
+                        </div>
+                        <div className="alarm-overlay-details">
+                            <div className="alarm-order-header">
+                                <span className="alarm-order-number">{activeAlarmOrder.orderNumber}</span>
+                                <span className="alarm-order-type">
+                                    {activeAlarmOrder.orderType === 'eat-here' ? 'Äta här' : 
+                                     activeAlarmOrder.orderType === 'takeaway' ? 'Ta med' : 'Leverans'}
+                                </span>
+                            </div>
+                            <ul className="alarm-order-items">
+                                {activeAlarmOrder.items.map((item, i) => (
+                                    <li key={i}>{item.quantity}x {item.productName}</li>
+                                ))}
+                            </ul>
+                            <div className="alarm-order-total">
+                                Summa: {(activeAlarmOrder.totalPrice / 100).toFixed(0)} kr
+                            </div>
+                        </div>
+                        <button className="alarm-silence-btn" onClick={handleSilenceAlarm}>
+                            Tysta larm
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

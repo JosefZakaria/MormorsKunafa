@@ -1,30 +1,63 @@
 import 'dotenv/config';
-import mysql from 'mysql2/promise';
+import { createClient } from '@supabase/supabase-js';
+import crypto from 'crypto';
 
 (async () => {
-  const db = await mysql.createConnection({
-    host: process.env.DB_HOST,
-    port: Number(process.env.DB_PORT) || 3306,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD || '',
-    database: process.env.DB_DATABASE,
+  const supabaseUrl = process.env.SUPABASE_URL?.trim();
+  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+
+  if (!supabaseUrl || !supabaseServiceRoleKey) {
+    console.error('❌ Saknar miljövariabler för Supabase!');
+    process.exit(1);
+  }
+
+  const supabase = createClient(supabaseUrl, supabaseServiceRoleKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
   });
 
   const orderId = crypto.randomUUID();
   const itemId = crypto.randomUUID();
-  
   const estimatedReady = new Date(Date.now() + 30 * 60 * 1000); // 30 min from now
-  
-  await db.query(
-    "INSERT INTO orders (id, order_number, status, order_type, payment_method, payment_status, total_ore, default_preparation_time_minutes, estimated_ready_at, created_at) VALUES (?, ?, 'mottagen', 'takeaway', 'swish', 'pending', 15000, 30, ?, NOW())",
-    [orderId, '#1005', estimatedReady]
-  );
+  const randomNum = Math.floor(1000 + Math.random() * 9000);
+  const orderNumber = `#${randomNum}`;
 
-  await db.query(
-    "INSERT INTO order_items (id, order_id, product_id, product_name_snapshot, quantity, price_ore) VALUES (?, ?, NULL, 'Testa-Kunafa', 1, 15000)",
-    [itemId, orderId]
-  );
+  console.log(`⏳ Skapar en ny testorder ${orderNumber} i Supabase...`);
 
-  console.log('Skapade en rykande färsk testbeställning: ', orderId);
-  await db.end();
+  // 1. Skapa order
+  const { error: orderError } = await supabase.from('orders').insert({
+    id: orderId,
+    order_number: orderNumber,
+    status: 'ny',
+    order_type: 'takeaway',
+    payment_method: 'swish',
+    payment_status: 'paid',
+    total_ore: 15000,
+    default_preparation_time_minutes: 30,
+    estimated_ready_at: estimatedReady.toISOString(),
+    customer_name: 'Test-Kund',
+    customer_phone: '0701234567',
+  });
+
+  if (orderError) {
+    console.error('❌ Fel vid skapande av order:', orderError);
+    process.exit(1);
+  }
+
+  // 2. Skapa order items
+  const { error: itemError } = await supabase.from('order_items').insert({
+    id: itemId,
+    order_id: orderId,
+    product_name_snapshot: 'Testa-Kunafa (Larmtest)',
+    quantity: 1,
+    price_ore: 15000,
+  });
+
+  if (itemError) {
+    console.error('❌ Fel vid skapande av orderrader:', itemError);
+    // Försök städa undan ordern
+    await supabase.from('orders').delete().eq('id', orderId);
+    process.exit(1);
+  }
+
+  console.log('✅ Skapade en ny testbeställning med status [Ny] och [Betald] i Supabase: ', orderId);
 })();
