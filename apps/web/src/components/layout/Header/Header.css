@@ -1,6 +1,6 @@
 .header {
-    background-color: var(--color-primary-red);
-    padding: var(--spacing-md) 0;
+    background-color: transparent;
+    padding: var(--spacing-md);
     position: sticky;
     top: 0;
     z-index: 1000;
@@ -12,9 +12,9 @@
     color: var(--color-white);
 }
 
-/* Keep header solid wine-red over hero as well */
+/* Transparent header so the pill floats over the hero */
 .header--over-hero {
-    background-color: var(--color-primary-red) !important;
+    background-color: transparent !important;
     border-bottom-color: transparent;
     box-shadow: none;
 }
@@ -46,6 +46,14 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: var(--spacing-md);
+    background-color: rgba(62, 30, 34, 0.92);
+    border: 1px solid rgba(221, 168, 49, 0.25);
+    border-radius: var(--radius-full);
+    padding: 0.55rem 1.5rem;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.22);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
 }
 
 .header__brand {
@@ -56,9 +64,13 @@
 }
 
 .header__logo-icon {
-    height: 48px;
-    width: auto;
+    height: 44px;
+    width: 44px;
     object-fit: contain;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(221, 168, 49, 0.4);
+    padding: 4px;
 }
 
 .header__brand-text {
@@ -74,6 +86,14 @@
     display: flex;
     align-items: center;
     gap: var(--spacing-md);
+}
+
+/* Desktop: centrera nav-gruppen i pillen (som i mockupen) */
+@media (min-width: 969px) {
+    .header__nav {
+        flex: 1;
+        justify-content: center;
+    }
 }
 
 .header__nav a,
@@ -146,8 +166,14 @@
 }
 
 .header__menu-btn {
-    font-weight: 700;
+    font-weight: 600;
     position: relative;
+}
+
+/* Nav-länkar i normal gemen/versal-stil (som i mockupen) */
+.header__nav .header__menu-btn {
+    text-transform: none;
+    letter-spacing: 0.02em;
 }
 
 .header__menu-btn--cart {

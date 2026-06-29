@@ -10,11 +10,12 @@ export const MainLayout: React.FC = () => {
         pathname.startsWith('/menu') ||
         pathname.startsWith('/cart') ||
         pathname.startsWith('/delivery');
+    const isLanding = pathname === '/';
 
     return (
         <div className="layout">
             <Header />
-            <main className={`layout__main ${hideFooter ? 'layout__main--no-footer' : ''}`}>
+            <main className={`layout__main ${hideFooter ? 'layout__main--no-footer' : ''} ${isLanding ? 'layout__main--landing' : ''}`}>
                 <Outlet />
             </main>
             {!hideFooter && <Footer />}

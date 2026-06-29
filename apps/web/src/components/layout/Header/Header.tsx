@@ -26,6 +26,19 @@ export const Header: React.FC = () => {
         navigate(path);
     };
 
+    // Presentation-only: smooth-scroll to a section on the landing page.
+    const goToSection = (id: string) => {
+        closeMenu();
+        if (pathname !== '/') {
+            navigate('/');
+            window.setTimeout(() => {
+                document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
+            }, 120);
+        } else {
+            document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
+        }
+    };
+
     return (
         <header className={`header ${isOverDark ? 'header--over-hero' : ''} ${isOnCart ? 'header--on-cart' : ''}`}>
             <Container className="header__container">
@@ -39,8 +52,14 @@ export const Header: React.FC = () => {
                 </button>
 
                 <nav className={`header__nav ${isMenuOpen ? 'header__nav--open' : ''}`}>
+                    <Button variant="ghost" className="header__menu-btn" onClick={() => goToSection('smaka')}>
+                        {t('nav.smaka')}
+                    </Button>
+                    <Button variant="ghost" className="header__menu-btn" onClick={() => goToSection('hitta-hit')}>
+                        {t('nav.hitta_hit')}
+                    </Button>
                     <Button variant="ghost" className="header__menu-btn" onClick={() => handleNavigation('/menu')}>
-                        {t('nav.meny')}
+                        {t('nav.order')}
                     </Button>
                     <Button
                         variant="ghost"
