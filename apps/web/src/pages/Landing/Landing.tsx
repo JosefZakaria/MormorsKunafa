@@ -150,7 +150,9 @@ export const Landing: React.FC = () => {
                         <p className="story__p">{t('landing.story.p2')}</p>
                     </div>
                     <div className="story__media">
-                        <img src="/images/logo-icon.png" alt="Mormors Kunafa" className="story__logo" />
+                        <div className="story__logo-wrap">
+                            <img src="/images/mormor-kunafa-circle.png" alt="Mormors Kunafa" className="story__logo" />
+                        </div>
                         <span className="story__badge">{t('landing.story.badge')}</span>
                     </div>
                 </Container>
