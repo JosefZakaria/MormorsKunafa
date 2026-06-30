@@ -223,7 +223,7 @@
     box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
 }
 
-.favorites__img-wrap { aspect-ratio: 4 / 3; overflow: hidden; }
+.favorites__img-wrap { aspect-ratio: 1 / 1; overflow: hidden; }
 
 .favorites__img {
     width: 100%;

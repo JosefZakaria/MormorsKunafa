@@ -89,11 +89,10 @@
     gap: var(--spacing-md);
 }
 
-/* Desktop: centrera nav-gruppen i pillen (som i mockupen) */
+/* Desktop: align nav-group to the right for a balanced layout */
 @media (min-width: 969px) {
     .header__nav {
-        flex: 1;
-        justify-content: center;
+        gap: var(--spacing-lg);
     }
 }
 
