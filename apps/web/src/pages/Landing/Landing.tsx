@@ -109,31 +109,6 @@ export const Landing: React.FC = () => {
                 </div>
             </section>
 
-            {/* SÅ NJUTER DU */}
-            <section className="landing-section smaka" id="smaka">
-                <Container>
-                    <span className="section-eyebrow">{t('landing.smaka.eyebrow')}</span>
-                    <h2 className="text-display-md section-title">{t('landing.smaka.title')}</h2>
-                    <p className="section-intro">{t('landing.smaka.intro')}</p>
-                    <div className="smaka__grid">
-                        {[
-                            { n: '01', icon: <IconEatHere />, key: '1' },
-                            { n: '02', icon: <IconTakeaway />, key: '2' },
-                            { n: '03', icon: <IconDelivery />, key: '3' },
-                        ].map(({ n, icon, key }) => (
-                            <article className="smaka__card" key={key}>
-                                <span className="smaka__num">{n}</span>
-                                <span className="smaka__icon">{icon}</span>
-                                <div className="smaka__body">
-                                    <h3 className="smaka__title">{t(`landing.smaka.${key}.title`)}</h3>
-                                    <p className="smaka__desc">{t(`landing.smaka.${key}.desc`)}</p>
-                                </div>
-                            </article>
-                        ))}
-                    </div>
-                </Container>
-            </section>
-
             {/* MORMORS FAVORITER */}
             <section className="landing-section favorites" id="favoriter">
                 <Container>
@@ -191,7 +166,7 @@ export const Landing: React.FC = () => {
                         </div>
                         <a
                             className="reviews__read-all"
-                            href="https://www.google.com/search?q=mormors+kunafa+malm%C3%B6"
+                            href="https://www.google.com/maps/search/?api=1&query=Mormors+Kunafa+Karolingatan+1+Malm%C3%B6"
                             target="_blank"
                             rel="noopener noreferrer"
                         >
