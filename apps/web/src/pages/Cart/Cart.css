@@ -268,7 +268,7 @@
     border: 1px solid var(--color-gray-200);
     box-shadow: var(--shadow-sm);
     align-self: start;
-    max-width: 320px;
+    max-width: 100%;
     width: 100%;
 }
 
