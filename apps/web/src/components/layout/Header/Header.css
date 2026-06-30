@@ -64,13 +64,14 @@
 }
 
 .header__logo-icon {
-    height: 44px;
-    width: 44px;
+    height: 48px;
+    width: auto;
     object-fit: contain;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(221, 168, 49, 0.4);
-    padding: 4px;
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.header__brand:hover .header__logo-icon {
+    transform: scale(1.06);
 }
 
 .header__brand-text {

@@ -52,9 +52,6 @@ export const Header: React.FC = () => {
                 </button>
 
                 <nav className={`header__nav ${isMenuOpen ? 'header__nav--open' : ''}`}>
-                    <Button variant="ghost" className="header__menu-btn" onClick={() => goToSection('smaka')}>
-                        {t('nav.smaka')}
-                    </Button>
                     <Button variant="ghost" className="header__menu-btn" onClick={() => goToSection('hitta-hit')}>
                         {t('nav.hitta_hit')}
                     </Button>
