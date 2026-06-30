@@ -4,7 +4,6 @@ import { Container } from '../../components/common/Container/Container';
 import { Button } from '../../components/common/Button/Button';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useCart } from '../../contexts/CartContext';
-import { useToast } from '../../contexts/ToastContext';
 import { productApi } from '../../services/api';
 import { API_CONFIG } from '@shared/api';
 import { resolveProductImage } from '@shared/utils/productImage.ts';
@@ -156,7 +155,6 @@ const getMockProducts = (t: (key: string) => string): Product[] => {
 export const Menu: React.FC = () => {
     const { t, language } = useLanguage();
     const { addItem } = useCart();
-    const { showToast } = useToast();
     const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -281,14 +279,12 @@ export const Menu: React.FC = () => {
                     cartEl.classList.remove('header__menu-btn--cart-pop');
                 }, 300);
 
-                // Add to cart state and show toast
+                // Add to cart state
                 addItem(product, 1, resolvedOption);
-                showToast(t('menu.added_to_cart').replace('{name}', getDisplayName(product, t)), 'success');
             }, 850);
         } else {
             // Fallback
             addItem(product, 1, resolvedOption);
-            showToast(t('menu.added_to_cart').replace('{name}', getDisplayName(product, t)), 'success');
         }
     };
 
