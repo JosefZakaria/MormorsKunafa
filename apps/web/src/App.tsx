@@ -6,7 +6,6 @@ import { Menu } from './pages/Menu/Menu';
 import { Cart } from './pages/Cart/Cart';
 import { OrderStatus } from './pages/OrderStatus/OrderStatus';
 import { SwishPay } from './pages/SwishPay/SwishPay';
-import { Delivery } from './pages/Delivery/Delivery';
 import { SelectLocation } from './pages/SelectLocation/SelectLocation';
 import { AdminLogin } from './pages/Admin/Login/AdminLogin';
 import { AdminDashboard } from './pages/Admin/Dashboard/AdminDashboard';
@@ -37,7 +36,6 @@ function App() {
               <Route path="cart" element={<Cart />} />
               <Route path="status" element={<OrderStatus />} />
               <Route path="pay/swish" element={<SwishPay />} />
-              <Route path="delivery" element={<Delivery />} />
               <Route path="select-location" element={<SelectLocation />} />
             </Route>
 

@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Truck } from 'lucide-react';
 import { Container } from '../../components/common/Container/Container';
 import { Button } from '../../components/common/Button/Button';
 import { useLanguage } from '../../contexts/LanguageContext';
@@ -37,6 +38,15 @@ function roundClockToNext5Min(clock: string): string {
     return `${String(h).padStart(2, '0')}:${String(roundedM).padStart(2, '0')}`;
 }
 
+function getStoredDeliveryInfo() {
+    try {
+        const stored = localStorage.getItem('deliveryInfo');
+        return stored ? JSON.parse(stored) : null;
+    } catch {
+        return null;
+    }
+}
+
 export const Cart: React.FC = () => {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
@@ -53,13 +63,34 @@ export const Cart: React.FC = () => {
         return stored || '';
     });
     const [orderTypeError, setOrderTypeError] = useState<string | null>(null);
-    const [customerName, setCustomerName] = useState('');
-    const [customerPhone, setCustomerPhone] = useState('');
-    const [customerEmail, setCustomerEmail] = useState('');
+    const [customerName, setCustomerName] = useState(() => {
+        const info = getStoredDeliveryInfo();
+        return info?.name || '';
+    });
+    const [customerPhone, setCustomerPhone] = useState(() => {
+        const info = getStoredDeliveryInfo();
+        return info?.phone || '';
+    });
+    const [customerEmail, setCustomerEmail] = useState(() => {
+        const info = getStoredDeliveryInfo();
+        return info?.email || '';
+    });
+    const [deliveryAddress, setDeliveryAddress] = useState(() => {
+        const info = getStoredDeliveryInfo();
+        return info?.address || '';
+    });
+    const [deliveryPostalCode, setDeliveryPostalCode] = useState(() => {
+        const info = getStoredDeliveryInfo();
+        return info?.postalCode || '';
+    });
+    const [deliveryCity, setDeliveryCity] = useState(() => {
+        const info = getStoredDeliveryInfo();
+        return info?.city || '';
+    });
     const [customerInfoError, setCustomerInfoError] = useState<string | null>(null);
     const [paymentChoice, setPaymentChoice] = useState<CheckoutPaymentChoice>('card');
 
-    const needsInlineCustomerInfo = orderType === 'eat-here' || orderType === 'takeaway';
+    const needsInlineCustomerInfo = orderType === 'eat-here' || orderType === 'takeaway' || orderType === 'delivery';
 
     // --- Scheduled pickup/delivery date ---
     const todayStr = todayInStockholmDateString();
@@ -250,12 +281,6 @@ export const Cart: React.FC = () => {
         return `${label} kl. ${hm}`;
     };
 
-    // Get delivery info from localStorage if available
-    const getDeliveryInfo = () => {
-        const stored = localStorage.getItem('deliveryInfo');
-        return stored ? JSON.parse(stored) : null;
-    };
-
     const subtotalKr = getTotal() / 100;
     const isDeliveryOrder = orderType === 'delivery';
     const deliveryFeeKr = isDeliveryOrder ? DELIVERY_FEE_SEK : 0;
@@ -263,11 +288,6 @@ export const Cart: React.FC = () => {
 
     const handleOrderTypeChange = (value: string) => {
         setOrderTypeError(null);
-        if (value === 'delivery') {
-            localStorage.setItem('cartReturnTo', 'true');
-            navigate('/delivery');
-            return;
-        }
         sessionStorage.setItem('orderType', value);
         setOrderType(value as OrderType);
     };
@@ -305,6 +325,27 @@ export const Cart: React.FC = () => {
             customerInfo = { name, phone, ...(email ? { email } : {}) };
         }
 
+        let deliveryInfo = undefined;
+        if (orderType === 'delivery') {
+            const address = deliveryAddress.trim();
+            const postalCode = deliveryPostalCode.trim();
+            const city = deliveryCity.trim();
+
+            if (!address || !postalCode || !city) {
+                setCustomerInfoError(t('cart.delivery_info_required'));
+                return;
+            }
+
+            deliveryInfo = {
+                name: customerName.trim(),
+                phone: customerPhone.trim(),
+                email: customerEmail.trim(),
+                address,
+                postalCode,
+                city,
+            };
+        }
+
         setIsSubmitting(true);
         setError(null);
         setOrderTypeError(null);
@@ -319,30 +360,9 @@ export const Cart: React.FC = () => {
                 price: item.price, // Already in öre
             }));
 
-            // Get delivery info if order type is delivery
-            const deliveryInfo = orderType === 'delivery' ? getDeliveryInfo() : undefined;
-
-            // For delivery, derive customer info from the delivery form data.
-            if (orderType === 'delivery') {
-                if (!deliveryInfo) {
-                    setError('Leveransinformationen saknas. Fyll i uppgifterna igen.');
-                    return;
-                }
-
-                const name = (deliveryInfo.name || '').trim();
-                const phone = (deliveryInfo.phone || '').trim();
-                const email = (deliveryInfo.email || '').trim();
-
-                if (!name || !phone) {
-                    setError(t('cart.customer_info_required'));
-                    return;
-                }
-
-                customerInfo = {
-                    name,
-                    phone,
-                    ...(email ? { email } : {}),
-                };
+            // Save/update deliveryInfo in localStorage upon successful validation during checkout
+            if (orderType === 'delivery' && deliveryInfo) {
+                localStorage.setItem('deliveryInfo', JSON.stringify(deliveryInfo));
             }
 
             if (!customerInfo) {
@@ -560,6 +580,78 @@ export const Cart: React.FC = () => {
                                             onChange={(e) => setCustomerEmail(e.target.value)}
                                         />
                                     </div>
+
+                                    {orderType === 'delivery' && (
+                                        <>
+                                            <div className="cart-delivery-note" style={{
+                                                padding: '0.75rem',
+                                                background: '#f9f9f9',
+                                                borderRadius: '8px',
+                                                fontSize: '0.85rem',
+                                                color: '#666',
+                                                marginBottom: '1rem',
+                                                border: '1px solid #eee',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '0.5rem'
+                                            }}>
+                                                <Truck size={18} className="text-primary" />
+                                                <div>
+                                                    <div style={{ fontWeight: 'bold', color: '#333' }}>{t('delivery.delivery_time')}</div>
+                                                    <div>{t('delivery.fee_note')}</div>
+                                                </div>
+                                            </div>
+
+                                            <div className="customer-info__field">
+                                                <label htmlFor="delivery-address" className="customer-info__label">
+                                                    {t('delivery.address_label')}
+                                                    <span className="customer-info__required" aria-hidden="true">*</span>
+                                                </label>
+                                                <input
+                                                    id="delivery-address"
+                                                    type="text"
+                                                    className="customer-info__input"
+                                                    placeholder={t('delivery.address_placeholder')}
+                                                    value={deliveryAddress}
+                                                    onChange={(e) => setDeliveryAddress(e.target.value)}
+                                                    required
+                                                />
+                                            </div>
+
+                                            <div className="customer-info__field">
+                                                <label htmlFor="delivery-postal-code" className="customer-info__label">
+                                                    {t('delivery.postal_code_label')}
+                                                    <span className="customer-info__required" aria-hidden="true">*</span>
+                                                </label>
+                                                <input
+                                                    id="delivery-postal-code"
+                                                    type="text"
+                                                    className="customer-info__input"
+                                                    placeholder={t('delivery.postal_code_placeholder')}
+                                                    value={deliveryPostalCode}
+                                                    onChange={(e) => setDeliveryPostalCode(e.target.value)}
+                                                    required
+                                                />
+                                            </div>
+
+                                            <div className="customer-info__field">
+                                                <label htmlFor="delivery-city" className="customer-info__label">
+                                                    {t('delivery.ort_label')}
+                                                    <span className="customer-info__required" aria-hidden="true">*</span>
+                                                </label>
+                                                <input
+                                                    id="delivery-city"
+                                                    type="text"
+                                                    className="customer-info__input"
+                                                    placeholder={t('delivery.ort_placeholder')}
+                                                    value={deliveryCity}
+                                                    onChange={(e) => setDeliveryCity(e.target.value)}
+                                                    required
+                                                />
+                                            </div>
+                                        </>
+                                    )}
+
                                     {customerInfoError && (
                                         <p className="order-type-error">{customerInfoError}</p>
                                     )}

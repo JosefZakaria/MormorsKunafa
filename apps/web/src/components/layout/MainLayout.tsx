@@ -8,8 +8,7 @@ export const MainLayout: React.FC = () => {
     const { pathname } = useLocation();
     const hideFooter =
         pathname.startsWith('/menu') ||
-        pathname.startsWith('/cart') ||
-        pathname.startsWith('/delivery');
+        pathname.startsWith('/cart');
     const isLanding = pathname === '/';
 
     return (

@@ -100,7 +100,7 @@ export const Landing: React.FC = () => {
                             variant="primary"
                             size="lg"
                             className="landing__btn animate-in delay-400"
-                            onClick={() => { sessionStorage.setItem('orderType', 'delivery'); navigate('/delivery'); }}
+                            onClick={() => { sessionStorage.setItem('orderType', 'delivery'); navigate('/menu'); }}
                         >
                             <span className="landing__btn-icon"><IconDelivery /></span>
                             <span className="landing__btn-label">{t('landing.delivery')}</span>
