@@ -1,7 +1,7 @@
 .menu-page {
     padding: var(--spacing-2xl) 0;
-    padding-top: calc(5rem + var(--spacing-2xl));
-    margin-top: -5rem;
+    padding-top: calc(120px + var(--spacing-2xl));
+    margin-top: -120px;
     background-color: #5C2A2F;
     min-height: 100%;
     color: #D9D9D9;
@@ -58,11 +58,21 @@
     }
 }
 
-/* Product items - Transparent background, yellow button */
 .menu-item-simple {
     display: flex;
     flex-direction: column;
     height: 100%;
+    background-color: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    padding: var(--spacing-md);
+    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.4s ease, border-color 0.4s ease;
+}
+
+.menu-item-simple:hover {
+    transform: translateY(-6px);
+    border-color: rgba(221, 168, 49, 0.4);
+    box-shadow: 0 15px 30px rgba(0, 0, 0, 0.35);
 }
 
 .menu-item-simple__image-container {

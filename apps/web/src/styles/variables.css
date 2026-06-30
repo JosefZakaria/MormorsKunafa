@@ -1,9 +1,9 @@
 :root {
   /* Brand Colors */
-  --color-primary-red: #3E1E22;
+  --color-primary-red: #5C2A2F;
   --color-secondary-gold: #DDA831;
   /* Inferred from 'Välj alternativ' button in screenshot */
-  --color-bg-dark: #3E1E22;
+  --color-bg-dark: #5C2A2F;
   /* Inferred dark background from screenshot */
   --color-black: #1A1A1A;
   --color-white: #FFFFFF;

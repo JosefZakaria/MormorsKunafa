@@ -8,13 +8,13 @@ export const MainLayout: React.FC = () => {
     const { pathname } = useLocation();
     const hideFooter =
         pathname.startsWith('/menu') ||
-        pathname.startsWith('/cart') ||
-        pathname.startsWith('/delivery');
+        pathname.startsWith('/cart');
+    const isLanding = pathname === '/';
 
     return (
         <div className="layout">
             <Header />
-            <main className={`layout__main ${hideFooter ? 'layout__main--no-footer' : ''}`}>
+            <main className={`layout__main ${hideFooter ? 'layout__main--no-footer' : ''} ${isLanding ? 'layout__main--landing' : ''}`}>
                 <Outlet />
             </main>
             {!hideFooter && <Footer />}

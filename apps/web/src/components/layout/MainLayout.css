@@ -16,6 +16,12 @@
     padding-bottom: 0;
 }
 
+/* Startsidan är helbleed och mörk – ingen vit padding/bakgrund mot footern */
+.layout__main--landing {
+    padding-bottom: 0;
+    background-color: var(--color-primary-red);
+}
+
 .layout__main--no-footer > * {
     flex: 1;
 }

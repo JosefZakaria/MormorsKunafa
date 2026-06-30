@@ -13,47 +13,54 @@ export const Header: React.FC = () => {
     const { getItemCount } = useCart();
     const navigate = useNavigate();
     const { pathname } = useLocation();
-    const [isMenuOpen, setIsMenuOpen] = React.useState(false);
     const cartItemCount = getItemCount();
     const isOverDark = pathname === '/' || pathname.startsWith('/menu');
     const isOnCart = pathname.startsWith('/cart');
 
-    const toggleMenu = () => setIsMenuOpen(!isMenuOpen);
-    const closeMenu = () => setIsMenuOpen(false);
-
     const handleNavigation = (path: string) => {
-        closeMenu();
         navigate(path);
+    };
+
+    // Presentation-only: smooth-scroll to a section on the landing page.
+    const goToSection = (id: string) => {
+        if (pathname !== '/') {
+            navigate('/');
+            window.setTimeout(() => {
+                document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
+            }, 120);
+        } else {
+            document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
+        }
     };
 
     return (
         <header className={`header ${isOverDark ? 'header--over-hero' : ''} ${isOnCart ? 'header--on-cart' : ''}`}>
             <Container className="header__container">
-                <Link to="/" className="header__brand" onClick={closeMenu}>
+                <Link to="/" className="header__brand">
                     <img src="/images/logo-icon.png" alt="" className="header__logo-icon" />
                     <span className="header__brand-text">MORMORS KUNAFA</span>
                 </Link>
 
-                <button className="header__toggle" onClick={toggleMenu} aria-label="Toggle menu">
-                    <span className={`header__hamburger ${isMenuOpen ? 'open' : ''}`}></span>
-                </button>
-
-                <nav className={`header__nav ${isMenuOpen ? 'header__nav--open' : ''}`}>
+                <nav className="header__nav">
+                    <Button variant="ghost" className="header__menu-btn" onClick={() => goToSection('hitta-hit')}>
+                        {t('nav.hitta_hit')}
+                    </Button>
                     <Button variant="ghost" className="header__menu-btn" onClick={() => handleNavigation('/menu')}>
                         {t('nav.meny')}
                     </Button>
-                    <Button
-                        variant="ghost"
-                        className="header__menu-btn header__menu-btn--cart"
-                        onClick={() => handleNavigation('/cart')}
-                        aria-label={t('nav.cart')}
-                    >
-                        <ShoppingCart className="header__cart-icon" aria-hidden="true" strokeWidth={1.75} />
-                        {cartItemCount > 0 && (
-                            <span className="header__cart-badge">{cartItemCount}</span>
-                        )}
-                    </Button>
                 </nav>
+
+                <Button
+                    variant="ghost"
+                    className="header__menu-btn header__menu-btn--cart"
+                    onClick={() => handleNavigation('/cart')}
+                    aria-label={t('nav.cart')}
+                >
+                    <ShoppingCart className="header__cart-icon" aria-hidden="true" strokeWidth={1.75} />
+                    {cartItemCount > 0 && (
+                        <span className="header__cart-badge">{cartItemCount}</span>
+                    )}
+                </Button>
             </Container>
         </header>
     );
