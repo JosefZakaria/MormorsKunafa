@@ -166,14 +166,6 @@ export const Landing: React.FC = () => {
                             <span className="section-eyebrow">{t('landing.reviews.eyebrow')}</span>
                             <h2 className="text-display-md section-title">{t('landing.reviews.title')}</h2>
                         </div>
-                        <a
-                            className="reviews__read-all"
-                            href="https://www.google.com/maps/place/Mormors+kunafa+-+%D9%83%D9%86%D8%A7%D9%81%D8%A9+%D8%B3%D8%AA%D9%91%D9%8A%E2%80%AD/@55.5820588,13.0625334,17z/data=!4m8!3m7!1s0x4653a15c6b7ed9b3:0x32480d49c25c58db!8m2!3d55.5820588!4d13.0651137!9m1!1b1!16s%2Fg%2F11v3mzlyl0"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                        >
-                            ★★★★★ {t('landing.reviews.read_all')} →
-                        </a>
                     </div>
                     <div className="reviews__grid">
                         <div className="reviews__rating-card">
@@ -191,6 +183,14 @@ export const Landing: React.FC = () => {
                             </blockquote>
                         ))}
                     </div>
+                    <a
+                        className="reviews__read-all"
+                        href="https://www.google.com/maps/place/Mormors+kunafa+-+%D9%83%D9%86%D8%A7%D9%81%D8%A9+%D8%B3%D8%AA%D9%91%D9%8A%E2%80%AD/@55.5820588,13.0625334,17z/data=!4m8!3m7!1s0x4653a15c6b7ed9b3:0x32480d49c25c58db!8m2!3d55.5820588!4d13.0651137!9m1!1b1!16s%2Fg%2F11v3mzlyl0"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                    >
+                        ★★★★★ {t('landing.reviews.read_all')} →
+                    </a>
                 </Container>
             </section>
 
