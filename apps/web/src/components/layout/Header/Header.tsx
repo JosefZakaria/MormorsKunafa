@@ -60,7 +60,7 @@ export const Header: React.FC = () => {
                     </Button>
                     <Button
                         variant="ghost"
-                        className="header__menu-btn header__menu-btn--cart"
+                        className="header__menu-btn header__menu-btn--cart header__menu-btn--mobile-only"
                         onClick={() => handleNavigation('/cart')}
                         aria-label={t('nav.cart')}
                     >
@@ -70,6 +70,18 @@ export const Header: React.FC = () => {
                         )}
                     </Button>
                 </nav>
+
+                <Button
+                    variant="ghost"
+                    className="header__menu-btn header__menu-btn--cart header__menu-btn--desktop-only"
+                    onClick={() => handleNavigation('/cart')}
+                    aria-label={t('nav.cart')}
+                >
+                    <ShoppingCart className="header__cart-icon" aria-hidden="true" strokeWidth={1.75} />
+                    {cartItemCount > 0 && (
+                        <span className="header__cart-badge">{cartItemCount}</span>
+                    )}
+                </Button>
             </Container>
         </header>
     );
