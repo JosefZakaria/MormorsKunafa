@@ -55,18 +55,31 @@
 /* ---- HERO ---- */
 .landing__hero {
     position: relative;
-    min-height: 92vh;
+    min-height: 65vh;
     display: flex;
     align-items: center;
-    padding: calc(80px + var(--spacing-3xl)) 0 var(--spacing-3xl);
+    padding: calc(80px + var(--spacing-xl)) 0 var(--spacing-3xl);
     background-image:
-        linear-gradient(rgba(62, 30, 34, 0.55), rgba(62, 30, 34, 0.85)),
+        linear-gradient(to right, rgba(47, 20, 24, 0.88) 35%, rgba(47, 20, 24, 0.2) 100%),
         url('/images/kunafa-ashta.jpg');
     background-size: cover;
-    background-position: center;
+    background-position: 75% bottom;
 }
 
-.landing__container { width: 100%; }
+.landing__container {
+    width: 100%;
+    position: relative;
+    z-index: 3;
+}
+
+@media (max-width: 968px) {
+    .landing__hero {
+        background-image:
+            linear-gradient(to bottom, rgba(47, 20, 24, 0.75) 35%, rgba(47, 20, 24, 0.88) 95%),
+            url('/images/kunafa-ashta.jpg');
+        background-position: 70% bottom;
+    }
+}
 
 .landing__content {
     max-width: 640px;
@@ -135,7 +148,7 @@
     width: auto;
     max-width: 100%;
     box-sizing: border-box;
-    z-index: 2;
+    z-index: 10;
 }
 
 .landing__actions {
@@ -144,7 +157,7 @@
     flex-wrap: nowrap;
     justify-content: center;
     align-items: stretch;
-    gap: var(--spacing-xs);
+    gap: var(--spacing-md);
     padding: 0 var(--spacing-lg);
     box-sizing: border-box;
     background-color: transparent;
@@ -156,14 +169,14 @@
     align-items: center;
     justify-content: center;
     gap: var(--spacing-sm);
-    width: 160px;
-    height: 120px;
-    min-width: 160px;
-    min-height: 120px;
-    border-radius: 8px;
+    width: 175px;
+    height: 130px;
+    min-width: 175px;
+    min-height: 130px;
+    border-radius: 12px;
     padding: var(--spacing-md);
     font-family: var(--font-family-display);
-    font-size: 0.95rem;
+    font-size: 1rem;
     font-weight: 700;
     letter-spacing: 0.05em;
     text-transform: uppercase;
@@ -171,22 +184,6 @@
     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
 }
 
-/* Ät här (först): ingen rundning till höger så den sitter ihop med mitten */
-.landing__actions .landing__btn:first-child {
-    border-top-right-radius: 0;
-    border-bottom-right-radius: 0;
-}
-
-/* Leverans (sist): ingen rundning till vänster så den sitter ihop med mitten */
-.landing__actions .landing__btn:last-child {
-    border-top-left-radius: 0;
-    border-bottom-left-radius: 0;
-}
-
-/* Ta med (mitten): inga rundade hörn */
-.landing__actions .landing__btn:nth-child(2) {
-    border-radius: 0;
-}
 
 .landing__btn-icon {
     display: flex;
@@ -368,10 +365,12 @@
 }
 
 .reviews__read-all {
+    display: block;
     color: var(--color-secondary-gold);
-    font-size: 0.85rem;
+    font-size: 0.9rem;
     text-decoration: none;
-    white-space: nowrap;
+    text-align: center;
+    margin-top: var(--spacing-xl);
 }
 
 .reviews__grid {
@@ -391,6 +390,8 @@
 .reviews__rating-card {
     display: flex;
     flex-direction: column;
+    align-items: center;
+    text-align: center;
     gap: var(--spacing-xs);
     justify-content: center;
 }
@@ -564,26 +565,56 @@
 }
 
 @media (max-width: 767px) {
+    #start-order-button-group-placeholder {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        transform: translateY(50%);
+        margin-top: 0;
+        padding: 0;
+        z-index: 10;
+    }
 
     .landing__actions {
+        flex-direction: row;
+        flex-wrap: nowrap;
+        justify-content: center;
+        align-items: center;
+        gap: var(--spacing-xs);
         padding: 0 var(--spacing-sm);
-        gap: 4px;
+        overflow-x: auto;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+        -webkit-overflow-scrolling: touch;
+        width: 100%;
+    }
+
+    .landing__actions::-webkit-scrollbar {
+        display: none;
     }
 
     .landing__actions .landing__btn {
-        flex: 1 1 0;
-        min-width: 0;
-        max-width: 96px;
-        width: auto;
-        height: 86px;
-        min-height: 86px;
-        padding: var(--spacing-sm);
+        flex: 0 0 auto;
+        display: inline-flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        width: 106px;
+        height: 90px;
+        min-width: 106px;
+        min-height: 90px;
+        padding: var(--spacing-xs);
         font-size: 0.68rem;
-        letter-spacing: 0.03em;
-        gap: 6px;
+        border-radius: 12px !important;
+        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
     }
 
-    .landing__btn-icon svg { width: 26px; height: 26px; }
+    .landing__btn-icon svg {
+        width: 24px;
+        height: 24px;
+    }
 
     .reviews__head {
         flex-direction: column;
