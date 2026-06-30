@@ -24,13 +24,9 @@
 }
 
 .footer__logo {
-    width: 64px;
-    height: 64px;
-    border-radius: 50%;
+    width: 80px;
+    height: auto;
     object-fit: contain;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(221, 168, 49, 0.4);
-    padding: 6px;
 }
 
 .footer__tagline {
