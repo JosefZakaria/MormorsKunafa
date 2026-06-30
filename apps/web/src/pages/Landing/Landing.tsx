@@ -120,7 +120,19 @@ export const Landing: React.FC = () => {
                             { key: '2', img: '/images/krispig-kunafa.jpg' },
                         ].map(({ key, img }) => (
                             <article className="favorites__card" key={key}>
-                                <div className="favorites__img-wrap">
+                                <div 
+                                    className="favorites__img-wrap" 
+                                    onClick={() => navigate('/menu')}
+                                    role="button"
+                                    tabIndex={0}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter' || e.key === ' ') {
+                                            e.preventDefault();
+                                            navigate('/menu');
+                                        }
+                                    }}
+                                    aria-label={t(`landing.favorites.${key}.name`)}
+                                >
                                     <img src={img} alt={t(`landing.favorites.${key}.name`)} className="favorites__img" />
                                 </div>
                                 <div className="favorites__row">

@@ -46,7 +46,7 @@ export const Header: React.FC = () => {
                         {t('nav.hitta_hit')}
                     </Button>
                     <Button variant="ghost" className="header__menu-btn" onClick={() => handleNavigation('/menu')}>
-                        {t('nav.order')}
+                        {t('nav.meny')}
                     </Button>
                 </nav>
 

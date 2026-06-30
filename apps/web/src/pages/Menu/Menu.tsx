@@ -234,8 +234,62 @@ export const Menu: React.FC = () => {
         }
         const fixed = getFixedWeight(product);
         const resolvedOption = option || fixed || undefined;
-        addItem(product, 1, resolvedOption);
-        showToast(t('menu.added_to_cart').replace('{name}', getDisplayName(product, t)), 'success');
+
+        // Try to trigger flying animation
+        const imgEl = document.querySelector('.menu-modal__image') as HTMLImageElement;
+        const cartEl = document.querySelector('.header__menu-btn--cart') as HTMLElement;
+
+        if (imgEl && cartEl) {
+            const imgRect = imgEl.getBoundingClientRect();
+            const cartRect = cartEl.getBoundingClientRect();
+
+            const flyer = document.createElement('img');
+            flyer.src = imgEl.src;
+            flyer.style.position = 'fixed';
+            flyer.style.left = `${imgRect.left}px`;
+            flyer.style.top = `${imgRect.top}px`;
+            flyer.style.width = `${imgRect.width}px`;
+            flyer.style.height = `${imgRect.height}px`;
+            flyer.style.objectFit = 'cover';
+            flyer.style.borderRadius = '50%';
+            flyer.style.boxShadow = '0 10px 30px rgba(0, 0, 0, 0.3)';
+            flyer.style.zIndex = '99999';
+            flyer.style.pointerEvents = 'none';
+            flyer.style.transition = 'all 0.85s cubic-bezier(0.25, 1, 0.5, 1)';
+
+            document.body.appendChild(flyer);
+
+            // Force reflow
+            void flyer.offsetWidth;
+
+            // Target coordinates (middle of the cart icon)
+            const targetX = cartRect.left + cartRect.width / 2 - 20;
+            const targetY = cartRect.top + cartRect.height / 2 - 20;
+
+            flyer.style.left = `${targetX}px`;
+            flyer.style.top = `${targetY}px`;
+            flyer.style.width = '40px';
+            flyer.style.height = '40px';
+            flyer.style.opacity = '0.1';
+
+            setTimeout(() => {
+                flyer.remove();
+
+                // Trigger cart pop animation
+                cartEl.classList.add('header__menu-btn--cart-pop');
+                setTimeout(() => {
+                    cartEl.classList.remove('header__menu-btn--cart-pop');
+                }, 300);
+
+                // Add to cart state and show toast
+                addItem(product, 1, resolvedOption);
+                showToast(t('menu.added_to_cart').replace('{name}', getDisplayName(product, t)), 'success');
+            }, 850);
+        } else {
+            // Fallback
+            addItem(product, 1, resolvedOption);
+            showToast(t('menu.added_to_cart').replace('{name}', getDisplayName(product, t)), 'success');
+        }
     };
 
     const selectedIsBread = selectedProduct ? isBreadProduct(selectedProduct) : false;

@@ -4,7 +4,7 @@ export const translations = {
     sv: {
         // Header
         "nav.hitta_hit": "Hitta hit",
-        "nav.meny": "MENY",
+        "nav.meny": "Meny",
         "nav.cart": "VARUKORG",
 
         // Footer
@@ -27,7 +27,7 @@ export const translations = {
         "landing.see_menu": "Se menyn",
         "nav.smaka": "Välj ditt sätt",
         "nav.order": "Beställ",
-        "landing.hours": "Öppet alla dagar 11:00 - 22:00",
+        "landing.hours": "Öppet idag 11:00 - 22:00",
         "landing.smaka.eyebrow": "VÄLJ DITT SÄTT",
         "landing.smaka.title": "Kunafa på ditt sätt.",
         "landing.smaka.intro": "Oavsett om du vill dela upplevelsen med vänner på plats eller göra succé på nästa familjemiddag.",
@@ -194,7 +194,7 @@ export const translations = {
     en: {
         // Header
         "nav.hitta_hit": "Find us",
-        "nav.meny": "MENU",
+        "nav.meny": "Menu",
         "nav.cart": "CART",
 
         // Footer
@@ -217,7 +217,7 @@ export const translations = {
         "landing.see_menu": "View menu",
         "nav.smaka": "Choose your way",
         "nav.order": "Order",
-        "landing.hours": "Open every day 11:00 - 22:00",
+        "landing.hours": "Open today 11:00 - 22:00",
         "landing.smaka.eyebrow": "CHOOSE YOUR WAY",
         "landing.smaka.title": "Kunafa your way.",
         "landing.smaka.intro": "Whether you want to share the experience with friends on site or impress at the next family dinner.",
@@ -420,7 +420,7 @@ export const translations = {
         "landing.see_menu": "عرض القائمة",
         "nav.smaka": "اختر طريقتك",
         "nav.order": "اطلب",
-        "landing.hours": "مفتوح كل يوم 11:00 - 22:00",
+        "landing.hours": "مفتوح اليوم 11:00 - 22:00",
         "landing.smaka.eyebrow": "اختر طريقتك",
         "landing.smaka.title": "الكنافة على طريقتك.",
         "landing.smaka.intro": "سواء أردت أن تشارك التجربة مع الأصدقاء في المكان أو تبهر الجميع في عشاء العائلة القادم.",
