@@ -429,8 +429,8 @@ export const Cart: React.FC = () => {
     };
 
     return (
-        <div className="cart-page animate-in">
-            <Container className="cart-container">
+        <div className="cart-page">
+            <Container className="cart-container animate-in">
                 {items.length > 0 && (
                     <h1 className="text-display-md cart-title">{t('cart.title')}</h1>
                 )}
