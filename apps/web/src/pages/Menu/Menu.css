@@ -87,16 +87,36 @@
     /* Lätt skugga för snyggare presentation */
 }
 
-/* Smal skärm, två kolumner: kvadratiska miniatyrer så listan inte blir för hög */
+/* Smal skärm: anpassad layout med större bilder och mindre knappar */
 @media (max-width: 639px) {
+    .menu-grid {
+        gap: var(--spacing-sm);
+    }
+
+    .menu-item-simple {
+        padding: var(--spacing-sm);
+        border-radius: 12px;
+    }
+
     .menu-item-simple__image-container {
-        aspect-ratio: 1 / 1;
-        max-height: min(38vh, 220px);
+        aspect-ratio: 4 / 5;
+        max-height: none;
+        margin-bottom: var(--spacing-xs);
     }
 
     .menu-item-simple__title {
-        font-size: 0.95rem;
+        font-size: 0.9rem;
         line-height: 1.25;
+    }
+
+    .menu-item-simple__content {
+        margin-bottom: 8px;
+    }
+
+    .menu-item-simple__btn {
+        padding: 6px 8px;
+        font-size: 0.72rem;
+        letter-spacing: 0.02em;
     }
 }
 
