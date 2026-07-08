@@ -12,7 +12,7 @@ export const MainLayout: React.FC = () => {
     const isLanding = pathname === '/';
 
     return (
-        <div className="layout">
+        <div className={`layout${isLanding ? ' layout--landing' : ''}`}>
             <Header />
             <main className={`layout__main ${hideFooter ? 'layout__main--no-footer' : ''} ${isLanding ? 'layout__main--landing' : ''}`}>
                 <Outlet />

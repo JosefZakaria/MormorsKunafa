@@ -1,9 +1,6 @@
 .landing {
     color: var(--color-white);
     background-color: var(--color-primary-red);
-    /* Dra hero hela vägen upp under den transparenta, flytande headern.
-       Headern är ca 98px (nav-knapparnas höjd + paddings); -100px ger en liten marginal så inget mellanrum syns. */
-    margin-top: -100px;
     overflow-x: hidden;
 }
 
@@ -57,11 +54,9 @@
     position: relative;
     min-height: 65vh;
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     padding: calc(80px + var(--spacing-xl)) 0 var(--spacing-3xl);
-    background-image:
-        linear-gradient(to right, rgba(92, 42, 47, 0.88) 35%, rgba(92, 42, 47, 0.2) 100%),
-        url('/images/kunafa-ashta.jpg');
+    background-image: url('/images/kunafa-ashta.jpg');
     background-size: cover;
     background-position: 75% bottom;
 }
@@ -74,9 +69,7 @@
 
 @media (max-width: 968px) {
     .landing__hero {
-        background-image:
-            linear-gradient(to bottom, rgba(92, 42, 47, 0.75) 35%, rgba(92, 42, 47, 0.88) 95%),
-            url('/images/kunafa-ashta.jpg');
+        background-image: url('/images/kunafa-ashta.jpg');
         background-position: 70% bottom;
     }
 }
@@ -94,44 +87,11 @@
     font-size: 0.8rem;
     letter-spacing: 0.12em;
     text-transform: uppercase;
-    color: var(--color-secondary-gold);
-    border: 1px solid rgba(221, 168, 49, 0.5);
+    color: var(--color-white);
+    background-color: var(--color-primary-red);
+    border: 1px solid var(--color-primary-red);
     border-radius: var(--radius-full);
     padding: 0.35rem 0.9rem;
-}
-
-.landing__title {
-    color: var(--color-white);
-    margin: 0;
-}
-
-.landing__subtitle {
-    font-size: 1.25rem;
-    font-weight: 500;
-    color: var(--color-secondary-gold);
-    margin: 0;
-}
-
-/* Se menyn-knapp i hero */
-.landing__hero-cta {
-    margin-top: var(--spacing-sm);
-}
-
-.landing__hero-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--spacing-xs);
-    border-radius: var(--radius-full);
-    background-color: var(--color-secondary-gold);
-    color: var(--color-primary-red);
-    padding: 0.5rem 1.1rem;
-    font-size: 0.9rem;
-}
-
-.landing__hero-btn:hover:not(:disabled) {
-    background-color: #c8962a;
-    color: var(--color-primary-red);
-    opacity: 1;
 }
 
 .landing__hero-btn-arrow {
@@ -619,5 +579,15 @@
     .reviews__head {
         flex-direction: column;
         align-items: flex-start;
+    }
+
+    .favorites__grid {
+        width: 92%;
+        margin-inline: auto;
+        gap: var(--spacing-lg);
+    }
+
+    .favorites__row {
+        padding: var(--spacing-md);
     }
 }
