@@ -38,15 +38,6 @@ function roundClockToNext5Min(clock: string): string {
     return `${String(h).padStart(2, '0')}:${String(roundedM).padStart(2, '0')}`;
 }
 
-function getStoredDeliveryInfo() {
-    try {
-        const stored = localStorage.getItem('deliveryInfo');
-        return stored ? JSON.parse(stored) : null;
-    } catch {
-        return null;
-    }
-}
-
 export const Cart: React.FC = () => {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
@@ -63,32 +54,18 @@ export const Cart: React.FC = () => {
         return stored || '';
     });
     const [orderTypeError, setOrderTypeError] = useState<string | null>(null);
-    const [customerName, setCustomerName] = useState(() => {
-        const info = getStoredDeliveryInfo();
-        return info?.name || '';
-    });
-    const [customerPhone, setCustomerPhone] = useState(() => {
-        const info = getStoredDeliveryInfo();
-        return info?.phone || '';
-    });
-    const [customerEmail, setCustomerEmail] = useState(() => {
-        const info = getStoredDeliveryInfo();
-        return info?.email || '';
-    });
-    const [deliveryAddress, setDeliveryAddress] = useState(() => {
-        const info = getStoredDeliveryInfo();
-        return info?.address || '';
-    });
-    const [deliveryPostalCode, setDeliveryPostalCode] = useState(() => {
-        const info = getStoredDeliveryInfo();
-        return info?.postalCode || '';
-    });
-    const [deliveryCity, setDeliveryCity] = useState(() => {
-        const info = getStoredDeliveryInfo();
-        return info?.city || '';
-    });
+    const [customerName, setCustomerName] = useState('');
+    const [customerPhone, setCustomerPhone] = useState('');
+    const [customerEmail, setCustomerEmail] = useState('');
+    const [deliveryAddress, setDeliveryAddress] = useState('');
+    const [deliveryPostalCode, setDeliveryPostalCode] = useState('');
+    const [deliveryCity, setDeliveryCity] = useState('');
     const [customerInfoError, setCustomerInfoError] = useState<string | null>(null);
     const [paymentChoice, setPaymentChoice] = useState<CheckoutPaymentChoice>('card');
+
+    useEffect(() => {
+        localStorage.removeItem('deliveryInfo');
+    }, []);
 
     const needsInlineCustomerInfo = orderType === 'eat-here' || orderType === 'takeaway' || orderType === 'delivery';
 
@@ -359,11 +336,6 @@ export const Cart: React.FC = () => {
                 quantity: item.quantity,
                 price: item.price, // Already in öre
             }));
-
-            // Save/update deliveryInfo in localStorage upon successful validation during checkout
-            if (orderType === 'delivery' && deliveryInfo) {
-                localStorage.setItem('deliveryInfo', JSON.stringify(deliveryInfo));
-            }
 
             if (!customerInfo) {
                 setError(t('cart.customer_info_required'));

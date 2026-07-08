@@ -56,23 +56,6 @@ export const Landing: React.FC = () => {
                 <Container className="landing__container">
                     <div className="landing__content">
                         <span className="landing__hours animate-in">{t('landing.hours')}</span>
-                        <h1 className="text-display-lg landing__title animate-in delay-100">
-                            {t('landing.title')}
-                        </h1>
-                        <p className="landing__subtitle animate-in delay-200">
-                            {t('landing.subtitle')}
-                        </p>
-                        <div className="landing__hero-cta animate-in delay-300">
-                            <Button
-                                variant="secondary"
-                                size="sm"
-                                className="landing__hero-btn"
-                                onClick={() => navigate('/menu')}
-                            >
-                                {t('landing.see_menu')}
-                                <span className="landing__hero-btn-arrow" aria-hidden>→</span>
-                            </Button>
-                        </div>
                     </div>
                 </Container>
                 {/* Orderknappar – samma position som tidigare (överlappar hero-kanten) */}
