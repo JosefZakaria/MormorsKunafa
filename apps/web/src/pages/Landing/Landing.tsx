@@ -53,11 +53,6 @@ export const Landing: React.FC = () => {
         <div className="landing">
             {/* HERO */}
             <section className="landing__hero" id="top">
-                <Container className="landing__container">
-                    <div className="landing__content">
-                        <span className="landing__hours animate-in">{t('landing.hours')}</span>
-                    </div>
-                </Container>
                 {/* Orderknappar – samma position som tidigare (överlappar hero-kanten) */}
                 <div id="start-order-button-group-placeholder">
                     <div className="landing__actions">
