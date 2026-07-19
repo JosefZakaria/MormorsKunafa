@@ -14,7 +14,7 @@ export const Header: React.FC = () => {
     const navigate = useNavigate();
     const { pathname } = useLocation();
     const cartItemCount = getItemCount();
-    const isOverDark = pathname === '/' || pathname.startsWith('/menu');
+    const isOverDark = pathname.startsWith('/menu');
     const isOnCart = pathname.startsWith('/cart');
 
     const handleNavigation = (path: string) => {

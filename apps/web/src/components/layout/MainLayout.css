@@ -16,17 +16,8 @@
     padding-bottom: 0;
 }
 
-/* Startsidan: header flyter över hero utan att reservera höjd i flödet */
 .layout--landing {
     background-color: var(--color-primary-red);
-}
-
-.layout--landing .header {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    z-index: 1000;
 }
 
 /* Startsidan är helbleed och mörk – ingen vit padding/bakgrund mot footern */
