@@ -126,19 +126,22 @@ router.post('/', async (req: Request, res: Response) => {
       ? Number(settings.default_preparation_time_minutes) || 30
       : 30;
 
+    // Hemkörning has no customer-chosen time (1–2 business days); ignore any scheduledTime.
     let scheduledAt: Date | null = null;
-    if (body.scheduledTime != null && String(body.scheduledTime).trim() !== '') {
-      scheduledAt = parseOrderScheduledAt(body.scheduledTime);
-      if (!scheduledAt || Number.isNaN(scheduledAt.getTime())) {
-        res.status(400).json({ error: 'Ogiltig förbeställningstid. Välj datum och tid igen.' });
+    if (!isDelivery) {
+      if (body.scheduledTime != null && String(body.scheduledTime).trim() !== '') {
+        scheduledAt = parseOrderScheduledAt(body.scheduledTime);
+        if (!scheduledAt || Number.isNaN(scheduledAt.getTime())) {
+          res.status(400).json({ error: 'Ogiltig förbeställningstid. Välj datum och tid igen.' });
+          return;
+        }
+      }
+
+      const hoursValidation = validateScheduledOrderTime(body.scheduledTime, defaultPrep);
+      if (!hoursValidation.valid) {
+        res.status(400).json({ error: hoursValidation.error });
         return;
       }
-    }
-
-    const hoursValidation = validateScheduledOrderTime(body.scheduledTime, defaultPrep);
-    if (!hoursValidation.valid) {
-      res.status(400).json({ error: hoursValidation.error });
-      return;
     }
 
     const baseTime = scheduledAt && scheduledAt.getTime() > Date.now() ? scheduledAt : new Date();

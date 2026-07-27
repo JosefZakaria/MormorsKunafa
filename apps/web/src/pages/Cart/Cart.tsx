@@ -285,7 +285,7 @@ export const Cart: React.FC = () => {
             return;
         }
 
-        if (isClosedNow && !bypassClosedCheck) {
+        if (isClosedNow && !bypassClosedCheck && orderType !== 'delivery') {
             setShowClosedWarningPopup(true);
             return;
         }
@@ -342,16 +342,20 @@ export const Cart: React.FC = () => {
                 return;
             }
 
-            const clock = resolveScheduledClock();
-            const scheduledTime = scheduledDate
-                ? `${scheduledDate}T${clock}:00`
-                : undefined;
+            const isDelivery = orderType === 'delivery';
+            let scheduledTime: string | undefined;
+            if (!isDelivery) {
+                const clock = resolveScheduledClock();
+                scheduledTime = scheduledDate
+                    ? `${scheduledDate}T${clock}:00`
+                    : undefined;
 
-            const hoursCheck = validateScheduledOrderTime(scheduledTime);
-            if (!hoursCheck.valid) {
-                setError(hoursCheck.error);
-                setIsSubmitting(false);
-                return;
+                const hoursCheck = validateScheduledOrderTime(scheduledTime);
+                if (!hoursCheck.valid) {
+                    setError(hoursCheck.error);
+                    setIsSubmitting(false);
+                    return;
+                }
             }
 
             if (paymentChoice === 'swish') {
@@ -372,7 +376,7 @@ export const Cart: React.FC = () => {
                 orderType: orderType as OrderType,
                 customerInfo,
                 deliveryInfo: deliveryInfo,
-                scheduledTime,
+                ...(scheduledTime ? { scheduledTime } : {}),
                 paymentMethod: paymentChoice,
             });
 
@@ -407,7 +411,7 @@ export const Cart: React.FC = () => {
                     <h1 className="text-display-md cart-title">{t('cart.title')}</h1>
                 )}
 
-                {isClosedNow && items.length > 0 && (
+                {isClosedNow && !isDeliveryOrder && items.length > 0 && (
                     <div className="cart-closed-banner animate-in" style={{
                         padding: '1.25rem',
                         background: '#fff9e6',
@@ -682,12 +686,13 @@ export const Cart: React.FC = () => {
                                 size="lg"
                                 className="checkout-btn"
                                 onClick={() => handleCheckout()}
-                                disabled={isSubmitting || !clockRange}
+                                disabled={isSubmitting || (!isDeliveryOrder && !clockRange)}
                             >
                                 {isSubmitting ? 'Skapar beställning...' : t('cart.checkout')}
                             </Button>
                         </div>
 
+                        {!isDeliveryOrder && (
                         <div className="cart-schedule">
                             <h3 className="cart-schedule__title">{t('cart.schedule_title')}</h3>
                             <label htmlFor="cart-schedule-date" className="cart-schedule__label">
@@ -778,6 +783,7 @@ export const Cart: React.FC = () => {
                                 {formatScheduleSummary()}
                             </p>
                         </div>
+                        )}
                     </div>
                 )}
             </Container>
