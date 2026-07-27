@@ -160,7 +160,7 @@ function finishPrint(xml: string): string {
 }
 
 /**
- * Skriver ut en kökslapp (utan priser) — används vid accept.
+ * Skriver ut en kökslapp (utan priser) — auto vid Inkommande / 30 min före planerad tid.
  */
 export async function printKitchenTicket(order: Order): Promise<{ success: boolean; error?: string }> {
   let xml = '';

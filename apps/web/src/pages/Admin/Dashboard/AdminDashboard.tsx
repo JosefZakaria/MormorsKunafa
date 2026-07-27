@@ -15,6 +15,7 @@ import type {
     OrderCreatedRealtimeEvent,
 } from '@shared/types';
 import { parseApiTimestamp } from '@shared/utils/parseApiTimestamp';
+import { isKitchenTicketPrintDue } from '@shared/utils/scheduledTime';
 import '../Admin.css';
 import { requestWakeLock, releaseWakeLock } from '../../../utils/wakeLock';
 import { startAlarm, stopAlarm, setAlarmVolume, AlarmType, getAudioState, unlockAudio, isAlarmActive } from '../../../utils/alarmPlayer';
@@ -645,9 +646,13 @@ export const AdminDashboard: React.FC = () => {
     // Spårar vilka inkommande ordrar som redan skrivits ut (kökslapp) så att
     // pollingen inte skriver ut samma order flera gånger.
     const printedOrderIdsRef = useRef<Set<string>>(new Set());
-    // Vid första laddningen "seedar" vi befintliga inkommande ordrar utan att
-    // skriva ut dem – endast ordrar som kommer in efter detta skrivs ut.
+    // Vid första laddningen "seedar" vi ordrar som redan är inom utskriftsfönstret
+    // (utan att skriva ut) så refresh inte ger dubbletter. Ordrar som ännu inte
+    // nått 30 min före upphämtning lämnas osedade och skrivs ut när tiden är inne.
     const printSeedDoneRef = useRef(false);
+    // Tvingar omkörning av auto-utskrift när utskriftsfönstret öppnas (även om
+    // pendingOrders-listan är oförändrad).
+    const [printTick, setPrintTick] = useState(0);
 
     // Alarm state & settings
     const [activeAlarmOrder, setActiveAlarmOrder] = useState<Order | null>(null);
@@ -745,15 +750,20 @@ export const AdminDashboard: React.FC = () => {
         };
     }, [fetchOrders]);
 
-    // --- Auto-skriv ut kökslapp så fort en ny order dyker upp i "inkommande" ---
+    // --- Auto-skriv ut kökslapp 30 min före planerad upphämtning / äta-här ---
+    // Hemkörning (utan scheduledTime) skrivs ut så fort ordern syns i Inkommande.
     useEffect(() => {
         // Vänta på första hämtningen innan vi gör något.
         if (loadingOrders) return;
 
-        // Första gången: markera nuvarande inkommande ordrar som redan "kända"
-        // så att de inte skrivs ut. Endast ordrar som kommer in efteråt skrivs ut.
+        // Första gången: markera ordrar som redan är "print-due" som hanterade
+        // så att de inte skrivs ut vid refresh. Ordrar längre fram i tiden lämnas.
         if (!printSeedDoneRef.current) {
-            for (const o of pendingOrders) printedOrderIdsRef.current.add(o.id);
+            for (const o of pendingOrders) {
+                if (isKitchenTicketPrintDue(o.scheduledTime)) {
+                    printedOrderIdsRef.current.add(o.id);
+                }
+            }
             printSeedDoneRef.current = true;
             return;
         }
@@ -762,6 +772,7 @@ export const AdminDashboard: React.FC = () => {
 
         for (const order of pendingOrders) {
             if (printedOrderIdsRef.current.has(order.id)) continue;
+            if (!isKitchenTicketPrintDue(order.scheduledTime)) continue;
             // Markera FÖRE await så att nästa polling inte startar en dubbel utskrift.
             printedOrderIdsRef.current.add(order.id);
             printKitchenTicket(order)
@@ -774,7 +785,14 @@ export const AdminDashboard: React.FC = () => {
                     setError('Kunde inte skriva ut kokslapp. Kontrollera skrivaren.');
                 });
         }
-    }, [pendingOrders, loadingOrders]);
+    }, [pendingOrders, loadingOrders, printTick]);
+
+    // Tick every 15s so a same-day order scheduled later still prints at T-30
+    // even if the pending list content has not changed.
+    useEffect(() => {
+        const id = setInterval(() => setPrintTick((n) => n + 1), 15_000);
+        return () => clearInterval(id);
+    }, []);
 
     // --- Screen Wake Lock API Setup ---
     useEffect(() => {
