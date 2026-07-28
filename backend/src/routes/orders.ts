@@ -5,21 +5,6 @@ import { getOrderById, getNextOrderNumber, updateOrder } from '../db/orderReposi
 import { orderRowToOrder, rowsToOrders } from '../db/ordersList.js';
 import { requireAdmin } from '../middleware/auth.js';
 import { createRateLimiter } from '../middleware/rateLimit.js';
-
-const orderLimiter = createRateLimiter({
-  windowMs: 15 * 60 * 1000, // 15 min window
-  max: 15, // max 15 orders per IP per 15 minutes
-  message: 'För många beställningsförsök. Vänta en stund och försök igen.',
-  prefix: 'create-order',
-});
-
-function safeCompareStrings(a?: string, b?: string): boolean {
-  if (!a || !b) return false;
-  const bufA = Buffer.from(a);
-  const bufB = Buffer.from(b);
-  if (bufA.length !== bufB.length) return false;
-  return crypto.timingSafeEqual(bufA, bufB);
-}
 import { PrinterService } from '../services/PrinterService.js';
 import { sendOrderConfirmationEmail } from '../services/OrderConfirmationEmail.js';
 import { sendSms } from '../services/SmsService.js';
@@ -43,6 +28,21 @@ import { getPublicWebAppUrl } from '../utils/publicWebAppUrl.js';
 import { confirmStripeCheckoutSession } from '../utils/confirmStripeCheckout.js';
 import { sanitizeProductName } from '../utils/sanitizeProductName.js';
 import swishPaymentRouter from './swishPayment.js';
+
+const orderLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000, // 15 min window
+  max: 15, // max 15 orders per IP per 15 minutes
+  message: 'För många beställningsförsök. Vänta en stund och försök igen.',
+  prefix: 'create-order',
+});
+
+function safeCompareStrings(a?: string, b?: string): boolean {
+  if (!a || !b) return false;
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
 
 const router = Router();
 
