@@ -1,7 +1,17 @@
 import type { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 
-const secret = process.env.JWT_SECRET ?? 'dev-secret-change-in-production';
+function getJwtSecret(): string {
+  const secret = process.env.JWT_SECRET?.trim();
+  if (!secret) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('[SECURITY FATAL] JWT_SECRET environment variable is missing in production!');
+    }
+    console.warn('[SECURITY WARNING] JWT_SECRET is not set. Using dev fallback key. Set JWT_SECRET in production!');
+    return 'dev-secret-change-in-production';
+  }
+  return secret;
+}
 
 export interface JwtPayload {
   adminId: string;
@@ -10,6 +20,7 @@ export interface JwtPayload {
 
 export function verifyAdminToken(token: string): JwtPayload | null {
   try {
+    const secret = getJwtSecret();
     return jwt.verify(token, secret) as JwtPayload;
   } catch {
     return null;
@@ -37,5 +48,7 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction): v
 }
 
 export function signToken(payload: JwtPayload): string {
+  const secret = getJwtSecret();
   return jwt.sign(payload, secret, { expiresIn: '7d' });
 }
+
