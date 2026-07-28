@@ -48,4 +48,5 @@ stripe_*.zip
 stripe_*_windows_x86_64/
 
 # Local Documentation
-AlperSecurityFixes.md
+SecurityFixes.md
+*SecurityFixes.md
