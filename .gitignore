@@ -1,43 +1,47 @@
 # Dependencies
 node_modules/
+**/node_modules/
 
 # Build outputs
 dist/
+**/dist/
 build/
 .expo/
 .expo-shared/
 
 # Environment files
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
+!.env.test
+
+# Archives & Dumps
+*.zip
+*.tar
+*.gz
+*.dump
+_zip_extract/
+backend.zip
 
 # Database and SQL dumps
 Database/
 *.sql
 !backend/src/db/migrations/*.sql
+!backend/src/db/schema.sql
 
-# IDE
+# IDE & OS
 .idea/
 .vscode/
 *.swp
 *.swo
-
-# OS
 .DS_Store
 Thumbs.db
 
-# Logs
+# Logs & Testing
 *.log
 npm-debug.log*
-
-# TypeScript
 *.tsbuildinfo
-
-# Testing
 coverage/
-
-node_modules
 
 # Stripe CLI (lokal nedladdning – ska inte committas)
 stripe_*.zip
