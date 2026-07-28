@@ -1,8 +1,25 @@
 import { Router, Request, Response } from 'express';
+import crypto from 'crypto';
 import { supabase, generateId, type Row, logSupabaseError, nowIso } from '../db/connection.js';
 import { getOrderById, getNextOrderNumber, updateOrder } from '../db/orderRepository.js';
 import { orderRowToOrder, rowsToOrders } from '../db/ordersList.js';
 import { requireAdmin } from '../middleware/auth.js';
+import { createRateLimiter } from '../middleware/rateLimit.js';
+
+const orderLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000, // 15 min window
+  max: 15, // max 15 orders per IP per 15 minutes
+  message: 'För många beställningsförsök. Vänta en stund och försök igen.',
+  prefix: 'create-order',
+});
+
+function safeCompareStrings(a?: string, b?: string): boolean {
+  if (!a || !b) return false;
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
 import { PrinterService } from '../services/PrinterService.js';
 import { sendOrderConfirmationEmail } from '../services/OrderConfirmationEmail.js';
 import { sendSms } from '../services/SmsService.js';
@@ -68,7 +85,7 @@ function todayInStockholm(): string {
 }
 
 // Create order (public)
-router.post('/', async (req: Request, res: Response) => {
+router.post('/', orderLimiter, async (req: Request, res: Response) => {
   try {
     const body = req.body as {
       items: Array<{ productId: string; productName: string; quantity: number; price: number; modifications?: string[] }>;
@@ -567,7 +584,7 @@ router.post('/admin/history/all/delete', requireAdmin, async (req: Request, res:
   try {
     const { password } = req.body as { password?: string };
     const deletePassword = process.env.DELETE_PASSWORD;
-    if (!deletePassword || !password || password !== deletePassword) {
+    if (!deletePassword || !password || !safeCompareStrings(password, deletePassword)) {
       res.status(401).json({ error: 'Felaktigt lösenord' });
       return;
     }
@@ -593,7 +610,7 @@ router.post('/admin/:id/delete', requireAdmin, async (req: Request, res: Respons
   try {
     const { password } = req.body as { password?: string };
     const deletePassword = process.env.DELETE_PASSWORD;
-    if (!deletePassword || !password || password !== deletePassword) {
+    if (!deletePassword || !password || !safeCompareStrings(password, deletePassword)) {
       res.status(401).json({ error: 'Felaktigt lösenord' });
       return;
     }
@@ -616,7 +633,7 @@ router.post('/admin/:id/cancel', requireAdmin, async (req: Request, res: Respons
   try {
     const { password, cancellationReason } = req.body as { password?: string; cancellationReason?: string };
     const deletePassword = process.env.DELETE_PASSWORD;
-    if (!deletePassword || !password || password !== deletePassword) {
+    if (!deletePassword || !password || !safeCompareStrings(password, deletePassword)) {
       res.status(401).json({ error: 'Felaktigt lösenord' });
       return;
     }

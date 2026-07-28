@@ -1,8 +1,25 @@
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import { supabase, type Row, logSupabaseError, nowIso } from '../db/connection.js';
 import { requireAdmin, signToken, verifyAdminToken } from '../middleware/auth.js';
+import { createRateLimiter } from '../middleware/rateLimit.js';
 import { isDeliveryFeeLineItem } from '../constants/deliveryFee.js';
+
+const loginLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000, // 15 min window
+  max: 10, // max 10 attempts
+  message: 'För många inloggningsförsök. Försök igen om 15 minuter.',
+  prefix: 'admin-login',
+});
+
+function safeCompareStrings(a?: string, b?: string): boolean {
+  if (!a || !b) return false;
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
 import {
   disablePushSubscriptionById,
   listActivePushSubscriptions,
@@ -74,7 +91,7 @@ function inRange(createdAt: string, start: Date | null, end: Date | null): boole
   return true;
 }
 
-router.post('/login', async (req: Request, res: Response) => {
+router.post('/login', loginLimiter, async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body as { email?: string; password?: string };
     if (!email || !password) {
@@ -331,7 +348,7 @@ router.post('/statistics', requireAdmin, async (req: Request, res: Response) => 
       endDate?: string;
     };
     const statsPassword = process.env.STATS_PASSWORD;
-    if (!statsPassword || !password || password !== statsPassword) {
+    if (!statsPassword || !password || !safeCompareStrings(password, statsPassword)) {
       res.status(401).json({ error: 'Felaktigt lösenord' });
       return;
     }
