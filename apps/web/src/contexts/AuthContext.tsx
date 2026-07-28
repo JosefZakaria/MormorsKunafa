@@ -16,9 +16,30 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+function isTokenValid(token: string | null): boolean {
+    if (!token) return false;
+    try {
+        const parts = token.split('.');
+        if (parts.length !== 3) return false;
+        const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+        if (payload.exp && Date.now() >= payload.exp * 1000) {
+            return false;
+        }
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-        return !!localStorage.getItem('authToken');
+        const token = localStorage.getItem('authToken');
+        const valid = isTokenValid(token);
+        if (!valid && token) {
+            localStorage.removeItem('authToken');
+            localStorage.removeItem('adminInfo');
+        }
+        return valid;
     });
 
     const [admin, setAdmin] = useState<AdminInfo | null>(() => {
