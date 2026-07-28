@@ -46,3 +46,6 @@ coverage/
 # Stripe CLI (lokal nedladdning – ska inte committas)
 stripe_*.zip
 stripe_*_windows_x86_64/
+
+# Local Documentation
+AlperSecurityFixes.md
