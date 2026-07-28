@@ -74,14 +74,25 @@ app.get('/api/health', (_req, res) => {
   const hasSupabase = Boolean(
     process.env.SUPABASE_URL?.trim() && process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
   );
-  const hasJwt = Boolean(process.env.JWT_SECRET?.trim());
+
   if (!hasSupabase) {
-    res.status(503).json({
-      ok: false,
-      error: 'Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in deployment environment',
-    });
+    if (process.env.NODE_ENV === 'production') {
+      res.status(503).json({ ok: false, status: 'unhealthy' });
+    } else {
+      res.status(503).json({
+        ok: false,
+        error: 'Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in deployment environment',
+      });
+    }
     return;
   }
+
+  if (process.env.NODE_ENV === 'production') {
+    res.json({ ok: true, status: 'healthy' });
+    return;
+  }
+
+  const hasJwt = Boolean(process.env.JWT_SECRET?.trim());
   const web = getPublicWebAppUrlDiagnostics();
   res.json({
     ok: true,
