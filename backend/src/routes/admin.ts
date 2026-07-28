@@ -5,6 +5,13 @@ import { supabase, type Row, logSupabaseError, nowIso } from '../db/connection.j
 import { requireAdmin, signToken, verifyAdminToken } from '../middleware/auth.js';
 import { createRateLimiter } from '../middleware/rateLimit.js';
 import { isDeliveryFeeLineItem } from '../constants/deliveryFee.js';
+import {
+  disablePushSubscriptionById,
+  listActivePushSubscriptions,
+  upsertPushSubscription,
+} from '../db/pushSubscriptionsRepository.js';
+import { getRealtimeStatus, registerRealtimeClient } from '../services/realtimeEvents.js';
+import { isWebPushConfigured } from '../services/pushNotifications.js';
 
 const loginLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000, // 15 min window
@@ -20,13 +27,6 @@ function safeCompareStrings(a?: string, b?: string): boolean {
   if (bufA.length !== bufB.length) return false;
   return crypto.timingSafeEqual(bufA, bufB);
 }
-import {
-  disablePushSubscriptionById,
-  listActivePushSubscriptions,
-  upsertPushSubscription,
-} from '../db/pushSubscriptionsRepository.js';
-import { getRealtimeStatus, registerRealtimeClient } from '../services/realtimeEvents.js';
-import { isWebPushConfigured } from '../services/pushNotifications.js';
 
 const router = Router();
 
