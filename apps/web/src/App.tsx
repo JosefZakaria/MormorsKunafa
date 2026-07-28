@@ -7,6 +7,9 @@ import { Cart } from './pages/Cart/Cart';
 import { OrderStatus } from './pages/OrderStatus/OrderStatus';
 import { SwishPay } from './pages/SwishPay/SwishPay';
 import { SelectLocation } from './pages/SelectLocation/SelectLocation';
+import { Terms } from './pages/Terms/Terms';
+import { Privacy } from './pages/Privacy/Privacy';
+import { CookieBanner } from './components/common/CookieBanner/CookieBanner';
 import { AdminLogin } from './pages/Admin/Login/AdminLogin';
 import { AdminDashboard } from './pages/Admin/Dashboard/AdminDashboard';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -29,24 +32,27 @@ function App() {
           <CartProvider>
             <ToastProvider>
               <Toast />
+              <CookieBanner />
               <Routes>
-            <Route path="/" element={<MainLayout />}>
-              <Route index element={<Landing />} />
-              <Route path="menu" element={<Menu />} />
-              <Route path="cart" element={<Cart />} />
-              <Route path="status" element={<OrderStatus />} />
-              <Route path="pay/swish" element={<SwishPay />} />
-              <Route path="select-location" element={<SelectLocation />} />
-            </Route>
+                <Route path="/" element={<MainLayout />}>
+                  <Route index element={<Landing />} />
+                  <Route path="menu" element={<Menu />} />
+                  <Route path="cart" element={<Cart />} />
+                  <Route path="status" element={<OrderStatus />} />
+                  <Route path="pay/swish" element={<SwishPay />} />
+                  <Route path="select-location" element={<SelectLocation />} />
+                  <Route path="terms" element={<Terms />} />
+                  <Route path="privacy" element={<Privacy />} />
+                </Route>
 
-            {/* Admin Routes */}
-            <Route path="/admin/login" element={<AdminLogin />} />
-            <Route path="/admin/dashboard" element={
-              <PrivateRoute>
-                <AdminDashboard />
-              </PrivateRoute>
-            } />
-            </Routes>
+                {/* Admin Routes */}
+                <Route path="/admin/login" element={<AdminLogin />} />
+                <Route path="/admin/dashboard" element={
+                  <PrivateRoute>
+                    <AdminDashboard />
+                  </PrivateRoute>
+                } />
+              </Routes>
             </ToastProvider>
           </CartProvider>
         </LanguageProvider>

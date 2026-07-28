@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { Truck } from 'lucide-react';
 import { Container } from '../../components/common/Container/Container';
 import { Button } from '../../components/common/Button/Button';
@@ -47,6 +47,7 @@ export const Cart: React.FC = () => {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [showPausedPopup, setShowPausedPopup] = useState(false);
+    const [acceptedTerms, setAcceptedTerms] = useState(false);
     const [orderType, setOrderType] = useState<OrderType | ''>(() => {
         const fromUrl = searchParams.get('type') as OrderType;
         if (fromUrl) return fromUrl;
@@ -339,6 +340,11 @@ export const Cart: React.FC = () => {
 
             if (!customerInfo) {
                 setError(t('cart.customer_info_required'));
+                return;
+            }
+
+            if (!acceptedTerms) {
+                setError(t('cart.terms_required_error'));
                 return;
             }
 
@@ -678,6 +684,27 @@ export const Cart: React.FC = () => {
                                         Swish
                                     </label>
                                 )}
+                            </div>
+
+                            <div className="cart-terms-checkbox" style={{ margin: '1.25rem 0 1rem 0', textAlign: 'left' }}>
+                                <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.65rem', fontSize: '0.875rem', cursor: 'pointer', color: '#444', lineHeight: '1.4' }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={acceptedTerms}
+                                        onChange={(e) => setAcceptedTerms(e.target.checked)}
+                                        style={{ marginTop: '0.15rem', accentColor: '#8b1d1d', width: '17px', height: '17px', cursor: 'pointer', flexShrink: 0 }}
+                                    />
+                                    <span>
+                                        Jag har läst och godkänner{' '}
+                                        <Link to="/terms" target="_blank" style={{ color: '#8b1d1d', textDecoration: 'underline', fontWeight: 600 }}>
+                                            {t('cart.terms_link')}
+                                        </Link>{' '}
+                                        samt{' '}
+                                        <Link to="/privacy" target="_blank" style={{ color: '#8b1d1d', textDecoration: 'underline', fontWeight: 600 }}>
+                                            {t('cart.privacy_link')}
+                                        </Link>.
+                                    </span>
+                                </label>
                             </div>
 
                             <Button

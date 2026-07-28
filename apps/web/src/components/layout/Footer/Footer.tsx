@@ -27,6 +27,12 @@ export const Footer: React.FC = () => {
                         <span className="footer__item">{t('landing.findus.address')}</span>
                         <a href={TEL_LINK} className="footer__item footer__link">{t('footer.phone')}</a>
                     </div>
+
+                    <div className="footer__col" aria-labelledby="footer-legal">
+                        <h3 id="footer-legal" className="footer__col-title">Information</h3>
+                        <Link to="/terms" className="footer__item footer__link">{t('footer.terms')}</Link>
+                        <Link to="/privacy" className="footer__item footer__link">{t('footer.privacy')}</Link>
+                    </div>
                 </div>
             </div>
 
