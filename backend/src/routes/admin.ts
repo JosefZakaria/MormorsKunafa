@@ -55,11 +55,21 @@ function getAdminFromRequest(req: Request): { adminId: string; email: string } |
     return { adminId: fromMiddleware.adminId, email: fromMiddleware.email };
   }
 
-  const token = String(req.query.token ?? '').trim();
-  if (!token) return null;
-  const decoded = verifyAdminToken(token);
-  if (!decoded) return null;
-  return decoded;
+  const authHeader = req.headers.authorization;
+  const headerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
+  if (headerToken) {
+    const decoded = verifyAdminToken(headerToken);
+    if (decoded) return decoded;
+  }
+
+  // Fallback for SSE / EventSource connections where custom headers are limited in web browsers
+  const queryToken = String(req.query.token ?? '').trim();
+  if (queryToken) {
+    const decoded = verifyAdminToken(queryToken);
+    if (decoded) return decoded;
+  }
+
+  return null;
 }
 
 function toStockholmDateString(value: Date | string | null | undefined): string | null {
