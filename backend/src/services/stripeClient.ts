@@ -4,7 +4,14 @@ import { assertStripeServerKey } from '../utils/stripeSecurity.js';
 let stripe: Stripe | null = null;
 
 export function isStripeConfigured(): boolean {
-  return Boolean(process.env.STRIPE_SECRET_KEY?.trim());
+  const key = process.env.STRIPE_SECRET_KEY?.trim();
+  if (!key) return false;
+  try {
+    assertStripeServerKey(key);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function getStripe(): Stripe {

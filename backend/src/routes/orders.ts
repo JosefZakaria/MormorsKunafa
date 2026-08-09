@@ -18,13 +18,15 @@ import {
 import { PrinterService } from '../services/PrinterService.js';
 import { sendOrderConfirmationEmail } from '../services/OrderConfirmationEmail.js';
 import { sendSms } from '../services/SmsService.js';
-import { getStripe } from '../services/stripeClient.js';
+import { getStripe, isStripeConfigured } from '../services/stripeClient.js';
 import { parseOrderScheduledAt, formatStockholmDateTime } from '../utils/stockholmWallTime.js';
 import { validateScheduledOrderTime } from '../shared/utils/openingHours.js';
 import {
   isCardPayment,
   isOnlinePayment,
+  isPublicPaymentMethodAvailable,
 } from '../utils/paymentMethod.js';
+import { isSwishConfigured } from '../services/swishClient.js';
 import {
   DELIVERY_FEE_ORE,
   DELIVERY_FEE_LINE_NAME,
@@ -171,6 +173,13 @@ router.post('/', orderLimiter, orderContactLimiter, async (req: Request, res: Re
     const paymentMethod = String(body.paymentMethod ?? '').trim().toLowerCase();
     if (paymentMethod !== 'card' && paymentMethod !== 'swish') {
       res.status(400).json({ error: 'Invalid payment method' });
+      return;
+    }
+    if (!isPublicPaymentMethodAvailable(paymentMethod, {
+      stripe: isStripeConfigured(),
+      swish: isSwishConfigured(),
+    })) {
+      res.status(503).json({ error: 'Den valda betalningsmetoden är inte tillgänglig.' });
       return;
     }
 
