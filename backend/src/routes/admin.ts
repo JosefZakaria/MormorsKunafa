@@ -30,6 +30,7 @@ import {
 } from '../utils/adminInput.js';
 import { verifyAdminPassword } from '../utils/adminPassword.js';
 import { hasRealtimeCapacity } from '../utils/realtimeCapacity.js';
+import { logUnexpectedError } from '../utils/safeErrorMetadata.js';
 
 const loginLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000, // 15 min window
@@ -147,7 +148,7 @@ router.post('/login', loginLimiter, async (req: Request, res: Response) => {
       res.status(400).json({ error: e.message });
       return;
     }
-    console.error('[POST /admin/login]', e);
+    logUnexpectedError('POST /admin/login', e);
     res.status(500).json({ error: 'Login failed' });
   }
 });
@@ -308,7 +309,7 @@ router.get('/settings', requireAdmin, async (_req: Request, res: Response) => {
       isPaused: Boolean(r.is_paused),
     });
   } catch (e) {
-    console.error('[GET /admin/settings]', e);
+    logUnexpectedError('GET /admin/settings', e);
     res.status(500).json({ error: 'Failed to fetch settings' });
   }
 });
@@ -357,7 +358,7 @@ router.patch('/settings', requireAdmin, async (req: Request, res: Response) => {
       res.status(400).json({ error: e.message });
       return;
     }
-    console.error('[PATCH /admin/settings]', e);
+    logUnexpectedError('PATCH /admin/settings', e);
     res.status(500).json({ error: 'Failed to update settings' });
   }
 });
@@ -651,7 +652,7 @@ router.post('/statistics', requireAdmin, async (req: Request, res: Response) => 
       res.status(400).json({ error: e.message });
       return;
     }
-    console.error('[POST /admin/statistics]', e);
+    logUnexpectedError('POST /admin/statistics', e);
     res.status(500).json({ error: 'Failed to fetch statistics' });
   }
 });

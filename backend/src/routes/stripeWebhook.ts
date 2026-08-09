@@ -9,6 +9,7 @@ import {
   isExpectedStripeEventMode,
   safeStripeVerificationError,
 } from '../utils/stripeSecurity.js';
+import { logUnexpectedError } from '../utils/safeErrorMetadata.js';
 
 async function markOrderPaidFromSession(session: Stripe.Checkout.Session): Promise<void> {
   const orderId = session.metadata?.orderId?.trim();
@@ -86,7 +87,7 @@ export async function handleStripeWebhook(req: Request, res: Response): Promise<
     }
     res.json({ received: true });
   } catch (e) {
-    console.error('[stripe webhook] handler error', e);
+    logUnexpectedError('stripe webhook handler error', e);
     res.status(500).send('Webhook handler failed');
   }
 }

@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { timingSafeEqual } from 'node:crypto';
 import { supabase, type Row, logSupabaseError } from '../db/connection.js';
+import { logUnexpectedError } from '../utils/safeErrorMetadata.js';
 
 const JWT_ISSUER = 'mormors-kunafa-backend';
 const JWT_AUDIENCE = 'mormors-kunafa-admin';
@@ -136,7 +137,7 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
     res.setHeader('Cache-Control', 'private, no-store');
     next();
   } catch (error) {
-    console.error('[requireAdmin] authentication failed', error);
+    logUnexpectedError('requireAdmin authentication failed', error);
     res.status(503).json({ error: 'Authentication service unavailable' });
   }
 }

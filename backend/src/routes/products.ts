@@ -3,6 +3,7 @@ import { resolveProductImage } from '../shared/utils/productImage.js';
 import { supabase, type Row, logSupabaseError, nowIso } from '../db/connection.js';
 import { requireAdmin } from '../middleware/auth.js';
 import { isCanonicalUuidV4 } from '../utils/resourceId.js';
+import { logUnexpectedError } from '../utils/safeErrorMetadata.js';
 
 const router = Router();
 
@@ -59,7 +60,7 @@ router.get('/', async (_req: Request, res: Response) => {
 
     return res.status(200).json((data ?? []).map((r) => rowToProduct(r as Row)));
   } catch (e) {
-    console.error('[GET /api/products] unexpected error:', e);
+    logUnexpectedError('GET /api/products unexpected error', e);
     return res.status(500).json({ error: 'Failed to fetch products' });
   }
 });
@@ -83,7 +84,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 
     return res.status(200).json(rowToProduct(data as Row));
   } catch (e) {
-    console.error('[GET /api/products/:id] unexpected error:', e);
+    logUnexpectedError('GET /api/products/:id unexpected error', e);
     return res.status(500).json({ error: 'Failed to fetch product' });
   }
 });
@@ -116,7 +117,7 @@ router.patch('/:id/stock', requireAdmin, async (req: Request, res: Response) => 
 
     return res.status(200).json(rowToProduct(data as Row));
   } catch (e) {
-    console.error('[PATCH /api/products/:id/stock] unexpected error:', e);
+    logUnexpectedError('PATCH /api/products/:id/stock unexpected error', e);
     return res.status(500).json({ error: 'Failed to update stock' });
   }
 });
