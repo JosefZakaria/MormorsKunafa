@@ -3,6 +3,7 @@ import { isIP } from 'node:net';
 import type { Request, Response, NextFunction } from 'express';
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
+import { logUnexpectedError } from '../utils/safeErrorMetadata.js';
 
 interface LocalEntry {
   count: number;
@@ -92,7 +93,7 @@ export function createRateLimiter(options: {
         next();
         return;
       } catch (error) {
-        console.error('[rate-limit] distributed limiter failed', { prefix, error });
+        logUnexpectedError(`rate-limit ${prefix} distributed limiter failed`, error);
         res.status(503).json({ error: 'Request protection is temporarily unavailable' });
         return;
       }

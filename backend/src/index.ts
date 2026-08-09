@@ -62,7 +62,7 @@ app.use(
         callback(null, true);
         return;
       }
-      console.warn('[CORS] Blocked origin:', origin, 'Allowed:', frontendOrigins);
+      console.warn('[CORS] Blocked untrusted origin');
       callback(null, false);
     },
     credentials: true,
