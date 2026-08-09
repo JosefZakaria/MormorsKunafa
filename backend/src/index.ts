@@ -10,8 +10,10 @@ import { getPublicWebAppUrlDiagnostics } from './utils/publicWebAppUrl.js';
 import { configureWebPush, isWebPushConfigured } from './services/pushNotifications.js';
 import { assertJwtConfiguration, requireCsrfProtection } from './middleware/auth.js';
 import { assertRateLimitConfiguration, createRateLimiter } from './middleware/rateLimit.js';
+import { applyApiSecurityHeaders } from './middleware/securityHeaders.js';
 
 const app = express();
+app.disable('x-powered-by');
 // Vercel overwrites the forwarding chain; use exactly its nearest proxy hop.
 app.set('trust proxy', process.env.VERCEL ? 1 : false);
 assertJwtConfiguration();
@@ -44,17 +46,7 @@ function allowedFrontendOrigins(): string[] {
 
 const frontendOrigins = allowedFrontendOrigins();
 
-// Security headers middleware
-app.use((_req, res, next) => {
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
-  res.setHeader('X-XSS-Protection', '1; mode=block');
-  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  if (process.env.NODE_ENV === 'production') {
-    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
-  }
-  next();
-});
+app.use(applyApiSecurityHeaders);
 
 app.use(
   cors({
@@ -70,13 +62,13 @@ app.use(
   })
 );
 
-app.post('/api/stripe/webhook', paymentCallbackLimiter, express.raw({ type: 'application/json' }), (req, res) => {
+app.post('/api/stripe/webhook', paymentCallbackLimiter, express.raw({ type: 'application/json', limit: '256kb' }), (req, res) => {
   void handleStripeWebhook(req, res);
 });
-app.post('/api/swish/callback', paymentCallbackLimiter, express.json(), (req, res) => {
+app.post('/api/swish/callback', paymentCallbackLimiter, express.json({ limit: '32kb' }), (req, res) => {
   void handleSwishCallback(req, res);
 });
-app.use(express.json());
+app.use(express.json({ limit: '64kb' }));
 
 app.use('/api/admin', requireCsrfProtection);
 app.use('/api/orders/admin', requireCsrfProtection);
@@ -118,6 +110,19 @@ app.get('/api/health', (_req, res) => {
     publicWebAppUrl: web.effectiveUrl,
     deployWarnings: web.warnings,
   });
+});
+
+app.use((error: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+  const bodyError = error as { type?: unknown; status?: unknown };
+  if (bodyError?.type === 'entity.too.large' || bodyError?.status === 413) {
+    res.status(413).json({ error: 'Request body is too large' });
+    return;
+  }
+  if (bodyError instanceof SyntaxError && bodyError?.status === 400) {
+    res.status(400).json({ error: 'Invalid JSON body' });
+    return;
+  }
+  next(error);
 });
 
 if (process.env.NODE_ENV !== 'production') {
