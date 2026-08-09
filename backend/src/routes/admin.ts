@@ -149,6 +149,13 @@ router.post('/login', loginLimiter, async (req: Request, res: Response) => {
   }
 });
 
+const eventsLimiter = createRateLimiter({
+  windowMs: 60 * 1000,
+  max: 30,
+  message: 'För många realtidsanslutningar. Försök igen om en minut.',
+  prefix: 'admin-events',
+});
+
 router.post('/logout', requireAdmin, (_req: Request, res: Response) => {
   res.setHeader('Set-Cookie', clearAdminSessionCookies());
   res.status(204).send();
@@ -169,7 +176,7 @@ router.get('/session', requireAdmin, (req: Request, res: Response) => {
   });
 });
 
-router.get('/events', requireAdmin, (req: Request, res: Response) => {
+router.get('/events', eventsLimiter, requireAdmin, (req: Request, res: Response) => {
   const admin = (req as Request & { admin: { adminId: string } }).admin;
 
   res.setHeader('Content-Type', 'text/event-stream');

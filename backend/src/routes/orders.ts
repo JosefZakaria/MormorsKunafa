@@ -4,7 +4,11 @@ import { supabase, generateId, type Row, logSupabaseError, nowIso } from '../db/
 import { fetchOrderRow, getOrderById, getNextOrderNumber, updateOrder } from '../db/orderRepository.js';
 import { orderRowToOrder, orderRowToPublicStatus, rowsToOrders } from '../db/ordersList.js';
 import { requireAdmin } from '../middleware/auth.js';
-import { createRateLimiter } from '../middleware/rateLimit.js';
+import {
+  createRateLimiter,
+  getTrustedClientIp,
+  hashRateLimitIdentifier,
+} from '../middleware/rateLimit.js';
 import { PrinterService } from '../services/PrinterService.js';
 import { sendOrderConfirmationEmail } from '../services/OrderConfirmationEmail.js';
 import { sendSms } from '../services/SmsService.js';
@@ -44,6 +48,46 @@ const orderLimiter = createRateLimiter({
   prefix: 'create-order',
 });
 
+const orderContactLimiter = createRateLimiter({
+  windowMs: 60 * 60 * 1000,
+  max: 8,
+  message: 'För många beställningar med samma kontaktuppgifter. Försök igen senare.',
+  prefix: 'create-order-contact',
+  keyGenerator: (req) => {
+    const phone = String(req.body?.customerInfo?.phone ?? req.body?.deliveryInfo?.phone ?? '');
+    const email = String(req.body?.customerInfo?.email ?? req.body?.deliveryInfo?.email ?? '');
+    return hashRateLimitIdentifier(`${getTrustedClientIp(req)}:${phone}:${email}`);
+  },
+});
+
+function orderTokenRateKey(req: Request): string {
+  const token = Array.isArray(req.headers['x-order-status-token'])
+    ? req.headers['x-order-status-token'][0]
+    : req.headers['x-order-status-token'];
+  return hashRateLimitIdentifier(`${getTrustedClientIp(req)}:${token ?? 'missing'}`);
+}
+
+const checkoutLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  prefix: 'checkout-session',
+  keyGenerator: orderTokenRateKey,
+});
+
+const paymentConfirmLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  prefix: 'payment-confirm',
+  keyGenerator: orderTokenRateKey,
+});
+
+const orderStatusLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 180,
+  prefix: 'order-status',
+  keyGenerator: orderTokenRateKey,
+});
+
 function safeCompareStrings(a?: string, b?: string): boolean {
   if (!a || !b) return false;
   const bufA = Buffer.from(a);
@@ -74,7 +118,7 @@ function todayInStockholm(): string {
 }
 
 // Create order (public)
-router.post('/', orderLimiter, async (req: Request, res: Response) => {
+router.post('/', orderLimiter, orderContactLimiter, async (req: Request, res: Response) => {
   try {
     const body = req.body as {
       items: OrderItemInput[];
@@ -276,7 +320,7 @@ router.post('/', orderLimiter, async (req: Request, res: Response) => {
 });
 
 // Stripe Checkout: start payment for an existing order (must be before GET /:id)
-router.post('/checkout-session/:orderId', async (req: Request, res: Response) => {
+router.post('/checkout-session/:orderId', checkoutLimiter, async (req: Request, res: Response) => {
   try {
     let stripe;
     try {
@@ -406,7 +450,7 @@ router.post('/checkout-session/:orderId', async (req: Request, res: Response) =>
 });
 
 /** Confirm card payment after Stripe redirect (backup when webhook is slow/missing). */
-router.post('/stripe-confirm', async (req: Request, res: Response) => {
+router.post('/stripe-confirm', paymentConfirmLimiter, async (req: Request, res: Response) => {
   try {
     const orderId = String(req.body?.orderId ?? '').trim();
     const sessionId = String(req.body?.sessionId ?? '').trim();
@@ -856,7 +900,7 @@ router.get('/settings', async (_req: Request, res: Response) => {
   }
 });
 
-router.get('/:id', async (req: Request, res: Response) => {
+router.get('/:id', orderStatusLimiter, async (req: Request, res: Response) => {
   try {
     if (!requireOrderStatusToken(req, res, req.params.id)) return;
     const order = await fetchOrderRow(req.params.id);

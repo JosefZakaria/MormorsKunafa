@@ -11,10 +11,29 @@ import {
 } from '../services/swishClient.js';
 import { isSwishPayment, normalizeSwishPayerAlias } from '../utils/paymentMethod.js';
 import { requireOrderStatusToken } from '../middleware/orderStatusToken.js';
+import { createRateLimiter, getTrustedClientIp, hashRateLimitIdentifier } from '../middleware/rateLimit.js';
 
 const router = Router();
 
-router.post('/:orderId', async (req: Request, res: Response) => {
+const swishStartLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  prefix: 'swish-start',
+  keyGenerator: (req) => hashRateLimitIdentifier(
+    `${getTrustedClientIp(req)}:${String(req.headers['x-order-status-token'] ?? '')}`
+  ),
+});
+
+const swishStatusLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 180,
+  prefix: 'swish-status',
+  keyGenerator: (req) => hashRateLimitIdentifier(
+    `${getTrustedClientIp(req)}:${String(req.headers['x-order-status-token'] ?? '')}`
+  ),
+});
+
+router.post('/:orderId', swishStartLimiter, async (req: Request, res: Response) => {
   try {
     if (!isSwishConfigured()) {
       res.status(503).json({ error: 'Swish-betalning är inte konfigurerad.' });
@@ -81,7 +100,7 @@ router.post('/:orderId', async (req: Request, res: Response) => {
   }
 });
 
-router.get('/:orderId/status', async (req: Request, res: Response) => {
+router.get('/:orderId/status', swishStatusLimiter, async (req: Request, res: Response) => {
   try {
     const orderId = req.params.orderId;
     if (!requireOrderStatusToken(req, res, orderId)) return;
