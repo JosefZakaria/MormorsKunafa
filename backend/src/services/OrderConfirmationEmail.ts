@@ -3,6 +3,10 @@ import type { Row } from '../db/connection.js';
 import { formatStockholmDateTime } from '../utils/stockholmWallTime.js';
 import { includedVatFromGrossOre } from '../shared/utils/vat.js';
 import { formatVerifiedReceiptDate } from '../utils/receiptDate.js';
+import {
+  getPublicWebAppUrl,
+  normalizePublicHttpsAssetUrl,
+} from '../utils/publicWebAppUrl.js';
 
 /** Same asset as `apps/web/public/images/logo.png` (must resolve to an absolute public URL in email). */
 const ORDER_EMAIL_LOGO_PUBLIC_PATH = '/images/logo.png';
@@ -44,11 +48,9 @@ function orderTypeLabelSv(orderType: string): string {
  * Without a domain, set `ORDER_EMAIL_LOGO_URL` to a direct image link (temporary host).
  */
 function logoUrl(): string | undefined {
-  const explicit = process.env.ORDER_EMAIL_LOGO_URL?.trim();
+  const explicit = normalizePublicHttpsAssetUrl(process.env.ORDER_EMAIL_LOGO_URL);
   if (explicit) return explicit;
-  const base = process.env.SITE_PUBLIC_URL?.trim().replace(/\/$/, '');
-  if (base) return `${base}${ORDER_EMAIL_LOGO_PUBLIC_PATH}`;
-  return undefined;
+  return `${getPublicWebAppUrl()}${ORDER_EMAIL_LOGO_PUBLIC_PATH}`;
 }
 
 function parseModifications(raw: Row['modifications_json']): string[] {

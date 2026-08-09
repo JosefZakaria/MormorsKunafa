@@ -13,8 +13,34 @@ function isProductionRuntime(): boolean {
   return process.env.VERCEL === '1' || process.env.NODE_ENV === 'production';
 }
 
-function normalizeUrl(url: string): string {
-  return url.trim().replace(/\/+$/, '');
+export function normalizePublicWebAppOrigin(
+  value: unknown,
+  production = isProductionRuntime()
+): string | null {
+  const raw = String(value ?? '').trim();
+  if (!raw || raw.length > 2_048) return null;
+  try {
+    const url = new URL(raw);
+    const local = ['localhost', '127.0.0.1', '::1'].includes(url.hostname.toLowerCase());
+    if (url.protocol !== 'https:' && !(url.protocol === 'http:' && local && !production)) return null;
+    if (url.username || url.password || url.search || url.hash) return null;
+    if (url.pathname !== '/' && url.pathname !== '') return null;
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
+
+export function normalizePublicHttpsAssetUrl(value: unknown): string | null {
+  const raw = String(value ?? '').trim();
+  if (!raw || raw.length > 4_096) return null;
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== 'https:' || url.username || url.password || url.hash) return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -29,10 +55,8 @@ export function getPublicWebAppUrl(): string {
   ];
 
   for (const { value } of candidates) {
-    const normalized = value?.trim() ? normalizeUrl(value) : '';
-    if (normalized && !isLocalhostUrl(normalized)) {
-      return normalized;
-    }
+    const normalized = normalizePublicWebAppOrigin(value);
+    if (normalized) return normalized;
   }
 
   if (isProductionRuntime()) {
@@ -61,8 +85,10 @@ export function getPublicWebAppUrlDiagnostics(): {
   if (prod) {
     if (!pub && !front) {
       warnings.push('PUBLIC_WEB_APP_URL and FRONTEND_URL are unset — Stripe redirects use fallback domain.');
-    } else if (pub && isLocalhostUrl(normalizeUrl(pub))) {
+    } else if (pub && isLocalhostUrl(pub)) {
       warnings.push('PUBLIC_WEB_APP_URL points to localhost in production.');
+    } else if (pub && !normalizePublicWebAppOrigin(pub, true)) {
+      warnings.push('PUBLIC_WEB_APP_URL is not a clean HTTPS origin.');
     }
     if (!process.env.STRIPE_WEBHOOK_SECRET?.trim()) {
       warnings.push('STRIPE_WEBHOOK_SECRET is unset — card payments may stay "pending" until manual fix.');

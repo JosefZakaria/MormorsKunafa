@@ -6,7 +6,10 @@ import ordersRouter from './routes/orders.js';
 import adminRouter from './routes/admin.js';
 import { handleStripeWebhook } from './routes/stripeWebhook.js';
 import { handleSwishCallback } from './routes/swishCallback.js';
-import { getPublicWebAppUrlDiagnostics } from './utils/publicWebAppUrl.js';
+import {
+  getPublicWebAppUrlDiagnostics,
+  normalizePublicWebAppOrigin,
+} from './utils/publicWebAppUrl.js';
 import { configureWebPush, isWebPushConfigured } from './services/pushNotifications.js';
 import { assertJwtConfiguration, requireCsrfProtection } from './middleware/auth.js';
 import { assertRateLimitConfiguration, createRateLimiter } from './middleware/rateLimit.js';
@@ -40,8 +43,8 @@ function allowedFrontendOrigins(): string[] {
 
   const origins = new Set<string>(defaults);
   for (const part of fromEnv.split(',')) {
-    const trimmed = part.trim().replace(/\/$/, '');
-    if (trimmed) origins.add(trimmed);
+    const origin = normalizePublicWebAppOrigin(part);
+    if (origin) origins.add(origin);
   }
   return [...origins];
 }
