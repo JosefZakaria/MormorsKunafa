@@ -477,6 +477,7 @@
     border-radius: var(--radius-lg);
     overflow: hidden;
     min-height: 420px;
+    background: linear-gradient(135deg, rgba(200, 150, 42, 0.22), rgba(143, 31, 18, 0.72));
 }
 
 .findus__map {
@@ -484,8 +485,18 @@
     height: 100%;
     min-height: 420px;
     border: 0;
-    display: block;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-xl);
+    color: var(--color-white);
+    text-align: center;
+    text-decoration: none;
 }
+
+.findus__map span { color: var(--color-secondary-gold); font-weight: 700; }
 
 @media (max-width: 860px) {
     .findus__grid { grid-template-columns: 1fr; }
