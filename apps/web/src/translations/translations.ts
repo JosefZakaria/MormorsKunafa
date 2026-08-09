@@ -200,10 +200,6 @@ export const translations = {
         "cart.terms_link": "Köpvillkoren",
         "cart.privacy_link": "Integritetspolicyn",
         "cart.terms_required_error": "Du måste godkänna köpvillkoren och integritetspolicyn för att slutföra beställningen.",
-        "cookie.banner_text": "Vi använder nödvändig lokal lagring (localStorage) för att komma ihåg din varukorg och vald stad samt ge dig den bästa upplevelsen.",
-        "cookie.accept_all": "Godkänn alla",
-        "cookie.essential_only": "Endast nödvändiga",
-        "cookie.learn_more": "Läs integritetspolicyn"
     },
     en: {
         // Header
@@ -417,10 +413,6 @@ export const translations = {
         "cart.terms_link": "Terms & Conditions",
         "cart.privacy_link": "Privacy Policy",
         "cart.terms_required_error": "You must accept the Terms & Conditions and Privacy Policy to complete your order.",
-        "cookie.banner_text": "We use essential local storage to remember your shopping cart and selected location to offer the best experience.",
-        "cookie.accept_all": "Accept All",
-        "cookie.essential_only": "Essential Only",
-        "cookie.learn_more": "Read Privacy Policy"
     },
     ar: {
         // Header
@@ -634,9 +626,5 @@ export const translations = {
         "cart.terms_link": "الشروط والأحكام",
         "cart.privacy_link": "سياسة الخصوصية",
         "cart.terms_required_error": "يجب الموافقة على الشروط والأحكام وسياسة الخصوصية لإتمام الطلب.",
-        "cookie.banner_text": "نستخدم التخزين المحلي الضروري لحفظ سلة التسوق والمدينة المختارة لتقديم أفضل تجربة.",
-        "cookie.accept_all": "قبول الكل",
-        "cookie.essential_only": "الضرورية فقط",
-        "cookie.learn_more": "اقرأ سياسة الخصوصية"
     }
 };

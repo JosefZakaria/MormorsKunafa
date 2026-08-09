@@ -9,7 +9,6 @@ import { SwishPay } from './pages/SwishPay/SwishPay';
 import { SelectLocation } from './pages/SelectLocation/SelectLocation';
 import { Terms } from './pages/Terms/Terms';
 import { Privacy } from './pages/Privacy/Privacy';
-import { CookieBanner } from './components/common/CookieBanner/CookieBanner';
 import { AdminLogin } from './pages/Admin/Login/AdminLogin';
 import { AdminDashboard } from './pages/Admin/Dashboard/AdminDashboard';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -33,7 +32,6 @@ function App() {
           <CartProvider>
             <ToastProvider>
               <Toast />
-              <CookieBanner />
               <Routes>
                 <Route path="/" element={<MainLayout />}>
                   <Route index element={<Landing />} />
