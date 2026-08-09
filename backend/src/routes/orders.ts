@@ -294,9 +294,26 @@ router.post('/checkout-session/:orderId', async (req: Request, res: Response) =>
     }
 
     const totalOre = Number(order.total_ore ?? 0);
-    if (totalOre <= 0) {
+    if (!Number.isSafeInteger(totalOre) || totalOre <= 0) {
       res.status(400).json({ error: 'Order has no payable total' });
       return;
+    }
+
+    const storedSessionId = String(order.stripe_checkout_session_id ?? '').trim();
+    if (storedSessionId) {
+      const existingSession = await stripe.checkout.sessions.retrieve(storedSessionId);
+      if (existingSession.status === 'open' && existingSession.url) {
+        res.json({ url: existingSession.url });
+        return;
+      }
+      if (existingSession.payment_status === 'paid') {
+        res.status(409).json({ error: 'Order payment has already completed' });
+        return;
+      }
+      if (existingSession.status !== 'expired') {
+        res.status(409).json({ error: 'Order already has an active checkout session' });
+        return;
+      }
     }
 
     const base = getPublicWebAppUrl();
@@ -320,20 +337,35 @@ router.post('/checkout-session/:orderId', async (req: Request, res: Response) =>
 
     const custEmail = order.customer_email ? String(order.customer_email).trim() : '';
 
-    const session = await stripe.checkout.sessions.create({
-      mode: 'payment',
-      payment_method_types: ['card'],
-      ...(custEmail ? { customer_email: custEmail } : {}),
-      line_items: lineItems,
-      metadata: { orderId },
-      success_url: successUrl,
-      cancel_url: cancelUrl,
-    });
+    const session = await stripe.checkout.sessions.create(
+      {
+        mode: 'payment',
+        payment_method_types: ['card'],
+        client_reference_id: orderId,
+        ...(custEmail ? { customer_email: custEmail } : {}),
+        line_items: lineItems,
+        metadata: { orderId },
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+      },
+      {
+        // Concurrent retries for the same attempt receive the same Stripe object.
+        idempotencyKey: `checkout-${orderId}-${storedSessionId || 'initial'}`,
+      }
+    );
 
-    const { error: stripeUpdateError } = await supabase
+    if (!session.url) {
+      res.status(500).json({ error: 'Checkout session missing URL' });
+      return;
+    }
+
+    const updateQuery = supabase
       .from('orders')
       .update({ stripe_checkout_session_id: session.id })
       .eq('id', orderId);
+    const { data: updatedRows, error: stripeUpdateError } = storedSessionId
+      ? await updateQuery.eq('stripe_checkout_session_id', storedSessionId).select('id')
+      : await updateQuery.is('stripe_checkout_session_id', null).select('id');
 
     if (stripeUpdateError) {
       logSupabaseError('checkout-session stripe id', stripeUpdateError);
@@ -341,8 +373,17 @@ router.post('/checkout-session/:orderId', async (req: Request, res: Response) =>
       return;
     }
 
-    if (!session.url) {
-      res.status(500).json({ error: 'Checkout session missing URL' });
+    if (!updatedRows || updatedRows.length === 0) {
+      const current = await getOrderById(orderId);
+      if (String(current?.order.stripe_checkout_session_id ?? '') !== session.id) {
+        res.status(409).json({ error: 'Checkout session changed; retry the request' });
+        return;
+      }
+    }
+
+    if (String(session.currency ?? '').toLowerCase() !== 'sek' || session.mode !== 'payment') {
+      console.error('[checkout-session] Stripe returned unexpected session configuration', session.id);
+      res.status(502).json({ error: 'Invalid checkout session configuration' });
       return;
     }
 

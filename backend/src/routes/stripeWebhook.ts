@@ -2,6 +2,8 @@ import type { Request, Response } from 'express';
 import Stripe from 'stripe';
 import { getStripe } from '../services/stripeClient.js';
 import { markOrderPaid } from '../services/markOrderPaid.js';
+import { getOrderById } from '../db/orderRepository.js';
+import { validateStripeCheckoutSession } from '../utils/confirmStripeCheckout.js';
 
 async function markOrderPaidFromSession(session: Stripe.Checkout.Session): Promise<void> {
   const orderId = session.metadata?.orderId?.trim();
@@ -10,13 +12,23 @@ async function markOrderPaidFromSession(session: Stripe.Checkout.Session): Promi
     return;
   }
 
-  const amountTotal = session.amount_total;
-  if (typeof amountTotal !== 'number') {
-    console.warn('[stripe webhook] missing amount_total on session', session.id);
+  const result = await getOrderById(orderId);
+  if (!result) {
+    console.warn('[stripe webhook] order not found', orderId);
     return;
   }
 
-  await markOrderPaid(orderId, { paidAmountOre: amountTotal });
+  const validation = validateStripeCheckoutSession(result.order, session);
+  if (!validation.ok) {
+    console.error('[stripe webhook] checkout validation failed', {
+      sessionId: session.id,
+      orderId,
+      error: validation.error,
+    });
+    return;
+  }
+
+  await markOrderPaid(orderId, { paidAmountOre: validation.paidAmountOre });
 }
 
 export async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
