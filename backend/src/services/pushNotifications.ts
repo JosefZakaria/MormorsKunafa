@@ -8,6 +8,11 @@ import {
   markPushDeliverySuccess,
 } from '../db/pushSubscriptionsRepository.js';
 import type { OrderCreatedEvent } from './realtimeEvents.js';
+import {
+  createSafePushAgent,
+  parseSafePushEndpoint,
+  safePushFailureReason,
+} from '../utils/webPushSecurity.js';
 
 const deliveredInRuntime = new Map<string, Set<string>>();
 
@@ -82,6 +87,11 @@ export async function sendOrderCreatedPush(event: OrderCreatedEvent): Promise<vo
         return;
       }
 
+      if (!parseSafePushEndpoint(subscription.endpoint)) {
+        await disablePushSubscriptionByEndpoint(subscription.endpoint);
+        return;
+      }
+
       const target = {
         endpoint: subscription.endpoint,
         keys: {
@@ -94,6 +104,8 @@ export async function sendOrderCreatedPush(event: OrderCreatedEvent): Promise<vo
         await webpush.sendNotification(target, payload, {
           TTL: 60,
           urgency: 'high',
+          timeout: 10_000,
+          agent: createSafePushAgent(),
         });
 
         setRuntimeDelivered(event.event_id, subscription.id);
@@ -106,7 +118,7 @@ export async function sendOrderCreatedPush(event: OrderCreatedEvent): Promise<vo
         });
       } catch (error: any) {
         const statusCode = Number(error?.statusCode ?? 0) || undefined;
-        const message = String(error?.body || error?.message || 'push failed');
+        const message = safePushFailureReason(error);
         await markPushDeliveryFailure(subscription.id, message, statusCode);
         await createPushDeliveryLog({
           eventId: event.event_id,

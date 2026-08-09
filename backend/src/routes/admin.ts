@@ -17,6 +17,7 @@ import {
 } from '../db/pushSubscriptionsRepository.js';
 import { getRealtimeStatus, registerRealtimeClient } from '../services/realtimeEvents.js';
 import { isWebPushConfigured } from '../services/pushNotifications.js';
+import { validatePushSubscription } from '../utils/webPushSecurity.js';
 
 const loginLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000, // 15 min window
@@ -237,23 +238,22 @@ router.post('/push-subscriptions', requireAdmin, async (req: Request, res: Respo
         keys?: { p256dh?: string; auth?: string };
       }
     | undefined;
-  const deviceLabel = String(req.body?.deviceLabel ?? '').trim();
-  const endpoint = String(subscription?.endpoint ?? '').trim();
-  const p256dh = String(subscription?.keys?.p256dh ?? '').trim();
-  const auth = String(subscription?.keys?.auth ?? '').trim();
+  const validated = validatePushSubscription({
+    endpoint: subscription?.endpoint,
+    p256dh: subscription?.keys?.p256dh,
+    auth: subscription?.keys?.auth,
+    deviceLabel: req.body?.deviceLabel,
+    userAgent: req.headers['user-agent'],
+  });
 
-  if (!endpoint || !p256dh || !auth) {
+  if (!validated) {
     res.status(400).json({ error: 'Invalid subscription payload' });
     return;
   }
 
   const saved = await upsertPushSubscription({
     adminId: admin.adminId,
-    endpoint,
-    p256dh,
-    auth,
-    deviceLabel,
-    userAgent: String(req.headers['user-agent'] ?? '').trim() || undefined,
+    ...validated,
   });
 
   if (!saved) {
