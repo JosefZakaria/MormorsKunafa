@@ -15,6 +15,18 @@ const getToken = (): string | null => {
   return localStorage.getItem('authToken');
 };
 
+const orderStatusTokenKey = (orderId: string): string => `order-status-token:${orderId}`;
+
+export function storeOrderStatusToken(orderId: string, token: string): void {
+  sessionStorage.setItem(orderStatusTokenKey(orderId), token);
+}
+
+function orderStatusHeaders(orderId: string): Record<string, string> {
+  const token = sessionStorage.getItem(orderStatusTokenKey(orderId));
+  if (!token) throw new Error('Order status token is missing');
+  return { 'X-Order-Status-Token': token };
+}
+
 // Products API
 export const productApi = {
   getAll: async (): Promise<Product[]> => {
@@ -39,8 +51,8 @@ export const productApi = {
 
 // Orders API
 export const orderApi = {
-  create: async (data: CreateOrderRequest): Promise<Order> => {
-    return apiRequest<Order>('/orders', {
+  create: async (data: CreateOrderRequest): Promise<Order & { statusToken: string }> => {
+    return apiRequest<Order & { statusToken: string }>('/orders', {
       method: 'POST',
       body: JSON.stringify(data),
     });
@@ -49,6 +61,7 @@ export const orderApi = {
   createCheckoutSession: async (orderId: string): Promise<{ url: string }> => {
     return apiRequest<{ url: string }>(`/orders/checkout-session/${orderId}`, {
       method: 'POST',
+      headers: orderStatusHeaders(orderId),
     });
   },
 
@@ -56,6 +69,7 @@ export const orderApi = {
   confirmStripeCheckout: async (orderId: string, sessionId: string): Promise<Order> => {
     return apiRequest<Order>('/orders/stripe-confirm', {
       method: 'POST',
+      headers: orderStatusHeaders(orderId),
       body: JSON.stringify({ orderId, sessionId }),
     });
   },
@@ -73,6 +87,7 @@ export const orderApi = {
   }> => {
     return apiRequest(`/orders/swish-payment/${orderId}`, {
       method: 'POST',
+      headers: orderStatusHeaders(orderId),
       body: JSON.stringify(body ?? {}),
     });
   },
@@ -85,11 +100,13 @@ export const orderApi = {
     paymentPageUrl?: string;
     token?: string;
   }> => {
-    return apiRequest(`/orders/swish-payment/${orderId}/status`);
+    return apiRequest(`/orders/swish-payment/${orderId}/status`, {
+      headers: orderStatusHeaders(orderId),
+    });
   },
 
   getById: async (id: string): Promise<Order> => {
-    return apiRequest<Order>(`/orders/${id}`);
+    return apiRequest<Order>(`/orders/${id}`, { headers: orderStatusHeaders(id) });
   },
 
   getPending: async (): Promise<Order[]> => {

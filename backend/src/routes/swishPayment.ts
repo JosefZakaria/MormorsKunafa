@@ -10,6 +10,7 @@ import {
   verifySwishPaymentRequest,
 } from '../services/swishClient.js';
 import { isSwishPayment, normalizeSwishPayerAlias } from '../utils/paymentMethod.js';
+import { requireOrderStatusToken } from '../middleware/orderStatusToken.js';
 
 const router = Router();
 
@@ -21,6 +22,7 @@ router.post('/:orderId', async (req: Request, res: Response) => {
     }
 
     const orderId = req.params.orderId;
+    if (!requireOrderStatusToken(req, res, orderId)) return;
     const order = await fetchOrderRow(orderId);
     if (!order) {
       res.status(404).json({ error: 'Order not found' });
@@ -82,6 +84,7 @@ router.post('/:orderId', async (req: Request, res: Response) => {
 router.get('/:orderId/status', async (req: Request, res: Response) => {
   try {
     const orderId = req.params.orderId;
+    if (!requireOrderStatusToken(req, res, orderId)) return;
     const order = await fetchOrderRow(orderId);
     if (!order) {
       res.status(404).json({ error: 'Order not found' });

@@ -5,7 +5,7 @@ import { Container } from '../../components/common/Container/Container';
 import { Button } from '../../components/common/Button/Button';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useCart } from '../../contexts/CartContext';
-import { orderApi } from '../../services/api';
+import { orderApi, storeOrderStatusToken } from '../../services/api';
 import type { CheckoutPaymentChoice, CustomerInfo, OrderType } from '@shared/types';
 import { DELIVERY_FEE_SEK } from '@shared/constants/delivery';
 import { isBreadProductId } from '@shared/constants/productPricing';
@@ -391,6 +391,8 @@ export const Cart: React.FC = () => {
                 ...(scheduledTime ? { scheduledTime } : {}),
                 paymentMethod: paymentChoice,
             });
+
+            storeOrderStatusToken(order.id, order.statusToken);
 
             clearCart();
 

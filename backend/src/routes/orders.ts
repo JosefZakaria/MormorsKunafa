@@ -27,6 +27,10 @@ import {
   OrderValidationError,
   type OrderItemInput,
 } from '../services/orderPricing.js';
+import {
+  createOrderStatusToken,
+  requireOrderStatusToken,
+} from '../middleware/orderStatusToken.js';
 
 const orderLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000, // 15 min window
@@ -254,7 +258,10 @@ router.post('/', orderLimiter, async (req: Request, res: Response) => {
       );
     }
 
-    res.status(201).json(orderRowToOrder(result.order, result.items));
+    res.status(201).json({
+      ...orderRowToOrder(result.order, result.items),
+      statusToken: createOrderStatusToken(orderId),
+    });
   } catch (e) {
     if (e instanceof OrderValidationError) {
       res.status(e.status).json({ error: e.message });
@@ -277,6 +284,7 @@ router.post('/checkout-session/:orderId', async (req: Request, res: Response) =>
     }
 
     const orderId = req.params.orderId;
+    if (!requireOrderStatusToken(req, res, orderId)) return;
     const result = await getOrderById(orderId);
     if (!result) {
       res.status(404).json({ error: 'Order not found' });
@@ -403,6 +411,7 @@ router.post('/stripe-confirm', async (req: Request, res: Response) => {
       res.status(400).json({ error: 'orderId and sessionId required' });
       return;
     }
+    if (!requireOrderStatusToken(req, res, orderId)) return;
 
     const outcome = await confirmStripeCheckoutSession(orderId, sessionId);
     if (!outcome.ok) {
@@ -845,11 +854,13 @@ router.get('/settings', async (_req: Request, res: Response) => {
 
 router.get('/:id', async (req: Request, res: Response) => {
   try {
+    if (!requireOrderStatusToken(req, res, req.params.id)) return;
     const result = await getOrderById(req.params.id);
     if (!result) {
       res.status(404).json({ error: 'Order not found' });
       return;
     }
+    res.setHeader('Cache-Control', 'private, no-store');
     res.json(orderRowToOrder(result.order, result.items));
   } catch (e) {
     console.error(e);
