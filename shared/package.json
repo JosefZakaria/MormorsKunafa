@@ -34,6 +34,11 @@
       "import": "./dist/constants/delivery.js",
       "default": "./dist/constants/delivery.js"
     },
+    "./constants/productPricing": {
+      "types": "./constants/productPricing.ts",
+      "import": "./dist/constants/productPricing.js",
+      "default": "./dist/constants/productPricing.js"
+    },
     "./utils/scheduledTime": {
       "types": "./utils/scheduledTime.ts",
       "import": "./dist/utils/scheduledTime.js",

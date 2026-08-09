@@ -1,63 +1,20 @@
 import type { Product } from '@shared/types';
+import {
+    BREAD_UNIT_PRICE_ORE,
+    VARIANT_PRICES_ORE,
+    getAllowedVariantIds,
+    getCatalogVariantPriceOre,
+    getFixedVariantId,
+    getProductCatalogIndex,
+    isBreadProductId,
+} from '@shared/constants/productPricing';
 import { getTranslationIndex } from './productDisplayName';
 
 /** Translation indices that must not appear on the menu. */
 export const EXCLUDED_MENU_INDICES = new Set(['4', '6']);
 
 /** Variant prices in öre (option label → price). */
-export const VARIANT_PRICES: Record<string, Record<string, number>> = {
-    '1': {
-        '250 gram': 8900,
-        '500 gram': 17900,
-        '1 kg': 34900,
-    },
-    '2': {
-        '250 gram': 6900,
-        '500 gram': 12900,
-        '1 kg': 24900,
-    },
-    '3': {
-        '2 personer': 14900,
-        '4 personer': 24900,
-    },
-    '5': {
-        '500 gram': 14900,
-        '1 kg': 24900,
-    },
-    '7': {
-        '250 gram': 7900,
-        '500 gram': 14900,
-        '1 kg': 24900,
-    },
-    '8': {
-        '2 personer': 14900,
-        '4 personer': 24900,
-    },
-    '11': {
-        '250 gram': 7900,
-        '500 gram': 14900,
-        '1 kg': 24900,
-    },
-    '13': {
-        '500 gram': 17900,
-        '1 kg': 34900,
-    },
-};
-
-/** Per-piece price for bread (index 9). */
-export const BREAD_UNIT_PRICE_ORE = 1500;
-
-/** Options shown in the menu modal per product index (bread uses +/- stepper). */
-export const PRODUCT_OPTIONS: Record<string, string[]> = {
-    '1': ['250 gram', '500 gram', '1 kg'],
-    '2': ['250 gram', '500 gram', '1 kg'],
-    '3': ['2 personer', '4 personer'],
-    '5': ['500 gram', '1 kg'],
-    '7': ['250 gram', '500 gram', '1 kg'],
-    '8': ['2 personer', '4 personer'],
-    '11': ['250 gram', '500 gram', '1 kg'],
-    '13': ['500 gram', '1 kg'],
-};
+export { BREAD_UNIT_PRICE_ORE };
 
 /** Cart/modifier label for bread quantity. */
 export function formatBreadOption(quantity: number): string {
@@ -65,11 +22,6 @@ export function formatBreadOption(quantity: number): string {
 }
 
 /** Fixed-weight products (use DB price, no variant map). */
-export const FIXED_WEIGHT_BY_INDEX: Record<string, string> = {
-    '12': '1 kg',
-    '14': '1350 gram',
-};
-
 export type OptionSelectorType = 'weight' | 'persons' | 'bread' | 'fixed';
 
 export function isMenuExcluded(product: Product): boolean {
@@ -81,22 +33,19 @@ export function isMenuExcluded(product: Product): boolean {
 }
 
 export function getFixedWeight(product: Product): string | null {
-    const idx = getTranslationIndex(product);
-    if (idx && FIXED_WEIGHT_BY_INDEX[idx]) return FIXED_WEIGHT_BY_INDEX[idx];
-    return null;
+    return getFixedVariantId(product.id);
 }
 
 export function hasVariantPricing(product: Product): boolean {
-    const idx = getTranslationIndex(product);
+    const idx = getProductCatalogIndex(product.id);
     if (!idx) return false;
     if (getFixedWeight(product)) return false;
-    return idx in VARIANT_PRICES || idx === '9';
+    return idx in VARIANT_PRICES_ORE || isBreadProductId(product.id);
 }
 
 export function getProductOptions(product: Product): string[] {
-    const idx = getTranslationIndex(product);
-    if (!idx || idx === '9') return [];
-    return PRODUCT_OPTIONS[idx] ?? [];
+    if (isBreadProductId(product.id)) return [];
+    return [...getAllowedVariantIds(product.id)];
 }
 
 export function getOptionSelectorType(product: Product): OptionSelectorType {
@@ -114,7 +63,7 @@ export function parseBreadQuantity(option: string): number {
 }
 
 export function isBreadProduct(product: Product): boolean {
-    return getTranslationIndex(product) === '9';
+    return isBreadProductId(product.id);
 }
 
 /**
@@ -122,12 +71,7 @@ export function isBreadProduct(product: Product): boolean {
  * Returns null for fixed-price products (use product.price).
  */
 export function getVariantPriceOre(product: Product, option: string): number | null {
-    const idx = getTranslationIndex(product);
-    if (!idx) return null;
-    if (idx === '9') return BREAD_UNIT_PRICE_ORE;
-    const map = VARIANT_PRICES[idx];
-    if (!map) return null;
-    return map[option] ?? null;
+    return getCatalogVariantPriceOre(product.id, option);
 }
 
 /** Display price in öre for bread by quantity. */
@@ -145,9 +89,9 @@ export function getDisplayPriceOre(product: Product, option: string, breadQuanti
         const variant = getVariantPriceOre(product, option);
         if (variant != null) return variant;
     }
-    const idx = getTranslationIndex(product);
-    if (idx && VARIANT_PRICES[idx]) {
-        const prices = Object.values(VARIANT_PRICES[idx]);
+    const idx = getProductCatalogIndex(product.id);
+    if (idx && VARIANT_PRICES_ORE[idx]) {
+        const prices = Object.values(VARIANT_PRICES_ORE[idx]);
         if (prices.length > 0) return Math.min(...prices);
     }
     return product.price;
