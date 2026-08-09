@@ -41,9 +41,10 @@ export async function markOrderPaid(orderId: string, options?: MarkOrderPaidOpti
     return false;
   }
 
+  const paidAt = nowIso();
   const { data, error } = await supabase
     .from('orders')
-    .update({ payment_status: 'paid', updated_at: nowIso() })
+    .update({ payment_status: 'paid', updated_at: paidAt })
     .eq('id', orderId)
     .eq('payment_status', 'pending')
     .select('id');
@@ -65,7 +66,11 @@ export async function markOrderPaid(orderId: string, options?: MarkOrderPaidOpti
 
   const emailOut = String(refreshed.order.customer_email ?? '').trim();
   if (emailOut) {
-    void sendOrderConfirmationEmail({ order: refreshed.order, items: refreshed.items }).catch((err) =>
+    void sendOrderConfirmationEmail({
+      order: refreshed.order,
+      items: refreshed.items,
+      paidAt,
+    }).catch((err) =>
       console.error('[order confirmation email after payment]', err)
     );
   }

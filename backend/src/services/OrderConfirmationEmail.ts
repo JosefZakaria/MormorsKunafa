@@ -2,6 +2,7 @@ import { Resend } from 'resend';
 import type { Row } from '../db/connection.js';
 import { formatStockholmDateTime } from '../utils/stockholmWallTime.js';
 import { includedVatFromGrossOre } from '../shared/utils/vat.js';
+import { formatVerifiedReceiptDate } from '../utils/receiptDate.js';
 
 /** Same asset as `apps/web/public/images/logo.png` (must resolve to an absolute public URL in email). */
 const ORDER_EMAIL_LOGO_PUBLIC_PATH = '/images/logo.png';
@@ -67,6 +68,8 @@ function parseModifications(raw: Row['modifications_json']): string[] {
 export type OrderConfirmationRowContext = {
   order: Row;
   items: Row[];
+  /** Server timestamp captured by the verified payment transition. */
+  paidAt?: string;
 };
 
 /** Fire-and-forget from order router; logs errors, never throws. */
@@ -90,22 +93,8 @@ export async function sendOrderConfirmationEmail(ctx: OrderConfirmationRowContex
     ctx.order.order_type
   );
 
-  // Kvittodatum: tidpunkten då köpet genomfördes.
-  const createdAtRaw = ctx.order.created_at as Date | string | null | undefined;
-  let receiptDateSv = '';
-  if (createdAtRaw != null) {
-    const d = createdAtRaw instanceof Date ? createdAtRaw : new Date(createdAtRaw);
-    if (!Number.isNaN(d.getTime())) {
-      receiptDateSv = new Intl.DateTimeFormat('sv-SE', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        timeZone: 'Europe/Stockholm',
-      }).format(d);
-    }
-  }
+  // A receipt must use the verified payment instant, never the pending-order creation time.
+  const receiptDateSv = formatVerifiedReceiptDate(ctx.paidAt);
 
   // Planerat datum/tid om angivet.
   const scheduledAtRaw = ctx.order.scheduled_at as Date | string | null | undefined;
