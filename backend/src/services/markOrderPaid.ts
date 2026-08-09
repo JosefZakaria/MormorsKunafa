@@ -3,6 +3,8 @@ import { getOrderById } from '../db/orderRepository.js';
 import { sendOrderConfirmationEmail } from './OrderConfirmationEmail.js';
 import { sendSms } from './SmsService.js';
 import { formatStockholmDateTime } from '../utils/stockholmWallTime.js';
+import { isOnlinePayment } from '../utils/paymentMethod.js';
+import { dispatchPaidOrderCreatedEvent } from './orderNotifications.js';
 
 export type MarkOrderPaidOptions = {
   expectedAmountOre?: number;
@@ -22,8 +24,19 @@ export async function markOrderPaid(orderId: string, options?: MarkOrderPaidOpti
 
   const expectedOre = options?.expectedAmountOre ?? Number(result.order.total_ore ?? 0);
   const paidOre = options?.paidAmountOre;
+  const paymentMethod = String(result.order.payment_method ?? '');
 
-  if (expectedOre > 0 && paidOre != null && paidOre !== expectedOre) {
+  if (!Number.isSafeInteger(expectedOre) || expectedOre <= 0) {
+    console.error('[markOrderPaid] invalid expected amount', { orderId, expectedOre });
+    return false;
+  }
+
+  if (isOnlinePayment(paymentMethod) && !Number.isSafeInteger(paidOre)) {
+    console.error('[markOrderPaid] verified paid amount required', { orderId });
+    return false;
+  }
+
+  if (paidOre != null && paidOre !== expectedOre) {
     console.error('[markOrderPaid] amount mismatch', { orderId, paidOre, expectedOre });
     return false;
   }
@@ -44,6 +57,11 @@ export async function markOrderPaid(orderId: string, options?: MarkOrderPaidOpti
 
   const refreshed = await getOrderById(orderId);
   if (!refreshed) return true;
+
+  dispatchPaidOrderCreatedEvent(
+    orderId,
+    String(refreshed.order.order_number ?? '')
+  );
 
   const emailOut = String(refreshed.order.customer_email ?? '').trim();
   if (emailOut) {
