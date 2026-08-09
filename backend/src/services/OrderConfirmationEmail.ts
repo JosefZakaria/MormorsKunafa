@@ -1,6 +1,7 @@
 import { Resend } from 'resend';
 import type { Row } from '../db/connection.js';
 import { formatStockholmDateTime } from '../utils/stockholmWallTime.js';
+import { includedVatFromGrossOre } from '../shared/utils/vat.js';
 
 /** Same asset as `apps/web/public/images/logo.png` (must resolve to an absolute public URL in email). */
 const ORDER_EMAIL_LOGO_PUBLIC_PATH = '/images/logo.png';
@@ -84,8 +85,10 @@ export async function sendOrderConfirmationEmail(ctx: OrderConfirmationRowContex
   const imgSrc = logoUrl();
 
   // Förenklad faktura (kvitto): priserna inkluderar moms, så momsen räknas ut baklänges.
-  const VAT_RATE = 6;
-  const vatOre = Math.round((totalOre * VAT_RATE) / (100 + VAT_RATE));
+  const { rate: vatRate, vatOre } = includedVatFromGrossOre(
+    totalOre,
+    ctx.order.order_type
+  );
 
   // Kvittodatum: tidpunkten då köpet genomfördes.
   const createdAtRaw = ctx.order.created_at as Date | string | null | undefined;
@@ -172,7 +175,7 @@ export async function sendOrderConfirmationEmail(ctx: OrderConfirmationRowContex
             <td style="padding-top:18px;text-align:right;font-size:17px;color:#1A3D32"><strong>${formatSekFromOre(totalOre)}</strong></td>
           </tr>
           <tr>
-            <td style="padding-top:6px;font-size:13px;color:#555">Varav ${VAT_RATE}% moms</td>
+            <td style="padding-top:6px;font-size:13px;color:#555">Varav ${vatRate}% moms</td>
             <td style="padding-top:6px;text-align:right;font-size:13px;color:#555">${formatSekFromOre(vatOre)}</td>
           </tr>
         </tbody>

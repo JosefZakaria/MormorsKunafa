@@ -1,5 +1,6 @@
 import { CharacterSet, ThermalPrinter, PrinterTypes, BreakLine } from 'node-thermal-printer';
 import { safePrinterText } from '../shared/utils/safePrinterText.js';
+import { includedVatFromGrossOre } from '../shared/utils/vat.js';
 
 export class PrinterService {
   private printer: ThermalPrinter;
@@ -204,11 +205,17 @@ export class PrinterService {
       this.printer.bold(true);
       this.printer.leftRight("Totalt:", `${order.totalPrice / 100 || 0} kr`);
       this.printer.bold(false);
+      const { rate: vatRate, vatOre } = includedVatFromGrossOre(order.totalPrice, order.orderType);
+      this.printer.leftRight(`Varav ${vatRate}% moms:`, `${(vatOre / 100).toFixed(2)} kr`);
       this.printer.newLine();
       this.printer.newLine();
 
       // -- AVSLUTNING --
       this.printer.alignCenter();
+      this.printer.println("Mormors Kunafa Aktiebolag");
+      this.printer.println("Org.nr 559424-4823");
+      this.printer.println("Karolingatan 1, 212 34 Malmo");
+      this.printer.newLine();
       this.printer.println("Tack för din beställning!");
       this.printer.newLine();
       this.printer.newLine();

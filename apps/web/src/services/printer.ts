@@ -1,5 +1,6 @@
 import type { Order } from '@shared/types';
 import { safePrinterText } from '@shared/utils/safePrinterText';
+import { includedVatFromGrossOre } from '@shared/utils/vat';
 
 const PRINTER_IP_KEY = 'printer_ip';
 const PRINTER_DEVID_KEY = 'printer_devid';
@@ -233,7 +234,13 @@ export async function printReceipt(order: Order): Promise<{ success: boolean; er
   xml += separator();
   const total = ((order.totalPrice || 0) / 100).toFixed(2);
   xml += textLine(`Totalt: ${total} kr`);
+  const { rate: vatRate, vatOre } = includedVatFromGrossOre(order.totalPrice, order.orderType);
+  xml += textLine(`Varav ${vatRate}% moms: ${(vatOre / 100).toFixed(2)} kr`);
   xml += `<feed unit="24"/>`;
+  xml += textLine('Mormors Kunafa Aktiebolag', 'center');
+  xml += textLine('Org.nr 559424-4823', 'center');
+  xml += textLine('Karolingatan 1, 212 34 Malmo', 'center');
+  xml += `<feed unit="12"/>`;
   xml += textLine('Tack for din bestallning!', 'center');
   xml = finishPrint(xml);
 
