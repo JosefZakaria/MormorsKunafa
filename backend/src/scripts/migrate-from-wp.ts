@@ -15,6 +15,7 @@ import 'dotenv/config';
 import mysql from 'mysql2/promise';
 import bcrypt from 'bcryptjs';
 import { parseMigrationAdminPasswords } from '../utils/migrationAdminPasswords.js';
+import { logUnexpectedError } from '../utils/safeErrorMetadata.js';
 
 const WP_PREFIX = process.env.WP_TABLE_PREFIX ?? 'wp_';
 
@@ -263,6 +264,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error(err);
+  logUnexpectedError('WordPress migration failed', err);
   process.exit(1);
 });

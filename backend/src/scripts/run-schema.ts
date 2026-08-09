@@ -7,6 +7,7 @@ import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import mysql from 'mysql2/promise';
+import { logUnexpectedError } from '../utils/safeErrorMetadata.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -32,6 +33,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error(err);
+  logUnexpectedError('schema migration failed', err);
   process.exit(1);
 });

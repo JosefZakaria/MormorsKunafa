@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import mysql from 'mysql2/promise';
+import { logUnexpectedError } from '../utils/safeErrorMetadata.js';
 
 async function main() {
   const database = process.env.DB_DATABASE ?? 'mormors_kunafa';
@@ -37,6 +38,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error(err);
+  logUnexpectedError('rush time migration failed', err);
   process.exit(1);
 });
