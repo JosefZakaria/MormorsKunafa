@@ -11,6 +11,8 @@ import { configureWebPush, isWebPushConfigured } from './services/pushNotificati
 import { assertJwtConfiguration, requireCsrfProtection } from './middleware/auth.js';
 
 const app = express();
+// Vercel overwrites the forwarding chain; use exactly its nearest proxy hop.
+app.set('trust proxy', process.env.VERCEL ? 1 : false);
 assertJwtConfiguration();
 configureWebPush();
 

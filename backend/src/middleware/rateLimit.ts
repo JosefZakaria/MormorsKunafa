@@ -6,6 +6,12 @@ interface RateLimitStore {
 }
 
 const stores = new Map<string, Map<string, RateLimitStore>>();
+const MAX_KEYS_PER_LIMITER = 10_000;
+
+export function resolveRateLimitAddress(req: Request, isVercel = Boolean(process.env.VERCEL)): string {
+  if (isVercel && req.ip) return req.ip;
+  return req.socket.remoteAddress || 'unknown-ip';
+}
 
 /**
  * In-memory sliding window rate limiter middleware.
@@ -38,15 +44,18 @@ export function createRateLimiter(options: {
   }, 5 * 60 * 1000).unref();
 
   return (req: Request, res: Response, next: NextFunction): void => {
-    const ip =
-      (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
-      req.socket.remoteAddress ||
-      'unknown-ip';
+    // Express req.ip is used only on Vercel, where the platform overwrites the
+    // forwarded chain. Outside Vercel, never trust a caller-supplied XFF header.
+    const ip = resolveRateLimitAddress(req);
 
     const now = Date.now();
     let entry = store.get(ip);
 
     if (!entry || now > entry.resetTime) {
+      if (store.size >= MAX_KEYS_PER_LIMITER) {
+        const oldestKey = store.keys().next().value;
+        if (oldestKey) store.delete(oldestKey);
+      }
       entry = { count: 1, resetTime: now + windowMs };
       store.set(ip, entry);
       next();
