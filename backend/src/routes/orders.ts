@@ -60,6 +60,13 @@ import {
   parseInternalNotes,
   parsePreparationMinutes,
 } from '../utils/adminInput.js';
+import {
+  abandonOrderIdempotency,
+  beginOrderIdempotency,
+  completeOrderIdempotency,
+  OrderIdempotencyError,
+  type OrderIdempotencyContext,
+} from '../middleware/orderIdempotency.js';
 
 const orderLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000, // 15 min window
@@ -139,6 +146,8 @@ function todayInStockholm(): string {
 
 // Create order (public)
 router.post('/', orderLimiter, orderContactLimiter, async (req: Request, res: Response) => {
+  let idempotencyContext: OrderIdempotencyContext | undefined;
+  let orderPersisted = false;
   try {
     const body = req.body as {
       items: OrderItemInput[];
@@ -167,8 +176,6 @@ router.post('/', orderLimiter, orderContactLimiter, async (req: Request, res: Re
 
     const serverPricedLines = await buildServerPricedOrderLines(body.items);
     const scheduledTimeInput = validateScheduledTimeInput(body.scheduledTime);
-
-    const orderNumber = await getNextOrderNumber();
 
     const { data: settingsRows, error: settingsError } = await supabase
       .from('admin_settings')
@@ -216,6 +223,25 @@ router.post('/', orderLimiter, orderContactLimiter, async (req: Request, res: Re
 
     const customer = validateCustomerInput(body.customerInfo, body.deliveryInfo, isDelivery);
 
+    const idempotency = await beginOrderIdempotency(req.headers['idempotency-key'], body);
+    if (idempotency.kind === 'replay') {
+      res.setHeader('Idempotent-Replayed', 'true');
+      res.status(201).json(idempotency.response);
+      return;
+    }
+    if (idempotency.kind === 'processing') {
+      res.setHeader('Retry-After', '5');
+      res.status(409).json({ error: 'En identisk order behandlas redan. Försök igen om några sekunder.' });
+      return;
+    }
+    if (idempotency.kind === 'conflict') {
+      res.status(409).json({ error: 'Idempotency-Key has already been used for different order data' });
+      return;
+    }
+    idempotencyContext = idempotency.context;
+
+    const orderNumber = await getNextOrderNumber();
+
     const orderId = generateId();
     const orderInsert = {
       id: orderId,
@@ -236,10 +262,14 @@ router.post('/', orderLimiter, orderContactLimiter, async (req: Request, res: Re
 
     const { error: orderInsertError } = await supabase.from('orders').insert(orderInsert);
     if (orderInsertError) {
+      await abandonOrderIdempotency(idempotencyContext);
+      idempotencyContext = undefined;
       logSupabaseError('POST /api/orders insert', orderInsertError);
       res.status(500).json({ error: 'Failed to create order', details: orderInsertError.message });
       return;
     }
+
+    orderPersisted = true;
 
     let totalOre = serverPricedLines.reduce(
       (sum, line) => sum + line.priceOre * line.quantity,
@@ -280,6 +310,9 @@ router.post('/', orderLimiter, orderContactLimiter, async (req: Request, res: Re
     if (itemsError) {
       logSupabaseError('POST /api/orders items', itemsError);
       await supabase.from('orders').delete().eq('id', orderId);
+      orderPersisted = false;
+      await abandonOrderIdempotency(idempotencyContext);
+      idempotencyContext = undefined;
       res.status(500).json({
         error: 'Kunde inte spara orderrader',
         details: itemsError.message,
@@ -321,11 +354,26 @@ router.post('/', orderLimiter, orderContactLimiter, async (req: Request, res: Re
       );
     }
 
-    res.status(201).json({
+    const responseBody = {
       ...orderRowToOrder(result.order, result.items),
       statusToken: createOrderStatusToken(orderId),
-    });
+    };
+    try {
+      await completeOrderIdempotency(idempotencyContext, responseBody);
+    } catch (error) {
+      console.error('[order idempotency] failed to persist completed response', error);
+    }
+    res.status(201).json(responseBody);
   } catch (e) {
+    if (idempotencyContext && !orderPersisted) {
+      await abandonOrderIdempotency(idempotencyContext).catch((error) =>
+        console.error('[order idempotency] failed to release request', error)
+      );
+    }
+    if (e instanceof OrderIdempotencyError) {
+      res.status(400).json({ error: e.message });
+      return;
+    }
     if (e instanceof OrderValidationError) {
       res.status(e.status).json({ error: e.message });
       return;
@@ -336,6 +384,16 @@ router.post('/', orderLimiter, orderContactLimiter, async (req: Request, res: Re
     }
     console.error(e);
     res.status(500).json({ error: 'Failed to create order' });
+  } finally {
+    // Keep the short processing lock after a persisted order fails so an
+    // immediate retry cannot create a duplicate partial order.
+    if (idempotencyContext && !orderPersisted) {
+      try {
+        await abandonOrderIdempotency(idempotencyContext);
+      } catch (error) {
+        console.error('[order idempotency cleanup]', error);
+      }
+    }
   }
 });
 

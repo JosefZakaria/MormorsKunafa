@@ -64,9 +64,10 @@ export const productApi = {
 
 // Orders API
 export const orderApi = {
-  create: async (data: CreateOrderRequest): Promise<Order & { statusToken: string }> => {
+  create: async (data: CreateOrderRequest, idempotencyKey: string): Promise<Order & { statusToken: string }> => {
     return apiRequest<Order & { statusToken: string }>('/orders', {
       method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey },
       body: JSON.stringify(data),
     });
   },

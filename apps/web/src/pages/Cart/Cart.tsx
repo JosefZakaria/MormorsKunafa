@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { Truck } from 'lucide-react';
 import { Container } from '../../components/common/Container/Container';
@@ -64,6 +64,7 @@ export const Cart: React.FC = () => {
     const [deliveryCity, setDeliveryCity] = useState('');
     const [customerInfoError, setCustomerInfoError] = useState<string | null>(null);
     const [paymentChoice, setPaymentChoice] = useState<CheckoutPaymentChoice>('card');
+    const orderIdempotencyRef = useRef<{ payload: string; key: string } | null>(null);
 
     useEffect(() => {
         localStorage.removeItem('deliveryInfo');
@@ -383,16 +384,22 @@ export const Cart: React.FC = () => {
                 sessionStorage.setItem('swishPayerPhone', phoneForSwish);
             }
 
-            const order = await orderApi.create({
+            const orderRequest = {
                 items: orderItems,
                 orderType: orderType as OrderType,
                 customerInfo,
                 deliveryInfo: deliveryInfo,
                 ...(scheduledTime ? { scheduledTime } : {}),
                 paymentMethod: paymentChoice,
-            });
+            };
+            const payload = JSON.stringify(orderRequest);
+            if (!orderIdempotencyRef.current || orderIdempotencyRef.current.payload !== payload) {
+                orderIdempotencyRef.current = { payload, key: crypto.randomUUID() };
+            }
+            const order = await orderApi.create(orderRequest, orderIdempotencyRef.current.key);
 
             storeOrderStatusToken(order.id, order.statusToken);
+            orderIdempotencyRef.current = null;
 
             clearCart();
 
