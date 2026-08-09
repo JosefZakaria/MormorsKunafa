@@ -1,3 +1,5 @@
+import { logUnexpectedError } from '../utils/safeErrorMetadata.js';
+
 const SINCH_REGION_HOSTS = {
   eu: 'https://eu.conversation.api.sinch.com',
   us: 'https://us.conversation.api.sinch.com',
@@ -72,7 +74,7 @@ export async function sendSms(to: string, message: string): Promise<void> {
       throw new Error(`Sinch SMS request failed with status ${response.status}`);
     }
   } catch (error) {
-    console.error('[SmsService] Failed to send SMS:', error);
+    logUnexpectedError('SmsService failed to send SMS', error);
     throw error;
   }
 }

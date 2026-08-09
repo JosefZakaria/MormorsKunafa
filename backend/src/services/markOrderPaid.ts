@@ -5,6 +5,7 @@ import { sendSms } from './SmsService.js';
 import { formatStockholmDateTime } from '../utils/stockholmWallTime.js';
 import { isOnlinePayment } from '../utils/paymentMethod.js';
 import { dispatchPaidOrderCreatedEvent } from './orderNotifications.js';
+import { logUnexpectedError } from '../utils/safeErrorMetadata.js';
 
 export type MarkOrderPaidOptions = {
   expectedAmountOre?: number;
@@ -71,7 +72,7 @@ export async function markOrderPaid(orderId: string, options?: MarkOrderPaidOpti
       items: refreshed.items,
       paidAt,
     }).catch((err) =>
-      console.error('[order confirmation email after payment]', err)
+      logUnexpectedError('order confirmation email after payment', err)
     );
   }
 
@@ -82,7 +83,7 @@ export async function markOrderPaid(orderId: string, options?: MarkOrderPaidOpti
     const schedStr = refreshed.order.scheduled_at ? formatStockholmDateTime(refreshed.order.scheduled_at as string) : '';
     const schedSuffix = schedStr ? ` Planerad upphämtning: ${schedStr}.` : '';
     void sendSms(phoneOut, `Tack för din beställning från Mormors Kunafa${smsCustomerName ? ', ' + smsCustomerName : ''}! Vi tar snart emot din beställning.${schedSuffix}`).catch((err) =>
-      console.error('[order confirmation sms after payment]', err)
+      logUnexpectedError('order confirmation sms after payment', err)
     );
   }
 

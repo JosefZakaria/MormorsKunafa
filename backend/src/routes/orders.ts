@@ -63,6 +63,7 @@ import {
   parseInternalNotes,
   parsePreparationMinutes,
 } from '../utils/adminInput.js';
+import { logUnexpectedError } from '../utils/safeErrorMetadata.js';
 import {
   abandonOrderIdempotency,
   beginOrderIdempotency,
@@ -360,7 +361,7 @@ router.post('/', orderLimiter, orderContactLimiter, async (req: Request, res: Re
     const emailOut = String(result.order.customer_email ?? '').trim();
     if (emailOut && !isOnlinePayment(paymentMethod)) {
       void sendOrderConfirmationEmail({ order: result.order, items: result.items }).catch((err) =>
-        console.error('[order confirmation email]', err)
+        logUnexpectedError('order confirmation email', err)
       );
     }
 
@@ -371,7 +372,7 @@ router.post('/', orderLimiter, orderContactLimiter, async (req: Request, res: Re
       const schedStr = result.order.scheduled_at ? formatStockholmDateTime(result.order.scheduled_at as string) : '';
       const schedSuffix = schedStr ? ` Planerad upphämtning: ${schedStr}.` : '';
       void sendSms(phoneOut, `Tack för din beställning från Mormors Kunafa${smsCustomerName ? ', ' + smsCustomerName : ''}! Vi tar snart emot din beställning.${schedSuffix}`).catch((err) =>
-        console.error('[order confirmation sms]', err)
+        logUnexpectedError('order confirmation sms', err)
       );
     }
 
@@ -382,7 +383,7 @@ router.post('/', orderLimiter, orderContactLimiter, async (req: Request, res: Re
     try {
       await completeOrderIdempotency(idempotencyContext, responseBody);
     } catch (error) {
-      console.error('[order idempotency] failed to persist completed response', error);
+      logUnexpectedError('order idempotency failed to persist completed response', error);
     }
     res.status(201).json(responseBody);
   } catch (e) {
@@ -398,7 +399,7 @@ router.post('/', orderLimiter, orderContactLimiter, async (req: Request, res: Re
       res.status(400).json({ error: e.message });
       return;
     }
-    console.error(e);
+    logUnexpectedError('POST /api/orders', e);
     res.status(500).json({ error: 'Failed to create order' });
   } finally {
     // Keep the short processing lock after a persisted order fails so an
@@ -407,7 +408,7 @@ router.post('/', orderLimiter, orderContactLimiter, async (req: Request, res: Re
       try {
         await abandonOrderIdempotency(idempotencyContext);
       } catch (error) {
-        console.error('[order idempotency cleanup]', error);
+        logUnexpectedError('order idempotency cleanup', error);
       }
     }
   }
@@ -531,14 +532,14 @@ router.post('/checkout-session/:orderId', checkoutLimiter, async (req: Request, 
     }
 
     if (String(session.currency ?? '').toLowerCase() !== 'sek' || session.mode !== 'payment') {
-      console.error('[checkout-session] Stripe returned unexpected session configuration', session.id);
+      console.error('[checkout-session] Stripe returned unexpected session configuration');
       res.status(502).json({ error: 'Invalid checkout session configuration' });
       return;
     }
 
     res.json({ url: session.url });
   } catch (e) {
-    console.error(e);
+    logUnexpectedError('POST /api/orders/checkout-session/:orderId', e);
     res.status(500).json({ error: 'Failed to create checkout session' });
   }
 });
@@ -569,7 +570,7 @@ router.post('/stripe-confirm', paymentConfirmLimiter, async (req: Request, res: 
     res.setHeader('Cache-Control', 'private, no-store');
     res.json(orderRowToPublicStatus(order));
   } catch (e) {
-    console.error('[stripe-confirm]', e);
+    logUnexpectedError('stripe confirm', e);
     res.status(500).json({ error: 'Failed to confirm payment' });
   }
 });
@@ -600,7 +601,7 @@ router.get('/admin/pending', requireAdmin, async (_req: Request, res: Response) 
     });
     res.json(await rowsToOrders(sameDay as Row[]));
   } catch (e) {
-    console.error('[GET /admin/pending]', e);
+    logUnexpectedError('GET /admin/pending', e);
     res.status(500).json({ error: 'Failed to fetch pending orders' });
   }
 });
@@ -664,7 +665,7 @@ router.patch('/admin/:id/accept', requireAdmin, async (req: Request, res: Respon
         minute: '2-digit',
       });
       void sendSms(phoneOut, `Hej${customerName ? ', ' + customerName : ''}! Din order är mottagen och beräknas vara klar kl ${readyTimeStr}.`).catch((err) =>
-        console.error('[order accepted sms]', err)
+        logUnexpectedError('order accepted sms', err)
       );
     }
 
@@ -672,7 +673,7 @@ router.patch('/admin/:id/accept', requireAdmin, async (req: Request, res: Respon
     payload.estimatedReadyTime = estimatedReady.toISOString();
     res.json(payload);
   } catch (e) {
-    console.error(e);
+    logUnexpectedError('POST /admin/:id/accept', e);
     res.status(500).json({ error: 'Failed to accept order' });
   }
 });
@@ -694,7 +695,7 @@ router.get('/admin/active', requireAdmin, async (_req: Request, res: Response) =
     }
     res.json(await rowsToOrders((data ?? []) as Row[]));
   } catch (e) {
-    console.error('[GET /admin/active]', e);
+    logUnexpectedError('GET /admin/active', e);
     res.status(500).json({ error: 'Failed to fetch active orders' });
   }
 });
@@ -724,7 +725,7 @@ router.get('/admin/pre-orders', requireAdmin, async (_req: Request, res: Respons
     });
     res.json(await rowsToOrders(futureOnly as Row[]));
   } catch (e) {
-    console.error('[GET /admin/pre-orders]', e);
+    logUnexpectedError('GET /admin/pre-orders', e);
     res.status(500).json({ error: 'Failed to fetch pre-orders' });
   }
 });
@@ -764,7 +765,7 @@ router.get('/admin/history', requireAdmin, async (req: Request, res: Response) =
       res.status(400).json({ error: e.message });
       return;
     }
-    console.error(e);
+    logUnexpectedError('GET /admin/history', e);
     res.status(500).json({ error: 'Failed to fetch history' });
   }
 });
@@ -791,7 +792,7 @@ router.post('/admin/history/all/delete', requireAdmin, async (req: Request, res:
     }
     res.status(204).end();
   } catch (e) {
-    console.error(e);
+    logUnexpectedError('DELETE /admin/history', e);
     res.status(500).json({ error: 'Failed to clear history' });
   }
 });
@@ -814,7 +815,7 @@ router.post('/admin/:id/delete', requireAdmin, async (req: Request, res: Respons
     }
     res.status(204).end();
   } catch (e) {
-    console.error(e);
+    logUnexpectedError('DELETE /admin/:id', e);
     res.status(500).json({ error: 'Failed to delete order' });
   }
 });
@@ -883,7 +884,7 @@ router.post('/admin/:id/cancel', requireAdmin, async (req: Request, res: Respons
     }
     res.json(orderRowToOrder(result.order, result.items));
   } catch (e) {
-    console.error(e);
+    logUnexpectedError('POST /admin/:id/cancel', e);
     res.status(500).json({ error: 'Failed to cancel order' });
   }
 });
@@ -940,7 +941,7 @@ router.patch('/admin/:id/status', requireAdmin, async (req: Request, res: Respon
       res.status(400).json({ error: e.message });
       return;
     }
-    console.error(e);
+    logUnexpectedError('PATCH /admin/:id/status', e);
     res.status(500).json({ error: 'Failed to update status' });
   }
 });
@@ -971,7 +972,7 @@ router.patch('/admin/:id/time', requireAdmin, async (req: Request, res: Response
       res.status(400).json({ error: e.message });
       return;
     }
-    console.error(e);
+    logUnexpectedError('PATCH /admin/:id/time', e);
     res.status(500).json({ error: 'Failed to update time' });
   }
 });
@@ -996,7 +997,7 @@ router.patch('/admin/:id/notes', requireAdmin, async (req: Request, res: Respons
       res.status(400).json({ error: e.message });
       return;
     }
-    console.error(e);
+    logUnexpectedError('PATCH /admin/:id/notes', e);
     res.status(500).json({ error: 'Failed to update internal notes' });
   }
 });
@@ -1022,7 +1023,7 @@ router.post('/admin/:id/print', requireAdmin, async (req: Request, res: Response
     
     res.json({ success: true, message: 'Kvitto utskrivet' });
   } catch (e) {
-    console.error(e);
+    logUnexpectedError('POST /admin/:id/print', e);
     res.status(500).json({ error: 'Failed to print receipt' });
   }
 });
@@ -1051,7 +1052,7 @@ router.get('/settings', async (_req: Request, res: Response) => {
       isPaused: Boolean(data.is_paused),
     });
   } catch (e) {
-    console.error('[GET /api/orders/settings]', e);
+    logUnexpectedError('GET /api/orders/settings', e);
     res.status(500).json({ error: 'Failed to fetch settings' });
   }
 });
@@ -1067,7 +1068,7 @@ router.get('/:id', orderStatusLimiter, async (req: Request, res: Response) => {
     res.setHeader('Cache-Control', 'private, no-store');
     res.json(orderRowToPublicStatus(order));
   } catch (e) {
-    console.error(e);
+    logUnexpectedError('GET /api/orders/:id', e);
     res.status(500).json({ error: 'Failed to fetch order' });
   }
 });

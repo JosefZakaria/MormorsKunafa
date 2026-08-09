@@ -1,6 +1,7 @@
 import { CharacterSet, ThermalPrinter, PrinterTypes, BreakLine } from 'node-thermal-printer';
 import { safePrinterText } from '../shared/utils/safePrinterText.js';
 import { includedVatFromGrossOre } from '../shared/utils/vat.js';
+import { logUnexpectedError } from '../utils/safeErrorMetadata.js';
 
 export class PrinterService {
   private printer: ThermalPrinter;
@@ -142,7 +143,7 @@ export class PrinterService {
       return true;
 
     } catch (error) {
-      console.error("[PrinterService] Fel vid utskrift av kokslapp:", error);
+      logUnexpectedError('PrinterService kitchen ticket failed', error);
       return false;
     }
   }
@@ -232,7 +233,7 @@ export class PrinterService {
       return true;
 
     } catch (error) {
-      console.error("[PrinterService] Fel vid utskrift:", error);
+      logUnexpectedError('PrinterService receipt failed', error);
       return false;
     }
   }
