@@ -58,12 +58,14 @@ const getEnvVar = (key: string, fallback: string): string => {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const viteProd = (import.meta as any)?.env?.PROD === true;
 const defaultApiBaseUrl = viteProd
-  ? 'https://mormors-kunafa-backend.vercel.app/api'
+  ? '/api'
   : 'http://localhost:3001/api';
 
 // API configuration - works for both web and mobile
 export const API_CONFIG = {
-  baseUrl: getEnvVar('API_BASE_URL', defaultApiBaseUrl),
+  // Web production traffic stays same-origin so Strict admin cookies work and
+  // credentials never need to cross from the shop domain to a vercel.app host.
+  baseUrl: viteProd ? '/api' : getEnvVar('API_BASE_URL', defaultApiBaseUrl),
   timeout: 10000,
 };
 

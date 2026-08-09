@@ -5,6 +5,10 @@
   "ignoreCommand": "git diff HEAD^ HEAD --quiet -- . ../../shared",
   "outputDirectory": "dist",
   "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://mormors-kunafa-backend.vercel.app/api/:path*"
+    },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
