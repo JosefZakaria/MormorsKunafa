@@ -2,14 +2,14 @@ import 'dotenv/config';
 import mysql from 'mysql2/promise';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
+import {
+  assertAdminBootstrapIsLocal,
+  readAdminBootstrapCredentials,
+} from '../utils/adminBootstrap.js';
 
 async function main() {
-  // SÄKERHET: Se till att scriptet inte oavsiktligt körs i produktion
-  if (process.env.NODE_ENV === 'production') {
-    console.error('❌ Förbjudet: Detta skript är avstängt i produktion för din säkerhet.');
-    console.error('Hackare kan inte köra detta för att komma in i skarpa databasen.');
-    process.exit(1);
-  }
+  assertAdminBootstrapIsLocal();
+  const { email, password } = readAdminBootstrapCredentials();
 
   const db = await mysql.createConnection({
     host: process.env.DB_HOST,
@@ -20,9 +20,6 @@ async function main() {
   });
 
   try {
-    const email = process.env.DEFAULT_ADMIN_EMAIL ?? 'admin@mormorskunafe.se';
-    const password = process.env.DEFAULT_ADMIN_PASSWORD ?? 'admin123';
-
     console.log(`⏳ Testar databasanslutning...`);
 
     // Kolla om kontot redan finns
@@ -43,11 +40,7 @@ async function main() {
       console.log('✅ Nytt admin-konto är skapat och redo att användas lokalt!');
     }
 
-    console.log(`----------------------------------------`);
-    console.log(` 📧 E-post:   ${email}`);
-    console.log(` 🔑 Lösenord: ${password}`);
-    console.log(`----------------------------------------`);
-    console.log(`(Detta gäller endast den databas som körs på ${process.env.DB_HOST})`);
+    console.log('Admin-kontot är klart. Inloggningsuppgifter skrevs inte till loggen.');
 
   } catch (error) {
     console.error('❌ Ett fel uppstod vid skapandet av admin:', error);
