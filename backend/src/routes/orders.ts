@@ -31,7 +31,11 @@ import {
   createOrderStatusToken,
   requireOrderStatusToken,
 } from '../middleware/orderStatusToken.js';
-import { CustomerInputError, validateCustomerInput } from '../utils/customerInput.js';
+import {
+  CustomerInputError,
+  validateCustomerInput,
+  validateScheduledTimeInput,
+} from '../utils/customerInput.js';
 
 const orderLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000, // 15 min window
@@ -98,6 +102,7 @@ router.post('/', orderLimiter, async (req: Request, res: Response) => {
     }
 
     const serverPricedLines = await buildServerPricedOrderLines(body.items);
+    const scheduledTimeInput = validateScheduledTimeInput(body.scheduledTime);
 
     const orderNumber = await getNextOrderNumber();
 
@@ -127,15 +132,15 @@ router.post('/', orderLimiter, async (req: Request, res: Response) => {
     // Hemkörning has no customer-chosen time (1–2 business days); ignore any scheduledTime.
     let scheduledAt: Date | null = null;
     if (!isDelivery) {
-      if (body.scheduledTime != null && String(body.scheduledTime).trim() !== '') {
-        scheduledAt = parseOrderScheduledAt(body.scheduledTime);
+      if (scheduledTimeInput) {
+        scheduledAt = parseOrderScheduledAt(scheduledTimeInput);
         if (!scheduledAt || Number.isNaN(scheduledAt.getTime())) {
           res.status(400).json({ error: 'Ogiltig förbeställningstid. Välj datum och tid igen.' });
           return;
         }
       }
 
-      const hoursValidation = validateScheduledOrderTime(body.scheduledTime, defaultPrep);
+      const hoursValidation = validateScheduledOrderTime(scheduledTimeInput, defaultPrep);
       if (!hoursValidation.valid) {
         res.status(400).json({ error: hoursValidation.error });
         return;

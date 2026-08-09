@@ -82,3 +82,8 @@ export function validateCustomerInput(
 export function sanitizeOperationalText(value: unknown, field: string, maximumLength: number): string {
   return safeText(value, field, maximumLength);
 }
+
+export function validateScheduledTimeInput(value: unknown): string | undefined {
+  if (value == null || String(value).trim() === '') return undefined;
+  return safeText(value, 'Förbeställningstid', 40, true);
+}
