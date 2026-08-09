@@ -33,7 +33,6 @@ export const Terms: React.FC = () => {
             </p>
             <ul>
               <li><strong>الدفع بالبطاقة:</strong> يتم بأمان عبر Stripe.</li>
-              <li><strong>الدفع عبر Swish:</strong> الدفع المباشر عبر تطبيق Swish في السويد.</li>
             </ul>
           </section>
 
@@ -101,7 +100,6 @@ export const Terms: React.FC = () => {
             </p>
             <ul>
               <li><strong>Card Payment:</strong> Processed securely via Stripe.</li>
-              <li><strong>Swish:</strong> Instant mobile payment via Swish in Sweden.</li>
             </ul>
           </section>
 
@@ -167,8 +165,7 @@ export const Terms: React.FC = () => {
             Alla priser på webbplatsen anges i svenska kronor (SEK) och inkluderar lagstadgad mervärdesskatt (moms).
           </p>
           <ul>
-            <li><strong>Kortbetalning:</strong> Genomförs säkert via Stripe (Visa, Mastercard, Amex, Apple Pay m.fl.).</li>
-            <li><strong>Swish:</strong> Direktbetalning via Swish-appen.</li>
+            <li><strong>Kortbetalning:</strong> Genomförs via Stripe.</li>
           </ul>
         </section>
 

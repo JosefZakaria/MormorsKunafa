@@ -48,8 +48,8 @@ export const Privacy: React.FC = () => {
           </section>
 
           <section className="legal-section">
-            <h2>4. معالجة البيانات مع أطراف ثالثة (Tredjepartsbiträden)</h2>
-            <p>نحن لا نبيع أو نؤجر بياناتك الشخصية لأي طرف ثالث. نقوم بمشاركة البيانات فقط مع معالجي البيانات الموثوقين لإتمام الخدمة:</p>
+            <h2>4. الجهات المستلمة ومقدمو الخدمات (Mottagare och leverantörer)</h2>
+            <p>نحن لا نبيع أو نؤجر بياناتك الشخصية لأي طرف ثالث. نشارك فقط البيانات اللازمة مع الجهات التي تساعد في تنفيذ الخدمة:</p>
             <ul>
               <li><strong>Stripe وSwish:</strong> لمعالجة المدفوعات.</li>
               <li><strong>Resend وSinch:</strong> لإرسال البريد الإلكتروني ورسائل SMS الخاصة بالطلب.</li>
@@ -59,7 +59,7 @@ export const Privacy: React.FC = () => {
               <li><strong>مزودو إشعارات الدفع:</strong> لإرسال إشعارات الطلب إلى الأجهزة المسجلة.</li>
               <li><strong>طابعة المطبخ:</strong> لطباعة المعلومات اللازمة لتحضير الطلب.</li>
             </ul>
-            <p>قد تعالج بعض الجهات بيانات خارج الاتحاد الأوروبي/المنطقة الاقتصادية الأوروبية. عند الحاجة، نعتمد على قرار كفاية أو البنود التعاقدية القياسية أو ضمان قانوني آخر مناسب.</p>
+            <p>قد تعالج بعض الجهات بيانات خارج الاتحاد الأوروبي/المنطقة الاقتصادية الأوروبية. يجب توثيق آلية النقل والضمانات المناسبة لكل خدمة قبل هذا النقل. يمكنك التواصل معنا لطلب المعلومات الحالية.</p>
           </section>
 
           <section className="legal-section">
@@ -131,8 +131,8 @@ export const Privacy: React.FC = () => {
           </section>
 
           <section className="legal-section">
-            <h2>4. Third-Party Data Processors</h2>
-            <p>We do not sell your personal data. We share necessary data only with trusted service providers to fulfill your order:</p>
+            <h2>4. Recipients and Service Providers</h2>
+            <p>We do not sell your personal data. We share only the data necessary with recipients that help us provide the service:</p>
             <ul>
               <li><strong>Stripe and Swish:</strong> Payment processing.</li>
               <li><strong>Resend and Sinch:</strong> Order emails and SMS notifications.</li>
@@ -142,7 +142,7 @@ export const Privacy: React.FC = () => {
               <li><strong>Push notification providers:</strong> Delivery of order notifications to registered devices.</li>
               <li><strong>Kitchen printer:</strong> Local printing of the details needed to prepare an order.</li>
             </ul>
-            <p>Some providers may process data outside the EU/EEA. Where required, such transfers rely on an adequacy decision, standard contractual clauses, or another lawful safeguard.</p>
+            <p>Some providers may process data outside the EU/EEA. The applicable transfer mechanism and safeguards must be documented for each service before such a transfer. Contact us to request current information.</p>
           </section>
 
           <section className="legal-section">
@@ -213,8 +213,8 @@ export const Privacy: React.FC = () => {
         </section>
 
         <section className="legal-section">
-          <h2>4. Tredjepartsbiträden (Personuppgiftsbiträden)</h2>
-          <p>Vi säljer eller vidarebefordrar aldrig dina personuppgifter till tredje part i marknadsföringssyfte. Vi delar endast nödvändiga uppgifter med betrodda leverantörer för att genomföra tjänsten:</p>
+          <h2>4. Mottagare och tjänsteleverantörer</h2>
+          <p>Vi säljer inte dina personuppgifter. Vi delar endast de uppgifter som behövs med mottagare som hjälper oss att genomföra tjänsten:</p>
           <ul>
             <li><strong>Stripe och Swish:</strong> För betalningshantering.</li>
             <li><strong>Resend och Sinch:</strong> För ordermejl och SMS-aviseringar.</li>
@@ -225,7 +225,7 @@ export const Privacy: React.FC = () => {
             <li><strong>Köksskrivare:</strong> För lokal utskrift av de uppgifter som behövs för att förbereda en order.</li>
           </ul>
           <p>
-            Vissa leverantörer kan behandla uppgifter utanför EU/EES. När det krävs grundas en sådan överföring på adekvansbeslut, EU-kommissionens standardavtalsklausuler eller annan tillåten skyddsåtgärd.
+            Vissa leverantörer kan behandla uppgifter utanför EU/EES. Tillämplig överföringsmekanism och skyddsåtgärd måste dokumenteras för varje tjänst innan en sådan överföring sker. Kontakta oss för aktuell information.
           </p>
         </section>
 
