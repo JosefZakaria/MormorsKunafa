@@ -7,21 +7,22 @@ const auth = Buffer.alloc(16, 2).toString('base64url');
 
 test('accepts a structurally valid public HTTPS push subscription', () => {
   const result = validatePushSubscription({
-    endpoint: 'https://push.example.com/subscription/abc',
+    endpoint: 'https://fcm.googleapis.com/fcm/send/abc',
     p256dh,
     auth,
     deviceLabel: 'Kassa',
     userAgent: 'Browser',
   });
 
-  assert.equal(result?.endpoint, 'https://push.example.com/subscription/abc');
+  assert.equal(result?.endpoint, 'https://fcm.googleapis.com/fcm/send/abc');
 });
 
 test('rejects unsafe endpoint schemes, credentials, ports and literal private addresses', () => {
   for (const endpoint of [
-    'http://push.example.com/a',
-    'https://user:password@push.example.com/a',
-    'https://push.example.com:8443/a',
+    'http://fcm.googleapis.com/a',
+    'https://user:password@fcm.googleapis.com/a',
+    'https://fcm.googleapis.com:8443/a',
+    'https://example.com/a',
     'https://127.0.0.1/a',
     'https://169.254.169.254/latest/meta-data',
     'https://[::1]/a',
@@ -31,10 +32,10 @@ test('rejects unsafe endpoint schemes, credentials, ports and literal private ad
 });
 
 test('rejects malformed encryption keys and oversized metadata', () => {
-  assert.equal(validatePushSubscription({ endpoint: 'https://push.example.com/a', p256dh: 'bad', auth }), null);
+  assert.equal(validatePushSubscription({ endpoint: 'https://fcm.googleapis.com/a', p256dh: 'bad', auth }), null);
   assert.equal(
     validatePushSubscription({
-      endpoint: 'https://push.example.com/a',
+      endpoint: 'https://fcm.googleapis.com/a',
       p256dh,
       auth,
       deviceLabel: 'x'.repeat(101),

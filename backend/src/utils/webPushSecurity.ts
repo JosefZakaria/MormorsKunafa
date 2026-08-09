@@ -1,10 +1,20 @@
 import { lookup } from 'node:dns/promises';
 import https from 'node:https';
 import { BlockList, isIP, type LookupFunction } from 'node:net';
+import webpush from 'web-push';
 
 const MAX_ENDPOINT_LENGTH = 2_048;
 const MAX_DEVICE_LABEL_LENGTH = 100;
 const MAX_USER_AGENT_LENGTH = 512;
+const MAX_PUSH_RESPONSE_BYTES = 16 * 1024;
+const PUSH_TIMEOUT_MS = 5_000;
+
+const defaultAllowedPushHosts = new Set([
+  'fcm.googleapis.com',
+  'updates.push.services.mozilla.com',
+  'push.services.mozilla.com',
+  'web.push.apple.com',
+]);
 
 const blockedAddresses = new BlockList();
 
@@ -46,6 +56,15 @@ function isPublicAddress(address: string, family?: number): boolean {
   return false;
 }
 
+function isAllowedPushHost(hostname: string): boolean {
+  const configuredHosts = String(process.env.WEB_PUSH_ALLOWED_HOSTS ?? '')
+    .split(',')
+    .map((host) => host.trim().toLowerCase())
+    .filter(Boolean);
+  const allowed = new Set([...defaultAllowedPushHosts, ...configuredHosts]);
+  return allowed.has(hostname) || hostname.endsWith('.notify.windows.com');
+}
+
 export function parseSafePushEndpoint(value: unknown): URL | null {
   const endpoint = String(value ?? '').trim();
   if (!endpoint || endpoint.length > MAX_ENDPOINT_LENGTH) return null;
@@ -57,7 +76,8 @@ export function parseSafePushEndpoint(value: unknown): URL | null {
       url.username ||
       url.password ||
       url.hash ||
-      (url.port && url.port !== '443')
+      (url.port && url.port !== '443') ||
+      !isAllowedPushHost(url.hostname.toLowerCase())
     ) {
       return null;
     }
@@ -146,6 +166,65 @@ export function createSafePushAgent(): https.Agent {
     keepAlive: false,
     maxSockets: 10,
     lookup: safeLookup,
+  });
+}
+
+export async function sendWebPushSafely(
+  subscription: { endpoint: string; keys: { p256dh: string; auth: string } },
+  payload: string
+): Promise<{ statusCode: number }> {
+  if (!parseSafePushEndpoint(subscription.endpoint)) {
+    throw Object.assign(new Error('Push endpoint is not allowed'), { code: 'EPUSHENDPOINT' });
+  }
+
+  const details = webpush.generateRequestDetails(subscription, payload, {
+    TTL: 60,
+    urgency: 'high',
+  });
+  const agent = createSafePushAgent();
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (error?: Error & { statusCode?: number }, statusCode?: number) => {
+      if (settled) return;
+      settled = true;
+      agent.destroy();
+      if (error) reject(error);
+      else resolve({ statusCode: statusCode ?? 0 });
+    };
+
+    const request = https.request(details.endpoint, {
+      method: details.method,
+      headers: details.headers,
+      agent,
+      timeout: PUSH_TIMEOUT_MS,
+      maxHeaderSize: MAX_PUSH_RESPONSE_BYTES,
+    }, (response) => {
+      let responseBytes = 0;
+      response.on('data', (chunk: Buffer) => {
+        responseBytes += chunk.length;
+        if (responseBytes > MAX_PUSH_RESPONSE_BYTES) {
+          request.destroy(Object.assign(new Error('Push response exceeded size limit'), {
+            code: 'EPUSHRESPONSE',
+          }));
+        }
+      });
+      response.on('end', () => {
+        const statusCode = response.statusCode ?? 0;
+        if (statusCode < 200 || statusCode > 299) {
+          finish(Object.assign(new Error('Push service returned an error'), { statusCode }));
+          return;
+        }
+        finish(undefined, statusCode);
+      });
+    });
+
+    request.on('timeout', () => {
+      request.destroy(Object.assign(new Error('Push request timed out'), { code: 'ETIMEDOUT' }));
+    });
+    request.on('error', (error) => finish(error));
+    if (details.body) request.write(details.body);
+    request.end();
   });
 }
 

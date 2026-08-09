@@ -9,9 +9,9 @@ import {
 } from '../db/pushSubscriptionsRepository.js';
 import type { OrderCreatedEvent } from './realtimeEvents.js';
 import {
-  createSafePushAgent,
   parseSafePushEndpoint,
   safePushFailureReason,
+  sendWebPushSafely,
 } from '../utils/webPushSecurity.js';
 
 const deliveredInRuntime = new Map<string, Set<string>>();
@@ -101,12 +101,7 @@ export async function sendOrderCreatedPush(event: OrderCreatedEvent): Promise<vo
       };
 
       try {
-        await webpush.sendNotification(target, payload, {
-          TTL: 60,
-          urgency: 'high',
-          timeout: 10_000,
-          agent: createSafePushAgent(),
-        });
+        await sendWebPushSafely(target, payload);
 
         setRuntimeDelivered(event.event_id, subscription.id);
         await markPushDeliverySuccess(subscription.id);
