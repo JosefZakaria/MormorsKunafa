@@ -13,6 +13,7 @@ import { isSwishPayment, normalizeSwishPayerAlias } from '../utils/paymentMethod
 import { requireOrderStatusToken } from '../middleware/orderStatusToken.js';
 import { createRateLimiter, getTrustedClientIp, hashRateLimitIdentifier } from '../middleware/rateLimit.js';
 import { isCanonicalUuidV4 } from '../utils/resourceId.js';
+import { logUnexpectedError } from '../utils/safeErrorMetadata.js';
 
 const router = Router();
 
@@ -104,7 +105,7 @@ router.post('/:orderId', swishStartLimiter, async (req: Request, res: Response) 
       orderNumber: order.order_number,
     });
   } catch (e) {
-    console.error('[swish payment create]', e);
+    logUnexpectedError('swish payment create', e);
     res.status(500).json({ error: 'Failed to create Swish payment' });
   }
 });
@@ -169,7 +170,7 @@ router.get('/:orderId/status', swishStatusLimiter, async (req: Request, res: Res
         : undefined,
     });
   } catch (e) {
-    console.error('[swish payment status]', e);
+    logUnexpectedError('swish payment status', e);
     res.status(500).json({ error: 'Failed to fetch Swish status' });
   }
 });

@@ -10,6 +10,7 @@ import {
   type SwishCallbackPayload,
 } from '../services/swishClient.js';
 import { fetchOrderRow } from '../db/orderRepository.js';
+import { logUnexpectedError } from '../utils/safeErrorMetadata.js';
 
 export async function handleSwishCallback(req: Request, res: Response): Promise<void> {
   try {
@@ -61,7 +62,7 @@ export async function handleSwishCallback(req: Request, res: Response): Promise<
     await markOrderPaid(orderId, { paidAmountOre: verification.paidAmountOre });
     res.status(200).send('OK');
   } catch (e) {
-    console.error('[swish callback] error', e);
+    logUnexpectedError('swish callback error', e);
     res.status(500).send('Callback handler failed');
   }
 }

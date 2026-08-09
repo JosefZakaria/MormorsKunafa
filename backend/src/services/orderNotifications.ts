@@ -1,6 +1,7 @@
 import { generateId, nowIso } from '../db/connection.js';
 import { broadcastOrderCreated, type OrderCreatedEvent } from './realtimeEvents.js';
 import { sendOrderCreatedPush } from './pushNotifications.js';
+import { safeErrorMetadata } from '../utils/safeErrorMetadata.js';
 
 /** Notify authenticated admin clients only after an order has been paid. */
 export function dispatchPaidOrderCreatedEvent(orderId: string, orderNumber: string): void {
@@ -17,7 +18,7 @@ export function dispatchPaidOrderCreatedEvent(orderId: string, orderNumber: stri
     console.error('[push] sendOrderCreatedPush failed', {
       eventId: event.event_id,
       orderId,
-      error,
+      ...safeErrorMetadata(error),
     });
   });
 }

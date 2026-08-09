@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import https from 'node:https';
 import { randomUUID } from 'node:crypto';
+import { logUnexpectedError } from '../utils/safeErrorMetadata.js';
 
 const SWISH_TIMEOUT_MS = 10_000;
 const MAX_SWISH_RESPONSE_BYTES = 64 * 1024;
@@ -286,7 +287,7 @@ export async function createSwishPaymentRequest(params: {
     token = fetched.paymentRequestToken;
     status = fetched.status;
   } catch (e) {
-    console.warn('[swish] could not fetch payment request after create', e);
+    logUnexpectedError('swish could not fetch payment request after create', e);
   }
 
   return { instructionId, token, status };
