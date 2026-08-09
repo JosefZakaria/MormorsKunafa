@@ -5,6 +5,7 @@ import {
 } from '../services/markOrderPaid.js';
 import {
   getSwishPaymentRequest,
+  parseSwishInstructionId,
   verifySwishPaymentRequest,
   type SwishCallbackPayload,
 } from '../services/swishClient.js';
@@ -13,11 +14,11 @@ import { fetchOrderRow } from '../db/orderRepository.js';
 export async function handleSwishCallback(req: Request, res: Response): Promise<void> {
   try {
     const payload = req.body as SwishCallbackPayload;
-    const instructionId = String(payload?.id ?? '').trim();
+    const instructionId = parseSwishInstructionId(payload?.id);
     const status = String(payload?.status ?? '').trim().toUpperCase();
 
     if (!instructionId) {
-      res.status(400).send('Missing id');
+      res.status(400).send('Invalid id');
       return;
     }
 

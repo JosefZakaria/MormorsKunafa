@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { verifySwishPaymentRequest, type SwishPaymentRequestResponse } from './swishClient.js';
+import {
+  parseSwishInstructionId,
+  verifySwishPaymentRequest,
+  type SwishPaymentRequestResponse,
+} from './swishClient.js';
 
 const expected = {
   instructionId: 'bd7204c1-3ec1-4b18-a52c-f6f8544f012f',
@@ -38,3 +42,13 @@ for (const [name, override] of [
     assert.equal(verifySwishPaymentRequest(payment(override), expected).ok, false);
   });
 }
+
+test('accepts only canonical version 4 Swish instruction identifiers', () => {
+  assert.equal(
+    parseSwishInstructionId('123e4567-e89b-42d3-a456-426614174000'),
+    '123e4567-e89b-42d3-a456-426614174000'
+  );
+  assert.equal(parseSwishInstructionId('123e4567-e89b-12d3-a456-426614174000'), null);
+  assert.equal(parseSwishInstructionId('../metadata'), null);
+  assert.equal(parseSwishInstructionId('x'.repeat(1_000)), null);
+});

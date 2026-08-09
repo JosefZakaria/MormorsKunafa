@@ -2,6 +2,11 @@ import fs from 'node:fs';
 import https from 'node:https';
 import { randomUUID } from 'node:crypto';
 
+const SWISH_TIMEOUT_MS = 10_000;
+const MAX_SWISH_RESPONSE_BYTES = 64 * 1024;
+const MAX_SWISH_REQUEST_BYTES = 32 * 1024;
+const UUID_V4_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export type SwishPaymentRequestBody = {
   payeeAlias: string;
   amount: string;
@@ -67,7 +72,17 @@ function swishRequest<T>(method: string, path: string, body?: unknown): Promise<
   return new Promise((resolve, reject) => {
     const agent = loadHttpsAgent();
     const payload = body != null ? JSON.stringify(body) : undefined;
+    if (payload && Buffer.byteLength(payload) > MAX_SWISH_REQUEST_BYTES) {
+      reject(new Error('Swish API request body is too large'));
+      return;
+    }
     const url = new URL(path, swishBaseUrl());
+    let settled = false;
+    const fail = (error: Error): void => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
 
     const req = https.request(
       url,
@@ -81,8 +96,21 @@ function swishRequest<T>(method: string, path: string, body?: unknown): Promise<
       },
       (res) => {
         const chunks: Buffer[] = [];
-        res.on('data', (c) => chunks.push(c));
+        let responseBytes = 0;
+        res.on('data', (chunk: Buffer | string) => {
+          if (settled) return;
+          const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+          responseBytes += buffer.length;
+          if (responseBytes > MAX_SWISH_RESPONSE_BYTES) {
+            res.destroy();
+            fail(new Error('Swish API response is too large'));
+            return;
+          }
+          chunks.push(buffer);
+        });
         res.on('end', () => {
+          if (settled) return;
+          settled = true;
           const text = Buffer.concat(chunks).toString('utf8');
           if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
             if (!text) {
@@ -96,14 +124,23 @@ function swishRequest<T>(method: string, path: string, body?: unknown): Promise<
             }
             return;
           }
-          reject(new Error(`Swish API ${res.statusCode}: ${text.slice(0, 500)}`));
+          reject(new Error(`Swish API request failed with status ${res.statusCode ?? 'unknown'}`));
         });
+        res.on('aborted', () => fail(new Error('Swish API response was interrupted')));
       }
     );
-    req.on('error', reject);
+    req.setTimeout(SWISH_TIMEOUT_MS, () => {
+      req.destroy(new Error('Swish API request timed out'));
+    });
+    req.on('error', (error) => fail(error));
     if (payload) req.write(payload);
     req.end();
   });
+}
+
+export function parseSwishInstructionId(value: unknown): string | null {
+  const instructionId = String(value ?? '').trim();
+  return UUID_V4_PATTERN.test(instructionId) ? instructionId : null;
 }
 
 export function isSwishConfigured(): boolean {
@@ -209,9 +246,11 @@ export async function createSwishPaymentRequest(params: {
 }
 
 export async function getSwishPaymentRequest(instructionId: string): Promise<SwishPaymentRequestResponse> {
+  const validatedId = parseSwishInstructionId(instructionId);
+  if (!validatedId) throw new Error('Invalid Swish instruction ID');
   return swishRequest<SwishPaymentRequestResponse>(
     'GET',
-    `/swish-cpcapi/api/v1/paymentrequests/${instructionId}`
+    `/swish-cpcapi/api/v1/paymentrequests/${validatedId}`
   );
 }
 
