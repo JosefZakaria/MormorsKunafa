@@ -1,4 +1,5 @@
 import { CharacterSet, ThermalPrinter, PrinterTypes, BreakLine } from 'node-thermal-printer';
+import { safePrinterText } from '../shared/utils/safePrinterText.js';
 
 export class PrinterService {
   private printer: ThermalPrinter;
@@ -34,21 +35,20 @@ export class PrinterService {
     if (order.orderType !== 'delivery') return;
 
     const d = order.deliveryInfo;
-    const name = order.customerInfo?.name?.trim() || d?.name?.trim() || '';
-    const phone = order.customerInfo?.phone?.trim() || d?.phone?.trim() || '';
-    const email = order.customerInfo?.email?.trim() || d?.email?.trim() || '';
-    const postalCity = d ? `${d.postalCode || ''} ${d.city || ''}`.trim() : '';
-    if (!name && !phone && !email && !d?.address && !postalCity) return;
+    const name = safePrinterText(order.customerInfo?.name || d?.name);
+    const phone = safePrinterText(order.customerInfo?.phone || d?.phone, 32);
+    const address = safePrinterText(d?.address);
+    const postalCity = safePrinterText(d ? `${d.postalCode || ''} ${d.city || ''}` : '');
+    if (!name && !phone && !address && !postalCity) return;
 
     this.printer.newLine();
     this.printer.bold(true);
     this.printer.println('Leverans:');
     this.printer.bold(false);
     if (name) this.printer.println(name);
-    if (d?.address) this.printer.println(d.address);
+    if (address) this.printer.println(address);
     if (postalCity) this.printer.println(postalCity);
     if (phone) this.printer.println(`Tel: ${phone}`);
-    if (email) this.printer.println(email);
     if (!order.scheduledTime) {
       this.printer.println('Leverans: 1-2 arbetsdagar');
     }
@@ -93,11 +93,11 @@ export class PrinterService {
       // -- ORDERINFO --
       this.printer.alignLeft();
       this.printer.bold(true);
-      this.printer.println(`Order: #${order.orderNumber || order.id || 'N/A'}`);
+      this.printer.println(`Order: #${safePrinterText(order.orderNumber || order.id || 'N/A', 64)}`);
       const custName =
         order.customerInfo?.name?.trim() || order.deliveryInfo?.name?.trim() || '';
       if (custName && order.orderType !== 'delivery') {
-        this.printer.println(`Kund: ${custName}`);
+        this.printer.println(`Kund: ${safePrinterText(custName, 100)}`);
       }
       this.printer.bold(false);
 
@@ -106,7 +106,7 @@ export class PrinterService {
         'takeaway': 'Ta med',
         'delivery': 'Hemleverans',
       };
-      this.printer.println(`Typ: ${orderTypeLabels[order.orderType] || order.orderType || 'Okand'}`);
+      this.printer.println(`Typ: ${safePrinterText(orderTypeLabels[order.orderType] || order.orderType || 'Okand', 32)}`);
 
       if (order.estimatedReadyTime) {
         const ready = new Date(order.estimatedReadyTime);
@@ -118,10 +118,10 @@ export class PrinterService {
       // -- PRODUKTER (utan pris) --
       if (order.items && Array.isArray(order.items)) {
         order.items.forEach((item: any) => {
-          this.printer.println(`${item.quantity || 1}x ${item.productName || 'Okand produkt'}`);
+          this.printer.println(safePrinterText(`${item.quantity || 1}x ${item.productName || 'Okand produkt'}`));
           if (item.modifications && Array.isArray(item.modifications) && item.modifications.length > 0) {
             item.modifications.forEach((mod: string) => {
-              this.printer.println(`   - ${mod}`);
+              this.printer.println(safePrinterText(`   - ${mod}`));
             });
           }
         });
@@ -175,13 +175,13 @@ export class PrinterService {
       // -- ORDERINFO --
       this.printer.alignLeft();
       this.printer.bold(false);
-      this.printer.println(`Order: #${order.orderNumber || order.id || 'N/A'}`);
+      this.printer.println(`Order: #${safePrinterText(order.orderNumber || order.id || 'N/A', 64)}`);
       const orderTypeLabels: Record<string, string> = {
         'eat-here': 'Ata har',
         'takeaway': 'Ta med',
         'delivery': 'Hemleverans',
       };
-      this.printer.println(`Typ: ${orderTypeLabels[order.orderType] || order.orderType || 'Okand'}`);
+      this.printer.println(`Typ: ${safePrinterText(orderTypeLabels[order.orderType] || order.orderType || 'Okand', 32)}`);
       this.printDeliveryBlock(order);
       if (order.orderType !== 'delivery') {
         this.printer.drawLine();
@@ -191,7 +191,7 @@ export class PrinterService {
       // Byt ut logiken nedan så den matchar vad du har i dina order items
       if (order.items && Array.isArray(order.items)) {
         order.items.forEach((item: any) => {
-          const quantityRow = `${item.quantity || 1}x ${item.productName || 'Okänd produkt'}`;
+          const quantityRow = safePrinterText(`${item.quantity || 1}x ${item.productName || 'Okänd produkt'}`);
           const priceRow = `${(item.price * item.quantity / 100).toFixed(2) || 0} kr`;
           // leftRight formaterar automatiskt priset längst till höger
           this.printer.leftRight(quantityRow, priceRow);

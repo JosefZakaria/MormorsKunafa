@@ -48,6 +48,11 @@
       "types": "./utils/openingHours.ts",
       "import": "./dist/utils/openingHours.js",
       "default": "./dist/utils/openingHours.js"
+    },
+    "./utils/safePrinterText": {
+      "types": "./utils/safePrinterText.ts",
+      "import": "./dist/utils/safePrinterText.js",
+      "default": "./dist/utils/safePrinterText.js"
     }
   },
   "devDependencies": {

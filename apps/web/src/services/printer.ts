@@ -1,4 +1,5 @@
 import type { Order } from '@shared/types';
+import { safePrinterText } from '@shared/utils/safePrinterText';
 
 const PRINTER_IP_KEY = 'printer_ip';
 const PRINTER_DEVID_KEY = 'printer_devid';
@@ -38,10 +39,6 @@ function deliveryPhone(order: Order): string {
   return order.customerInfo?.phone?.trim() || order.deliveryInfo?.phone?.trim() || '';
 }
 
-function deliveryEmail(order: Order): string {
-  return order.customerInfo?.email?.trim() || order.deliveryInfo?.email?.trim() || '';
-}
-
 function escapeXml(str: string): string {
   return str
     .replace(/&/g, '&amp;')
@@ -53,7 +50,7 @@ function escapeXml(str: string): string {
 
 /** Minimal ePOS text — samma stil som fungerande testutskrift (endast align). */
 function textLine(content: string, align: 'left' | 'center' | 'right' = 'left'): string {
-  return `<text align="${align}">${escapeXml(content)}&#10;</text>`;
+  return `<text align="${align}">${escapeXml(safePrinterText(content))}&#10;</text>`;
 }
 
 function separator(): string {
@@ -135,9 +132,8 @@ function appendDeliveryBlock(xml: string, order: Order): string {
   const d = order.deliveryInfo;
   const name = deliveryCustomerName(order);
   const phone = deliveryPhone(order);
-  const email = deliveryEmail(order);
   const postalCity = d ? [d.postalCode, d.city].filter(Boolean).join(' ').trim() : '';
-  const hasContent = !!(name || phone || email || d?.address || postalCity);
+  const hasContent = !!(name || phone || d?.address || postalCity);
 
   if (!hasContent) return xml;
 
@@ -147,7 +143,6 @@ function appendDeliveryBlock(xml: string, order: Order): string {
   if (d?.address) xml += textLine(d.address);
   if (postalCity) xml += textLine(postalCity);
   if (phone) xml += textLine(`Tel: ${phone}`);
-  if (email) xml += textLine(email);
   if (!order.scheduledTime) {
     xml += textLine('Leverans: 1-2 arbetsdagar');
   }
