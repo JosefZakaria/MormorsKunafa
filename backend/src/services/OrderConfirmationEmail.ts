@@ -7,6 +7,7 @@ import {
   getPublicWebAppUrl,
   normalizePublicHttpsAssetUrl,
 } from '../utils/publicWebAppUrl.js';
+import { safeErrorMetadata } from '../utils/safeErrorMetadata.js';
 
 /** Same asset as `apps/web/public/images/logo.png` (must resolve to an absolute public URL in email). */
 const ORDER_EMAIL_LOGO_PUBLIC_PATH = '/images/logo.png';
@@ -194,6 +195,6 @@ export async function sendOrderConfirmationEmail(ctx: OrderConfirmationRowContex
   });
 
   if (error) {
-    console.error('[order confirmation email] Resend error:', error);
+    console.error('[order confirmation email] Resend error:', safeErrorMetadata(error));
   }
 }

@@ -13,6 +13,7 @@ import {
   safePushFailureReason,
   sendWebPushSafely,
 } from '../utils/webPushSecurity.js';
+import { safeErrorMetadata } from '../utils/safeErrorMetadata.js';
 
 const deliveredInRuntime = new Map<string, Set<string>>();
 
@@ -47,8 +48,8 @@ export function configureWebPush(): void {
   try {
     webpush.setVapidDetails(subject, publicKey, privateKey);
     vapidConfigured = true;
-  } catch (error: any) {
-    console.error('[push] Failed to configure Web Push VAPID details:', error?.message || error);
+  } catch (error: unknown) {
+    console.error('[push] Failed to configure Web Push VAPID details:', safeErrorMetadata(error));
     vapidConfigured = false;
   }
 }
