@@ -10,6 +10,7 @@ import type { CheckoutPaymentChoice, CustomerInfo, OrderType } from '@shared/typ
 import { DELIVERY_FEE_SEK } from '@shared/constants/delivery';
 import { isBreadProductId } from '@shared/constants/productPricing';
 import { safePaymentRedirectUrl } from '@shared/utils/paymentRedirect.ts';
+import { AllergenNotice } from '../../components/common/AllergenNotice/AllergenNotice';
 import {
     dateToStockholmInputValue,
     todayInStockholmDateString,
@@ -690,6 +691,8 @@ export const Cart: React.FC = () => {
                                     </label>
                                 )}
                             </div>
+
+                            <AllergenNotice />
 
                             <div className="cart-terms-checkbox" style={{ margin: '1.25rem 0 1rem 0', textAlign: 'left' }}>
                                 <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.65rem', fontSize: '0.875rem', cursor: 'pointer', color: '#444', lineHeight: '1.4' }}>

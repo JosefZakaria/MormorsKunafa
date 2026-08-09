@@ -7,6 +7,7 @@ import { useCart } from '../../contexts/CartContext';
 import { productApi } from '../../services/api';
 import { API_CONFIG } from '@shared/api';
 import { resolveProductImage } from '@shared/utils/productImage.ts';
+import { AllergenNotice } from '../../components/common/AllergenNotice/AllergenNotice';
 import type { Product } from '@shared/types';
 import { getDisplayName, getTranslationIndex } from '../../utils/productDisplayName';
 import {
@@ -558,6 +559,7 @@ export const Menu: React.FC = () => {
                                     />
                                 );
                             })()}
+                            <AllergenNotice />
                         </div>
                         <div className="menu-modal__footer">
                             <Button

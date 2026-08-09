@@ -1,0 +1,25 @@
+.allergen-notice {
+  margin: 1rem 0;
+  padding: 0.9rem 1rem;
+  border: 1px solid #c17e61;
+  border-radius: 10px;
+  background: #fff8f1;
+  color: #2c2c2c;
+}
+
+.allergen-notice h2 {
+  margin: 0 0 0.35rem;
+  color: #1a3d32;
+  font-size: 1rem;
+}
+
+.allergen-notice p {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.allergen-notice a {
+  color: #8b1d1d;
+  font-weight: 700;
+}
