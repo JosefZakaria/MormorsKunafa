@@ -37,3 +37,33 @@ test('replays a completed local request and rejects key reuse with new input', a
   assert.equal((await beginOrderIdempotency(key, { order: 2 })).kind, 'conflict');
   await abandonOrderIdempotency(first.context);
 });
+
+test('expires local processing and completed entries like distributed storage', async () => {
+  const processingKey = 'test-idempotency-expiry-processing';
+  const first = await beginOrderIdempotency(processingKey, { order: 1 }, 1_000);
+  assert.equal(first.kind, 'acquired');
+  const afterProcessingTtl = await beginOrderIdempotency(
+    processingKey,
+    { order: 1 },
+    1_000 + 10 * 60 * 1_000 + 1
+  );
+  assert.equal(afterProcessingTtl.kind, 'acquired');
+  if (afterProcessingTtl.kind === 'acquired') {
+    await abandonOrderIdempotency(afterProcessingTtl.context);
+  }
+
+  const completedKey = 'test-idempotency-expiry-completed';
+  const completed = await beginOrderIdempotency(completedKey, { order: 2 }, 2_000);
+  assert.equal(completed.kind, 'acquired');
+  if (completed.kind !== 'acquired') return;
+  await completeOrderIdempotency(completed.context, { id: 'order-2' }, 2_000);
+  const afterCompleteTtl = await beginOrderIdempotency(
+    completedKey,
+    { order: 2 },
+    2_000 + 24 * 60 * 60 * 1_000 + 1
+  );
+  assert.equal(afterCompleteTtl.kind, 'acquired');
+  if (afterCompleteTtl.kind === 'acquired') {
+    await abandonOrderIdempotency(afterCompleteTtl.context);
+  }
+});

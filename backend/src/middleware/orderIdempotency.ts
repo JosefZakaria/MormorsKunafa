@@ -4,8 +4,12 @@ import { Redis } from '@upstash/redis';
 type StoredRequest = {
   payloadHash: string;
   state: 'processing' | 'complete';
+  expiresAt: number;
   response?: unknown;
 };
+
+const PROCESSING_TTL_MS = 10 * 60 * 1000;
+const COMPLETE_TTL_MS = 24 * 60 * 60 * 1000;
 
 export type OrderIdempotencyContext = {
   storageKey: string;
@@ -59,12 +63,17 @@ export function hashOrderPayload(payload: unknown): string {
 
 export async function beginOrderIdempotency(
   rawKey: unknown,
-  payload: unknown
+  payload: unknown,
+  now = Date.now()
 ): Promise<OrderIdempotencyResult> {
   const key = parseOrderIdempotencyKey(rawKey);
   const storageKey = `mormors-kunafa:order-idempotency:${createHash('sha256').update(key).digest('base64url')}`;
   const payloadHash = hashOrderPayload(payload);
-  const processing: StoredRequest = { payloadHash, state: 'processing' };
+  const processing: StoredRequest = {
+    payloadHash,
+    state: 'processing',
+    expiresAt: now + PROCESSING_TTL_MS,
+  };
 
   let acquired = false;
   let existing: StoredRequest | null = null;
@@ -74,6 +83,10 @@ export async function beginOrderIdempotency(
     if (!acquired) existing = await redis.get<StoredRequest>(storageKey);
   } else {
     existing = localRequests.get(storageKey) ?? null;
+    if (existing && existing.expiresAt <= now) {
+      localRequests.delete(storageKey);
+      existing = null;
+    }
     if (!existing) {
       localRequests.set(storageKey, processing);
       acquired = true;
@@ -89,11 +102,13 @@ export async function beginOrderIdempotency(
 
 export async function completeOrderIdempotency(
   context: OrderIdempotencyContext,
-  response: unknown
+  response: unknown,
+  now = Date.now()
 ): Promise<void> {
   const complete: StoredRequest = {
     payloadHash: context.payloadHash,
     state: 'complete',
+    expiresAt: now + COMPLETE_TTL_MS,
     response,
   };
   if (hasRedis()) {

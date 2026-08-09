@@ -309,10 +309,14 @@ router.post('/', orderLimiter, orderContactLimiter, async (req: Request, res: Re
     const { error: itemsError } = await supabase.from('order_items').insert(itemRows);
     if (itemsError) {
       logSupabaseError('POST /api/orders items', itemsError);
-      await supabase.from('orders').delete().eq('id', orderId);
-      orderPersisted = false;
-      await abandonOrderIdempotency(idempotencyContext);
-      idempotencyContext = undefined;
+      const { error: cleanupError } = await supabase.from('orders').delete().eq('id', orderId);
+      if (cleanupError) {
+        logSupabaseError('POST /api/orders cleanup', cleanupError);
+      } else {
+        orderPersisted = false;
+        await abandonOrderIdempotency(idempotencyContext);
+        idempotencyContext = undefined;
+      }
       res.status(500).json({ error: 'Kunde inte spara orderrader' });
       return;
     }
@@ -362,11 +366,6 @@ router.post('/', orderLimiter, orderContactLimiter, async (req: Request, res: Re
     }
     res.status(201).json(responseBody);
   } catch (e) {
-    if (idempotencyContext && !orderPersisted) {
-      await abandonOrderIdempotency(idempotencyContext).catch((error) =>
-        console.error('[order idempotency] failed to release request', error)
-      );
-    }
     if (e instanceof OrderIdempotencyError) {
       res.status(400).json({ error: e.message });
       return;
