@@ -8,6 +8,7 @@ import { useCart } from '../../contexts/CartContext';
 import { orderApi } from '../../services/api';
 import type { CheckoutPaymentChoice, CustomerInfo, OrderType } from '@shared/types';
 import { DELIVERY_FEE_SEK } from '@shared/constants/delivery';
+import { isBreadProductId } from '@shared/constants/productPricing';
 import {
     dateToStockholmInputValue,
     todayInStockholmDateString,
@@ -330,13 +331,18 @@ export const Cart: React.FC = () => {
         setCustomerInfoError(null);
 
         try {
-            // Convert cart items to order items format
-            const orderItems = items.map(item => ({
-                productId: item.productId,
-                productName: item.productName,
-                quantity: item.quantity,
-                price: item.price, // Already in öre
-            }));
+            // Only identifiers and quantity cross the trust boundary. The backend
+            // resolves product names, stock state and prices from its own catalog.
+            const orderItems = items.map(item => {
+                const baseProductId = item.productId.slice(0, 36).toLowerCase();
+                const suffix = item.productId.slice(36);
+                const variantId = suffix.startsWith('-') ? suffix.slice(1).trim() : '';
+                return {
+                    productId: baseProductId,
+                    ...(!isBreadProductId(baseProductId) && variantId ? { variantId } : {}),
+                    quantity: item.quantity,
+                };
+            });
 
             if (!customerInfo) {
                 setError(t('cart.customer_info_required'));

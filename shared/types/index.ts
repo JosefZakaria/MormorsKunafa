@@ -41,6 +41,13 @@ export interface OrderItem {
   modifications?: string[]; // ingredient additions/removals
 }
 
+/** Minimal client input. Names and prices are always resolved by the backend. */
+export interface CreateOrderItemRequest {
+  productId: string;
+  variantId?: string;
+  quantity: number;
+}
+
 // Delivery Information
 export interface DeliveryInfo {
   name?: string;
@@ -112,7 +119,7 @@ export interface SalesHistoryEntry {
 
 // Create Order Request
 export interface CreateOrderRequest {
-  items: OrderItem[];
+  items: CreateOrderItemRequest[];
   orderType: OrderType;
   customerInfo: CustomerInfo;
   deliveryInfo?: DeliveryInfo;

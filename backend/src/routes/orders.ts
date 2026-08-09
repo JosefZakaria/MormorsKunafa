@@ -14,20 +14,21 @@ import { sendOrderCreatedPush } from '../services/pushNotifications.js';
 import { parseOrderScheduledAt, formatStockholmDateTime } from '../utils/stockholmWallTime.js';
 import { validateScheduledOrderTime } from '../shared/utils/openingHours.js';
 import {
-  isAllowedPaymentMethod,
   isCardPayment,
   isOnlinePayment,
 } from '../utils/paymentMethod.js';
-import { resolveProductIdFromLineId } from '../utils/resolveProductId.js';
 import {
   DELIVERY_FEE_ORE,
   DELIVERY_FEE_LINE_NAME,
-  isDeliveryFeeLineItem,
 } from '../constants/deliveryFee.js';
 import { getPublicWebAppUrl } from '../utils/publicWebAppUrl.js';
 import { confirmStripeCheckoutSession } from '../utils/confirmStripeCheckout.js';
-import { sanitizeProductName } from '../utils/sanitizeProductName.js';
 import swishPaymentRouter from './swishPayment.js';
+import {
+  buildServerPricedOrderLines,
+  OrderValidationError,
+  type OrderItemInput,
+} from '../services/orderPricing.js';
 
 const orderLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000, // 15 min window
@@ -88,23 +89,17 @@ function todayInStockholm(): string {
 router.post('/', orderLimiter, async (req: Request, res: Response) => {
   try {
     const body = req.body as {
-      items: Array<{ productId: string; productName: string; quantity: number; price: number; modifications?: string[] }>;
+      items: OrderItemInput[];
       orderType: string;
       customerInfo?: { name?: string; phone?: string; email?: string };
       deliveryInfo?: Record<string, string>;
       scheduledTime?: string;
       paymentMethod: string;
     };
-    if (!body.items?.length) {
-      res.status(400).json({ error: 'items required' });
-      return;
-    }
-
     const orderType = String(body.orderType ?? 'takeaway').trim();
     const isDelivery = orderType === 'delivery';
-    const productItems = body.items.filter((it) => !isDeliveryFeeLineItem(it));
-    if (!productItems.length) {
-      res.status(400).json({ error: 'items required' });
+    if (!['takeaway', 'eat-here', 'delivery'].includes(orderType)) {
+      res.status(400).json({ error: 'Invalid order type' });
       return;
     }
     if (isDelivery && !body.deliveryInfo) {
@@ -112,11 +107,13 @@ router.post('/', orderLimiter, async (req: Request, res: Response) => {
       return;
     }
 
-    const paymentMethod = String(body.paymentMethod ?? 'cash').trim().toLowerCase();
-    if (!isAllowedPaymentMethod(paymentMethod)) {
+    const paymentMethod = String(body.paymentMethod ?? '').trim().toLowerCase();
+    if (paymentMethod !== 'card' && paymentMethod !== 'swish') {
       res.status(400).json({ error: 'Invalid payment method' });
       return;
     }
+
+    const serverPricedLines = await buildServerPricedOrderLines(body.items);
 
     const orderNumber = await getNextOrderNumber();
 
@@ -198,22 +195,27 @@ router.post('/', orderLimiter, async (req: Request, res: Response) => {
       return;
     }
 
-    let totalOre = 0;
-    const itemRows = [];
-    for (const it of productItems) {
-      const itemId = generateId();
-      const lineTotal = (it.price ?? 0) * (it.quantity ?? 1);
-      totalOre += lineTotal;
-      itemRows.push({
-        id: itemId,
-        order_id: orderId,
-        product_id: resolveProductIdFromLineId(it.productId),
-        product_name_snapshot: sanitizeProductName(String(it.productName ?? '')),
-        quantity: it.quantity ?? 1,
-        price_ore: it.price ?? 0,
-        modifications_json: it.modifications?.length ? it.modifications : null,
-      });
-    }
+    let totalOre = serverPricedLines.reduce(
+      (sum, line) => sum + line.priceOre * line.quantity,
+      0
+    );
+    const itemRows: Array<{
+      id: string;
+      order_id: string;
+      product_id: string | null;
+      product_name_snapshot: string;
+      quantity: number;
+      price_ore: number;
+      modifications_json: null;
+    }> = serverPricedLines.map((line) => ({
+      id: generateId(),
+      order_id: orderId,
+      product_id: line.productId,
+      product_name_snapshot: line.productNameSnapshot,
+      quantity: line.quantity,
+      price_ore: line.priceOre,
+      modifications_json: null,
+    }));
 
     if (isDelivery) {
       totalOre += DELIVERY_FEE_ORE;
@@ -277,6 +279,10 @@ router.post('/', orderLimiter, async (req: Request, res: Response) => {
 
     res.status(201).json(orderRowToOrder(result.order, result.items));
   } catch (e) {
+    if (e instanceof OrderValidationError) {
+      res.status(e.status).json({ error: e.message });
+      return;
+    }
     console.error(e);
     res.status(500).json({ error: 'Failed to create order' });
   }
