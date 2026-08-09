@@ -7,6 +7,7 @@ import adminRouter from './routes/admin.js';
 import { handleStripeWebhook } from './routes/stripeWebhook.js';
 import { handleSwishCallback } from './routes/swishCallback.js';
 import {
+  assertPublicUrlConfiguration,
   getPublicWebAppUrlDiagnostics,
   normalizePublicWebAppOrigin,
 } from './utils/publicWebAppUrl.js';
@@ -23,6 +24,7 @@ app.set('trust proxy', process.env.VERCEL ? 1 : false);
 assertJwtConfiguration();
 assertRateLimitConfiguration();
 assertOperationalSecretsConfiguration();
+assertPublicUrlConfiguration();
 configureWebPush();
 
 const paymentCallbackLimiter = createRateLimiter({

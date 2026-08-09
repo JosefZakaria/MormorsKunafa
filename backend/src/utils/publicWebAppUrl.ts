@@ -43,6 +43,30 @@ export function normalizePublicHttpsAssetUrl(value: unknown): string | null {
   }
 }
 
+export function assertPublicUrlConfiguration(): void {
+  if (!isProductionRuntime()) return;
+
+  const originValues = [
+    ['PUBLIC_WEB_APP_URL', process.env.PUBLIC_WEB_APP_URL],
+    ['FRONTEND_URL', process.env.FRONTEND_URL],
+    ['SITE_PUBLIC_URL', process.env.SITE_PUBLIC_URL],
+    ...String(process.env.FRONTEND_URLS ?? '')
+      .split(',')
+      .map((value, index) => [`FRONTEND_URLS[${index}]`, value]),
+  ] as const;
+
+  for (const [label, value] of originValues) {
+    if (String(value ?? '').trim() && !normalizePublicWebAppOrigin(value, true)) {
+      throw new Error(`${label} must be a clean HTTPS origin without credentials, path, query or fragment`);
+    }
+  }
+
+  const logoUrl = process.env.ORDER_EMAIL_LOGO_URL;
+  if (logoUrl?.trim() && !normalizePublicHttpsAssetUrl(logoUrl)) {
+    throw new Error('ORDER_EMAIL_LOGO_URL must be a valid public HTTPS URL without credentials or fragment');
+  }
+}
+
 /**
  * Public frontend base URL for Stripe redirects, emails, etc.
  * Priority: PUBLIC_WEB_APP_URL → FRONTEND_URL → SITE_PUBLIC_URL → dev localhost.
