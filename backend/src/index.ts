@@ -8,8 +8,10 @@ import { handleStripeWebhook } from './routes/stripeWebhook.js';
 import { handleSwishCallback } from './routes/swishCallback.js';
 import { getPublicWebAppUrlDiagnostics } from './utils/publicWebAppUrl.js';
 import { configureWebPush, isWebPushConfigured } from './services/pushNotifications.js';
+import { assertJwtConfiguration } from './middleware/auth.js';
 
 const app = express();
+assertJwtConfiguration();
 configureWebPush();
 
 function allowedFrontendOrigins(): string[] {
