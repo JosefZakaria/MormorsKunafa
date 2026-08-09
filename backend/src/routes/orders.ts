@@ -184,7 +184,7 @@ router.post('/', orderLimiter, orderContactLimiter, async (req: Request, res: Re
 
     if (settingsError) {
       logSupabaseError('POST /api/orders settings', settingsError);
-      res.status(500).json({ error: 'Failed to fetch settings', details: settingsError.message });
+      res.status(500).json({ error: 'Failed to fetch settings' });
       return;
     }
 
@@ -265,7 +265,7 @@ router.post('/', orderLimiter, orderContactLimiter, async (req: Request, res: Re
       await abandonOrderIdempotency(idempotencyContext);
       idempotencyContext = undefined;
       logSupabaseError('POST /api/orders insert', orderInsertError);
-      res.status(500).json({ error: 'Failed to create order', details: orderInsertError.message });
+      res.status(500).json({ error: 'Failed to create order' });
       return;
     }
 
@@ -313,10 +313,7 @@ router.post('/', orderLimiter, orderContactLimiter, async (req: Request, res: Re
       orderPersisted = false;
       await abandonOrderIdempotency(idempotencyContext);
       idempotencyContext = undefined;
-      res.status(500).json({
-        error: 'Kunde inte spara orderrader',
-        details: itemsError.message,
-      });
+      res.status(500).json({ error: 'Kunde inte spara orderrader' });
       return;
     }
 
@@ -327,7 +324,7 @@ router.post('/', orderLimiter, orderContactLimiter, async (req: Request, res: Re
 
     if (totalError) {
       logSupabaseError('POST /api/orders total', totalError);
-      res.status(500).json({ error: 'Failed to update order total', details: totalError.message });
+      res.status(500).json({ error: 'Failed to update order total' });
       return;
     }
 
@@ -573,7 +570,7 @@ router.get('/admin/pending', requireAdmin, async (_req: Request, res: Response) 
 
     if (error) {
       logSupabaseError('GET /admin/pending', error);
-      res.status(500).json({ error: 'Failed to fetch pending orders', details: error.message });
+      res.status(500).json({ error: 'Failed to fetch pending orders' });
       return;
     }
 
@@ -673,7 +670,7 @@ router.get('/admin/active', requireAdmin, async (_req: Request, res: Response) =
 
     if (error) {
       logSupabaseError('GET /admin/active', error);
-      res.status(500).json({ error: 'Failed to fetch active orders', details: error.message });
+      res.status(500).json({ error: 'Failed to fetch active orders' });
       return;
     }
     res.json(await rowsToOrders((data ?? []) as Row[]));
@@ -697,7 +694,7 @@ router.get('/admin/pre-orders', requireAdmin, async (_req: Request, res: Respons
 
     if (error) {
       logSupabaseError('GET /admin/pre-orders', error);
-      res.status(500).json({ error: 'Failed to fetch pre-orders', details: error.message });
+      res.status(500).json({ error: 'Failed to fetch pre-orders' });
       return;
     }
 
@@ -739,7 +736,7 @@ router.get('/admin/history', requireAdmin, async (req: Request, res: Response) =
     const { data, error } = await query;
     if (error) {
       logSupabaseError('GET /admin/history', error);
-      res.status(500).json({ error: 'Failed to fetch history', details: error.message });
+      res.status(500).json({ error: 'Failed to fetch history' });
       return;
     }
     res.json(await rowsToOrders((data ?? []) as Row[]));
@@ -770,7 +767,7 @@ router.post('/admin/history/all/delete', requireAdmin, async (req: Request, res:
 
     if (error) {
       logSupabaseError('DELETE /admin/history/all', error);
-      res.status(500).json({ error: 'Failed to clear history', details: error.message });
+      res.status(500).json({ error: 'Failed to clear history' });
       return;
     }
     res.status(204).end();
@@ -793,7 +790,7 @@ router.post('/admin/:id/delete', requireAdmin, async (req: Request, res: Respons
     const { error } = await supabase.from('orders').delete().eq('id', req.params.id);
     if (error) {
       logSupabaseError('DELETE /admin/:id', error);
-      res.status(500).json({ error: 'Failed to delete order', details: error.message });
+      res.status(500).json({ error: 'Failed to delete order' });
       return;
     }
     res.status(204).end();

@@ -110,7 +110,7 @@ router.post('/login', loginLimiter, async (req: Request, res: Response) => {
 
     if (error) {
       logSupabaseError('POST /admin/login', error);
-      res.status(500).json({ error: 'Login failed', details: error.message });
+      res.status(500).json({ error: 'Login failed' });
       return;
     }
 
@@ -344,7 +344,7 @@ router.patch('/settings', requireAdmin, async (req: Request, res: Response) => {
         .eq('id', settings.id);
       if (error) {
         logSupabaseError('PATCH /admin/settings', error);
-        res.status(500).json({ error: 'Failed to update settings', details: error.message });
+        res.status(500).json({ error: 'Failed to update settings' });
         return;
       }
     }
@@ -408,7 +408,7 @@ router.post('/statistics', requireAdmin, async (req: Request, res: Response) => 
 
     if (productsError) {
       logSupabaseError('POST /admin/statistics products', productsError);
-      res.status(500).json({ error: 'Failed to fetch statistics', details: productsError.message });
+      res.status(500).json({ error: 'Failed to fetch statistics' });
       return;
     }
 
@@ -420,7 +420,7 @@ router.post('/statistics', requireAdmin, async (req: Request, res: Response) => 
 
     if (linesError) {
       logSupabaseError('POST /admin/statistics order_items', linesError);
-      res.status(500).json({ error: 'Failed to fetch statistics', details: linesError.message });
+      res.status(500).json({ error: 'Failed to fetch statistics' });
       return;
     }
 
@@ -430,7 +430,7 @@ router.post('/statistics', requireAdmin, async (req: Request, res: Response) => 
 
     if (ordersError) {
       logSupabaseError('POST /admin/statistics orders', ordersError);
-      res.status(500).json({ error: 'Failed to fetch statistics', details: ordersError.message });
+      res.status(500).json({ error: 'Failed to fetch statistics' });
       return;
     }
 

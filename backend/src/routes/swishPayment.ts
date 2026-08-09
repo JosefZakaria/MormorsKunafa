@@ -95,8 +95,7 @@ router.post('/:orderId', swishStartLimiter, async (req: Request, res: Response) 
     });
   } catch (e) {
     console.error('[swish payment create]', e);
-    const msg = e instanceof Error ? e.message : 'Failed to create Swish payment';
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: 'Failed to create Swish payment' });
   }
 });
 
