@@ -3,7 +3,8 @@ export function registerServiceWorker(): void {
 
   window.addEventListener('load', () => {
     navigator.serviceWorker
-      .register('/sw.js')
+      .register('/sw.js', { scope: '/', updateViaCache: 'none' })
+      .then((registration) => registration.update())
       .catch((error) => console.error('[PWA] service worker register failed', error));
   });
 }
