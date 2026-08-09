@@ -69,3 +69,23 @@ export async function updateOrder(
     throw error;
   }
 }
+
+export async function compareAndUpdateOrder(
+  id: string,
+  expectedStatus: string,
+  patch: Record<string, unknown>
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('orders')
+    .update({ ...patch, updated_at: nowIso() })
+    .eq('id', id)
+    .eq('status', expectedStatus)
+    .select('id');
+
+  if (error) {
+    logSupabaseError('compareAndUpdateOrder', error);
+    throw error;
+  }
+
+  return Array.isArray(data) && data.length === 1;
+}

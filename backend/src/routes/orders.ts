@@ -1,7 +1,13 @@
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { supabase, generateId, type Row, logSupabaseError, nowIso } from '../db/connection.js';
-import { fetchOrderRow, getOrderById, getNextOrderNumber, updateOrder } from '../db/orderRepository.js';
+import {
+  compareAndUpdateOrder,
+  fetchOrderRow,
+  getOrderById,
+  getNextOrderNumber,
+  updateOrder,
+} from '../db/orderRepository.js';
 import { orderRowToOrder, orderRowToPublicStatus, rowsToOrders } from '../db/ordersList.js';
 import { requireAdmin } from '../middleware/auth.js';
 import {
@@ -37,9 +43,15 @@ import {
 } from '../middleware/orderStatusToken.js';
 import {
   CustomerInputError,
+  sanitizeOperationalText,
   validateCustomerInput,
   validateScheduledTimeInput,
 } from '../utils/customerInput.js';
+import {
+  canTransitionOrderStatus,
+  canUseGeneralStatusRoute,
+  isOrderStatus,
+} from '../utils/orderStateMachine.js';
 
 const orderLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000, // 15 min window
@@ -516,6 +528,14 @@ router.patch('/admin/:id/accept', requireAdmin, async (req: Request, res: Respon
   try {
     const { extraMinutes } = req.body as { extraMinutes?: number };
 
+    if (
+      extraMinutes != null &&
+      (!Number.isInteger(extraMinutes) || extraMinutes < 0 || extraMinutes > 180)
+    ) {
+      res.status(400).json({ error: 'extraMinutes must be an integer between 0 and 180' });
+      return;
+    }
+
     const result = await getOrderById(req.params.id);
     if (!result) {
       res.status(404).json({ error: 'Order not found' });
@@ -537,10 +557,14 @@ router.patch('/admin/:id/accept', requireAdmin, async (req: Request, res: Respon
     const totalMinutes = defaultPrep + (extraMinutes ?? 0);
     const estimatedReady = new Date(Date.now() + totalMinutes * 60 * 1000);
 
-    await updateOrder(req.params.id, {
+    const accepted = await compareAndUpdateOrder(req.params.id, 'ny', {
       status: 'mottagen',
       estimated_ready_at: estimatedReady.toISOString(),
     });
+    if (!accepted) {
+      res.status(409).json({ error: 'Order status changed before it could be accepted' });
+      return;
+    }
 
     const updated = await getOrderById(req.params.id);
     if (!updated) {
@@ -718,19 +742,53 @@ router.post('/admin/:id/cancel', requireAdmin, async (req: Request, res: Respons
       res.status(401).json({ error: 'Felaktigt lösenord' });
       return;
     }
-    if (!cancellationReason || !cancellationReason.trim()) {
+    let reason: string;
+    try {
+      reason = sanitizeOperationalText(cancellationReason, 'Avbokningsorsak', 500);
+    } catch (error) {
+      if (error instanceof CustomerInputError) {
+        res.status(400).json({ error: error.message });
+        return;
+      }
+      throw error;
+    }
+    if (!reason) {
       res.status(400).json({ error: 'cancellationReason is required' });
       return;
     }
 
     const existing = await getOrderById(req.params.id);
-    await updateOrder(req.params.id, {
+    if (!existing) {
+      res.status(404).json({ error: 'Order not found' });
+      return;
+    }
+    const currentStatus = existing.order.status;
+    if (!isOrderStatus(currentStatus) || !canTransitionOrderStatus(currentStatus, 'avbruten')) {
+      res.status(409).json({ error: 'Order cannot be cancelled from its current status' });
+      return;
+    }
+    if (
+      isOnlinePayment(String(existing.order.payment_method ?? '')) &&
+      String(existing.order.payment_status ?? '') === 'paid' &&
+      String(existing.order.refund_status ?? 'none') !== 'refunded'
+    ) {
+      res.status(409).json({
+        error: 'Provider refund must be completed before a paid online order can be cancelled',
+      });
+      return;
+    }
+
+    const cancelled = await compareAndUpdateOrder(req.params.id, currentStatus, {
       status: 'avbruten',
-      cancelled_at: existing?.order.cancelled_at
+      cancelled_at: existing.order.cancelled_at
         ? String(existing.order.cancelled_at)
         : nowIso(),
-      cancellation_reason: cancellationReason.trim(),
+      cancellation_reason: reason,
     });
+    if (!cancelled) {
+      res.status(409).json({ error: 'Order status changed before it could be cancelled' });
+      return;
+    }
 
     const result = await getOrderById(req.params.id);
     if (!result) {
@@ -747,40 +805,43 @@ router.post('/admin/:id/cancel', requireAdmin, async (req: Request, res: Respons
 // Admin: update status
 router.patch('/admin/:id/status', requireAdmin, async (req: Request, res: Response) => {
   try {
-    const { status, estimatedReadyTime, cancellationReason } = req.body as {
+    const { status, estimatedReadyTime } = req.body as {
       status?: string;
       estimatedReadyTime?: string;
-      cancellationReason?: string;
     };
-    if (!status || !['ny', 'mottagen', 'påbörjad', 'klar', 'avbruten', 'uthämtad', 'levererad'].includes(status)) {
+    if (!isOrderStatus(status) || !canUseGeneralStatusRoute(status)) {
       res.status(400).json({ error: 'Invalid status' });
-      return;
-    }
-    if (status === 'avbruten' && (!cancellationReason || !cancellationReason.trim())) {
-      res.status(400).json({ error: 'cancellationReason is required when status is avbruten' });
       return;
     }
 
     const existing = await getOrderById(req.params.id);
+    if (!existing) {
+      res.status(404).json({ error: 'Order not found' });
+      return;
+    }
+    const currentStatus = existing.order.status;
+    if (!isOrderStatus(currentStatus) || !canTransitionOrderStatus(currentStatus, status)) {
+      res.status(409).json({ error: 'Invalid order status transition' });
+      return;
+    }
+
     const patch: Record<string, unknown> = { status };
     if (estimatedReadyTime) {
       patch.estimated_ready_at = new Date(estimatedReadyTime).toISOString();
     }
     if (status === 'påbörjad') {
-      patch.started_at = existing?.order.started_at ? String(existing.order.started_at) : nowIso();
+      patch.started_at = existing.order.started_at ? String(existing.order.started_at) : nowIso();
     }
     if (status === 'klar') {
-      patch.completed_at = existing?.order.completed_at
+      patch.completed_at = existing.order.completed_at
         ? String(existing.order.completed_at)
         : nowIso();
     }
-    if (status === 'avbruten') {
-      patch.cancelled_at = existing?.order.cancelled_at
-        ? String(existing.order.cancelled_at)
-        : nowIso();
-      patch.cancellation_reason = cancellationReason?.trim() ?? null;
+    const updated = await compareAndUpdateOrder(req.params.id, currentStatus, patch);
+    if (!updated) {
+      res.status(409).json({ error: 'Order status changed before it could be updated' });
+      return;
     }
-    await updateOrder(req.params.id, patch);
 
     const result = await getOrderById(req.params.id);
     if (!result) {
