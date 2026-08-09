@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, security-checks]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm rebuild
+      - run: npm run build --workspace=@mormors-kunafa/backend
+      - name: Backend tests
+        run: node --test --test-concurrency=1 $(find backend/dist -name '*.test.js' -type f)
+      - run: npm run build --workspace=@mormors-kunafa/web
+      - run: npm exec --workspace=@mormors-kunafa/mobile -- tsc --noEmit
