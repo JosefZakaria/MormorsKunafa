@@ -6,6 +6,42 @@ const SWISH_TIMEOUT_MS = 10_000;
 const MAX_SWISH_RESPONSE_BYTES = 64 * 1024;
 const MAX_SWISH_REQUEST_BYTES = 32 * 1024;
 const UUID_V4_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const SWISH_PAYEE_PATTERN = /^\d{8,15}$/;
+
+export type SwishEnvironment = 'test' | 'production';
+
+export function parseSwishEnvironment(value?: string): SwishEnvironment {
+  const environment = String(value ?? 'test').trim().toLowerCase();
+  if (['prod', 'production', 'live'].includes(environment)) return 'production';
+  if (['test', 'sandbox', 'mss'].includes(environment)) return 'test';
+  throw new Error('SWISH_ENV must be test or production');
+}
+
+function requiresLiveSwishMode(): boolean {
+  if (process.env.VERCEL_ENV) return process.env.VERCEL_ENV === 'production';
+  return process.env.NODE_ENV === 'production';
+}
+
+export function validateSwishCallbackBaseUrl(value?: string): string {
+  const raw = String(value ?? '').trim().replace(/\/$/, '');
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error('SWISH_CALLBACK_BASE_URL must be a valid HTTPS URL');
+  }
+  if (
+    url.protocol !== 'https:' ||
+    url.username ||
+    url.password ||
+    url.port ||
+    url.search ||
+    url.hash
+  ) {
+    throw new Error('SWISH_CALLBACK_BASE_URL must be a clean HTTPS URL');
+  }
+  return `${url.origin}${url.pathname.replace(/\/$/, '')}`;
+}
 
 export type SwishPaymentRequestBody = {
   payeeAlias: string;
@@ -39,8 +75,11 @@ export type SwishCallbackPayload = {
 };
 
 function swishBaseUrl(): string {
-  const env = (process.env.SWISH_ENV ?? 'test').trim().toLowerCase();
-  if (env === 'prod' || env === 'production' || env === 'live') {
+  const environment = parseSwishEnvironment(process.env.SWISH_ENV);
+  if (requiresLiveSwishMode() && environment !== 'production') {
+    throw new Error('Production deployments require SWISH_ENV=production');
+  }
+  if (environment === 'production') {
     return 'https://cpc.getswish.net';
   }
   return 'https://mss.cpc.getswish.net';
@@ -147,13 +186,19 @@ export function isSwishConfigured(): boolean {
   const payee = process.env.SWISH_PAYEE_ALIAS?.trim();
   const cert = process.env.SWISH_CERT_PATH?.trim();
   const key = process.env.SWISH_KEY_PATH?.trim();
-  const callbackBase = process.env.SWISH_CALLBACK_BASE_URL?.trim();
-  return !!(payee && cert && key && callbackBase);
+  try {
+    const environment = parseSwishEnvironment(process.env.SWISH_ENV);
+    if (requiresLiveSwishMode() && environment !== 'production') return false;
+    if (!payee || !SWISH_PAYEE_PATTERN.test(payee) || !cert || !key) return false;
+    validateSwishCallbackBaseUrl(process.env.SWISH_CALLBACK_BASE_URL);
+    return fs.existsSync(cert) && fs.existsSync(key);
+  } catch {
+    return false;
+  }
 }
 
 export function swishCallbackUrl(): string {
-  const base = process.env.SWISH_CALLBACK_BASE_URL?.trim().replace(/\/$/, '');
-  if (!base) throw new Error('SWISH_CALLBACK_BASE_URL is not set');
+  const base = validateSwishCallbackBaseUrl(process.env.SWISH_CALLBACK_BASE_URL);
   return `${base}/api/swish/callback`;
 }
 
@@ -211,7 +256,9 @@ export async function createSwishPaymentRequest(params: {
   payeePaymentReference?: string;
 }): Promise<{ instructionId: string; token?: string; status?: string }> {
   const payeeAlias = process.env.SWISH_PAYEE_ALIAS?.trim();
-  if (!payeeAlias) throw new Error('SWISH_PAYEE_ALIAS is not set');
+  if (!payeeAlias || !SWISH_PAYEE_PATTERN.test(payeeAlias)) {
+    throw new Error('SWISH_PAYEE_ALIAS must contain 8 to 15 digits');
+  }
 
   const instructionId = randomUUID();
   const body: SwishPaymentRequestBody = {
@@ -256,8 +303,11 @@ export async function getSwishPaymentRequest(instructionId: string): Promise<Swi
 
 /** Deep link / QR token URL for customer (test MSS uses simulator). */
 export function swishPaymentPageUrl(token: string): string {
-  const env = (process.env.SWISH_ENV ?? 'test').trim().toLowerCase();
-  if (env === 'prod' || env === 'production' || env === 'live') {
+  const environment = parseSwishEnvironment(process.env.SWISH_ENV);
+  if (requiresLiveSwishMode() && environment !== 'production') {
+    throw new Error('Production deployments require SWISH_ENV=production');
+  }
+  if (environment === 'production') {
     return `swish://paymentrequest?token=${encodeURIComponent(token)}`;
   }
   return `https://mss.cpc.getswish.net/paymentrequest/v1/${encodeURIComponent(token)}`;
