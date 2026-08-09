@@ -18,6 +18,13 @@ import {
 import { getRealtimeStatus, registerRealtimeClient } from '../services/realtimeEvents.js';
 import { isWebPushConfigured } from '../services/pushNotifications.js';
 import { validatePushSubscription } from '../utils/webPushSecurity.js';
+import {
+  AdminInputError,
+  parseAdminLoginInput,
+  parseOptionalBoolean,
+  parsePreparationMinutes,
+  parseStatisticsRange,
+} from '../utils/adminInput.js';
 
 const loginLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000, // 15 min window
@@ -93,11 +100,7 @@ function inRange(createdAt: string, start: Date | null, end: Date | null): boole
 
 router.post('/login', loginLimiter, async (req: Request, res: Response) => {
   try {
-    const { email, password } = req.body as { email?: string; password?: string };
-    if (!email || !password) {
-      res.status(400).json({ error: 'Email and password required' });
-      return;
-    }
+    const { email, password } = parseAdminLoginInput(req.body?.email, req.body?.password);
 
     const { data: user, error } = await supabase
       .from('admin_users')
@@ -145,6 +148,10 @@ router.post('/login', loginLimiter, async (req: Request, res: Response) => {
       },
     });
   } catch (e) {
+    if (e instanceof AdminInputError) {
+      res.status(400).json({ error: e.message });
+      return;
+    }
     console.error('[POST /admin/login]', e);
     res.status(500).json({ error: 'Login failed' });
   }
@@ -314,14 +321,16 @@ router.get('/settings', requireAdmin, async (_req: Request, res: Response) => {
 
 router.patch('/settings', requireAdmin, async (req: Request, res: Response) => {
   try {
-    const body = req.body as { defaultPreparationTime?: number; isPaused?: boolean };
+    const body = req.body as { defaultPreparationTime?: unknown; isPaused?: unknown };
+    const defaultPreparationTime = parsePreparationMinutes(body.defaultPreparationTime);
+    const isPaused = parseOptionalBoolean(body.isPaused, 'Pausläge');
+    if (defaultPreparationTime == null && isPaused == null) {
+      res.status(400).json({ error: 'defaultPreparationTime or isPaused required' });
+      return;
+    }
     const patch: Record<string, unknown> = { updated_at: nowIso() };
-    if (typeof body.defaultPreparationTime === 'number') {
-      patch.default_preparation_time_minutes = body.defaultPreparationTime;
-    }
-    if (typeof body.isPaused === 'boolean') {
-      patch.is_paused = body.isPaused;
-    }
+    if (defaultPreparationTime != null) patch.default_preparation_time_minutes = defaultPreparationTime;
+    if (isPaused != null) patch.is_paused = isPaused;
 
     if (Object.keys(patch).length > 1) {
       const settings = await fetchAdminSettingsRow();
@@ -350,6 +359,10 @@ router.patch('/settings', requireAdmin, async (req: Request, res: Response) => {
       isPaused: Boolean(r.is_paused),
     });
   } catch (e) {
+    if (e instanceof AdminInputError) {
+      res.status(400).json({ error: e.message });
+      return;
+    }
     console.error('[PATCH /admin/settings]', e);
     res.status(500).json({ error: 'Failed to update settings' });
   }
@@ -365,10 +378,10 @@ router.patch('/notifications/:id/read', requireAdmin, async (_req: Request, res:
 
 router.post('/statistics', requireAdmin, async (req: Request, res: Response) => {
   try {
-    const { password, startDate, endDate } = req.body as {
+    const { password, startDate: rawStartDate, endDate: rawEndDate } = req.body as {
       password?: string;
-      startDate?: string;
-      endDate?: string;
+      startDate?: unknown;
+      endDate?: unknown;
     };
     const statsPassword = process.env.STATS_PASSWORD;
     if (!statsPassword || !password || !safeCompareStrings(password, statsPassword)) {
@@ -376,7 +389,8 @@ router.post('/statistics', requireAdmin, async (req: Request, res: Response) => 
       return;
     }
 
-    const hasCustomRange = !!(startDate && endDate);
+    const { startDate, endDate } = parseStatisticsRange(rawStartDate, rawEndDate);
+    const hasCustomRange = Boolean(startDate && endDate);
     const customStart = startDate ? new Date(`${startDate}T00:00:00`) : null;
     const customEnd = endDate
       ? new Date(new Date(`${endDate}T23:59:59`).getTime() + 1000)
@@ -639,6 +653,10 @@ router.post('/statistics', requireAdmin, async (req: Request, res: Response) => 
       hasCustomRange,
     });
   } catch (e) {
+    if (e instanceof AdminInputError) {
+      res.status(400).json({ error: e.message });
+      return;
+    }
     console.error('[POST /admin/statistics]', e);
     res.status(500).json({ error: 'Failed to fetch statistics' });
   }

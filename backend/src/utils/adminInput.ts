@@ -56,3 +56,39 @@ export function parseInternalNotes(value: unknown): string | null {
     throw error;
   }
 }
+
+export function parseAdminLoginInput(emailValue: unknown, passwordValue: unknown): {
+  email: string;
+  password: string;
+} {
+  const email = typeof emailValue === 'string' ? emailValue.trim().toLowerCase() : '';
+  const password = typeof passwordValue === 'string' ? passwordValue : '';
+  if (!email || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(email)) {
+    throw new AdminInputError('Giltig e-postadress och lösenord krävs.');
+  }
+  if (!password || Buffer.byteLength(password, 'utf8') > 72) {
+    throw new AdminInputError('Giltig e-postadress och lösenord krävs.');
+  }
+  return { email, password };
+}
+
+export function parseOptionalBoolean(value: unknown, field: string): boolean | undefined {
+  if (value == null) return undefined;
+  if (typeof value !== 'boolean') throw new AdminInputError(`${field} måste vara true eller false.`);
+  return value;
+}
+
+export function parseStatisticsRange(startValue: unknown, endValue: unknown): {
+  startDate?: string;
+  endDate?: string;
+} {
+  const startDate = parseDateOnly(startValue, 'Från-datum');
+  const endDate = parseDateOnly(endValue, 'Till-datum');
+  if (Boolean(startDate) !== Boolean(endDate)) {
+    throw new AdminInputError('Både från- och till-datum måste anges.');
+  }
+  if (startDate && endDate && startDate > endDate) {
+    throw new AdminInputError('Från-datum får inte vara efter till-datum.');
+  }
+  return { startDate, endDate };
+}

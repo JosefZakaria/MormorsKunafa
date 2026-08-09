@@ -6,7 +6,10 @@ import {
   parseEstimatedReadyTime,
   parseHistoryLimit,
   parseInternalNotes,
+  parseAdminLoginInput,
+  parseOptionalBoolean,
   parsePreparationMinutes,
+  parseStatisticsRange,
 } from './adminInput.js';
 
 test('bounds preparation time and history pagination', () => {
@@ -15,6 +18,23 @@ test('bounds preparation time and history pagination', () => {
   assert.throws(() => parsePreparationMinutes(0), AdminInputError);
   assert.throws(() => parsePreparationMinutes(12.5), AdminInputError);
   assert.throws(() => parseHistoryLimit('10000'), AdminInputError);
+});
+
+test('validates login size, booleans and complete statistics ranges', () => {
+  assert.deepEqual(parseAdminLoginInput(' ADMIN@example.com ', 'secret'), {
+    email: 'admin@example.com',
+    password: 'secret',
+  });
+  assert.throws(() => parseAdminLoginInput('invalid', 'secret'), AdminInputError);
+  assert.throws(() => parseAdminLoginInput('admin@example.com', 'x'.repeat(73)), AdminInputError);
+  assert.equal(parseOptionalBoolean(false, 'Paus'), false);
+  assert.throws(() => parseOptionalBoolean('false', 'Paus'), AdminInputError);
+  assert.deepEqual(parseStatisticsRange('2026-01-01', '2026-01-31'), {
+    startDate: '2026-01-01',
+    endDate: '2026-01-31',
+  });
+  assert.throws(() => parseStatisticsRange('2026-01-01', undefined), AdminInputError);
+  assert.throws(() => parseStatisticsRange('2026-02-01', '2026-01-01'), AdminInputError);
 });
 
 test('strictly validates dates and timestamps', () => {
