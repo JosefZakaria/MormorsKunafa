@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Container } from '../../components/common/Container/Container';
 import { orderApi } from '../../services/api';
+import { safePaymentRedirectUrl } from '@shared/utils/paymentRedirect.ts';
 import './SwishPay.css';
 
 export const SwishPay: React.FC = () => {
@@ -34,7 +35,11 @@ export const SwishPay: React.FC = () => {
         if (cancelled) return;
         setOrderNumber(String(created.orderNumber ?? ''));
         setAmountKr(((created.amountOre ?? 0) / 100).toFixed(0));
-        if (created.paymentPageUrl) setPaymentPageUrl(created.paymentPageUrl);
+        if (created.paymentPageUrl) {
+          const safeUrl = safePaymentRedirectUrl(created.paymentPageUrl, 'swish');
+          if (!safeUrl) throw new Error('Swish returnerade en ogiltig betalningsadress.');
+          setPaymentPageUrl(safeUrl);
+        }
         setLoading(false);
       } catch (err: unknown) {
         if (cancelled) return;
@@ -56,7 +61,8 @@ export const SwishPay: React.FC = () => {
           clearInterval(poll);
           goToStatus();
         } else if (st.paymentPageUrl && !paymentPageUrl) {
-          setPaymentPageUrl(st.paymentPageUrl);
+          const safeUrl = safePaymentRedirectUrl(st.paymentPageUrl, 'swish');
+          if (safeUrl) setPaymentPageUrl(safeUrl);
         }
       } catch {
         /* ignore poll errors */

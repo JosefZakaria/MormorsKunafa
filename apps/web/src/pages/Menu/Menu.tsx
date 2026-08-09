@@ -26,9 +26,10 @@ import './Menu.css';
 const SHORT_DESC_LENGTH = 100;
 
 function stripHtmlAndTruncate(html: string, maxLen: number): string {
+    const sanitized = DOMPurify.sanitize(html, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] });
     const div = typeof document !== 'undefined' ? document.createElement('div') : null;
-    if (!div) return html.replace(/<[^>]*>/g, '').slice(0, maxLen).trim();
-    div.innerHTML = html;
+    if (!div) return sanitized.slice(0, maxLen).trim();
+    div.innerHTML = sanitized;
     const text = (div.textContent || div.innerText || '').replace(/\s+/g, ' ').trim();
     if (text.length <= maxLen) return text;
     return text.slice(0, maxLen).trim() + '…';
@@ -83,7 +84,10 @@ function normalizeHeaders(html: string): string {
 function sanitizeHtml(html: string): string {
     return DOMPurify.sanitize(
         normalizeHeaders(normalizeLineBreaks(stripEscapedQuotes(html))),
-        { ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'h3', 'ul', 'li', 'span'] }
+        {
+            ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'h3', 'ul', 'li', 'span'],
+            ALLOWED_ATTR: [],
+        }
     );
 }
 

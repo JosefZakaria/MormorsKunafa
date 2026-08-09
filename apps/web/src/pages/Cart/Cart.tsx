@@ -9,6 +9,7 @@ import { orderApi, storeOrderStatusToken } from '../../services/api';
 import type { CheckoutPaymentChoice, CustomerInfo, OrderType } from '@shared/types';
 import { DELIVERY_FEE_SEK } from '@shared/constants/delivery';
 import { isBreadProductId } from '@shared/constants/productPricing';
+import { safePaymentRedirectUrl } from '@shared/utils/paymentRedirect.ts';
 import {
     dateToStockholmInputValue,
     todayInStockholmDateString,
@@ -392,7 +393,9 @@ export const Cart: React.FC = () => {
 
             if (paymentChoice === 'card') {
                 const { url } = await orderApi.createCheckoutSession(order.id);
-                window.location.href = url;
+                const checkoutUrl = safePaymentRedirectUrl(url, 'stripe');
+                if (!checkoutUrl) throw new Error('Betaltjänsten returnerade en ogiltig adress.');
+                window.location.assign(checkoutUrl);
             } else {
                 navigate(`/pay/swish?orderId=${encodeURIComponent(order.id)}`);
             }
