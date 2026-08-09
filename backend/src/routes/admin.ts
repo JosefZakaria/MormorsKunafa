@@ -1,5 +1,4 @@
 import { Router, Request, Response } from 'express';
-import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { supabase, type Row, logSupabaseError, nowIso } from '../db/connection.js';
 import {
@@ -25,6 +24,7 @@ import {
   parsePreparationMinutes,
   parseStatisticsRange,
 } from '../utils/adminInput.js';
+import { verifyAdminPassword } from '../utils/adminPassword.js';
 
 const loginLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000, // 15 min window
@@ -114,13 +114,11 @@ router.post('/login', loginLimiter, async (req: Request, res: Response) => {
       return;
     }
 
-    if (!user) {
-      res.status(401).json({ error: 'Invalid credentials' });
-      return;
-    }
-
-    const ok = await bcrypt.compare(password, String((user as Row).password_hash));
-    if (!ok) {
+    const ok = await verifyAdminPassword(
+      password,
+      user ? String((user as Row).password_hash ?? '') : undefined
+    );
+    if (!user || !ok) {
       res.status(401).json({ error: 'Invalid credentials' });
       return;
     }
