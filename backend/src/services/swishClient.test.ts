@@ -1,0 +1,40 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { verifySwishPaymentRequest, type SwishPaymentRequestResponse } from './swishClient.js';
+
+const expected = {
+  instructionId: 'bd7204c1-3ec1-4b18-a52c-f6f8544f012f',
+  amountOre: 17_900,
+  payeeAlias: '1231181189',
+  payeePaymentReference: 'a96c113d-9c7b-4e93-b247-2a3baf0',
+};
+
+function payment(overrides: Partial<SwishPaymentRequestResponse> = {}): SwishPaymentRequestResponse {
+  return {
+    id: expected.instructionId,
+    status: 'PAID',
+    amount: 179,
+    currency: 'SEK',
+    payeeAlias: expected.payeeAlias,
+    payeePaymentReference: expected.payeePaymentReference,
+    ...overrides,
+  };
+}
+
+test('accepts an exact Swish API payment match', () => {
+  assert.deepEqual(verifySwishPaymentRequest(payment(), expected), {
+    ok: true,
+    paidAmountOre: 17_900,
+  });
+});
+
+for (const [name, override] of [
+  ['amount', { amount: 0.01 }],
+  ['currency', { currency: 'EUR' }],
+  ['payee', { payeeAlias: '1230000000' }],
+  ['reference', { payeePaymentReference: 'another-order' }],
+] as const) {
+  test(`rejects a Swish ${name} mismatch`, () => {
+    assert.equal(verifySwishPaymentRequest(payment(override), expected).ok, false);
+  });
+}

@@ -6,8 +6,8 @@ import {
   createSwishPaymentRequest,
   getSwishPaymentRequest,
   isSwishConfigured,
-  parseSwishAmountToOre,
   swishPaymentPageUrl,
+  verifySwishPaymentRequest,
 } from '../services/swishClient.js';
 import { isSwishPayment, normalizeSwishPayerAlias } from '../utils/paymentMethod.js';
 
@@ -106,9 +106,25 @@ router.get('/:orderId/status', async (req: Request, res: Response) => {
     const swishStatus = String(pr.status ?? '').toUpperCase();
 
     if (swishStatus === 'PAID') {
-      const paidOre =
-        typeof pr.amount === 'number' ? parseSwishAmountToOre(pr.amount) : undefined;
-      await markOrderPaid(orderId, { paidAmountOre: paidOre });
+      const verification = verifySwishPaymentRequest(pr, {
+        instructionId,
+        amountOre: Number(order.total_ore ?? 0),
+        payeeAlias: process.env.SWISH_PAYEE_ALIAS?.trim() ?? '',
+        payeePaymentReference: orderId.slice(0, 35),
+      });
+      if (!verification.ok) {
+        console.error('[swish payment status] verification failed', {
+          instructionId,
+          reason: verification.reason,
+        });
+        res.status(409).json({
+          paymentStatus: order.payment_status,
+          swishStatus,
+          error: 'Swish-betalningen kunde inte verifieras.',
+        });
+        return;
+      }
+      await markOrderPaid(orderId, { paidAmountOre: verification.paidAmountOre });
       res.json({ paymentStatus: 'paid', swishStatus: 'PAID' });
       return;
     }

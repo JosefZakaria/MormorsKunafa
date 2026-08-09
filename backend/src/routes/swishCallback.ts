@@ -3,7 +3,12 @@ import {
   getOrderIdBySwishInstructionId,
   markOrderPaid,
 } from '../services/markOrderPaid.js';
-import { parseSwishAmountToOre, type SwishCallbackPayload } from '../services/swishClient.js';
+import {
+  getSwishPaymentRequest,
+  verifySwishPaymentRequest,
+  type SwishCallbackPayload,
+} from '../services/swishClient.js';
+import { fetchOrderRow } from '../db/orderRepository.js';
 
 export async function handleSwishCallback(req: Request, res: Response): Promise<void> {
   try {
@@ -28,10 +33,31 @@ export async function handleSwishCallback(req: Request, res: Response): Promise<
       return;
     }
 
-    const paidAmountOre =
-      typeof payload.amount === 'number' ? parseSwishAmountToOre(payload.amount) : undefined;
+    const order = await fetchOrderRow(orderId);
+    if (!order) {
+      res.status(200).send('OK');
+      return;
+    }
 
-    await markOrderPaid(orderId, { paidAmountOre });
+    // Callback bodies are notifications, not proof of payment. Fetch the
+    // canonical payment from Swish over our authenticated mTLS connection.
+    const payment = await getSwishPaymentRequest(instructionId);
+    const verification = verifySwishPaymentRequest(payment, {
+      instructionId,
+      amountOre: Number(order.total_ore ?? 0),
+      payeeAlias: process.env.SWISH_PAYEE_ALIAS?.trim() ?? '',
+      payeePaymentReference: orderId.slice(0, 35),
+    });
+    if (!verification.ok) {
+      console.error('[swish callback] verification failed', {
+        instructionId,
+        reason: verification.reason,
+      });
+      res.status(409).send('Payment verification failed');
+      return;
+    }
+
+    await markOrderPaid(orderId, { paidAmountOre: verification.paidAmountOre });
     res.status(200).send('OK');
   } catch (e) {
     console.error('[swish callback] error', e);

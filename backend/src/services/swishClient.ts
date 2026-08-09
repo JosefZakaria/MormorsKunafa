@@ -18,6 +18,8 @@ export type SwishPaymentRequestResponse = {
   paymentRequestToken?: string;
   amount?: number;
   currency?: string;
+  payeeAlias?: string;
+  payeePaymentReference?: string;
   message?: string;
 };
 
@@ -124,6 +126,45 @@ export function formatSwishAmount(totalOre: number): string {
 
 export function parseSwishAmountToOre(amount: number): number {
   return Math.round(amount * 100);
+}
+
+export type SwishPaymentVerification =
+  | { ok: true; paidAmountOre: number }
+  | { ok: false; reason: string };
+
+/** Validate a payment fetched directly from Swish over the configured mTLS connection. */
+export function verifySwishPaymentRequest(
+  payment: SwishPaymentRequestResponse,
+  expected: {
+    instructionId: string;
+    amountOre: number;
+    payeeAlias: string;
+    payeePaymentReference: string;
+  }
+): SwishPaymentVerification {
+  if (payment.id !== expected.instructionId) {
+    return { ok: false, reason: 'Swish instruction ID mismatch' };
+  }
+  if (String(payment.status ?? '').toUpperCase() !== 'PAID') {
+    return { ok: false, reason: 'Swish payment is not paid' };
+  }
+  if (typeof payment.amount !== 'number' || !Number.isFinite(payment.amount)) {
+    return { ok: false, reason: 'Swish payment amount missing' };
+  }
+  const paidAmountOre = parseSwishAmountToOre(payment.amount);
+  if (paidAmountOre !== expected.amountOre) {
+    return { ok: false, reason: 'Swish payment amount mismatch' };
+  }
+  if (String(payment.currency ?? '').toUpperCase() !== 'SEK') {
+    return { ok: false, reason: 'Swish payment currency mismatch' };
+  }
+  if (String(payment.payeeAlias ?? '').trim() !== expected.payeeAlias) {
+    return { ok: false, reason: 'Swish payee mismatch' };
+  }
+  if (String(payment.payeePaymentReference ?? '').trim() !== expected.payeePaymentReference) {
+    return { ok: false, reason: 'Swish order reference mismatch' };
+  }
+  return { ok: true, paidAmountOre };
 }
 
 export async function createSwishPaymentRequest(params: {
