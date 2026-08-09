@@ -4,6 +4,11 @@ import { getStripe } from '../services/stripeClient.js';
 import { markOrderPaid } from '../services/markOrderPaid.js';
 import { getOrderById } from '../db/orderRepository.js';
 import { validateStripeCheckoutSession } from '../utils/confirmStripeCheckout.js';
+import {
+  assertStripeWebhookSecret,
+  isExpectedStripeEventMode,
+  safeStripeVerificationError,
+} from '../utils/stripeSecurity.js';
 
 async function markOrderPaidFromSession(session: Stripe.Checkout.Session): Promise<void> {
   const orderId = session.metadata?.orderId?.trim();
@@ -38,6 +43,13 @@ export async function handleStripeWebhook(req: Request, res: Response): Promise<
     res.status(503).send('Webhook not configured');
     return;
   }
+  try {
+    assertStripeWebhookSecret(secret);
+  } catch {
+    console.error('[stripe webhook] signing secret configuration is invalid');
+    res.status(503).send('Webhook not configured');
+    return;
+  }
 
   const sig = req.headers['stripe-signature'];
   if (!sig || typeof sig !== 'string') {
@@ -51,9 +63,17 @@ export async function handleStripeWebhook(req: Request, res: Response): Promise<
     const rawBody = req.body instanceof Buffer ? req.body : Buffer.from(JSON.stringify(req.body ?? {}));
     event = stripe.webhooks.constructEvent(rawBody, sig, secret);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error('[stripe webhook] signature verification failed:', msg);
-    res.status(400).send(`Webhook Error: ${msg}`);
+    console.error('[stripe webhook] signature verification failed:', safeStripeVerificationError(err));
+    res.status(400).send('Invalid webhook signature');
+    return;
+  }
+
+  if (!isExpectedStripeEventMode(event.livemode)) {
+    console.error('[stripe webhook] rejected non-live event in production', {
+      eventId: event.id,
+      eventType: event.type,
+    });
+    res.status(400).send('Webhook mode mismatch');
     return;
   }
 
