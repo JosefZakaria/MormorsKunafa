@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   parseSwishInstructionId,
   parseSwishEnvironment,
+  resolveSwishInstructionId,
   validateSwishCallbackBaseUrl,
   verifySwishPaymentRequest,
   type SwishPaymentRequestResponse,
@@ -53,6 +54,13 @@ test('accepts only canonical version 4 Swish instruction identifiers', () => {
   assert.equal(parseSwishInstructionId('123e4567-e89b-12d3-a456-426614174000'), null);
   assert.equal(parseSwishInstructionId('../metadata'), null);
   assert.equal(parseSwishInstructionId('x'.repeat(1_000)), null);
+});
+
+test('reuses a reserved Swish instruction instead of generating a second one', () => {
+  const reserved = '123e4567-e89b-42d3-a456-426614174000';
+  assert.equal(resolveSwishInstructionId(reserved), reserved);
+  assert.match(resolveSwishInstructionId(), /^[0-9a-f-]{36}$/u);
+  assert.throws(() => resolveSwishInstructionId('not-reserved-safely'));
 });
 
 test('accepts only explicit Swish environments and clean HTTPS callback bases', () => {

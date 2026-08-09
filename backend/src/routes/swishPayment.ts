@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from 'express';
+import { randomUUID } from 'node:crypto';
 import { supabase, type Row, logSupabaseError } from '../db/connection.js';
 import { fetchOrderRow } from '../db/orderRepository.js';
 import { markOrderPaid } from '../services/markOrderPaid.js';
@@ -6,6 +7,7 @@ import {
   createSwishPaymentRequest,
   getSwishPaymentRequest,
   isSwishConfigured,
+  parseSwishInstructionId,
   swishPaymentPageUrl,
   verifySwishPaymentRequest,
 } from '../services/swishClient.js';
@@ -43,6 +45,24 @@ const swishStatusLimiter = createRateLimiter({
   ),
 });
 
+async function sendExistingPayment(
+  res: Response,
+  order: Row,
+  instructionId: string
+): Promise<void> {
+  const payment = await getSwishPaymentRequest(instructionId);
+  res.json({
+    instructionId,
+    status: String(payment.status ?? 'CREATED').slice(0, 32),
+    paymentPageUrl: payment.paymentRequestToken
+      ? swishPaymentPageUrl(payment.paymentRequestToken)
+      : undefined,
+    token: payment.paymentRequestToken,
+    amountOre: Number(order.total_ore ?? 0),
+    orderNumber: order.order_number,
+  });
+}
+
 router.post('/:orderId', swishStartLimiter, async (req: Request, res: Response) => {
   try {
     if (!isSwishConfigured()) {
@@ -73,28 +93,57 @@ router.post('/:orderId', swishStartLimiter, async (req: Request, res: Response) 
       return;
     }
 
+    const storedInstructionRaw = String(order.swish_instruction_id ?? '').trim();
+    const storedInstructionId = parseSwishInstructionId(storedInstructionRaw);
+    if (storedInstructionRaw && !storedInstructionId) {
+      res.status(409).json({ error: 'Order has an invalid stored Swish instruction' });
+      return;
+    }
+    if (storedInstructionId) {
+      await sendExistingPayment(res, order, storedInstructionId);
+      return;
+    }
+
     // The payer alias comes only from the already validated order. Do not accept
     // a second, attacker-controlled phone number when starting the payment.
     const phoneRaw = String(order.customer_phone ?? '').trim();
     const payerAlias = phoneRaw ? normalizeSwishPayerAlias(phoneRaw) : undefined;
+
+    // Reserve the provider identifier before the external request. The conditional
+    // update makes concurrent starts converge on one Swish payment request.
+    const reservedInstructionId = randomUUID();
+    const { data: reservationRows, error: reservationError } = await supabase
+      .from('orders')
+      .update({ swish_instruction_id: reservedInstructionId })
+      .eq('id', orderId)
+      .is('swish_instruction_id', null)
+      .select('swish_instruction_id');
+
+    if (reservationError) {
+      logSupabaseError('swish payment reserve instruction', reservationError);
+      res.status(500).json({ error: 'Failed to reserve Swish instruction' });
+      return;
+    }
+    if (!reservationRows?.length) {
+      const latestOrder = await fetchOrderRow(orderId);
+      const concurrentInstructionId = parseSwishInstructionId(
+        latestOrder?.swish_instruction_id
+      );
+      if (!latestOrder || !concurrentInstructionId) {
+        res.status(409).json({ error: 'Swish payment start conflicted; retry status' });
+        return;
+      }
+      await sendExistingPayment(res, latestOrder, concurrentInstructionId);
+      return;
+    }
 
     const { instructionId, token, status } = await createSwishPaymentRequest({
       totalOre,
       orderNumber: String(order.order_number ?? ''),
       payerAlias,
       payeePaymentReference: orderId.slice(0, 35),
+      instructionId: reservedInstructionId,
     });
-
-    const { error } = await supabase
-      .from('orders')
-      .update({ swish_instruction_id: instructionId })
-      .eq('id', orderId);
-
-    if (error) {
-      logSupabaseError('swish payment create update', error);
-      res.status(500).json({ error: 'Failed to save Swish instruction' });
-      return;
-    }
 
     res.json({
       instructionId,

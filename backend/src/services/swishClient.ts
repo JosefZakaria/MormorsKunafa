@@ -183,6 +183,13 @@ export function parseSwishInstructionId(value: unknown): string | null {
   return UUID_V4_PATTERN.test(instructionId) ? instructionId : null;
 }
 
+export function resolveSwishInstructionId(value?: unknown): string {
+  if (value == null) return randomUUID();
+  const instructionId = parseSwishInstructionId(value);
+  if (!instructionId) throw new Error('Invalid Swish instruction ID');
+  return instructionId;
+}
+
 export function isSwishConfigured(): boolean {
   const payee = process.env.SWISH_PAYEE_ALIAS?.trim();
   const cert = process.env.SWISH_CERT_PATH?.trim();
@@ -255,13 +262,14 @@ export async function createSwishPaymentRequest(params: {
   orderNumber: string;
   payerAlias?: string;
   payeePaymentReference?: string;
+  instructionId?: string;
 }): Promise<{ instructionId: string; token?: string; status?: string }> {
   const payeeAlias = process.env.SWISH_PAYEE_ALIAS?.trim();
   if (!payeeAlias || !SWISH_PAYEE_PATTERN.test(payeeAlias)) {
     throw new Error('SWISH_PAYEE_ALIAS must contain 8 to 15 digits');
   }
 
-  const instructionId = randomUUID();
+  const instructionId = resolveSwishInstructionId(params.instructionId);
   const body: SwishPaymentRequestBody = {
     payeeAlias,
     amount: formatSwishAmount(params.totalOre),
