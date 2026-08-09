@@ -94,7 +94,11 @@ Optional, for one-time WordPress migration only:
    npm run db:seed-wp --workspace=@mormors-kunafa/backend
    ```
 
-   Products and orders are copied; admin users are created with **new** bcrypt passwords. The script prints temporary passwords; change them after first login.
+   Products and orders are copied. Admin migration is disabled unless
+   `WP_MIGRATION_ADMIN_PASSWORDS_JSON` maps each selected admin email to a unique
+   temporary password of 16–256 bytes. The script never prints passwords and
+   never overwrites an existing admin account. Reset every temporary password
+   after first login.
 
 4. **Start the server**
 

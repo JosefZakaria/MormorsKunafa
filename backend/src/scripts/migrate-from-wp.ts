@@ -6,14 +6,15 @@
  * 2. Create the target database and run schema: npm run db:migrate (uses DB_*).
  * 3. Set WP_DB_* env vars to the WordPress DB and run: npm run db:seed-wp.
  *
- * Admin users are copied with a NEW bcrypt password (not WordPress hashes).
- * Temporary passwords are printed; change them after first login.
+ * Admin users are opt-in and copied only when a unique strong temporary password
+ * is supplied for their email in WP_MIGRATION_ADMIN_PASSWORDS_JSON. Passwords are
+ * never generated or printed by this script.
  */
 
 import 'dotenv/config';
 import mysql from 'mysql2/promise';
 import bcrypt from 'bcryptjs';
-import { randomBytes } from 'crypto';
+import { parseMigrationAdminPasswords } from '../utils/migrationAdminPasswords.js';
 
 const WP_PREFIX = process.env.WP_TABLE_PREFIX ?? 'wp_';
 
@@ -225,39 +226,36 @@ async function main() {
        WHERE m.meta_value LIKE '%administrator%'`
     );
     const admins = Array.isArray(adminRows) ? (adminRows as Record<string, unknown>[]) : [];
-    const tempPasswords: Array<{ email: string; password: string }> = [];
+    const configuredPasswords = parseMigrationAdminPasswords(
+      process.env.WP_MIGRATION_ADMIN_PASSWORDS_JSON
+    );
+    let migratedAdminCount = 0;
 
     for (const a of admins) {
       const email = String(a.user_email ?? '').trim().slice(0, 255);
       if (!email) continue;
+      const tempPassword = configuredPasswords.get(email.toLowerCase());
+      if (!tempPassword) continue;
       const displayName = String(a.display_name ?? email).slice(0, 255);
-      const tempPassword = randomBytes(8).toString('base64').replace(/[/+=]/g, '').slice(0, 12);
       const passwordHash = await bcrypt.hash(tempPassword, 10);
       const id = generateId();
 
       try {
         await targetConn.query(
-          `INSERT INTO admin_users (id, email, password_hash, display_name) VALUES (?, ?, ?, ?)
-           ON DUPLICATE KEY UPDATE password_hash = VALUES(password_hash), display_name = VALUES(display_name)`,
+          'INSERT INTO admin_users (id, email, password_hash, display_name) VALUES (?, ?, ?, ?)',
           [id, email, passwordHash, displayName]
         );
-        tempPasswords.push({ email, password: tempPassword });
+        migratedAdminCount++;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes('Duplicate entry') && msg.includes('email')) {
-          console.warn(`Admin ${email} already exists; skipping.`);
+          console.warn('An existing admin account was left unchanged.');
           continue;
         }
         throw err;
       }
     }
-    console.log(`Migrated ${admins.length} admin users.`);
-    if (tempPasswords.length > 0) {
-      console.log('\nTemporary passwords (change after first login):');
-      for (const { email, password } of tempPasswords) {
-        console.log(`  ${email} => ${password}`);
-      }
-    }
+    console.log(`Migrated ${migratedAdminCount} explicitly configured admin users.`);
   } finally {
     await wpConn.end();
     await targetConn.end();
