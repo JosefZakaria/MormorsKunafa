@@ -1,8 +1,8 @@
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { supabase, generateId, type Row, logSupabaseError, nowIso } from '../db/connection.js';
-import { getOrderById, getNextOrderNumber, updateOrder } from '../db/orderRepository.js';
-import { orderRowToOrder, rowsToOrders } from '../db/ordersList.js';
+import { fetchOrderRow, getOrderById, getNextOrderNumber, updateOrder } from '../db/orderRepository.js';
+import { orderRowToOrder, orderRowToPublicStatus, rowsToOrders } from '../db/ordersList.js';
 import { requireAdmin } from '../middleware/auth.js';
 import { createRateLimiter } from '../middleware/rateLimit.js';
 import { PrinterService } from '../services/PrinterService.js';
@@ -420,12 +420,13 @@ router.post('/stripe-confirm', async (req: Request, res: Response) => {
       return;
     }
 
-    const result = await getOrderById(orderId);
-    if (!result) {
+    const order = await fetchOrderRow(orderId);
+    if (!order) {
       res.status(404).json({ error: 'Order not found' });
       return;
     }
-    res.json(orderRowToOrder(result.order, result.items));
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json(orderRowToPublicStatus(order));
   } catch (e) {
     console.error('[stripe-confirm]', e);
     res.status(500).json({ error: 'Failed to confirm payment' });
@@ -855,13 +856,13 @@ router.get('/settings', async (_req: Request, res: Response) => {
 router.get('/:id', async (req: Request, res: Response) => {
   try {
     if (!requireOrderStatusToken(req, res, req.params.id)) return;
-    const result = await getOrderById(req.params.id);
-    if (!result) {
+    const order = await fetchOrderRow(req.params.id);
+    if (!order) {
       res.status(404).json({ error: 'Order not found' });
       return;
     }
     res.setHeader('Cache-Control', 'private, no-store');
-    res.json(orderRowToOrder(result.order, result.items));
+    res.json(orderRowToPublicStatus(order));
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Failed to fetch order' });

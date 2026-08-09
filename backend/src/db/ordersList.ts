@@ -65,3 +65,12 @@ export function orderRowToOrder(r: Row, items: Row[]): Record<string, unknown> {
     })),
   };
 }
+
+/** Never expose customer details, addresses, notes, refunds or line items publicly. */
+export function orderRowToPublicStatus(r: Row): Record<string, unknown> {
+  return {
+    orderNumber: String(r.order_number ?? ''),
+    status: String(r.status ?? 'ny'),
+    estimatedReadyTime: dbTimestampToIso(r.estimated_ready_at),
+  };
+}

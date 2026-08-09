@@ -90,6 +90,13 @@ export interface Order {
   paymentStatus: 'pending' | 'paid';
 }
 
+/** Deliberately minimal response for a customer-facing order status page. */
+export interface PublicOrderStatus {
+  orderNumber: string;
+  status: OrderStatus;
+  estimatedReadyTime?: string;
+}
+
 // Admin User Interface (F.Admin.1)
 export interface AdminUser {
   id: string;

@@ -2,6 +2,7 @@ import { API_CONFIG, apiRequest, authenticatedRequest } from '@shared/api';
 import type {
   Product,
   Order,
+  PublicOrderStatus,
   CreateOrderRequest,
   UpdateOrderStatusRequest,
   UpdateOrderTimeRequest,
@@ -66,8 +67,8 @@ export const orderApi = {
   },
 
   /** After Stripe redirect — marks order paid if webhook has not run yet. */
-  confirmStripeCheckout: async (orderId: string, sessionId: string): Promise<Order> => {
-    return apiRequest<Order>('/orders/stripe-confirm', {
+  confirmStripeCheckout: async (orderId: string, sessionId: string): Promise<PublicOrderStatus> => {
+    return apiRequest<PublicOrderStatus>('/orders/stripe-confirm', {
       method: 'POST',
       headers: orderStatusHeaders(orderId),
       body: JSON.stringify({ orderId, sessionId }),
@@ -105,8 +106,8 @@ export const orderApi = {
     });
   },
 
-  getById: async (id: string): Promise<Order> => {
-    return apiRequest<Order>(`/orders/${id}`, { headers: orderStatusHeaders(id) });
+  getById: async (id: string): Promise<PublicOrderStatus> => {
+    return apiRequest<PublicOrderStatus>(`/orders/${id}`, { headers: orderStatusHeaders(id) });
   },
 
   getPending: async (): Promise<Order[]> => {
