@@ -13,6 +13,7 @@ export const Terms: React.FC = () => {
           <p className="legal-lead">
             مرحباً بكم في كنافة جدتي (Mormors Kunafa). تسرنا خدمتكم! توضح هذه الشروط والأحكام قواعد القوانين السويدية المتعلقة بالشراء والتوصيل وحقوق المستهلك.
           </p>
+          <p><strong>الإصدار 2.0 – ساري اعتباراً من 9 أغسطس 2026.</strong></p>
 
           <section className="legal-section">
             <h2>1. معلومات الشركة (Företagsinformation)</h2>
@@ -51,12 +52,17 @@ export const Terms: React.FC = () => {
             <h2>4. التوصيل والاستلام (Leverans och Upphämtning)</h2>
             <p>
               <strong>الاستلام من المحل:</strong> يجهز الطلب في الوقت المحدد عند الطلب. يرجى إبراز رقم الطلب عند الاستلام.<br />
-              <strong>التوصيل للمنزل:</strong> يستغرق التوصيل داخل السويد 1-2 أيام عمل، برسوم توصيل قدرها 79 كرونة.
+              <strong>التوصيل للمنزل:</strong> تبلغ رسوم التوصيل 79 كرونة. يتم تأكيد إمكانية التوصيل والوقت للعنوان المحدد في الطلب.
             </p>
           </section>
 
           <section className="legal-section">
-            <h2>5. الشكاوى والنزاعات (Reklamation och Tvister)</h2>
+            <h2>5. إبرام العقد</h2>
+            <p>يتم إبرام عقد الشراء عندما يتم تأكيد الدفع ونرسل تأكيد الطلب أو نعرضه لك. إذا تعذر قبول الطلب، فسيتم إبلاغك وإعادة أي مبلغ مدفوع.</p>
+          </section>
+
+          <section className="legal-section">
+            <h2>6. الشكاوى والنزاعات (Reklamation och Tvister)</h2>
             <p>
               في حال وجود أي خطأ أو تلف في الطلب، يرجى التواصل معنا فوراً عبر الهاتف أو البريد الإلكتروني مع إرفاق تفاصيل وصور للطلب.<br />
               بعد منحنا فرصة للرد على الشكوى، يمكن للزبون تقديم النزاع إلى الهيئة السويدية لشكاوى المستهلكين (ARN - Allmänna reklamationsnämnden) عبر arn.se.
@@ -75,6 +81,7 @@ export const Terms: React.FC = () => {
           <p className="legal-lead">
             Welcome to Mormors Kunafa! These Terms and Conditions govern your purchases and use of our online store in accordance with Swedish and EU consumer laws.
           </p>
+          <p><strong>Version 2.0 – effective 9 August 2026.</strong></p>
 
           <section className="legal-section">
             <h2>1. Company Information</h2>
@@ -113,12 +120,17 @@ export const Terms: React.FC = () => {
             <h2>4. Delivery & Pickup</h2>
             <p>
               <strong>Pickup:</strong> Your order will be prepared for the chosen collection time. Please show your order number upon arrival.<br />
-              <strong>Home Delivery:</strong> Delivery across Sweden takes 1–2 business days with a flat delivery fee of 79 SEK.
+              <strong>Home Delivery:</strong> The delivery fee is 79 SEK. Availability and timing for the submitted address are confirmed with the order.
             </p>
           </section>
 
           <section className="legal-section">
-            <h2>5. Complaints & Disputes</h2>
+            <h2>5. Formation of the Contract</h2>
+            <p>The purchase contract is formed when payment is confirmed and we send or display an order confirmation. If we cannot accept the order, we will notify you and return any amount paid.</p>
+          </section>
+
+          <section className="legal-section">
+            <h2>6. Complaints & Disputes</h2>
             <p>
               If your order is damaged or incorrect, please contact us immediately by phone or email. After giving us an opportunity to respond, consumers may submit an eligible dispute to the Swedish National Board for Consumer Disputes (ARN) at <a href="https://www.arn.se" target="_blank" rel="noopener noreferrer">arn.se</a>.
             </p>
@@ -136,6 +148,7 @@ export const Terms: React.FC = () => {
         <p className="legal-lead">
           Välkommen till Mormors Kunafa! Dessa köpvillkor gäller för alla beställningar som görs via vår webbplats och följer svensk konsumenträtt, E-handelslagen och Distansavtalslagen.
         </p>
+        <p><strong>Version 2.0 – gäller från och med 9 augusti 2026.</strong></p>
 
         <section className="legal-section">
           <h2>1. Företagsinformation</h2>
@@ -174,12 +187,19 @@ export const Terms: React.FC = () => {
           <h2>4. Leverans och Upphämtning</h2>
           <p>
             <strong>Upphämtning i butik:</strong> Beställningen tillagas och förbereds till den angivna upphämtningstiden på Karolingatan 1 i Malmö. Uppge ditt ordernummer vid uthämtning.<br />
-            <strong>Hemleverans:</strong> Leveranstid är normalt 1–2 arbetsdagar inom Sverige. Leveransavgiften är 79 kr per beställning.
+            <strong>Hemleverans:</strong> Leveransavgiften är 79 kr. Leveransmöjlighet och tid för den angivna adressen bekräftas i samband med beställningen.
           </p>
         </section>
 
         <section className="legal-section">
-          <h2>5. Reklamation och Tvist</h2>
+          <h2>5. När avtalet ingås</h2>
+          <p>
+            Köpeavtalet ingås när betalningen har bekräftats och vi skickar eller visar en orderbekräftelse. Om vi inte kan ta emot beställningen meddelar vi dig och återbetalar ett eventuellt betalt belopp.
+          </p>
+        </section>
+
+        <section className="legal-section">
+          <h2>6. Reklamation och Tvist</h2>
           <p>
             Om din beställning är felaktig eller skadad vid leverans/upphämtning ska du kontakta oss omedelbart på 072-868 25 92 eller info@mormorskunafa.se med beskrivning och eventuell bild på felet. Vid godkänd reklamation ersätter vi produkten eller återbetalar beloppet.
           </p>

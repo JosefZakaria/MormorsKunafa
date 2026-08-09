@@ -13,6 +13,7 @@ export const Privacy: React.FC = () => {
           <p className="legal-lead">
             في كنافة جدتي (Mormors Kunafa)، نولي أهمية قصوى لخصوصيتك وحماية بياناتك الشخصية. تشرح هذه السياسة كيفية جمع بياناتك واستخدامها وحمايتها وفقاً للائحة العامة لحماية البيانات في الاتحاد الأوروبي (GDPR).
           </p>
+          <p><strong>الإصدار 2.0 – ساري اعتباراً من 9 أغسطس 2026.</strong></p>
 
           <section className="legal-section">
             <h2>1. المسؤول عن البيانات (Personuppgiftsansvarig)</h2>
@@ -55,7 +56,10 @@ export const Privacy: React.FC = () => {
               <li><strong>Supabase:</strong> لتخزين بيانات الطلب.</li>
               <li><strong>Vercel:</strong> لاستضافة الموقع وواجهة البرمجة.</li>
               <li><strong>Upstash:</strong> للحد من إساءة استخدام الخدمة.</li>
+              <li><strong>مزودو إشعارات الدفع:</strong> لإرسال إشعارات الطلب إلى الأجهزة المسجلة.</li>
+              <li><strong>طابعة المطبخ:</strong> لطباعة المعلومات اللازمة لتحضير الطلب.</li>
             </ul>
+            <p>قد تعالج بعض الجهات بيانات خارج الاتحاد الأوروبي/المنطقة الاقتصادية الأوروبية. عند الحاجة، نعتمد على قرار كفاية أو البنود التعاقدية القياسية أو ضمان قانوني آخر مناسب.</p>
           </section>
 
           <section className="legal-section">
@@ -73,8 +77,11 @@ export const Privacy: React.FC = () => {
               <li>الحصول على نسخة من بياناتك (Registerutdrag).</li>
               <li>تصحيح أي بيانات غير دقيقة (Rättelse).</li>
               <li>طلب حذف بياناتك (Radering / "الحق في النسيان") بشرط عدم تعارضها مع قوانين المحاسبة.</li>
+              <li>طلب تقييد المعالجة أو الاعتراض عليها.</li>
+              <li>الحصول على البيانات القابلة للنقل عندما تنطبق الشروط القانونية.</li>
               <li>تقديم شكوى إلى الهيئة السويدية لحماية الخصوصية (IMY - Integritetsskyddsmyndigheten) عبر <a href="https://www.imy.se" target="_blank" rel="noopener noreferrer">www.imy.se</a>.</li>
             </ul>
+            <p>بيانات الاتصال والتسليم المطلوبة في صفحة الدفع ضرورية لتنفيذ الطلب. إذا لم تقدمها، فلن نتمكن من إتمام الطلب أو تسليمه.</p>
           </section>
         </div>
       </div>
@@ -89,6 +96,7 @@ export const Privacy: React.FC = () => {
           <p className="legal-lead">
             At Mormors Kunafa, we value your privacy and are committed to protecting your personal data. This policy explains how we collect, process, and safeguard your data in accordance with the EU General Data Protection Regulation (GDPR).
           </p>
+          <p><strong>Version 2.0 – effective 9 August 2026.</strong></p>
 
           <section className="legal-section">
             <h2>1. Data Controller</h2>
@@ -131,7 +139,10 @@ export const Privacy: React.FC = () => {
               <li><strong>Supabase:</strong> Order database hosting.</li>
               <li><strong>Vercel:</strong> Website and API hosting.</li>
               <li><strong>Upstash:</strong> Abuse prevention and request rate limiting.</li>
+              <li><strong>Push notification providers:</strong> Delivery of order notifications to registered devices.</li>
+              <li><strong>Kitchen printer:</strong> Local printing of the details needed to prepare an order.</li>
             </ul>
+            <p>Some providers may process data outside the EU/EEA. Where required, such transfers rely on an adequacy decision, standard contractual clauses, or another lawful safeguard.</p>
           </section>
 
           <section className="legal-section">
@@ -148,8 +159,11 @@ export const Privacy: React.FC = () => {
               <li>Request access to your personal data (Register extract).</li>
               <li>Request correction of inaccurate data.</li>
               <li>Request erasure of your data ("right to be forgotten"), subject to statutory retention obligations.</li>
+              <li>Request restriction of processing or object to processing.</li>
+              <li>Receive portable data where the statutory requirements apply.</li>
               <li>Lodge a complaint with the Swedish Authority for Privacy Protection (IMY) via <a href="https://www.imy.se" target="_blank" rel="noopener noreferrer">www.imy.se</a>.</li>
             </ul>
+            <p>The contact and delivery details marked as required at checkout are necessary to fulfil the order. Without them, we cannot complete or deliver the order.</p>
           </section>
         </div>
       </div>
@@ -164,6 +178,7 @@ export const Privacy: React.FC = () => {
         <p className="legal-lead">
           Hos Mormors Kunafa värnar vi om din personliga integritet. Denna integritetspolicy beskriver hur vi samlar in, använder, sparar och skyddar dina personuppgifter i enlighet med EU:s dataskyddsförordning (GDPR).
         </p>
+        <p><strong>Version 2.0 – gäller från och med 9 augusti 2026.</strong></p>
 
         <section className="legal-section">
           <h2>1. Personuppgiftsansvarig</h2>
@@ -206,7 +221,12 @@ export const Privacy: React.FC = () => {
             <li><strong>Supabase:</strong> För lagring av orderuppgifter.</li>
             <li><strong>Vercel:</strong> För drift av webbplats och API.</li>
             <li><strong>Upstash:</strong> För missbruksskydd och anropsbegränsning.</li>
+            <li><strong>Pushleverantörer:</strong> För att leverera ordernotiser till registrerade enheter.</li>
+            <li><strong>Köksskrivare:</strong> För lokal utskrift av de uppgifter som behövs för att förbereda en order.</li>
           </ul>
+          <p>
+            Vissa leverantörer kan behandla uppgifter utanför EU/EES. När det krävs grundas en sådan överföring på adekvansbeslut, EU-kommissionens standardavtalsklausuler eller annan tillåten skyddsåtgärd.
+          </p>
         </section>
 
         <section className="legal-section">
@@ -224,8 +244,13 @@ export const Privacy: React.FC = () => {
             <li>Begära ett <strong>registerutdrag</strong> över vilka personuppgifter vi behandlar om dig.</li>
             <li>Begära <strong>rättelse</strong> av felaktiga eller ofullständiga uppgifter.</li>
             <li>Begära <strong>radering</strong> ("rätten att bli bortglömd") av dina uppgifter i den mån det inte strider mot Bokföringslagens lagkrav.</li>
+            <li>Begära <strong>begränsning</strong> av behandlingen eller <strong>invända</strong> mot behandling.</li>
+            <li>Få ut uppgifter i ett portabelt format när förutsättningarna för <strong>dataportabilitet</strong> är uppfyllda.</li>
             <li>Lämna klagomål till tillsynsmyndigheten <strong>Integritetsskyddsmyndigheten (IMY)</strong> om du anser att vi behandlar dina personuppgifter i strid med GDPR (<a href="https://www.imy.se" target="_blank" rel="noopener noreferrer">www.imy.se</a>).</li>
           </ul>
+          <p>
+            Kontakt- och leveransuppgifter som markeras som obligatoriska i kassan behövs för att fullgöra beställningen. Om de inte lämnas kan vi inte genomföra eller leverera ordern.
+          </p>
         </section>
       </div>
     </div>
