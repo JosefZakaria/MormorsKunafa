@@ -7,7 +7,11 @@ import {
   requireAdmin,
   signToken,
 } from '../middleware/auth.js';
-import { createRateLimiter } from '../middleware/rateLimit.js';
+import {
+  createRateLimiter,
+  getTrustedClientIp,
+  hashRateLimitIdentifier,
+} from '../middleware/rateLimit.js';
 import { isDeliveryFeeLineItem } from '../constants/deliveryFee.js';
 import {
   disablePushSubscriptionById,
@@ -25,6 +29,7 @@ import {
   parseStatisticsRange,
 } from '../utils/adminInput.js';
 import { verifyAdminPassword } from '../utils/adminPassword.js';
+import { hasRealtimeCapacity } from '../utils/realtimeCapacity.js';
 
 const loginLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000, // 15 min window
@@ -45,10 +50,6 @@ const router = Router();
 
 const COMPLETED_STATUSES = ['klar', 'uthämtad', 'levererad'] as const;
 
-const pushRateWindowMs = 60 * 1000;
-const pushRateLimit = 30;
-const pushRateMap = new Map<string, number[]>();
-
 function getAuthenticatedAdmin(req: Request): { adminId: string; email?: string } | null {
   const admin = (req as Request & {
     admin?: { adminId?: string; email?: string };
@@ -56,18 +57,14 @@ function getAuthenticatedAdmin(req: Request): { adminId: string; email?: string 
   return admin?.adminId ? { adminId: admin.adminId, email: admin.email } : null;
 }
 
-function isRateLimited(adminId: string): boolean {
-  const now = Date.now();
-  const bucket = pushRateMap.get(adminId) ?? [];
-  const recent = bucket.filter((ts) => now - ts < pushRateWindowMs);
-  if (recent.length >= pushRateLimit) {
-    pushRateMap.set(adminId, recent);
-    return true;
-  }
-  recent.push(now);
-  pushRateMap.set(adminId, recent);
-  return false;
-}
+const pushSubscriptionLimiter = createRateLimiter({
+  windowMs: 60 * 1000,
+  max: 30,
+  prefix: 'admin-push-subscriptions',
+  keyGenerator: (req) => hashRateLimitIdentifier(
+    getAuthenticatedAdmin(req)?.adminId ?? getTrustedClientIp(req)
+  ),
+});
 
 function toStockholmDateString(value: Date | string | null | undefined): string | null {
   if (value == null) return null;
@@ -184,9 +181,13 @@ router.get('/session', requireAdmin, (req: Request, res: Response) => {
 
 router.get('/events', eventsLimiter, requireAdmin, (req: Request, res: Response) => {
   const admin = (req as Request & { admin: { adminId: string } }).admin;
+  if (!hasRealtimeCapacity(getRealtimeStatus(), admin.adminId)) {
+    res.status(429).json({ error: 'Too many realtime connections' });
+    return;
+  }
 
   res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Cache-Control', 'private, no-store, no-transform');
   res.setHeader('Connection', 'keep-alive');
   res.flushHeaders();
 
@@ -226,17 +227,12 @@ router.get('/push-subscriptions', requireAdmin, async (req: Request, res: Respon
   );
 });
 
-router.post('/push-subscriptions', requireAdmin, async (req: Request, res: Response) => {
+router.post('/push-subscriptions', requireAdmin, pushSubscriptionLimiter, async (req: Request, res: Response) => {
   const admin = getAuthenticatedAdmin(req);
   if (!admin?.adminId) {
     res.status(401).json({ error: 'Unauthorized' });
     return;
   }
-  if (isRateLimited(admin.adminId)) {
-    res.status(429).json({ error: 'Too many requests. Try again shortly.' });
-    return;
-  }
-
   const subscription = req.body?.subscription as
     | {
         endpoint?: string;
@@ -275,7 +271,7 @@ router.post('/push-subscriptions', requireAdmin, async (req: Request, res: Respo
   });
 });
 
-router.delete('/push-subscriptions/:id', requireAdmin, async (req: Request, res: Response) => {
+router.delete('/push-subscriptions/:id', requireAdmin, pushSubscriptionLimiter, async (req: Request, res: Response) => {
   const admin = getAuthenticatedAdmin(req);
   if (!admin?.adminId) {
     res.status(401).json({ error: 'Unauthorized' });
