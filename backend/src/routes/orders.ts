@@ -52,6 +52,14 @@ import {
   canUseGeneralStatusRoute,
   isOrderStatus,
 } from '../utils/orderStateMachine.js';
+import {
+  AdminInputError,
+  parseDateOnly,
+  parseEstimatedReadyTime,
+  parseHistoryLimit,
+  parseInternalNotes,
+  parsePreparationMinutes,
+} from '../utils/adminInput.js';
 
 const orderLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000, // 15 min window
@@ -650,9 +658,9 @@ router.get('/admin/pre-orders', requireAdmin, async (_req: Request, res: Respons
 // Admin: history
 router.get('/admin/history', requireAdmin, async (req: Request, res: Response) => {
   try {
-    const limit = Math.min(Number(req.query.limit) || 50, 500);
-    const dateFrom = req.query.from as string | undefined;
-    const dateTo = req.query.to as string | undefined;
+    const limit = parseHistoryLimit(req.query.limit);
+    const dateFrom = parseDateOnly(req.query.from, 'Från-datum');
+    const dateTo = parseDateOnly(req.query.to, 'Till-datum');
 
     let query = supabase
       .from('orders')
@@ -678,6 +686,10 @@ router.get('/admin/history', requireAdmin, async (req: Request, res: Response) =
     }
     res.json(await rowsToOrders((data ?? []) as Row[]));
   } catch (e) {
+    if (e instanceof AdminInputError) {
+      res.status(400).json({ error: e.message });
+      return;
+    }
     console.error(e);
     res.status(500).json({ error: 'Failed to fetch history' });
   }
@@ -826,9 +838,8 @@ router.patch('/admin/:id/status', requireAdmin, async (req: Request, res: Respon
     }
 
     const patch: Record<string, unknown> = { status };
-    if (estimatedReadyTime) {
-      patch.estimated_ready_at = new Date(estimatedReadyTime).toISOString();
-    }
+    const parsedReadyTime = parseEstimatedReadyTime(estimatedReadyTime);
+    if (parsedReadyTime) patch.estimated_ready_at = parsedReadyTime;
     if (status === 'påbörjad') {
       patch.started_at = existing.order.started_at ? String(existing.order.started_at) : nowIso();
     }
@@ -851,6 +862,10 @@ router.patch('/admin/:id/status', requireAdmin, async (req: Request, res: Respon
 
     res.json(orderRowToOrder(result.order, result.items));
   } catch (e) {
+    if (e instanceof AdminInputError) {
+      res.status(400).json({ error: e.message });
+      return;
+    }
     console.error(e);
     res.status(500).json({ error: 'Failed to update status' });
   }
@@ -861,12 +876,10 @@ router.patch('/admin/:id/time', requireAdmin, async (req: Request, res: Response
   try {
     const { estimatedReadyTime, preparationTime } = req.body as { estimatedReadyTime?: string; preparationTime?: number };
     const patch: Record<string, unknown> = {};
-    if (estimatedReadyTime) {
-      patch.estimated_ready_at = new Date(estimatedReadyTime).toISOString();
-    }
-    if (typeof preparationTime === 'number') {
-      patch.default_preparation_time_minutes = preparationTime;
-    }
+    const parsedReadyTime = parseEstimatedReadyTime(estimatedReadyTime);
+    const parsedPreparationTime = parsePreparationMinutes(preparationTime);
+    if (parsedReadyTime) patch.estimated_ready_at = parsedReadyTime;
+    if (parsedPreparationTime != null) patch.default_preparation_time_minutes = parsedPreparationTime;
     if (Object.keys(patch).length === 0) {
       res.status(400).json({ error: 'estimatedReadyTime or preparationTime required' });
       return;
@@ -880,6 +893,10 @@ router.patch('/admin/:id/time', requireAdmin, async (req: Request, res: Response
     }
     res.json(orderRowToOrder(result.order, result.items));
   } catch (e) {
+    if (e instanceof AdminInputError) {
+      res.status(400).json({ error: e.message });
+      return;
+    }
     console.error(e);
     res.status(500).json({ error: 'Failed to update time' });
   }
@@ -889,9 +906,9 @@ router.patch('/admin/:id/time', requireAdmin, async (req: Request, res: Response
 router.patch('/admin/:id/notes', requireAdmin, async (req: Request, res: Response) => {
   try {
     const { internalNotes } = req.body as { internalNotes?: string };
-    const trimmed = typeof internalNotes === 'string' ? internalNotes.trim() : '';
+    const notes = parseInternalNotes(internalNotes);
     await updateOrder(req.params.id, {
-      internal_notes: trimmed.length > 0 ? trimmed : null,
+      internal_notes: notes,
     });
 
     const result = await getOrderById(req.params.id);
@@ -901,6 +918,10 @@ router.patch('/admin/:id/notes', requireAdmin, async (req: Request, res: Respons
     }
     res.json(orderRowToOrder(result.order, result.items));
   } catch (e) {
+    if (e instanceof AdminInputError) {
+      res.status(400).json({ error: e.message });
+      return;
+    }
     console.error(e);
     res.status(500).json({ error: 'Failed to update internal notes' });
   }
