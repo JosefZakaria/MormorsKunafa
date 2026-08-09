@@ -17,7 +17,8 @@ export const Terms: React.FC = () => {
           <section className="legal-section">
             <h2>1. معلومات الشركة (Företagsinformation)</h2>
             <p>
-              يتم تشغيل هذا الموقع من قبل <strong>Mormors Kunafa</strong>.<br />
+              يتم تشغيل هذا الموقع من قبل <strong>Mormors Kunafa Aktiebolag</strong>.<br />
+              <strong>رقم تسجيل الشركة:</strong> 559424-4823<br />
               <strong>العنوان:</strong> Karolingatan 1, 212 34 Malmö, السويد.<br />
               <strong>الهاتف:</strong> 072-868 25 92<br />
               <strong>البريد الإلكتروني:</strong> info@mormorskunafa.se
@@ -32,18 +33,17 @@ export const Terms: React.FC = () => {
             <ul>
               <li><strong>الدفع بالبطاقة:</strong> يتم بأمان عبر Stripe.</li>
               <li><strong>الدفع عبر Swish:</strong> الدفع المباشر عبر تطبيق Swish في السويد.</li>
-              <li><strong>الدفع عند الاستلام:</strong> متاح في المحل للطلبات الخارجية وتناول الطعام على المكان.</li>
             </ul>
           </section>
 
           <section className="legal-section alert-box">
             <h2>3. حق الإلغاء والاسترجاع (Ångerrätt) – تنبيه هام للحلويات والمأكولات</h2>
             <p>
-              وفقاً لقانون العقود عن بُعد السويدي (Distansavtalslagen الفصل 2 الفقرة 11 البند 2)، 
-              <strong>يُستثنى الطعام والأغذية الطازجة والمأكولات المصنوعة حسب الطلب (مثل الكنافة الساخنة والحلويات الطازجة) من حق الاسترجاع والإلغاء بعد بدء التحضير أو التوصيل.</strong>
+              وفقاً لقانون العقود عن بُعد السويدي (Distansavtalslagen الفصل 2 الفقرة 11 البند 4)،
+              <strong>لا ينطبق حق الانسحاب القانوني على الأغذية التي يمكن أن تتلف بسرعة.</strong>
             </p>
             <p>
-              يمكن إلغاء الطلب فقط قبل بدء تحضيره في المطبخ عن طريق الاتصال المباشر بالمحل على الرقم 072-868 25 92.
+              يمكننا مع ذلك محاولة إيقاف الطلب قبل بدء التحضير إذا اتصلت فوراً على 072-868 25 92، لكن ذلك غير مضمون.
             </p>
           </section>
 
@@ -59,7 +59,7 @@ export const Terms: React.FC = () => {
             <h2>5. الشكاوى والنزاعات (Reklamation och Tvister)</h2>
             <p>
               في حال وجود أي خطأ أو تلف في الطلب، يرجى التواصل معنا فوراً عبر الهاتف أو البريد الإلكتروني مع إرفاق تفاصيل وصور للطلب.<br />
-              تخضع النزاعات للقانون السويدي، ويمكن للزبون تقديم شكوى إلى الهيئة السويدية لشكاوى المستهلكين (ARN - Allmänna reklamationsnämnden) أو منصة الاتحاد الأوروبي لتسوية النزاعات عبر الإنترنت (EU ODR).
+              بعد منحنا فرصة للرد على الشكوى، يمكن للزبون تقديم النزاع إلى الهيئة السويدية لشكاوى المستهلكين (ARN - Allmänna reklamationsnämnden) عبر arn.se.
             </p>
           </section>
         </div>
@@ -79,7 +79,8 @@ export const Terms: React.FC = () => {
           <section className="legal-section">
             <h2>1. Company Information</h2>
             <p>
-              This website is operated by <strong>Mormors Kunafa</strong>.<br />
+              This website is operated by <strong>Mormors Kunafa Aktiebolag</strong>.<br />
+              <strong>Company registration number:</strong> 559424-4823<br />
               <strong>Address:</strong> Karolingatan 1, 212 34 Malmö, Sweden.<br />
               <strong>Phone:</strong> 072-868 25 92<br />
               <strong>Email:</strong> info@mormorskunafa.se
@@ -94,18 +95,17 @@ export const Terms: React.FC = () => {
             <ul>
               <li><strong>Card Payment:</strong> Processed securely via Stripe.</li>
               <li><strong>Swish:</strong> Instant mobile payment via Swish in Sweden.</li>
-              <li><strong>Pay on Pickup:</strong> Available for takeaway and dine-in orders at the shop.</li>
             </ul>
           </section>
 
           <section className="legal-section alert-box">
             <h2>3. Right of Withdrawal (Ångerrätt) – Important Notice for Food Items</h2>
             <p>
-              According to the Swedish Distance Contracts Act (Distansavtalslagen Ch. 2 § 11 item 2), 
-              <strong>freshly prepared food and perishable items (such as freshly baked kunafa and warm pastries) are strictly exempt from the right of withdrawal once preparation has commenced.</strong>
+              Under the Swedish Distance Contracts Act (Distansavtalslagen Ch. 2 § 11 item 4),
+              <strong>there is no statutory right of withdrawal for food that can deteriorate quickly.</strong>
             </p>
             <p>
-              Orders can only be cancelled prior to kitchen preparation by calling our shop directly at 072-868 25 92.
+              We may nevertheless be able to stop an order before preparation starts if you call 072-868 25 92 immediately, but this cannot be guaranteed.
             </p>
           </section>
 
@@ -120,7 +120,7 @@ export const Terms: React.FC = () => {
           <section className="legal-section">
             <h2>5. Complaints & Disputes</h2>
             <p>
-              If your order is damaged or incorrect, please contact us immediately by phone or email. In the event of a dispute that cannot be resolved directly, consumers may submit a claim to the Swedish National Board for Consumer Disputes (ARN - Allmänna reklamationsnämnden) or via the EU Online Dispute Resolution (ODR) platform.
+              If your order is damaged or incorrect, please contact us immediately by phone or email. After giving us an opportunity to respond, consumers may submit an eligible dispute to the Swedish National Board for Consumer Disputes (ARN) at <a href="https://www.arn.se" target="_blank" rel="noopener noreferrer">arn.se</a>.
             </p>
           </section>
         </div>
@@ -140,7 +140,8 @@ export const Terms: React.FC = () => {
         <section className="legal-section">
           <h2>1. Företagsinformation</h2>
           <p>
-            Webbplatsen drivs av <strong>Mormors Kunafa</strong>.<br />
+            Webbplatsen drivs av <strong>Mormors Kunafa Aktiebolag</strong>.<br />
+            <strong>Organisationsnummer:</strong> 559424-4823<br />
             <strong>Adress:</strong> Karolingatan 1, 212 34 Malmö<br />
             <strong>Telefon:</strong> 072-868 25 92<br />
             <strong>E-post:</strong> info@mormorskunafa.se
@@ -155,18 +156,17 @@ export const Terms: React.FC = () => {
           <ul>
             <li><strong>Kortbetalning:</strong> Genomförs säkert via Stripe (Visa, Mastercard, Amex, Apple Pay m.fl.).</li>
             <li><strong>Swish:</strong> Direktbetalning via Swish-appen.</li>
-            <li><strong>Betala vid upphämtning:</strong> Kontant eller kort i vår butik på Karolingatan 1.</li>
           </ul>
         </section>
 
         <section className="legal-section alert-box">
           <h2>3. Ångerrätt – Viktig information om livsmedel</h2>
           <p>
-            Enligt lagen om distansavtal och avtal utanför affärslokaler (Distansavtalslagen 2005:59, 2 kap. 11 § punkt 2) gäller 
-            <strong>inte ångerrätt för varor som snabbt kan försämras eller bli för gamla, vilket omfattar färskt tillagad mat och varma bakverk såsom kunafa.</strong>
+            Enligt lagen om distansavtal och avtal utanför affärslokaler (2005:59, 2 kap. 11 § punkt 4) gäller
+            <strong>ingen lagstadgad ångerrätt för varor som snabbt kan försämras eller bli för gamla, exempelvis färsk mat.</strong>
           </p>
           <p>
-            När köpet har genomförts och tillagning i köket har påbörjats kan beställningen därför inte ångras eller avbeställas. Önskar du avbryta en beställning innan tillagning påbörjats måste du omedelbart kontakta butiken på telefon 072-868 25 92.
+            Vi kan ändå försöka stoppa en order innan tillagningen har börjat om du omedelbart ringer 072-868 25 92, men det kan inte garanteras.
           </p>
         </section>
 
@@ -184,7 +184,7 @@ export const Terms: React.FC = () => {
             Om din beställning är felaktig eller skadad vid leverans/upphämtning ska du kontakta oss omedelbart på 072-868 25 92 eller info@mormorskunafa.se med beskrivning och eventuell bild på felet. Vid godkänd reklamation ersätter vi produkten eller återbetalar beloppet.
           </p>
           <p>
-            Vid eventuell tvist som inte kan lösas i samråd med oss följer vi rekommendationer från Allmänna reklamationsnämnden (ARN). Du kan kontakta ARN via <a href="https://www.arn.se" target="_blank" rel="noopener noreferrer">www.arn.se</a> eller Box 174, 101 23 Stockholm. Du kan även använda EU-kommissionens plattform för online-tvistlösning (ODR) på <a href="https://ec.europa.eu/consumers/odr" target="_blank" rel="noopener noreferrer">http://ec.europa.eu/consumers/odr</a>.
+            Om vi har fått möjlighet att ta ställning till ditt krav och tvisten ändå inte löses kan du anmäla ett behörigt ärende till Allmänna reklamationsnämnden (ARN). Vi följer ARN:s rekommendationer. Läs om villkor och aktuell avgift på <a href="https://www.arn.se" target="_blank" rel="noopener noreferrer">arn.se</a>.
           </p>
         </section>
       </div>

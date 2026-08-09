@@ -18,7 +18,8 @@ export const Privacy: React.FC = () => {
             <h2>1. المسؤول عن البيانات (Personuppgiftsansvarig)</h2>
             <p>
               المسؤول عن معالجة بياناتك الشخصية هو:<br />
-              <strong>Mormors Kunafa</strong><br />
+              <strong>Mormors Kunafa Aktiebolag</strong><br />
+              رقم تسجيل الشركة: 559424-4823<br />
               العنوان: Karolingatan 1, 212 34 Malmö, السويد<br />
               البريد الإلكتروني: info@mormorskunafa.se<br />
               الهاتف: 072-868 25 92
@@ -49,9 +50,11 @@ export const Privacy: React.FC = () => {
             <h2>4. معالجة البيانات مع أطراف ثالثة (Tredjepartsbiträden)</h2>
             <p>نحن لا نبيع أو نؤجر بياناتك الشخصية لأي طرف ثالث. نقوم بمشاركة البيانات فقط مع معالجي البيانات الموثوقين لإتمام الخدمة:</p>
             <ul>
-              <li><strong>Stripe & Swish:</strong> لمعالجة عملية الدفع بأمان.</li>
-              <li><strong>Resend & مزود خدمة SMS:</strong> لإرسال تأكيدات الطلبات والإشعارات.</li>
-              <li><strong>Supabase:</strong> للاستضافة وقواعد البيانات الآمنة.</li>
+              <li><strong>Stripe وSwish:</strong> لمعالجة المدفوعات.</li>
+              <li><strong>Resend وSinch:</strong> لإرسال البريد الإلكتروني ورسائل SMS الخاصة بالطلب.</li>
+              <li><strong>Supabase:</strong> لتخزين بيانات الطلب.</li>
+              <li><strong>Vercel:</strong> لاستضافة الموقع وواجهة البرمجة.</li>
+              <li><strong>Upstash:</strong> للحد من إساءة استخدام الخدمة.</li>
             </ul>
           </section>
 
@@ -91,7 +94,8 @@ export const Privacy: React.FC = () => {
             <h2>1. Data Controller</h2>
             <p>
               The data controller responsible for your personal data is:<br />
-              <strong>Mormors Kunafa</strong><br />
+              <strong>Mormors Kunafa Aktiebolag</strong><br />
+              Company registration number: 559424-4823<br />
               Address: Karolingatan 1, 212 34 Malmö, Sweden<br />
               Email: info@mormorskunafa.se<br />
               Phone: 072-868 25 92
@@ -122,9 +126,11 @@ export const Privacy: React.FC = () => {
             <h2>4. Third-Party Data Processors</h2>
             <p>We do not sell your personal data. We share necessary data only with trusted service providers to fulfill your order:</p>
             <ul>
-              <li><strong>Stripe & Swish:</strong> Secure payment processing.</li>
-              <li><strong>Resend & SMS Gateways:</strong> Order confirmation emails and SMS status updates.</li>
-              <li><strong>Supabase:</strong> Secure cloud database hosting.</li>
+              <li><strong>Stripe and Swish:</strong> Payment processing.</li>
+              <li><strong>Resend and Sinch:</strong> Order emails and SMS notifications.</li>
+              <li><strong>Supabase:</strong> Order database hosting.</li>
+              <li><strong>Vercel:</strong> Website and API hosting.</li>
+              <li><strong>Upstash:</strong> Abuse prevention and request rate limiting.</li>
             </ul>
           </section>
 
@@ -163,7 +169,8 @@ export const Privacy: React.FC = () => {
           <h2>1. Personuppgiftsansvarig</h2>
           <p>
             Personuppgiftsansvarig för behandlingen av dina personuppgifter är:<br />
-            <strong>Mormors Kunafa</strong><br />
+            <strong>Mormors Kunafa Aktiebolag</strong><br />
+            Organisationsnummer: 559424-4823<br />
             Adress: Karolingatan 1, 212 34 Malmö<br />
             E-post: info@mormorskunafa.se<br />
             Telefon: 072-868 25 92
@@ -194,9 +201,11 @@ export const Privacy: React.FC = () => {
           <h2>4. Tredjepartsbiträden (Personuppgiftsbiträden)</h2>
           <p>Vi säljer eller vidarebefordrar aldrig dina personuppgifter till tredje part i marknadsföringssyfte. Vi delar endast nödvändiga uppgifter med betrodda leverantörer för att genomföra tjänsten:</p>
           <ul>
-            <li><strong>Stripe & Swish:</strong> För säker hantering av betalningar.</li>
-            <li><strong>Resend & SMS-leverantör:</strong> För utskick av orderbekräftelser och aviseringar.</li>
-            <li><strong>Supabase:</strong> För säker molnbaserad databaslagring.</li>
+            <li><strong>Stripe och Swish:</strong> För betalningshantering.</li>
+            <li><strong>Resend och Sinch:</strong> För ordermejl och SMS-aviseringar.</li>
+            <li><strong>Supabase:</strong> För lagring av orderuppgifter.</li>
+            <li><strong>Vercel:</strong> För drift av webbplats och API.</li>
+            <li><strong>Upstash:</strong> För missbruksskydd och anropsbegränsning.</li>
           </ul>
         </section>
 
