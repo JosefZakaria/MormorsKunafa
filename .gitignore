@@ -48,5 +48,5 @@ stripe_*.zip
 stripe_*_windows_x86_64/
 
 # Local Documentation
-SecurityFixes.md
-*SecurityFixes.md
+SecurityFixes*.md
+**/SecurityFixes*.md
