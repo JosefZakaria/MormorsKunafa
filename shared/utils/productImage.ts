@@ -55,6 +55,8 @@ const PRODUCT_IMAGE_BY_SLUG: Record<string, string> = {
 const FALLBACK_PRODUCT_IMAGE = '/images/walnut-baklawa-plated.jpg';
 
 const USE_WP_MIRROR = false;
+const TRUSTED_IMAGE_HOSTS = new Set(['mormorskunafa.se', 'www.mormorskunafa.se']);
+const SAFE_IMAGE_PATH = /^\/(?:images|wp-content\/uploads)\/[A-Za-z0-9][A-Za-z0-9._/-]*\.(?:avif|gif|jpe?g|png|webp)$/i;
 
 function isLegacyWordPressMediaUrl(url: string): boolean {
   return /wp-content\/uploads/i.test(url);
@@ -77,6 +79,49 @@ function wpRelativePath(url: string): string | null {
   return `/wp-content/uploads/${m[1].split('?')[0]}`;
 }
 
+function safeLocalImagePath(path: string): string | null {
+  if (
+    path.length > 1024 ||
+    path.includes('\\') ||
+    path.includes('%') ||
+    path.includes('?') ||
+    path.includes('#') ||
+    path.includes('//') ||
+    !SAFE_IMAGE_PATH.test(path)
+  ) {
+    return null;
+  }
+
+  const segments = path.split('/');
+  if (segments.some((segment) => segment === '.' || segment === '..')) return null;
+  return path;
+}
+
+function trustedSiteImagePath(raw: string): string | null {
+  if (raw.startsWith('/') && !raw.startsWith('//')) {
+    return safeLocalImagePath(raw);
+  }
+  if (!raw.startsWith('https://')) return null;
+
+  try {
+    const url = new URL(raw);
+    if (
+      url.protocol !== 'https:' ||
+      url.port ||
+      url.username ||
+      url.password ||
+      url.search ||
+      url.hash ||
+      !TRUSTED_IMAGE_HOSTS.has(url.hostname.toLowerCase())
+    ) {
+      return null;
+    }
+    return safeLocalImagePath(url.pathname);
+  } catch {
+    return null;
+  }
+}
+
 function localFromDbImageUrl(imageUrlFromDb: string): string | null {
   const raw = imageUrlFromDb.trim();
   if (!raw) return null;
@@ -88,12 +133,11 @@ function localFromDbImageUrl(imageUrlFromDb: string): string | null {
 
   if (USE_WP_MIRROR && isLegacyWordPressMediaUrl(raw)) {
     const rel = wpRelativePath(raw);
-    if (rel) return rel;
+    if (rel) return safeLocalImagePath(rel);
   }
 
   if (!isLegacyWordPressMediaUrl(raw)) {
-    if (raw.startsWith('/')) return raw;
-    if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
+    return trustedSiteImagePath(raw);
   }
 
   return null;
