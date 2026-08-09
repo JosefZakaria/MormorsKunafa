@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import mysql from 'mysql2/promise';
+import { logUnexpectedError } from '../utils/safeErrorMetadata.js';
 
 async function main() {
   const database = process.env.DB_DATABASE ?? 'mormors_kunafa';
@@ -36,6 +37,6 @@ async function main() {
 }
 
 main().catch((e) => {
-  console.error(e);
+  logUnexpectedError('Swish column migration failed', e);
   process.exit(1);
 });

@@ -6,6 +6,7 @@ import {
   assertAdminBootstrapIsLocal,
   readAdminBootstrapCredentials,
 } from '../utils/adminBootstrap.js';
+import { logUnexpectedError } from '../utils/safeErrorMetadata.js';
 
 async function main() {
   assertAdminBootstrapIsLocal();
@@ -43,7 +44,8 @@ async function main() {
     console.log('Admin-kontot är klart. Inloggningsuppgifter skrevs inte till loggen.');
 
   } catch (error) {
-    console.error('❌ Ett fel uppstod vid skapandet av admin:', error);
+    logUnexpectedError('create-admin failed', error);
+    process.exitCode = 1;
   } finally {
     await db.end();
   }
