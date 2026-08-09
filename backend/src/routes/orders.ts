@@ -31,6 +31,7 @@ import {
   createOrderStatusToken,
   requireOrderStatusToken,
 } from '../middleware/orderStatusToken.js';
+import { CustomerInputError, validateCustomerInput } from '../utils/customerInput.js';
 
 const orderLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000, // 15 min window
@@ -144,14 +145,7 @@ router.post('/', orderLimiter, async (req: Request, res: Response) => {
     const baseTime = scheduledAt && scheduledAt.getTime() > Date.now() ? scheduledAt : new Date();
     const estimatedReady = new Date(baseTime.getTime() + defaultPrep * 60 * 1000);
 
-    const customerName = String(body.customerInfo?.name ?? body.deliveryInfo?.name ?? '').trim() || null;
-    const customerEmail = String(body.customerInfo?.email ?? body.deliveryInfo?.email ?? '').trim() || null;
-    const customerPhone = String(body.customerInfo?.phone ?? body.deliveryInfo?.phone ?? '').trim();
-
-    if (!customerPhone) {
-      res.status(400).json({ error: 'Telefonnummer krävs för beställning.' });
-      return;
-    }
+    const customer = validateCustomerInput(body.customerInfo, body.deliveryInfo, isDelivery);
 
     const orderId = generateId();
     const orderInsert = {
@@ -165,10 +159,10 @@ router.post('/', orderLimiter, async (req: Request, res: Response) => {
       default_preparation_time_minutes: defaultPrep,
       estimated_ready_at: estimatedReady.toISOString(),
       scheduled_at: scheduledAt ? scheduledAt.toISOString() : null,
-      customer_name: customerName,
-      customer_email: customerEmail,
-      customer_phone: customerPhone,
-      delivery_info_json: body.deliveryInfo ?? null,
+      customer_name: customer.customerName,
+      customer_email: customer.customerEmail,
+      customer_phone: customer.customerPhone,
+      delivery_info_json: customer.deliveryInfo,
     };
 
     const { error: orderInsertError } = await supabase.from('orders').insert(orderInsert);
@@ -265,6 +259,10 @@ router.post('/', orderLimiter, async (req: Request, res: Response) => {
   } catch (e) {
     if (e instanceof OrderValidationError) {
       res.status(e.status).json({ error: e.message });
+      return;
+    }
+    if (e instanceof CustomerInputError) {
+      res.status(400).json({ error: e.message });
       return;
     }
     console.error(e);
