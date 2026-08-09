@@ -19,7 +19,8 @@ import { ToastProvider } from './contexts/ToastContext';
 import { Toast } from './components/common/Toast/Toast';
 
 const PrivateRoute = ({ children }: { children: React.ReactElement }) => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isLoading } = useAuth();
+  if (isLoading) return <div aria-live="polite">Kontrollerar session…</div>;
   return isAuthenticated ? children : <Navigate to="/admin/login" />;
 };
 

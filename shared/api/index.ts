@@ -13,6 +13,7 @@
 declare const process: any;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 declare const Constants: any; // Expo Constants
+declare const document: { cookie?: string } | undefined;
 
 function normalizeBaseUrl(url: string): string {
   return url.trim().replace(/\/+$/, '');
@@ -96,6 +97,17 @@ export async function apiRequest<T>(
     ...(fetchOptions.headers as Record<string, string>),
   };
 
+  const method = String(fetchOptions.method ?? 'GET').toUpperCase();
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(method) && typeof document !== 'undefined') {
+    const csrfCookie = String(document.cookie ?? '')
+      .split(';')
+      .map((part) => part.trim())
+      .find((part) => part.startsWith('mk_csrf='));
+    if (csrfCookie && !headers['X-CSRF-Token']) {
+      headers['X-CSRF-Token'] = decodeURIComponent(csrfCookie.slice('mk_csrf='.length));
+    }
+  }
+
   // Add authentication token if provided
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
@@ -112,6 +124,7 @@ export async function apiRequest<T>(
       ...fetchOptions,
       headers,
       signal: controller.signal,
+      credentials: fetchOptions.credentials ?? 'include',
       cache: 'no-store', // ensures polling always gets fresh DB results
     });
 

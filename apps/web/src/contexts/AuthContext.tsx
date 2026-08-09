@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { adminApi } from '../services/api';
 
 interface AdminInfo {
@@ -9,6 +9,7 @@ interface AdminInfo {
 
 interface AuthContextType {
     isAuthenticated: boolean;
+    isLoading: boolean;
     admin: AdminInfo | null;
     login: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
     logout: () => void;
@@ -16,42 +17,37 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-function isTokenValid(token: string | null): boolean {
-    if (!token) return false;
-    try {
-        const parts = token.split('.');
-        if (parts.length !== 3) return false;
-        const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
-        if (payload.exp && Date.now() >= payload.exp * 1000) {
-            return false;
-        }
-        return true;
-    } catch {
-        return false;
-    }
-}
-
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-    const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-        const token = localStorage.getItem('authToken');
-        const valid = isTokenValid(token);
-        if (!valid && token) {
-            localStorage.removeItem('authToken');
-            localStorage.removeItem('adminInfo');
-        }
-        return valid;
-    });
+    const [isAuthenticated, setIsAuthenticated] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
+    const [admin, setAdmin] = useState<AdminInfo | null>(null);
 
-    const [admin, setAdmin] = useState<AdminInfo | null>(() => {
-        const stored = localStorage.getItem('adminInfo');
-        return stored ? JSON.parse(stored) : null;
-    });
+    useEffect(() => {
+        // Remove credentials left by older builds; authentication now lives only
+        // in the HttpOnly cookie that JavaScript cannot read.
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('adminInfo');
+        let active = true;
+        void adminApi.getSession()
+            .then((result) => {
+                if (!active) return;
+                setAdmin(result.admin);
+                setIsAuthenticated(true);
+            })
+            .catch(() => {
+                if (!active) return;
+                setAdmin(null);
+                setIsAuthenticated(false);
+            })
+            .finally(() => {
+                if (active) setIsLoading(false);
+            });
+        return () => { active = false; };
+    }, []);
 
     const login = async (email: string, password: string): Promise<{ ok: boolean; error?: string }> => {
         try {
             const result = await adminApi.login(email, password);
-            localStorage.setItem('authToken', result.token);
-            localStorage.setItem('adminInfo', JSON.stringify(result.admin));
             setIsAuthenticated(true);
             setAdmin(result.admin);
             return { ok: true };
@@ -62,14 +58,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
 
     const logout = () => {
-        localStorage.removeItem('authToken');
-        localStorage.removeItem('adminInfo');
+        void adminApi.logout().catch(() => undefined);
         setIsAuthenticated(false);
         setAdmin(null);
     };
 
     return (
-        <AuthContext.Provider value={{ isAuthenticated, admin, login, logout }}>
+        <AuthContext.Provider value={{ isAuthenticated, isLoading, admin, login, logout }}>
             {children}
         </AuthContext.Provider>
     );

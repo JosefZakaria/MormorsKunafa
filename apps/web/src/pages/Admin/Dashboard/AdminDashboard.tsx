@@ -708,7 +708,7 @@ export const AdminDashboard: React.FC = () => {
             if (closed) return;
             try {
                 const url = adminApi.getRealtimeEventsUrl();
-                eventSource = new EventSource(url);
+                eventSource = new EventSource(url, { withCredentials: true });
             } catch {
                 setError('Kunde inte starta realtidskanalen.');
                 return;

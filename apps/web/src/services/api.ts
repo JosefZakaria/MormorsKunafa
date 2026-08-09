@@ -1,4 +1,4 @@
-import { API_CONFIG, apiRequest, authenticatedRequest } from '@shared/api';
+import { API_CONFIG, apiRequest } from '@shared/api';
 import type {
   Product,
   Order,
@@ -11,10 +11,22 @@ import type {
   PushSubscriptionRecord,
 } from '@shared/types';
 
-// Get auth token from localStorage (web-specific)
-const getToken = (): string | null => {
-  return localStorage.getItem('authToken');
-};
+const adminRequest = apiRequest;
+
+// A readable CSRF cookie is only a local session marker; the backend still
+// validates the HttpOnly session cookie on every request.
+const getToken = (): string | null =>
+  document.cookie.split(';').some((part) => part.trim().startsWith('mk_csrf='))
+    ? 'cookie-session'
+    : null;
+
+async function authenticatedRequest<T>(
+  endpoint: string,
+  options?: RequestInit & { token?: string; timeout?: number }
+): Promise<T> {
+  const { token: _legacyToken, ...requestOptions } = options ?? {};
+  return adminRequest<T>(endpoint, requestOptions);
+}
 
 const orderStatusTokenKey = (orderId: string): string => `order-status-token:${orderId}`;
 
@@ -237,11 +249,19 @@ export const orderApi = {
 
 // Admin API
 export const adminApi = {
-  login: async (email: string, password: string): Promise<{ token: string; admin: { id: string; email: string; name: string } }> => {
-    return apiRequest<{ token: string; admin: { id: string; email: string; name: string } }>('/admin/login', {
+  login: async (email: string, password: string): Promise<{ admin: { id: string; email: string; name: string } }> => {
+    return apiRequest<{ admin: { id: string; email: string; name: string } }>('/admin/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
+  },
+
+  getSession: async (): Promise<{ admin: { id: string; email: string; name: string } }> => {
+    return adminRequest('/admin/session');
+  },
+
+  logout: async (): Promise<void> => {
+    return adminRequest('/admin/logout', { method: 'POST' });
   },
 
   getSettings: async (): Promise<AdminSettings> => {
@@ -314,10 +334,8 @@ export const adminApi = {
   },
 
   getRealtimeEventsUrl: (): string => {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
     const base = API_CONFIG.baseUrl.replace(/\/+$/, '');
-    return `${base}/admin/events?token=${encodeURIComponent(token)}`;
+    return `${base}/admin/events`;
   },
 
   getStatistics: async (password: string, startDate?: string, endDate?: string): Promise<{

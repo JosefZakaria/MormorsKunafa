@@ -154,6 +154,21 @@ router.post('/logout', requireAdmin, (_req: Request, res: Response) => {
   res.status(204).send();
 });
 
+router.get('/session', requireAdmin, (req: Request, res: Response) => {
+  const admin = getAuthenticatedAdmin(req);
+  if (!admin?.adminId || !admin.email) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  res.json({
+    admin: {
+      id: admin.adminId,
+      email: admin.email,
+      name: admin.email,
+    },
+  });
+});
+
 router.get('/events', requireAdmin, (req: Request, res: Response) => {
   const admin = (req as Request & { admin: { adminId: string } }).admin;
 

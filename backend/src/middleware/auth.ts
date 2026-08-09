@@ -146,6 +146,10 @@ export function requireCsrfProtection(req: Request, res: Response, next: NextFun
     next();
     return;
   }
+  if (req.method.toUpperCase() === 'POST' && req.path === '/login') {
+    next();
+    return;
+  }
 
   const cookies = parseCookies(req);
   // Bearer-authenticated non-browser clients are not vulnerable to cookie CSRF.
