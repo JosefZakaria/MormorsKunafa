@@ -11,6 +11,7 @@ import { configureWebPush, isWebPushConfigured } from './services/pushNotificati
 import { assertJwtConfiguration, requireCsrfProtection } from './middleware/auth.js';
 import { assertRateLimitConfiguration, createRateLimiter } from './middleware/rateLimit.js';
 import { applyApiSecurityHeaders } from './middleware/securityHeaders.js';
+import { assertOperationalSecretsConfiguration } from './utils/operationalSecrets.js';
 
 const app = express();
 app.disable('x-powered-by');
@@ -18,6 +19,7 @@ app.disable('x-powered-by');
 app.set('trust proxy', process.env.VERCEL ? 1 : false);
 assertJwtConfiguration();
 assertRateLimitConfiguration();
+assertOperationalSecretsConfiguration();
 configureWebPush();
 
 const paymentCallbackLimiter = createRateLimiter({
