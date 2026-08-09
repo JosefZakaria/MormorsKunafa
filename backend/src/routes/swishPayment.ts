@@ -57,7 +57,6 @@ async function sendExistingPayment(
     paymentPageUrl: payment.paymentRequestToken
       ? swishPaymentPageUrl(payment.paymentRequestToken)
       : undefined,
-    token: payment.paymentRequestToken,
     amountOre: Number(order.total_ore ?? 0),
     orderNumber: order.order_number,
   });
@@ -149,7 +148,6 @@ router.post('/:orderId', swishStartLimiter, async (req: Request, res: Response) 
       instructionId,
       status: status ?? 'CREATED',
       paymentPageUrl: token ? swishPaymentPageUrl(token) : undefined,
-      token,
       amountOre: totalOre,
       orderNumber: order.order_number,
     });
@@ -213,7 +211,6 @@ router.get('/:orderId/status', swishStatusLimiter, async (req: Request, res: Res
     res.json({
       paymentStatus: order.payment_status,
       swishStatus: pr.status ?? null,
-      token: pr.paymentRequestToken,
       paymentPageUrl: pr.paymentRequestToken
         ? swishPaymentPageUrl(pr.paymentRequestToken)
         : undefined,

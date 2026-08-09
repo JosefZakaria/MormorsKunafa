@@ -92,7 +92,6 @@ export const orderApi = {
     instructionId: string;
     status: string;
     paymentPageUrl?: string;
-    token?: string;
     amountOre: number;
     orderNumber: string;
   }> => {
@@ -108,7 +107,6 @@ export const orderApi = {
     paymentStatus: string;
     swishStatus: string | null;
     paymentPageUrl?: string;
-    token?: string;
   }> => {
     return apiRequest(`/orders/swish-payment/${orderId}/status`, {
       headers: orderStatusHeaders(orderId),
