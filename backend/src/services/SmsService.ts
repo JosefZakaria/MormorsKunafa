@@ -1,3 +1,17 @@
+const SINCH_REGION_HOSTS = {
+  eu: 'https://eu.conversation.api.sinch.com',
+  us: 'https://us.conversation.api.sinch.com',
+  br: 'https://br.conversation.api.sinch.com',
+} as const;
+
+export function getSinchConversationApiBaseUrl(regionValue?: string): string {
+  const region = String(regionValue ?? 'eu').trim().toLowerCase();
+  if (!(region in SINCH_REGION_HOSTS)) {
+    throw new Error('SINCH_REGION must be one of: eu, us, br');
+  }
+  return SINCH_REGION_HOSTS[region as keyof typeof SINCH_REGION_HOSTS];
+}
+
 export async function sendSms(to: string, message: string): Promise<void> {
   const projectId = process.env.SINCH_PROJECT_ID?.trim();
   const keyId = process.env.SINCH_KEY_ID?.trim();
@@ -17,7 +31,8 @@ export async function sendSms(to: string, message: string): Promise<void> {
   cleanedNumber = cleanedNumber.replace(/[\s-]/g, '');
   const formattedNumber = '+' + cleanedNumber;
 
-  const url = `https://us.conversation.api.sinch.com/v1/projects/${projectId}/messages:send`;
+  const baseUrl = getSinchConversationApiBaseUrl(process.env.SINCH_REGION);
+  const url = `${baseUrl}/v1/projects/${encodeURIComponent(projectId)}/messages:send`;
   const authString = Buffer.from(`${keyId}:${keySecret}`).toString('base64');
 
   const body = {
@@ -50,15 +65,12 @@ export async function sendSms(to: string, message: string): Promise<void> {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(10_000),
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Sinch API error: ${response.status} ${response.statusText} - ${errorText}`);
+      throw new Error(`Sinch SMS request failed with status ${response.status}`);
     }
-    
-    const responseData = await response.text();
-    console.log("[SmsService] Sinch-svar:", responseData);
   } catch (error) {
     console.error('[SmsService] Failed to send SMS:', error);
     throw error;
