@@ -371,19 +371,6 @@ export const Cart: React.FC = () => {
                 }
             }
 
-            if (paymentChoice === 'swish') {
-                const phoneForSwish =
-                    customerInfo?.phone?.trim() ||
-                    (deliveryInfo?.phone as string | undefined)?.trim() ||
-                    '';
-                if (!phoneForSwish) {
-                    setError('Ange telefonnummer för Swish-betalning.');
-                    setIsSubmitting(false);
-                    return;
-                }
-                sessionStorage.setItem('swishPayerPhone', phoneForSwish);
-            }
-
             const orderRequest = {
                 items: orderItems,
                 orderType: orderType as OrderType,

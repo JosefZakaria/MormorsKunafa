@@ -63,8 +63,9 @@ router.post('/:orderId', swishStartLimiter, async (req: Request, res: Response) 
       return;
     }
 
-    const body = req.body as { phone?: string };
-    const phoneRaw = String(body?.phone ?? order.customer_phone ?? '').trim();
+    // The payer alias comes only from the already validated order. Do not accept
+    // a second, attacker-controlled phone number when starting the payment.
+    const phoneRaw = String(order.customer_phone ?? '').trim();
     const payerAlias = phoneRaw ? normalizeSwishPayerAlias(phoneRaw) : undefined;
 
     const { instructionId, token, status } = await createSwishPaymentRequest({

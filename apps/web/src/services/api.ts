@@ -88,10 +88,7 @@ export const orderApi = {
     });
   },
 
-  createSwishPayment: async (
-    orderId: string,
-    body?: { phone?: string }
-  ): Promise<{
+  createSwishPayment: async (orderId: string): Promise<{
     instructionId: string;
     status: string;
     paymentPageUrl?: string;
@@ -102,7 +99,6 @@ export const orderApi = {
     return apiRequest(`/orders/swish-payment/${orderId}`, {
       method: 'POST',
       headers: orderStatusHeaders(orderId),
-      body: JSON.stringify(body ?? {}),
     });
   },
 

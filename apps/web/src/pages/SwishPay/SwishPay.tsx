@@ -30,8 +30,7 @@ export const SwishPay: React.FC = () => {
 
     const start = async () => {
       try {
-        const phone = sessionStorage.getItem('swishPayerPhone') ?? undefined;
-        const created = await orderApi.createSwishPayment(orderId, phone ? { phone } : undefined);
+        const created = await orderApi.createSwishPayment(orderId);
         if (cancelled) return;
         setOrderNumber(String(created.orderNumber ?? ''));
         setAmountKr(((created.amountOre ?? 0) / 100).toFixed(0));
