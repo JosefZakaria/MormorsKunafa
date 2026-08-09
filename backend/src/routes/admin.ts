@@ -2,7 +2,12 @@ import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { supabase, type Row, logSupabaseError, nowIso } from '../db/connection.js';
-import { requireAdmin, signToken, verifyAdminToken } from '../middleware/auth.js';
+import {
+  clearAdminSessionCookies,
+  createAdminSessionCookies,
+  requireAdmin,
+  signToken,
+} from '../middleware/auth.js';
 import { createRateLimiter } from '../middleware/rateLimit.js';
 import { isDeliveryFeeLineItem } from '../constants/deliveryFee.js';
 import {
@@ -36,6 +41,13 @@ const pushRateWindowMs = 60 * 1000;
 const pushRateLimit = 30;
 const pushRateMap = new Map<string, number[]>();
 
+function getAuthenticatedAdmin(req: Request): { adminId: string; email?: string } | null {
+  const admin = (req as Request & {
+    admin?: { adminId?: string; email?: string };
+  }).admin;
+  return admin?.adminId ? { adminId: admin.adminId, email: admin.email } : null;
+}
+
 function isRateLimited(adminId: string): boolean {
   const now = Date.now();
   const bucket = pushRateMap.get(adminId) ?? [];
@@ -47,29 +59,6 @@ function isRateLimited(adminId: string): boolean {
   recent.push(now);
   pushRateMap.set(adminId, recent);
   return false;
-}
-
-function getAdminFromRequest(req: Request): { adminId: string; email: string } | null {
-  const fromMiddleware = (req as Request & { admin?: { adminId?: string; email?: string } }).admin;
-  if (fromMiddleware?.adminId && fromMiddleware?.email) {
-    return { adminId: fromMiddleware.adminId, email: fromMiddleware.email };
-  }
-
-  const authHeader = req.headers.authorization;
-  const headerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
-  if (headerToken) {
-    const decoded = verifyAdminToken(headerToken);
-    if (decoded) return decoded;
-  }
-
-  // Fallback for SSE / EventSource connections where custom headers are limited in web browsers
-  const queryToken = String(req.query.token ?? '').trim();
-  if (queryToken) {
-    const decoded = verifyAdminToken(queryToken);
-    if (decoded) return decoded;
-  }
-
-  return null;
 }
 
 function toStockholmDateString(value: Date | string | null | undefined): string | null {
@@ -145,8 +134,9 @@ router.post('/login', loginLimiter, async (req: Request, res: Response) => {
       adminId: String((user as Row).id),
       email: String((user as Row).email),
     });
+    const csrfToken = crypto.randomBytes(32).toString('base64url');
+    res.setHeader('Set-Cookie', createAdminSessionCookies(token, csrfToken));
     res.json({
-      token,
       admin: {
         id: (user as Row).id,
         email: (user as Row).email,
@@ -159,12 +149,13 @@ router.post('/login', loginLimiter, async (req: Request, res: Response) => {
   }
 });
 
-router.get('/events', (req: Request, res: Response) => {
-  const admin = getAdminFromRequest(req);
-  if (!admin?.adminId) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
+router.post('/logout', requireAdmin, (_req: Request, res: Response) => {
+  res.setHeader('Set-Cookie', clearAdminSessionCookies());
+  res.status(204).send();
+});
+
+router.get('/events', requireAdmin, (req: Request, res: Response) => {
+  const admin = (req as Request & { admin: { adminId: string } }).admin;
 
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache, no-transform');
@@ -185,7 +176,7 @@ router.get('/notifications/health', requireAdmin, (_req: Request, res: Response)
 });
 
 router.get('/push-subscriptions', requireAdmin, async (req: Request, res: Response) => {
-  const admin = getAdminFromRequest(req);
+  const admin = getAuthenticatedAdmin(req);
   if (!admin?.adminId) {
     res.status(401).json({ error: 'Unauthorized' });
     return;
@@ -208,7 +199,7 @@ router.get('/push-subscriptions', requireAdmin, async (req: Request, res: Respon
 });
 
 router.post('/push-subscriptions', requireAdmin, async (req: Request, res: Response) => {
-  const admin = getAdminFromRequest(req);
+  const admin = getAuthenticatedAdmin(req);
   if (!admin?.adminId) {
     res.status(401).json({ error: 'Unauthorized' });
     return;
@@ -258,7 +249,7 @@ router.post('/push-subscriptions', requireAdmin, async (req: Request, res: Respo
 });
 
 router.delete('/push-subscriptions/:id', requireAdmin, async (req: Request, res: Response) => {
-  const admin = getAdminFromRequest(req);
+  const admin = getAuthenticatedAdmin(req);
   if (!admin?.adminId) {
     res.status(401).json({ error: 'Unauthorized' });
     return;

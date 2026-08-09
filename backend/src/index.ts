@@ -8,7 +8,7 @@ import { handleStripeWebhook } from './routes/stripeWebhook.js';
 import { handleSwishCallback } from './routes/swishCallback.js';
 import { getPublicWebAppUrlDiagnostics } from './utils/publicWebAppUrl.js';
 import { configureWebPush, isWebPushConfigured } from './services/pushNotifications.js';
-import { assertJwtConfiguration } from './middleware/auth.js';
+import { assertJwtConfiguration, requireCsrfProtection } from './middleware/auth.js';
 
 const app = express();
 assertJwtConfiguration();
@@ -68,6 +68,9 @@ app.post('/api/swish/callback', express.json(), (req, res) => {
 });
 app.use(express.json());
 
+app.use('/api/admin', requireCsrfProtection);
+app.use('/api/orders/admin', requireCsrfProtection);
+app.use('/api/products', requireCsrfProtection);
 app.use('/api/products', productsRouter);
 app.use('/api/orders', ordersRouter);
 app.use('/api/admin', adminRouter);

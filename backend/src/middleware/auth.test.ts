@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import jwt from 'jsonwebtoken';
-import { assertJwtConfiguration, signToken, verifyAdminToken } from './auth.js';
+import {
+  assertJwtConfiguration,
+  createAdminSessionCookies,
+  signToken,
+  verifyAdminToken,
+  verifyCsrfTokens,
+} from './auth.js';
 
 const secureTestSecret = 'test-only-jwt-secret-with-at-least-thirty-two-bytes';
 
@@ -28,4 +34,15 @@ test('refuses missing, short and formerly public fallback secrets', () => {
     process.env.JWT_SECRET = secret;
     assert.throws(() => assertJwtConfiguration(), /at least 32 bytes/);
   }
+});
+
+test('creates HttpOnly Strict session cookies and validates double-submit CSRF', () => {
+  process.env.NODE_ENV = 'production';
+  const cookies = createAdminSessionCookies('signed-token', 'csrf-token');
+  assert.match(cookies[0], /HttpOnly/);
+  assert.match(cookies[0], /SameSite=Strict/);
+  assert.match(cookies[0], /Secure/);
+  assert.doesNotMatch(cookies[1], /HttpOnly/);
+  assert.equal(verifyCsrfTokens('csrf-token', 'csrf-token'), true);
+  assert.equal(verifyCsrfTokens('csrf-token', 'tampered'), false);
 });
