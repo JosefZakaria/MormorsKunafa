@@ -12,8 +12,17 @@ import {
 import { isSwishPayment, normalizeSwishPayerAlias } from '../utils/paymentMethod.js';
 import { requireOrderStatusToken } from '../middleware/orderStatusToken.js';
 import { createRateLimiter, getTrustedClientIp, hashRateLimitIdentifier } from '../middleware/rateLimit.js';
+import { isCanonicalUuidV4 } from '../utils/resourceId.js';
 
 const router = Router();
+
+router.param('orderId', (_req, res, next, value) => {
+  if (!isCanonicalUuidV4(value)) {
+    res.status(400).json({ error: 'Invalid resource identifier' });
+    return;
+  }
+  next();
+});
 
 const swishStartLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000,

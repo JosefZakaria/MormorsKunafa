@@ -2,8 +2,17 @@ import { Router, Request, Response } from 'express';
 import { resolveProductImage } from '../shared/utils/productImage.js';
 import { supabase, type Row, logSupabaseError, nowIso } from '../db/connection.js';
 import { requireAdmin } from '../middleware/auth.js';
+import { isCanonicalUuidV4 } from '../utils/resourceId.js';
 
 const router = Router();
+
+router.param('id', (_req, res, next, value) => {
+  if (!isCanonicalUuidV4(value)) {
+    res.status(400).json({ error: 'Invalid resource identifier' });
+    return;
+  }
+  next();
+});
 
 const PRODUCT_COLUMNS =
   'id, name, slug, description, image_url, price_ore, stock_status, created_at, updated_at';

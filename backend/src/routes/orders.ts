@@ -34,6 +34,7 @@ import {
 import { getPublicWebAppUrl } from '../utils/publicWebAppUrl.js';
 import { confirmStripeCheckoutSession } from '../utils/confirmStripeCheckout.js';
 import swishPaymentRouter from './swishPayment.js';
+import { isCanonicalUuidV4 } from '../utils/resourceId.js';
 import {
   buildServerPricedOrderLines,
   OrderValidationError,
@@ -126,6 +127,16 @@ function safeCompareStrings(a?: string, b?: string): boolean {
 }
 
 const router = Router();
+
+for (const parameter of ['id', 'orderId']) {
+  router.param(parameter, (req, res, next, value) => {
+    if (!isCanonicalUuidV4(value)) {
+      res.status(400).json({ error: 'Invalid resource identifier' });
+      return;
+    }
+    next();
+  });
+}
 
 router.use('/swish-payment', swishPaymentRouter);
 
