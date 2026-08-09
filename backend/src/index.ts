@@ -9,12 +9,20 @@ import { handleSwishCallback } from './routes/swishCallback.js';
 import { getPublicWebAppUrlDiagnostics } from './utils/publicWebAppUrl.js';
 import { configureWebPush, isWebPushConfigured } from './services/pushNotifications.js';
 import { assertJwtConfiguration, requireCsrfProtection } from './middleware/auth.js';
+import { assertRateLimitConfiguration, createRateLimiter } from './middleware/rateLimit.js';
 
 const app = express();
 // Vercel overwrites the forwarding chain; use exactly its nearest proxy hop.
 app.set('trust proxy', process.env.VERCEL ? 1 : false);
 assertJwtConfiguration();
+assertRateLimitConfiguration();
 configureWebPush();
+
+const paymentCallbackLimiter = createRateLimiter({
+  windowMs: 60 * 1000,
+  max: 300,
+  prefix: 'payment-callback',
+});
 
 function allowedFrontendOrigins(): string[] {
   const defaults = ['https://mormorskunafa.se', 'https://www.mormorskunafa.se'];
@@ -62,10 +70,10 @@ app.use(
   })
 );
 
-app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), (req, res) => {
+app.post('/api/stripe/webhook', paymentCallbackLimiter, express.raw({ type: 'application/json' }), (req, res) => {
   void handleStripeWebhook(req, res);
 });
-app.post('/api/swish/callback', express.json(), (req, res) => {
+app.post('/api/swish/callback', paymentCallbackLimiter, express.json(), (req, res) => {
   void handleSwishCallback(req, res);
 });
 app.use(express.json());

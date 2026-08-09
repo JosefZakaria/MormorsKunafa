@@ -20,6 +20,8 @@
     "@mormors-kunafa/shared": "*",
     "@supabase/supabase-js": "^2.106.1",
     "@types/web-push": "^3.6.4",
+    "@upstash/ratelimit": "^2.0.7",
+    "@upstash/redis": "^1.35.3",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
