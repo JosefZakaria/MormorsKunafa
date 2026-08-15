@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { supabase, type Row, logSupabaseError, nowIso } from '../db/connection.js';
+import { applyAdminSettingsPatch, rowToAdminSettings } from '../db/adminSettings.js';
 import { requireAdmin, signToken, verifyAdminToken } from '../middleware/auth.js';
 import { isDeliveryFeeLineItem } from '../constants/deliveryFee.js';
 import {
@@ -262,10 +263,7 @@ router.get('/settings', requireAdmin, async (_req: Request, res: Response) => {
       res.status(404).json({ error: 'Settings not found' });
       return;
     }
-    res.json({
-      defaultPreparationTime: Number(r.default_preparation_time_minutes) ?? 30,
-      isPaused: Boolean(r.is_paused),
-    });
+    res.json(rowToAdminSettings(r));
   } catch (e) {
     console.error('[GET /admin/settings]', e);
     res.status(500).json({ error: 'Failed to fetch settings' });
@@ -274,14 +272,9 @@ router.get('/settings', requireAdmin, async (_req: Request, res: Response) => {
 
 router.patch('/settings', requireAdmin, async (req: Request, res: Response) => {
   try {
-    const body = req.body as { defaultPreparationTime?: number; isPaused?: boolean };
+    const body = (req.body ?? {}) as Record<string, unknown>;
     const patch: Record<string, unknown> = { updated_at: nowIso() };
-    if (typeof body.defaultPreparationTime === 'number') {
-      patch.default_preparation_time_minutes = body.defaultPreparationTime;
-    }
-    if (typeof body.isPaused === 'boolean') {
-      patch.is_paused = body.isPaused;
-    }
+    applyAdminSettingsPatch(body, patch);
 
     if (Object.keys(patch).length > 1) {
       const settings = await fetchAdminSettingsRow();
@@ -305,10 +298,7 @@ router.patch('/settings', requireAdmin, async (req: Request, res: Response) => {
       res.status(500).json({ error: 'Settings not found' });
       return;
     }
-    res.json({
-      defaultPreparationTime: Number(r.default_preparation_time_minutes) ?? 30,
-      isPaused: Boolean(r.is_paused),
-    });
+    res.json(rowToAdminSettings(r));
   } catch (e) {
     console.error('[PATCH /admin/settings]', e);
     res.status(500).json({ error: 'Failed to update settings' });

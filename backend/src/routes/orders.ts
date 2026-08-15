@@ -25,6 +25,11 @@ import {
 import { getPublicWebAppUrl } from '../utils/publicWebAppUrl.js';
 import { confirmStripeCheckoutSession } from '../utils/confirmStripeCheckout.js';
 import { sanitizeProductName } from '../utils/sanitizeProductName.js';
+import {
+  ADMIN_SETTINGS_PUBLIC_SELECT,
+  disabledOrderTypeError,
+  rowToAdminSettings,
+} from '../db/adminSettings.js';
 import swishPaymentRouter from './swishPayment.js';
 
 const router = Router();
@@ -105,7 +110,7 @@ router.post('/', async (req: Request, res: Response) => {
 
     const { data: settingsRows, error: settingsError } = await supabase
       .from('admin_settings')
-      .select('default_preparation_time_minutes, is_paused')
+      .select(ADMIN_SETTINGS_PUBLIC_SELECT)
       .limit(1);
 
     if (settingsError) {
@@ -120,6 +125,14 @@ router.post('/', async (req: Request, res: Response) => {
     if (settings && settings.is_paused) {
       res.status(403).json({ error: 'Beställningar är för tillfället pausade, försök igen senare.' });
       return;
+    }
+
+    if (settings) {
+      const typePausedError = disabledOrderTypeError(orderType, settings);
+      if (typePausedError) {
+        res.status(403).json({ error: typePausedError });
+        return;
+      }
     }
 
     const defaultPrep = settings
@@ -777,7 +790,7 @@ router.get('/settings', async (_req: Request, res: Response) => {
   try {
     const { data, error } = await supabase
       .from('admin_settings')
-      .select('default_preparation_time_minutes, is_paused')
+      .select(ADMIN_SETTINGS_PUBLIC_SELECT)
       .limit(1)
       .maybeSingle();
 
@@ -792,10 +805,7 @@ router.get('/settings', async (_req: Request, res: Response) => {
       return;
     }
 
-    res.json({
-      defaultPreparationTime: Number(data.default_preparation_time_minutes) || 30,
-      isPaused: Boolean(data.is_paused),
-    });
+    res.json(rowToAdminSettings(data as Row));
   } catch (e) {
     console.error('[GET /api/orders/settings]', e);
     res.status(500).json({ error: 'Failed to fetch settings' });

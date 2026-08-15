@@ -332,6 +332,60 @@ input:checked+.slider:before {
     transform: translateX(26px);
 }
 
+.order-availability-card {
+    text-align: left;
+    max-width: 500px;
+}
+
+.order-availability-card h3,
+.order-availability-card > p {
+    text-align: center;
+}
+
+.order-availability-pause {
+    display: flex;
+    justify-content: center;
+    margin: var(--spacing-lg) 0 var(--spacing-sm);
+}
+
+.order-availability-hint {
+    text-align: center;
+    font-size: 0.875rem;
+    color: var(--color-gray-500);
+    margin: 0 0 var(--spacing-lg);
+}
+
+.order-type-toggle-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.order-type-toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.75rem 1rem;
+    background: #f8f8f8;
+    border-radius: var(--radius-md);
+}
+
+.order-type-toggle-label {
+    font-weight: 600;
+    color: var(--color-gray-800);
+}
+
+.order-type-toggle-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.order-type-toggle-controls .stock-status {
+    min-width: 2.25rem;
+}
+
 /* Rush Hour Tab */
 .rush-card {
     background: var(--color-white);

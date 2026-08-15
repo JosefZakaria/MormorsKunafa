@@ -1,12 +1,40 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Container } from '../../components/common/Container/Container';
 import { Button } from '../../components/common/Button/Button';
 import { LanguageSelector } from '../../components/common/LanguageSelector/LanguageSelector';
+import { useLanguage } from '../../contexts/LanguageContext';
+import { orderApi } from '../../services/api';
+import type { OrderType } from '@shared/types';
+import { DEFAULT_DAY_HOURS } from '@shared/utils/openingHours';
 import './Landing.css';
 
-import { useLanguage } from '../../contexts/LanguageContext';
-import { DEFAULT_DAY_HOURS } from '@shared/utils/openingHours';
+type OrderTypeFlags = {
+    isPaused: boolean;
+    eatHereEnabled: boolean;
+    takeawayEnabled: boolean;
+    deliveryEnabled: boolean;
+};
+
+const DEFAULT_ORDER_TYPE_FLAGS: OrderTypeFlags = {
+    isPaused: false,
+    eatHereEnabled: true,
+    takeawayEnabled: true,
+    deliveryEnabled: true,
+};
+
+const ORDER_TYPE_LABEL_KEY: Record<OrderType, string> = {
+    'eat-here': 'landing.eat_here',
+    takeaway: 'landing.takeaway',
+    delivery: 'landing.delivery',
+};
+
+function isOrderTypeEnabled(type: OrderType, flags: OrderTypeFlags): boolean {
+    if (flags.isPaused) return false;
+    if (type === 'eat-here') return flags.eatHereEnabled;
+    if (type === 'takeaway') return flags.takeawayEnabled;
+    return flags.deliveryEnabled;
+}
 
 const IconEatHere = () => (
     <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -37,10 +65,44 @@ const LOCALE_MAP: Record<string, string> = { sv: 'sv-SE', en: 'en-GB', ar: 'ar' 
 export const Landing: React.FC = () => {
     const navigate = useNavigate();
     const { t, language } = useLanguage();
+    const [flags, setFlags] = useState<OrderTypeFlags>(DEFAULT_ORDER_TYPE_FLAGS);
+    const [pausedPopup, setPausedPopup] = useState<OrderType | 'all' | null>(null);
 
     useEffect(() => {
         sessionStorage.removeItem('orderType');
+        orderApi.getPublicSettings()
+            .then((settings) => {
+                if (!settings) return;
+                setFlags({
+                    isPaused: Boolean(settings.isPaused),
+                    eatHereEnabled: settings.eatHereEnabled !== false,
+                    takeawayEnabled: settings.takeawayEnabled !== false,
+                    deliveryEnabled: settings.deliveryEnabled !== false,
+                });
+            })
+            .catch((err) => {
+                console.error('Failed to fetch public settings:', err);
+            });
     }, []);
+
+    const handleSelectOrderType = (type: OrderType) => {
+        if (flags.isPaused) {
+            setPausedPopup('all');
+            return;
+        }
+        if (!isOrderTypeEnabled(type, flags)) {
+            setPausedPopup(type);
+            return;
+        }
+        sessionStorage.setItem('orderType', type);
+        navigate('/menu');
+    };
+
+    const pausedPopupMessage = pausedPopup === 'all'
+        ? t('landing.orders_paused_message')
+        : pausedPopup
+            ? t('landing.order_type_paused_message').replace('{type}', t(ORDER_TYPE_LABEL_KEY[pausedPopup]))
+            : '';
 
     // Lokaliserade veckodagsnamn (Jan 1 2024 = måndag) – datadrivet, undviker hårdkodning per språk.
     const weekdays = [1, 2, 3, 4, 5, 6, 7].map((d) => {
@@ -59,8 +121,9 @@ export const Landing: React.FC = () => {
                         <Button
                             variant="primary"
                             size="lg"
-                            className="landing__btn animate-in delay-200"
-                            onClick={() => { sessionStorage.setItem('orderType', 'eat-here'); navigate('/menu'); }}
+                            className={`landing__btn animate-in delay-200${isOrderTypeEnabled('eat-here', flags) ? '' : ' landing__btn--paused'}`}
+                            aria-disabled={!isOrderTypeEnabled('eat-here', flags)}
+                            onClick={() => handleSelectOrderType('eat-here')}
                         >
                             <span className="landing__btn-icon"><IconEatHere /></span>
                             <span className="landing__btn-label">{t('landing.eat_here')}</span>
@@ -68,8 +131,9 @@ export const Landing: React.FC = () => {
                         <Button
                             variant="primary"
                             size="lg"
-                            className="landing__btn animate-in delay-300"
-                            onClick={() => { sessionStorage.setItem('orderType', 'takeaway'); navigate('/menu'); }}
+                            className={`landing__btn animate-in delay-300${isOrderTypeEnabled('takeaway', flags) ? '' : ' landing__btn--paused'}`}
+                            aria-disabled={!isOrderTypeEnabled('takeaway', flags)}
+                            onClick={() => handleSelectOrderType('takeaway')}
                         >
                             <span className="landing__btn-icon"><IconTakeaway /></span>
                             <span className="landing__btn-label">{t('landing.takeaway')}</span>
@@ -77,8 +141,9 @@ export const Landing: React.FC = () => {
                         <Button
                             variant="primary"
                             size="lg"
-                            className="landing__btn animate-in delay-400"
-                            onClick={() => { sessionStorage.setItem('orderType', 'delivery'); navigate('/menu'); }}
+                            className={`landing__btn animate-in delay-400${isOrderTypeEnabled('delivery', flags) ? '' : ' landing__btn--paused'}`}
+                            aria-disabled={!isOrderTypeEnabled('delivery', flags)}
+                            onClick={() => handleSelectOrderType('delivery')}
                         >
                             <span className="landing__btn-icon"><IconDelivery /></span>
                             <span className="landing__btn-label">{t('landing.delivery')}</span>
@@ -244,6 +309,23 @@ export const Landing: React.FC = () => {
             <div className="landing__language">
                 <LanguageSelector />
             </div>
+
+            {pausedPopup && (
+                <div className="landing-popup-overlay animate-in" role="dialog" aria-modal="true" aria-labelledby="landing-paused-title">
+                    <div className="landing-popup-content">
+                        <div className="landing-popup-icon">⚠️</div>
+                        <h3 id="landing-paused-title" className="text-heading-md" style={{ marginBottom: '1rem' }}>
+                            {t('landing.order_type_paused_title')}
+                        </h3>
+                        <p className="text-body-lg" style={{ marginBottom: '2rem' }}>
+                            {pausedPopupMessage}
+                        </p>
+                        <Button variant="primary" onClick={() => setPausedPopup(null)} fullWidth>
+                            {t('landing.order_type_paused_ok')}
+                        </Button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

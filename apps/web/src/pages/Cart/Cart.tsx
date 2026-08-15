@@ -24,6 +24,34 @@ import './Cart.css';
 /** Set to true when Swish checkout is ready for customers. */
 const SWISH_CHECKOUT_ENABLED = false;
 
+type OrderTypeFlags = {
+    isPaused: boolean;
+    eatHereEnabled: boolean;
+    takeawayEnabled: boolean;
+    deliveryEnabled: boolean;
+};
+
+const DEFAULT_ORDER_TYPE_FLAGS: OrderTypeFlags = {
+    isPaused: false,
+    eatHereEnabled: true,
+    takeawayEnabled: true,
+    deliveryEnabled: true,
+};
+
+const ORDER_TYPE_LABEL_KEY: Record<OrderType, string> = {
+    'eat-here': 'landing.eat_here',
+    takeaway: 'landing.takeaway',
+    delivery: 'landing.delivery',
+};
+
+function isOrderTypeEnabled(type: OrderType | '', flags: OrderTypeFlags): boolean {
+    if (!type) return false;
+    if (flags.isPaused) return false;
+    if (type === 'eat-here') return flags.eatHereEnabled;
+    if (type === 'takeaway') return flags.takeawayEnabled;
+    return flags.deliveryEnabled;
+}
+
 function roundClockToNext5Min(clock: string): string {
     const [hStr, mStr] = clock.split(':');
     const h = parseInt(hStr, 10);
@@ -46,7 +74,8 @@ export const Cart: React.FC = () => {
     const { items, updateQuantity, removeItem, getTotal, clearCart } = useCart();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [showPausedPopup, setShowPausedPopup] = useState(false);
+    const [pausedPopup, setPausedPopup] = useState<OrderType | 'all' | null>(null);
+    const [orderTypeFlags, setOrderTypeFlags] = useState<OrderTypeFlags>(DEFAULT_ORDER_TYPE_FLAGS);
     const [orderType, setOrderType] = useState<OrderType | ''>(() => {
         const fromUrl = searchParams.get('type') as OrderType;
         if (fromUrl) return fromUrl;
@@ -106,10 +135,25 @@ export const Cart: React.FC = () => {
                 if (settings) {
                     const newPrepTime = settings.defaultPreparationTime;
                     setPrepTime(newPrepTime);
-                    if (settings.isPaused) {
-                        setShowPausedPopup(true);
+                    const flags: OrderTypeFlags = {
+                        isPaused: Boolean(settings.isPaused),
+                        eatHereEnabled: settings.eatHereEnabled !== false,
+                        takeawayEnabled: settings.takeawayEnabled !== false,
+                        deliveryEnabled: settings.deliveryEnabled !== false,
+                    };
+                    setOrderTypeFlags(flags);
+
+                    if (flags.isPaused) {
+                        setPausedPopup('all');
+                    } else {
+                        const storedType = (searchParams.get('type') || sessionStorage.getItem('orderType') || '') as OrderType | '';
+                        if (storedType && !isOrderTypeEnabled(storedType, flags)) {
+                            sessionStorage.removeItem('orderType');
+                            setOrderType('');
+                            setPausedPopup(storedType);
+                        }
                     }
-                    
+
                     // Recalculate and set the initial slot with the correct prep time
                     const slot = findNextOrderableSlot(newPrepTime);
                     setScheduledDate(slot.dateStr);
@@ -119,7 +163,7 @@ export const Cart: React.FC = () => {
             .catch((err) => {
                 console.error('Failed to fetch public settings:', err);
             });
-    }, []);
+    }, [searchParams]);
 
     // Keep store closed status updated
     useEffect(() => {
@@ -265,8 +309,18 @@ export const Cart: React.FC = () => {
 
     const handleOrderTypeChange = (value: string) => {
         setOrderTypeError(null);
-        sessionStorage.setItem('orderType', value);
-        setOrderType(value as OrderType);
+        if (!value) return;
+        const nextType = value as OrderType;
+        if (orderTypeFlags.isPaused) {
+            setPausedPopup('all');
+            return;
+        }
+        if (!isOrderTypeEnabled(nextType, orderTypeFlags)) {
+            setPausedPopup(nextType);
+            return;
+        }
+        sessionStorage.setItem('orderType', nextType);
+        setOrderType(nextType);
     };
 
     const handleConfirmClosedWarning = () => {
@@ -282,6 +336,14 @@ export const Cart: React.FC = () => {
         }
         if (!orderType) {
             setOrderTypeError('Välj hur du vill få din beställning.');
+            return;
+        }
+        if (orderTypeFlags.isPaused) {
+            setPausedPopup('all');
+            return;
+        }
+        if (!isOrderTypeEnabled(orderType, orderTypeFlags)) {
+            setPausedPopup(orderType);
             return;
         }
 
@@ -393,8 +455,8 @@ export const Cart: React.FC = () => {
             if (err.data && err.data.error) {
                 errorMsg = err.data.error;
             }
-            if (errorMsg.toLowerCase().includes('pausade') || err.status === 403) {
-                setShowPausedPopup(true);
+            if (errorMsg.toLowerCase().includes('pausa') || err.status === 403) {
+                setPausedPopup(orderTypeFlags.isPaused || !orderType ? 'all' : orderType);
             } else {
                 setError(errorMsg);
             }
@@ -501,9 +563,15 @@ export const Cart: React.FC = () => {
                                     onChange={(e) => handleOrderTypeChange(e.target.value)}
                                 >
                                     <option value="" disabled>Välj leveranssätt...</option>
-                                    <option value="eat-here">Äta här</option>
-                                    <option value="takeaway">Ta med</option>
-                                    <option value="delivery">Hemkörning</option>
+                                    <option value="eat-here">
+                                        Äta här{orderTypeFlags.isPaused || orderTypeFlags.eatHereEnabled ? '' : t('cart.order_type_paused_suffix')}
+                                    </option>
+                                    <option value="takeaway">
+                                        Ta med{orderTypeFlags.isPaused || orderTypeFlags.takeawayEnabled ? '' : t('cart.order_type_paused_suffix')}
+                                    </option>
+                                    <option value="delivery">
+                                        Hemkörning{orderTypeFlags.isPaused || orderTypeFlags.deliveryEnabled ? '' : t('cart.order_type_paused_suffix')}
+                                    </option>
                                 </select>
                                 {orderTypeError && (
                                     <p className="order-type-error">{orderTypeError}</p>
@@ -788,16 +856,23 @@ export const Cart: React.FC = () => {
                 )}
             </Container>
 
-            {showPausedPopup && (
+            {pausedPopup && (
                 <div className="cart-popup-overlay animate-in">
                     <div className="cart-popup-content">
                         <div className="cart-popup-icon">⚠️</div>
-                        <h3 className="text-heading-md" style={{ marginBottom: '1rem' }}>Pausat</h3>
+                        <h3 className="text-heading-md" style={{ marginBottom: '1rem' }}>
+                            {t('landing.order_type_paused_title')}
+                        </h3>
                         <p className="text-body-lg" style={{ marginBottom: '2rem' }}>
-                            Beställningar är för tillfället pausade. Vänligen försök igen lite senare!
+                            {pausedPopup === 'all'
+                                ? t('landing.orders_paused_message')
+                                : t('landing.order_type_paused_message').replace(
+                                    '{type}',
+                                    t(ORDER_TYPE_LABEL_KEY[pausedPopup])
+                                )}
                         </p>
-                        <Button variant="primary" onClick={() => setShowPausedPopup(false)} fullWidth>
-                            Okej, jag förstår
+                        <Button variant="primary" onClick={() => setPausedPopup(null)} fullWidth>
+                            {t('landing.order_type_paused_ok')}
                         </Button>
                     </div>
                 </div>
