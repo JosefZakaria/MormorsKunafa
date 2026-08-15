@@ -559,6 +559,35 @@ function ConfirmDeleteAllHistoryModal({
     );
 }
 
+function OrderTypeToggleRow({
+    label,
+    enabled,
+    onToggle,
+}: {
+    label: string;
+    enabled: boolean;
+    onToggle: () => void;
+}) {
+    return (
+        <div className="order-type-toggle-row">
+            <span className="order-type-toggle-label">{label}</span>
+            <div className="order-type-toggle-controls">
+                <label className="switch">
+                    <input
+                        type="checkbox"
+                        checked={enabled}
+                        onChange={onToggle}
+                    />
+                    <span className="slider round"></span>
+                </label>
+                <span className={`stock-status ${enabled ? 'text-success' : 'text-error'}`}>
+                    {enabled ? 'På' : 'Av'}
+                </span>
+            </div>
+        </div>
+    );
+}
+
 function StockRow({
     product,
     onToggle,
@@ -1209,13 +1238,6 @@ export const AdminDashboard: React.FC = () => {
                         </div>
                     </div>
                     <div className="admin-header-actions">
-                        <Button
-                            variant={isPaused ? 'primary' : 'ghost'}
-                            className={isPaused ? 'btn-resume' : 'btn-pause'}
-                            onClick={() => handleUpdateSettings({ isPaused: !isPaused })}
-                        >
-                            {isPaused ? 'Återuppta Beställningar' : 'Pausa Beställningar'}
-                        </Button>
                         <Button variant="ghost" onClick={handleLogout}>Logga ut</Button>
                     </div>
                 </header>
@@ -1731,6 +1753,41 @@ export const AdminDashboard: React.FC = () => {
                     {/* ── INSTÄLLNINGAR ── */}
                     {activeTab === 'rush' && settings && (
                         <div className="rush-settings">
+                            <div className="rush-card order-availability-card">
+                                <h3>Beställningar</h3>
+                                <p>Pausa allt, eller stäng av enskilda leveranssätt.</p>
+                                <div className="order-availability-pause">
+                                    <Button
+                                        variant={isPaused ? 'primary' : 'ghost'}
+                                        className={isPaused ? 'btn-resume' : 'btn-pause'}
+                                        onClick={() => handleUpdateSettings({ isPaused: !isPaused })}
+                                    >
+                                        {isPaused ? 'Återuppta Beställningar' : 'Pausa Beställningar'}
+                                    </Button>
+                                </div>
+                                <p className="order-availability-hint">
+                                    {isPaused
+                                        ? 'Alla nya beställningar är stoppade.'
+                                        : 'Nya beställningar tas emot som vanligt.'}
+                                </p>
+                                <div className="order-type-toggle-list">
+                                    <OrderTypeToggleRow
+                                        label="Äta här"
+                                        enabled={settings.eatHereEnabled !== false}
+                                        onToggle={() => handleUpdateSettings({ eatHereEnabled: settings.eatHereEnabled === false })}
+                                    />
+                                    <OrderTypeToggleRow
+                                        label="Ta med"
+                                        enabled={settings.takeawayEnabled !== false}
+                                        onToggle={() => handleUpdateSettings({ takeawayEnabled: settings.takeawayEnabled === false })}
+                                    />
+                                    <OrderTypeToggleRow
+                                        label="Hemleverans"
+                                        enabled={settings.deliveryEnabled !== false}
+                                        onToggle={() => handleUpdateSettings({ deliveryEnabled: settings.deliveryEnabled === false })}
+                                    />
+                                </div>
+                            </div>
                             <div className="rush-card">
                                 <h3>Standard tillagningstid</h3>
                                 <p>Används för alla nya beställningar.</p>
