@@ -212,8 +212,8 @@ export const orderApi = {
     });
   },
 
-  getPublicSettings: async (): Promise<{ defaultPreparationTime: number; isPaused: boolean }> => {
-    return apiRequest<{ defaultPreparationTime: number; isPaused: boolean }>('/orders/settings');
+  getPublicSettings: async (): Promise<AdminSettings> => {
+    return apiRequest<AdminSettings>('/orders/settings');
   },
 };
 

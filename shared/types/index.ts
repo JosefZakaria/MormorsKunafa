@@ -92,10 +92,13 @@ export interface AdminUser {
   lastLoginAt?: string;
 }
 
-// Admin Settings
+// Admin Settings (also returned by public GET /orders/settings)
 export interface AdminSettings {
   defaultPreparationTime: number; // minutes (F.Admin.3)
-  isPaused: boolean; // pause new orders
+  isPaused: boolean; // pause all new orders
+  eatHereEnabled: boolean;
+  takeawayEnabled: boolean;
+  deliveryEnabled: boolean;
 }
 
 // Sales History Entry (F.Admin.6)
