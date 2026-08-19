@@ -146,3 +146,30 @@ deployment record.
 Any future direct Supabase client access requires a separate, narrowly scoped
 policy and a security review. Do not add a broad `USING (true)` policy to make a
 failing client work.
+
+## 2026-08-19 provider refunds
+
+Apply `2026-08-19-provider-refunds.sql` only after the immutable audit migration
+and before deploying the matching backend. The migration creates a persistent
+allocation ledger and database functions that serialize refund reservations per
+order. A pending reservation counts against the remaining refundable quantity;
+this prevents two admin requests from refunding the same item concurrently.
+
+Before applying it, verify that paid online orders have the provider reference
+needed to issue a refund. Investigate every returned row rather than fabricating
+or copying a provider identifier:
+
+```sql
+SELECT id, order_number, payment_method
+FROM public.orders
+WHERE payment_status = 'paid'
+  AND (
+    (payment_method IN ('card', 'app') AND stripe_checkout_session_id IS NULL)
+    OR (payment_method = 'swish' AND swish_instruction_id IS NULL)
+  );
+```
+
+After staging deployment, test partial and full refunds with provider test
+payments, duplicate submissions and a simulated callback retry. Confirm that
+the sum of succeeded refunds never exceeds `orders.total_ore` and that each
+refund has matching immutable security-audit entries.

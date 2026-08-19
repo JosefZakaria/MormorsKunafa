@@ -50,8 +50,10 @@ export function orderRowToOrder(r: Row, items: Row[]): Record<string, unknown> {
     cancellationReason: r.cancellation_reason ?? undefined,
     cancelledAt: dbTimestampToIso(r.cancelled_at),
     refundStatus: r.refund_status ?? 'none',
+    refundedAmount: Number(r.refunded_amount_ore ?? 0),
     internalNotes: r.internal_notes ?? undefined,
     items: items.map((i) => ({
+      id: String(i.id ?? ''),
       productId: i.product_id ?? '',
       productName: sanitizeProductName(String(i.product_name_snapshot ?? '')),
       quantity: i.quantity,

@@ -18,7 +18,24 @@ export type OrderType = 'eat-here' | 'takeaway' | 'delivery';
 export type PaymentMethod = 'card' | 'swish' | 'cash' | 'app';
 
 export type CheckoutPaymentChoice = 'card' | 'swish';
-export type RefundStatus = 'none' | 'pending' | 'refunded' | 'failed';
+export type RefundStatus = 'none' | 'pending' | 'partially_refunded' | 'refunded' | 'failed';
+
+export type RefundAttemptStatus = 'pending' | 'succeeded' | 'failed';
+
+export interface OrderRefundAllocation {
+  orderItemId: string;
+  quantity: number;
+  amount: number;
+}
+
+export interface OrderRefundAttempt {
+  id: string;
+  amount: number;
+  status: RefundAttemptStatus;
+  createdAt: string;
+  completedAt?: string;
+  allocations: OrderRefundAllocation[];
+}
 
 export type FoodAllergen =
   | 'gluten'
@@ -61,6 +78,7 @@ export interface Product {
 
 // Order Item Interface
 export interface OrderItem {
+  id: string;
   productId: string;
   productName: string;
   quantity: number;
@@ -112,6 +130,8 @@ export interface Order {
   cancellationReason?: string;
   cancelledAt?: string;
   refundStatus: RefundStatus;
+  refundedAmount: number;
+  refunds?: OrderRefundAttempt[];
   internalNotes?: string;
   paymentMethod: PaymentMethod;
   paymentStatus: 'pending' | 'paid';
