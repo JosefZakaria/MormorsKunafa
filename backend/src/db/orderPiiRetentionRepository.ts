@@ -1,5 +1,6 @@
 import { logSupabaseError, supabase, type Row } from './connection.js';
 import { isCanonicalUuidV4 } from '../utils/resourceId.js';
+import type { OperationalPiiRetentionScope } from '../utils/orderPiiRetention.js';
 
 const TERMINAL_STATUSES = new Set(['uthämtad', 'levererad', 'avbruten']);
 const PAYMENT_STATUSES = new Set(['pending', 'paid']);
@@ -35,10 +36,12 @@ export function parseOperationalPiiRetentionCandidate(
 
 export async function previewOperationalOrderPiiRetention(
   before: string,
+  scope: OperationalPiiRetentionScope,
   limit: number
 ): Promise<OperationalPiiRetentionCandidate[]> {
   const { data, error } = await supabase.rpc('preview_operational_order_pii_retention', {
     p_before: before,
+    p_scope: scope,
     p_limit: limit,
   });
   if (error) {
@@ -53,10 +56,12 @@ export async function previewOperationalOrderPiiRetention(
 
 export async function anonymizeOperationalOrderPii(
   before: string,
+  scope: OperationalPiiRetentionScope,
   limit: number
 ): Promise<number> {
   const { data, error } = await supabase.rpc('anonymize_operational_order_pii', {
     p_before: before,
+    p_scope: scope,
     p_limit: limit,
   });
   if (error) {

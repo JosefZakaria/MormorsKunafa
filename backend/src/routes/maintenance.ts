@@ -14,6 +14,7 @@ import {
 import {
   operationalPiiCutoff,
   parseOperationalPiiRetentionRequest,
+  retentionDaysForScope,
 } from '../utils/orderPiiRetention.js';
 
 const router = Router();
@@ -112,18 +113,25 @@ router.post(
     const request = parseOperationalPiiRetentionRequest(req.body);
     if (!request) {
       res.status(400).json({
-        error: 'retentionDays must be 30-3650, limit must be 1-500, and dryRun must be boolean',
+        error: 'scope must be operational_details or customer_contact, limit must be 1-500, and dryRun must be boolean',
       });
       return;
     }
 
     try {
-      const cutoff = operationalPiiCutoff(request.retentionDays);
+      const retentionDays = retentionDaysForScope(request.scope);
+      const cutoff = operationalPiiCutoff(request.scope);
       if (request.dryRun) {
-        const candidates = await previewOperationalOrderPiiRetention(cutoff, request.limit);
+        const candidates = await previewOperationalOrderPiiRetention(
+          cutoff,
+          request.scope,
+          request.limit
+        );
         res.json({
           ok: true,
           dryRun: true,
+          scope: request.scope,
+          retentionDays,
           cutoff,
           candidateCount: candidates.length,
           candidates,
@@ -131,12 +139,24 @@ router.post(
         return;
       }
 
-      const anonymized = await anonymizeOperationalOrderPii(cutoff, request.limit);
+      const anonymized = await anonymizeOperationalOrderPii(
+        cutoff,
+        request.scope,
+        request.limit
+      );
       console.info('[maintenance] anonymized operational order PII', {
         anonymized,
-        retentionDays: request.retentionDays,
+        scope: request.scope,
+        retentionDays,
       });
-      res.json({ ok: true, dryRun: false, cutoff, anonymized });
+      res.json({
+        ok: true,
+        dryRun: false,
+        scope: request.scope,
+        retentionDays,
+        cutoff,
+        anonymized,
+      });
     } catch (error) {
       logUnexpectedError('operational order PII retention failed', error);
       res.status(503).json({ error: 'Operational PII retention unavailable' });
