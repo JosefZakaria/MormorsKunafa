@@ -26,24 +26,38 @@ export async function getOrderById(id: string): Promise<{ order: Row; items: Row
   return { order: order as Row, items: (items ?? []) as Row[] };
 }
 
-export async function getNextOrderNumber(): Promise<string> {
-  const { data, error } = await supabase
-    .from('orders')
-    .select('order_number')
-    .like('order_number', '#%');
+export type AtomicOrderItem = {
+  id: string;
+  product_id: string | null;
+  product_name_snapshot: string;
+  quantity: number;
+  price_ore: number;
+  modifications_json: null | Record<string, unknown>;
+};
+
+export async function createOrderAtomic(
+  order: Record<string, unknown>,
+  items: AtomicOrderItem[]
+): Promise<{ orderId: string; orderNumber: string; totalOre: number }> {
+  const { data, error } = await supabase.rpc('create_order_atomic', {
+    p_order: order,
+    p_items: items,
+  });
 
   if (error) {
-    logSupabaseError('getNextOrderNumber', error);
+    logSupabaseError('createOrderAtomic', error);
     throw error;
   }
 
-  let max = 0;
-  for (const row of data ?? []) {
-    const raw = String((row as Row).order_number ?? '');
-    const n = parseInt(raw.replace(/^#/, ''), 10);
-    if (!Number.isNaN(n) && n > max) max = n;
+  const row = Array.isArray(data) ? (data[0] as Row | undefined) : undefined;
+  const orderId = String(row?.order_id ?? '');
+  const orderNumber = String(row?.order_number ?? '');
+  const totalOre = Number(row?.total_ore);
+  if (!orderId || !/^#[0-9]+$/.test(orderNumber) || !Number.isSafeInteger(totalOre) || totalOre <= 0) {
+    throw new Error('Atomic order creation returned an invalid result');
   }
-  return `#${String(max + 1).padStart(4, '0')}`;
+
+  return { orderId, orderNumber, totalOre };
 }
 
 export async function fetchOrderRow(id: string): Promise<Row | null> {

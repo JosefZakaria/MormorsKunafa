@@ -1,0 +1,55 @@
+# Supabase/PostgreSQL migrations
+
+These SQL files are versioned deployment artifacts. The application never
+applies them automatically and local builds/tests do not connect to production.
+
+Apply migrations in filename order in a controlled Supabase maintenance window.
+Take a backup, use a staging database first, and keep the matching backend deploy
+paused until the migration has committed successfully.
+
+## 2026-08-19 atomic order creation
+
+Before applying `2026-08-19-atomic-order-creation.sql`, verify that no duplicate
+order numbers exist:
+
+```sql
+SELECT order_number, count(*)
+FROM public.orders
+GROUP BY order_number
+HAVING count(*) > 1;
+```
+
+After applying it, clean any historical invalid data before validating the
+`NOT VALID` constraints. These preflight queries must each return zero rows:
+
+```sql
+SELECT id FROM public.orders
+WHERE total_ore <= 0
+   OR default_preparation_time_minutes NOT BETWEEN 1 AND 1440
+   OR status NOT IN ('ny', 'mottagen', 'påbörjad', 'klar', 'avbruten', 'uthämtad', 'levererad')
+   OR order_type NOT IN ('eat-here', 'takeaway', 'delivery')
+   OR payment_method NOT IN ('card', 'swish', 'cash', 'app')
+   OR payment_status NOT IN ('pending', 'paid');
+
+SELECT id FROM public.order_items
+WHERE quantity NOT BETWEEN 1 AND 50 OR price_ore <= 0;
+```
+
+Then validate the constraints explicitly:
+
+```sql
+ALTER TABLE public.orders
+  VALIDATE CONSTRAINT orders_total_positive_ck,
+  VALIDATE CONSTRAINT orders_prep_time_ck,
+  VALIDATE CONSTRAINT orders_status_ck,
+  VALIDATE CONSTRAINT orders_type_ck,
+  VALIDATE CONSTRAINT orders_payment_method_ck,
+  VALIDATE CONSTRAINT orders_payment_status_ck;
+
+ALTER TABLE public.order_items
+  VALIDATE CONSTRAINT order_items_quantity_ck,
+  VALIDATE CONSTRAINT order_items_price_positive_ck;
+```
+
+Smoke-test a complete checkout in staging. If the function is missing, the new
+backend intentionally fails closed instead of returning a partially saved order.

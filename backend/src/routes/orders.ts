@@ -3,9 +3,9 @@ import crypto from 'crypto';
 import { supabase, generateId, type Row, logSupabaseError, nowIso } from '../db/connection.js';
 import {
   compareAndUpdateOrder,
+  createOrderAtomic,
   fetchOrderRow,
   getOrderById,
-  getNextOrderNumber,
   updateOrder,
 } from '../db/orderRepository.js';
 import { orderRowToOrder, orderRowToPublicStatus, rowsToOrders } from '../db/ordersList.js';
@@ -261,17 +261,13 @@ router.post('/', orderLimiter, orderContactLimiter, async (req: Request, res: Re
     }
     idempotencyContext = idempotency.context;
 
-    const orderNumber = await getNextOrderNumber();
-
     const orderId = generateId();
     const orderInsert = {
       id: orderId,
-      order_number: orderNumber,
       status: 'ny',
       order_type: orderType,
       payment_method: paymentMethod,
       payment_status: 'pending',
-      total_ore: 0,
       default_preparation_time_minutes: defaultPrep,
       estimated_ready_at: estimatedReady.toISOString(),
       scheduled_at: scheduledAt ? scheduledAt.toISOString() : null,
@@ -281,24 +277,8 @@ router.post('/', orderLimiter, orderContactLimiter, async (req: Request, res: Re
       delivery_info_json: customer.deliveryInfo,
     };
 
-    const { error: orderInsertError } = await supabase.from('orders').insert(orderInsert);
-    if (orderInsertError) {
-      await abandonOrderIdempotency(idempotencyContext);
-      idempotencyContext = undefined;
-      logSupabaseError('POST /api/orders insert', orderInsertError);
-      res.status(500).json({ error: 'Failed to create order' });
-      return;
-    }
-
-    orderPersisted = true;
-
-    let totalOre = serverPricedLines.reduce(
-      (sum, line) => sum + line.priceOre * line.quantity,
-      0
-    );
     const itemRows: Array<{
       id: string;
-      order_id: string;
       product_id: string | null;
       product_name_snapshot: string;
       quantity: number;
@@ -306,7 +286,6 @@ router.post('/', orderLimiter, orderContactLimiter, async (req: Request, res: Re
       modifications_json: null;
     }> = serverPricedLines.map((line) => ({
       id: generateId(),
-      order_id: orderId,
       product_id: line.productId,
       product_name_snapshot: line.productNameSnapshot,
       quantity: line.quantity,
@@ -315,10 +294,8 @@ router.post('/', orderLimiter, orderContactLimiter, async (req: Request, res: Re
     }));
 
     if (isDelivery) {
-      totalOre += DELIVERY_FEE_ORE;
       itemRows.push({
         id: generateId(),
-        order_id: orderId,
         product_id: null,
         product_name_snapshot: DELIVERY_FEE_LINE_NAME,
         quantity: 1,
@@ -327,31 +304,8 @@ router.post('/', orderLimiter, orderContactLimiter, async (req: Request, res: Re
       });
     }
 
-    const { error: itemsError } = await supabase.from('order_items').insert(itemRows);
-    if (itemsError) {
-      logSupabaseError('POST /api/orders items', itemsError);
-      const { error: cleanupError } = await supabase.from('orders').delete().eq('id', orderId);
-      if (cleanupError) {
-        logSupabaseError('POST /api/orders cleanup', cleanupError);
-      } else {
-        orderPersisted = false;
-        await abandonOrderIdempotency(idempotencyContext);
-        idempotencyContext = undefined;
-      }
-      res.status(500).json({ error: 'Kunde inte spara orderrader' });
-      return;
-    }
-
-    const { error: totalError } = await supabase
-      .from('orders')
-      .update({ total_ore: totalOre })
-      .eq('id', orderId);
-
-    if (totalError) {
-      logSupabaseError('POST /api/orders total', totalError);
-      res.status(500).json({ error: 'Failed to update order total' });
-      return;
-    }
+    await createOrderAtomic(orderInsert, itemRows);
+    orderPersisted = true;
 
     const result = await getOrderById(orderId);
     if (!result) {
