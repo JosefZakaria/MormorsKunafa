@@ -5,6 +5,7 @@ import {
   clearAdminSessionCookies,
   createAdminSessionCookies,
   requireAdmin,
+  revokeAdminSessions,
   signToken,
 } from '../middleware/auth.js';
 import {
@@ -102,7 +103,7 @@ router.post('/login', loginLimiter, async (req: Request, res: Response) => {
 
     const { data: user, error } = await supabase
       .from('admin_users')
-      .select('id, email, password_hash, display_name')
+      .select('id, email, password_hash, display_name, token_version, is_active')
       .eq('email', email)
       .maybeSingle();
 
@@ -116,7 +117,7 @@ router.post('/login', loginLimiter, async (req: Request, res: Response) => {
       password,
       user ? String((user as Row).password_hash ?? '') : undefined
     );
-    if (!user || !ok) {
+    if (!user || !ok || (user as Row).is_active !== true) {
       res.status(401).json({ error: 'Invalid credentials' });
       return;
     }
@@ -133,6 +134,7 @@ router.post('/login', loginLimiter, async (req: Request, res: Response) => {
     const token = signToken({
       adminId: String((user as Row).id),
       email: String((user as Row).email),
+      tokenVersion: Number((user as Row).token_version),
     });
     const csrfToken = crypto.randomBytes(32).toString('base64url');
     res.setHeader('Set-Cookie', createAdminSessionCookies(token, csrfToken));
@@ -160,9 +162,20 @@ const eventsLimiter = createRateLimiter({
   prefix: 'admin-events',
 });
 
-router.post('/logout', requireAdmin, (_req: Request, res: Response) => {
+router.post('/logout', requireAdmin, async (req: Request, res: Response) => {
   res.setHeader('Set-Cookie', clearAdminSessionCookies());
-  res.status(204).send();
+  try {
+    const admin = (req as Request & { admin: import('../middleware/auth.js').JwtPayload }).admin;
+    const revoked = await revokeAdminSessions(admin);
+    if (!revoked) {
+      res.status(409).json({ error: 'Session was already revoked' });
+      return;
+    }
+    res.status(204).send();
+  } catch (error) {
+    logUnexpectedError('POST /admin/logout session revocation failed', error);
+    res.status(503).json({ error: 'Could not revoke session' });
+  }
 });
 
 router.get('/session', requireAdmin, (req: Request, res: Response) => {

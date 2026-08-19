@@ -28,6 +28,7 @@ export function assertJwtConfiguration(): void {
 export interface JwtPayload {
   adminId: string;
   email: string;
+  tokenVersion: number;
 }
 
 export function verifyAdminToken(token: string): JwtPayload | null {
@@ -43,11 +44,17 @@ export function verifyAdminToken(token: string): JwtPayload | null {
       typeof decoded.adminId !== 'string' ||
       !decoded.adminId ||
       typeof decoded.email !== 'string' ||
-      !decoded.email
+      !decoded.email ||
+      !Number.isSafeInteger(decoded.tokenVersion) ||
+      decoded.tokenVersion < 1
     ) {
       return null;
     }
-    return { adminId: decoded.adminId, email: decoded.email };
+    return {
+      adminId: decoded.adminId,
+      email: decoded.email,
+      tokenVersion: decoded.tokenVersion,
+    };
   } catch {
     return null;
   }
@@ -119,7 +126,7 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
     }
     const { data: admin, error } = await supabase
       .from('admin_users')
-      .select('id, email')
+      .select('id, email, token_version, is_active')
       .eq('id', decoded.adminId)
       .eq('email', decoded.email)
       .maybeSingle();
@@ -128,7 +135,12 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
       res.status(503).json({ error: 'Authentication service unavailable' });
       return;
     }
-    if (!admin || String((admin as Row).id) !== decoded.adminId) {
+    if (
+      !admin ||
+      String((admin as Row).id) !== decoded.adminId ||
+      (admin as Row).is_active !== true ||
+      Number((admin as Row).token_version) !== decoded.tokenVersion
+    ) {
       res.status(401).json({ error: 'Admin account is no longer valid' });
       return;
     }
@@ -140,6 +152,21 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
     logUnexpectedError('requireAdmin authentication failed', error);
     res.status(503).json({ error: 'Authentication service unavailable' });
   }
+}
+
+export async function revokeAdminSessions(payload: JwtPayload): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('admin_users')
+    .update({ token_version: payload.tokenVersion + 1 })
+    .eq('id', payload.adminId)
+    .eq('token_version', payload.tokenVersion)
+    .select('id');
+
+  if (error) {
+    logSupabaseError('revokeAdminSessions', error);
+    throw error;
+  }
+  return Array.isArray(data) && data.length === 1;
 }
 
 export function requireCsrfProtection(req: Request, res: Response, next: NextFunction): void {

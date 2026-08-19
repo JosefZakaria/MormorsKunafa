@@ -53,3 +53,22 @@ ALTER TABLE public.order_items
 
 Smoke-test a complete checkout in staging. If the function is missing, the new
 backend intentionally fails closed instead of returning a partially saved order.
+
+## 2026-08-19 admin session revocation
+
+Apply `2026-08-19-admin-session-revocation.sql` before deploying the matching
+backend. Existing admins remain active and receive `token_version = 1`. Existing
+JWTs intentionally stop working because they do not contain a token version;
+admins must sign in again.
+
+Setting `is_active = false` immediately blocks an account. Incrementing an
+admin's `token_version` revokes every token issued at an older version:
+
+```sql
+UPDATE public.admin_users
+SET token_version = token_version + 1
+WHERE id = '<verified-admin-id>';
+```
+
+Use the application's logout endpoint for ordinary revocation. Only use the SQL
+form during an incident after independently verifying the intended admin ID.

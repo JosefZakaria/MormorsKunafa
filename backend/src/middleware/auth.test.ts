@@ -14,9 +14,23 @@ const secureTestSecret = 'test-only-jwt-secret-with-at-least-thirty-two-bytes';
 test('signs and verifies only the configured admin token contract', () => {
   process.env.JWT_SECRET = secureTestSecret;
   assertJwtConfiguration();
-  const payload = { adminId: 'admin-1', email: 'admin@example.test' };
+  const payload = { adminId: 'admin-1', email: 'admin@example.test', tokenVersion: 3 };
   const token = signToken(payload);
   assert.deepEqual(verifyAdminToken(token), payload);
+});
+
+test('rejects legacy tokens without a database session version', () => {
+  process.env.JWT_SECRET = secureTestSecret;
+  const legacyToken = jwt.sign(
+    { adminId: 'admin-1', email: 'admin@example.test' },
+    secureTestSecret,
+    {
+      algorithm: 'HS256',
+      issuer: 'mormors-kunafa-backend',
+      audience: 'mormors-kunafa-admin',
+    }
+  );
+  assert.equal(verifyAdminToken(legacyToken), null);
 });
 
 test('rejects a token without the required issuer and audience', () => {
