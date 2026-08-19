@@ -1,8 +1,11 @@
 # Privacy operations runbook
 
 Status: executable draft, 2026-08-19  
-The controller must assign named primary/backup owners and approve the final
-retention decisions before this runbook is considered operational in production.
+The business owner is the primary internal owner for rights requests, incidents,
+legal holds, backup decisions and paper destruction. A backup person, restricted
+journal location and production verification still must be assigned before this
+runbook is considered fully operational in production. Personal owner names are
+not published on the website; the company remains the public data controller.
 
 Authoritative guidance:
 
@@ -84,36 +87,41 @@ Authoritative guidance:
    any lost or publicly exposed ticket as a possible personal-data incident.
 5. Do not photograph tickets or copy their contents to private messaging apps.
 
-## Manual fields required before approval
+## Manual fields required before final production approval
 
-- named primary and backup owner for DSAR and incidents;
+- named backup owner for DSAR and incidents (primary role: business owner);
 - secure case/journal storage location and access list;
 - approved case-evidence retention period;
-- verified accounting retention scope and operational anonymization interval;
+- verified accounting archive and destruction schedule after the statutory period;
 - provider contract/region/subprocessor evidence;
 - backup retention and restore-test schedule;
 - paper destruction method and responsible closing-role.
 
-## Fulfilled-order operational PII anonymization
+## Fulfilled-order tiered retention
 
 The versioned database migration and maintenance API support a dry-run-first,
-bounded anonymization process. They deliberately remain unscheduled until an
-accountant has confirmed the bookkeeping fields and the controller has approved
-an operational retention interval.
+bounded, dry-run-first process. The approved application intervals are 90 days
+for operational details and 1,095 days for contact data. The process remains
+unscheduled until staging verification and a restricted execution journal exist.
 
 1. Confirm that no dispute, incident, DSAR or other legal hold applies. Set the
    order's `operational_pii_legal_hold` flag when a hold is required.
 2. Call `POST /api/internal/maintenance/operational-order-pii-retention` with the
-   rotated maintenance bearer secret and `dryRun: true`.
+   rotated maintenance bearer secret and
+   `{"scope":"operational_details","limit":100,"dryRun":true}`.
 3. Review only the returned internal order IDs, order numbers, states and
    terminal timestamps. Do not export customer data for the review.
-4. Record the approved cutoff, owner, candidate count and rollback decision in
-   the restricted journal, then repeat the same bounded request with
+4. Record the fixed scope, cutoff, owner, candidate count and rollback decision
+   in the restricted journal, then repeat the same bounded request with
    `dryRun: false`.
-5. Retain the immutable audit result and run the read-only database verification.
+5. Repeat steps 2–4 with `scope` set to `customer_contact`. This second pass uses
+   the fixed 1,095-day period; it must not be substituted for the 90-day pass.
+6. Retain the immutable audit results and run the read-only database verification.
 
-The operation preserves order numbers, product/quantity/price snapshots,
-payment-provider identifiers and refund ledgers. It removes names, phone and
-email, delivery data, internal/cancellation free text, item modification text
-and customer status credentials. Restoring a backup can reintroduce erased PII;
-after a restore, re-run the approved anonymization cutoff and document it.
+Both passes preserve order numbers, product/quantity/price/VAT snapshots,
+payment-provider identifiers and refund ledgers. The 90-day pass removes
+delivery data, internal/cancellation free text, item modification text and
+customer status credentials. The 1,095-day pass anonymizes name, phone and email
+and catches older operational details if the shorter pass was missed. Restoring
+a backup can reintroduce erased PII; after a restore, rerun both approved scopes
+and document the reconciliation.

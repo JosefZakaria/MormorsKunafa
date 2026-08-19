@@ -24,6 +24,7 @@ region, accepted version or configured retention.
 | Order number, status and schedule | Backend | `orders`; admin; minimized customer status page | Resend; Sinch; authenticated Web Push | Push contains internal order ID/number only and is sent only for verified paid orders |
 | Payment identifiers/status | Stripe/Swish | `orders`, `payment_provider_events`, refund ledger | Stripe or Swish | Provider payloads and card/bank credentials are not stored; immutable IDs and bounded outcomes only |
 | Refund selection/status | Admin | `order_refunds`, `order_refund_items`, audit log | Stripe or Swish | Dedicated authorization; item quantities and provider IDs only; no password plaintext stored |
+| Customer-service, complaint and privacy messages | Customer by email | Gmail mailbox controlled by the business owner | Google Gmail | Public address is explicit; messages must not be copied into source control or ordinary application logs |
 
 ## Admin, device and security flows
 
@@ -56,11 +57,19 @@ The complete first-party browser-storage inventory and lifetimes are in
 revocable, order-bound token and returns only order number, status and approximate
 ready time with `Cache-Control: private, no-store`.
 
-## Known residual duplication and retention gap
+## Tiered order retention
 
 Accounting-relevant order data and operational contact/address fields currently
-share the same `orders` row. Abandoned drafts now have automated provider-aware
-cleanup, but fulfilled orders need a reviewed archival/anonymization migration
-before contact/address data can be removed independently of accounting records.
-Do not run a bulk anonymization until an accountant has identified the fields
-that must remain and restore/audit requirements have been tested in staging.
+share the same `orders` row. Abandoned drafts have automated provider-aware
+cleanup. The versioned fulfilled-order migration separately removes delivery
+data, operational/free-text notes, item modifications and customer status
+credentials after 90 days, then anonymizes name, phone and email after 1,095
+days. A per-order legal hold pauses both passes. Order numbers, item/price/VAT
+snapshots, payment/provider identifiers and refund ledgers are preserved for
+the approved accounting archive.
+
+The three-year contact window is for customer service, complaints and disputes,
+not direct marketing. Do not export it to a marketing list or reuse it for a new
+purpose without a separate documented legal basis and review. Production remains
+unverified until the migration, both dry runs and the security-posture queries
+have passed in staging and production.

@@ -70,8 +70,26 @@ WHERE functions.oid IS NULL
    OR NOT functions.prosecdef
    OR NOT ('search_path=public, pg_temp' = ANY(functions.proconfig));
 
--- This result must be empty. Anonymized orders must not retain operational
--- contact fields, free text or customer status credentials.
+-- This result must be empty. Orders marked as operationally purged must not
+-- retain delivery data, free text, item modifications or status credentials.
+SELECT id AS incompletely_purged_operational_order
+FROM public.orders
+WHERE operational_details_purged_at IS NOT NULL
+  AND (
+    delivery_info_json IS NOT NULL
+    OR internal_notes IS NOT NULL
+    OR cancellation_reason IS NOT NULL
+    OR order_status_token_hash IS NOT NULL
+    OR order_status_token_expires_at IS NOT NULL
+    OR EXISTS (
+      SELECT 1 FROM public.order_items
+      WHERE order_items.order_id = orders.id
+        AND order_items.modifications_json IS NOT NULL
+    )
+  );
+
+-- This result must be empty. Contact-anonymized orders must not retain customer
+-- identity and must also satisfy the shorter operational-details pass.
 SELECT id AS incompletely_anonymized_order
 FROM public.orders
 WHERE operational_pii_anonymized_at IS NOT NULL

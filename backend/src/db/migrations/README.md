@@ -168,21 +168,28 @@ migration. It adds an explicit legal-hold flag and two service-role-only RPCs.
 Neither the migration nor the daily checkout cleanup schedules fulfilled-order
 anonymization automatically.
 
-Before execution, the controller and accountant must approve the operational
-retention interval and confirm that the preserved order number, product, amount,
-payment and refund fields cover the required accounting evidence. Start with the
+The owner approved two fixed scopes on 2026-08-19. Start each scope with the
 authenticated maintenance endpoint in dry-run mode:
 
 ```json
-{"retentionDays":365,"limit":100,"dryRun":true}
+{"scope":"operational_details","limit":100,"dryRun":true}
+```
+
+This scope removes delivery data, internal/cancellation free text, customer
+status credentials and item modifications after 90 days. After reviewing and
+executing it, separately preview the three-year contact pass:
+
+```json
+{"scope":"customer_contact","limit":100,"dryRun":true}
 ```
 
 Review every returned order ID and number without exporting customer data. Set
 `operational_pii_legal_hold = true` for disputes, active rights requests,
 incidents or other documented holds. Only then repeat the exact request with
-`"dryRun":false`. The operation clears contact/address data, internal free text,
-customer status tokens and item modification text, while preserving financial
-and provider records. Each changed order receives an immutable audit event.
+`"dryRun":false`. The contact pass anonymizes name, phone and email after 1,095
+days and also catches any older operational details missed by the shorter pass.
+Both scopes preserve financial and provider records and append one immutable
+audit event per changed order.
 
 Run small batches, retain only counts and non-secret execution metadata, and
 never add this endpoint to Vercel Cron until the approved interval and an owner
