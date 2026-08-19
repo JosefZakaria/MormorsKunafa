@@ -447,7 +447,7 @@ export const Menu: React.FC = () => {
                                     if (fixedWeight) {
                                         return (
                                             <>
-                                                <label className="menu-modal__options-label">Vikt</label>
+                                                <span className="menu-modal__options-label">Vikt</span>
                                                 <div className="menu-modal__fixed-weight">{fixedWeight}</div>
                                             </>
                                         );
@@ -456,7 +456,7 @@ export const Menu: React.FC = () => {
                                     if (selectorType === 'bread') {
                                         return (
                                             <>
-                                                <label className="menu-modal__options-label">Välj antal</label>
+                                                <span className="menu-modal__options-label">Välj antal</span>
                                                 <div className="menu-modal__quantity" role="group" aria-label="Antal bröd">
                                                     <button
                                                         type="button"
@@ -489,8 +489,9 @@ export const Menu: React.FC = () => {
                                             : 'Välj vikt';
                                     return (
                                         <>
-                                            <label className="menu-modal__options-label">{label}</label>
+                                            <label htmlFor="menu-product-option" className="menu-modal__options-label">{label}</label>
                                             <select
+                                                id="menu-product-option"
                                                 className="menu-modal__select"
                                                 value={selectedOption}
                                                 onChange={(e) => setSelectedOption(e.target.value)}

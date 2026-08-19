@@ -199,8 +199,9 @@ function PrinterSettings() {
             <p>Anslut till en Epson-kvittoskrivare på det lokala nätverket.</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.75rem' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                    <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Skrivarens IP-adress</label>
+                    <label htmlFor="printer-ip" style={{ fontSize: '0.85rem', fontWeight: 600 }}>Skrivarens IP-adress</label>
                     <input
+                        id="printer-ip"
                         type="text"
                         placeholder="t.ex. 192.168.1.50"
                         value={ip}
@@ -209,8 +210,9 @@ function PrinterSettings() {
                     />
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                    <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Enhets-ID</label>
+                    <label htmlFor="printer-device-id" style={{ fontSize: '0.85rem', fontWeight: 600 }}>Enhets-ID</label>
                     <input
+                        id="printer-device-id"
                         type="text"
                         placeholder="local_printer"
                         value={deviceId}
@@ -421,6 +423,7 @@ function CancelOrderModal({
                 <h2 id="cancel-order-title">Avbryt beställning</h2>
                 <p>Ange anledning till avbokning.</p>
                 <textarea
+                    aria-label="Anledning till avbokning"
                     value={reason}
                     onChange={(e) => onReasonChange(e.target.value)}
                     className="stats-modal-input"
@@ -429,6 +432,7 @@ function CancelOrderModal({
                     autoFocus
                 />
                 <input
+                    aria-label="Lösenord för avbokning"
                     className="stats-modal-input"
                     type="password"
                     placeholder="Lösenord"
@@ -475,6 +479,7 @@ function InternalNotesModal({
                 <h2 id="internal-notes-title">Intern notis</h2>
                 <p>Spara en intern anteckning för ordern.</p>
                 <textarea
+                    aria-label="Intern anteckning"
                     value={notes}
                     onChange={(e) => onNotesChange(e.target.value)}
                     className="stats-modal-input"
@@ -523,6 +528,7 @@ function ConfirmDeleteOrderModal({
                     Detta går inte att ångra.
                 </p>
                 <input
+                    aria-label="Lösenord för att ta bort ordern"
                     className="stats-modal-input"
                     type="password"
                     placeholder="Lösenord"
@@ -569,6 +575,7 @@ function ConfirmDeleteAllHistoryModal({
                     Är du säker på att du vill radera hela orderhistoriken? Detta går inte att ångra.
                 </p>
                 <input
+                    aria-label="Lösenord för att radera orderhistoriken"
                     className="stats-modal-input"
                     type="password"
                     placeholder="Lösenord"
@@ -1365,6 +1372,7 @@ export const AdminDashboard: React.FC = () => {
                             <p>Ange lösenord för att se statistiken</p>
                             <input
                                 id="stats-password-input"
+                                aria-label="Lösenord för statistik"
                                 className="stats-modal-input"
                                 type="password"
                                 placeholder="Lösenord"
@@ -1564,16 +1572,18 @@ export const AdminDashboard: React.FC = () => {
                         <div className="orders-list">
                             <div className="history-date-filter">
                                 <div className="history-date-field">
-                                    <label>Från</label>
+                                    <label htmlFor="history-date-from">Från</label>
                                     <input
+                                        id="history-date-from"
                                         type="date"
                                         value={historyDateFrom}
                                         onChange={(e) => setHistoryDateFrom(e.target.value)}
                                     />
                                 </div>
                                 <div className="history-date-field">
-                                    <label>Till</label>
+                                    <label htmlFor="history-date-to">Till</label>
                                     <input
+                                        id="history-date-to"
                                         type="date"
                                         value={historyDateTo}
                                         onChange={(e) => setHistoryDateTo(e.target.value)}
@@ -1708,6 +1718,7 @@ export const AdminDashboard: React.FC = () => {
                                     <h3 className="stats-overview-title">Översikt</h3>
                                     <select
                                         id="stats-period-select"
+                                        aria-label="Statistikperiod"
                                         className="stats-period-select"
                                         value={statsPeriod === 'custom' ? 'custom' : statsPeriod}
                                         onChange={e => {
@@ -1729,16 +1740,18 @@ export const AdminDashboard: React.FC = () => {
 
                                 <div className="history-date-filter">
                                     <div className="history-date-field">
-                                        <label>Från</label>
+                                        <label htmlFor="stats-date-from">Från</label>
                                         <input
+                                            id="stats-date-from"
                                             type="date"
                                             value={statsStartDate}
                                             onChange={(e) => setStatsStartDate(e.target.value)}
                                         />
                                     </div>
                                     <div className="history-date-field">
-                                        <label>Till</label>
+                                        <label htmlFor="stats-date-to">Till</label>
                                         <input
+                                            id="stats-date-to"
                                             type="date"
                                             value={statsEndDate}
                                             onChange={(e) => setStatsEndDate(e.target.value)}

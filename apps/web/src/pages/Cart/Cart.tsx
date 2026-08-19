@@ -507,8 +507,9 @@ export const Cart: React.FC = () => {
 
                         <div className="cart-summary">
                             <div className="order-type-selector">
-                                <label className="order-type-label">Leveranssätt</label>
+                                <label htmlFor="order-type" className="order-type-label">Leveranssätt</label>
                                 <select
+                                    id="order-type"
                                     className={`order-type-select ${orderTypeError ? 'order-type-select--error' : ''}`}
                                     value={orderType}
                                     onChange={(e) => handleOrderTypeChange(e.target.value)}
@@ -743,14 +744,15 @@ export const Cart: React.FC = () => {
                                 max={maxDateStr}
                                 onChange={(e) => handleScheduledDateChange(e.target.value)}
                             />
-                            <label className="cart-schedule__label cart-schedule__label--time">
+                            <span id="cart-schedule-time-label" className="cart-schedule__label cart-schedule__label--time">
                                 {t('cart.schedule_time_label')}
-                            </label>
+                            </span>
                             <div 
                                 className={`cart-schedule__time-picker ${!clockRange ? 'cart-schedule__time-picker--disabled' : ''}`}
                                 ref={timePickerRef}
                             >
                                 <button
+                                    aria-labelledby="cart-schedule-time-label"
                                     type="button"
                                     className={`cart-schedule__time-trigger ${isDropdownOpen ? 'cart-schedule__time-trigger--open' : ''}`}
                                     disabled={!clockRange}
