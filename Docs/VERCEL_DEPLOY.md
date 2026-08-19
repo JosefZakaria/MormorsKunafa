@@ -1,5 +1,11 @@
 # Vercel deploy — felsökning
 
+`npm run verify:web-deployment` kontrollerar committade Vercel-rewrites,
+globala säkerhetsheaders, privata cache-regler, juridiska klientroutes, sitemap,
+robots och security.txt. Kontrollen körs av `npm run check` och CI. Den bevisar
+lokal konfiguration, inte live-deployment; verifiera motsvarande URL:er och
+response-headers i produktion efter varje deployment.
+
 ## Projekt
 
 | App | Vercel-projekt | Root directory |
