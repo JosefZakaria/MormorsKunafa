@@ -72,3 +72,19 @@ WHERE id = '<verified-admin-id>';
 
 Use the application's logout endpoint for ordinary revocation. Only use the SQL
 form during an incident after independently verifying the intended admin ID.
+
+## 2026-08-19 Stripe event idempotency
+
+Apply `2026-08-19-stripe-event-idempotency.sql` before deploying the matching
+webhook code. It stores only provider event metadata, processing state and the
+internal order ID; it does not persist Stripe payloads or customer details.
+
+The five-minute lease lets a later Stripe retry recover an event after a crashed
+worker. Monitor failed or repeatedly attempted events without logging payloads:
+
+```sql
+SELECT event_id, event_type, outcome, attempts, received_at
+FROM public.payment_provider_events
+WHERE provider = 'stripe' AND (status = 'failed' OR attempts > 1)
+ORDER BY received_at DESC;
+```

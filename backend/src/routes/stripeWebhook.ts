@@ -10,18 +10,25 @@ import {
   safeStripeVerificationError,
 } from '../utils/stripeSecurity.js';
 import { logUnexpectedError } from '../utils/safeErrorMetadata.js';
+import {
+  claimStripeEvent,
+  completeStripeEvent,
+  failStripeEvent,
+} from '../db/paymentEventRepository.js';
 
-async function markOrderPaidFromSession(session: Stripe.Checkout.Session): Promise<void> {
+async function markOrderPaidFromSession(
+  session: Stripe.Checkout.Session
+): Promise<{ orderId: string | null; outcome: string }> {
   const orderId = session.metadata?.orderId?.trim();
   if (!orderId) {
     console.warn('[stripe webhook] checkout.session.completed missing metadata.orderId');
-    return;
+    return { orderId: null, outcome: 'ignored_missing_order_id' };
   }
 
   const result = await getOrderById(orderId);
   if (!result) {
     console.warn('[stripe webhook] order not found', orderId);
-    return;
+    return { orderId, outcome: 'ignored_order_not_found' };
   }
 
   const validation = validateStripeCheckoutSession(result.order, session);
@@ -31,10 +38,11 @@ async function markOrderPaidFromSession(session: Stripe.Checkout.Session): Promi
       orderId,
       error: validation.error,
     });
-    return;
+    return { orderId, outcome: 'ignored_validation_failed' };
   }
 
-  await markOrderPaid(orderId, { paidAmountOre: validation.paidAmountOre });
+  const newlyPaid = await markOrderPaid(orderId, { paidAmountOre: validation.paidAmountOre });
+  return { orderId, outcome: newlyPaid ? 'order_marked_paid' : 'order_already_paid' };
 }
 
 export async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
@@ -78,15 +86,37 @@ export async function handleStripeWebhook(req: Request, res: Response): Promise<
     return;
   }
 
+  let claimed = false;
   try {
+    claimed = await claimStripeEvent(event.id, event.type, event.livemode);
+    if (!claimed) {
+      res.json({ received: true, duplicate: true });
+      return;
+    }
+
+    let orderId: string | null = null;
+    let outcome = 'ignored_event_type';
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object as Stripe.Checkout.Session;
       if (session.payment_status === 'paid') {
-        await markOrderPaidFromSession(session);
+        const result = await markOrderPaidFromSession(session);
+        orderId = result.orderId;
+        outcome = result.outcome;
+      } else {
+        orderId = session.metadata?.orderId?.trim() || null;
+        outcome = 'ignored_unpaid_session';
       }
     }
+    await completeStripeEvent(event.id, orderId, outcome);
     res.json({ received: true });
   } catch (e) {
+    if (claimed) {
+      try {
+        await failStripeEvent(event.id);
+      } catch (markFailedError) {
+        logUnexpectedError('stripe webhook could not release event lease', markFailedError);
+      }
+    }
     logUnexpectedError('stripe webhook handler error', e);
     res.status(500).send('Webhook handler failed');
   }
