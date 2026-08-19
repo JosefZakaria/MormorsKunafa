@@ -58,10 +58,12 @@ export type SwishPaymentRequestResponse = {
   id: string;
   status?: string;
   paymentRequestToken?: string;
-  amount?: number;
+  amount?: number | string;
   currency?: string;
   payeeAlias?: string;
+  payerAlias?: string;
   payeePaymentReference?: string;
+  paymentReference?: string;
   message?: string;
 };
 
@@ -73,6 +75,28 @@ export type SwishCallbackPayload = {
   payeePaymentReference?: string;
   paymentReference?: string;
   message?: string;
+};
+
+export type SwishRefundRequestBody = {
+  originalPaymentReference: string;
+  callbackUrl: string;
+  payerAlias: string;
+  amount: string;
+  currency: 'SEK';
+  payerPaymentReference?: string;
+  message?: string;
+};
+
+export type SwishRefundResponse = {
+  id: string;
+  originalPaymentReference?: string;
+  payerPaymentReference?: string;
+  payerAlias?: string;
+  payeeAlias?: string;
+  amount?: number | string;
+  currency?: string;
+  status?: string;
+  errorCode?: string;
 };
 
 function swishBaseUrl(): string {
@@ -210,12 +234,21 @@ export function swishCallbackUrl(): string {
   return `${base}/api/swish/callback`;
 }
 
+export function swishRefundCallbackUrl(): string {
+  const base = validateSwishCallbackBaseUrl(process.env.SWISH_CALLBACK_BASE_URL);
+  return `${base}/api/swish/refund-callback`;
+}
+
 export function formatSwishAmount(totalOre: number): string {
   return (totalOre / 100).toFixed(2);
 }
 
-export function parseSwishAmountToOre(amount: number): number {
-  return Math.round(amount * 100);
+export function parseSwishAmountToOre(amount: number | string): number {
+  const normalized = String(amount).trim();
+  if (!/^\d{1,12}(?:\.\d{1,2})?$/.test(normalized)) return Number.NaN;
+  const [whole, fraction = ''] = normalized.split('.');
+  const ore = Number(whole) * 100 + Number(fraction.padEnd(2, '0'));
+  return Number.isSafeInteger(ore) ? ore : Number.NaN;
 }
 
 export type SwishPaymentVerification =
@@ -238,7 +271,7 @@ export function verifySwishPaymentRequest(
   if (String(payment.status ?? '').toUpperCase() !== 'PAID') {
     return { ok: false, reason: 'Swish payment is not paid' };
   }
-  if (typeof payment.amount !== 'number' || !Number.isFinite(payment.amount)) {
+  if (payment.amount == null) {
     return { ok: false, reason: 'Swish payment amount missing' };
   }
   const paidAmountOre = parseSwishAmountToOre(payment.amount);
@@ -255,6 +288,54 @@ export function verifySwishPaymentRequest(
     return { ok: false, reason: 'Swish order reference mismatch' };
   }
   return { ok: true, paidAmountOre };
+}
+
+const SWISH_REFUND_ID_PATTERN = /^[0-9A-F]{32}$/;
+
+export function parseSwishRefundId(value: unknown): string | null {
+  const refundId = String(value ?? '').trim().toUpperCase();
+  return SWISH_REFUND_ID_PATTERN.test(refundId) ? refundId : null;
+}
+
+export function swishRefundIdFromUuid(value: string): string {
+  const refundId = value.replaceAll('-', '').toUpperCase();
+  if (!SWISH_REFUND_ID_PATTERN.test(refundId)) throw new Error('Invalid refund UUID');
+  return refundId;
+}
+
+export function verifySwishRefund(
+  refund: SwishRefundResponse,
+  expected: {
+    refundId: string;
+    originalPaymentReference: string;
+    amountOre: number;
+    payerAlias: string;
+  }
+): { ok: true; status: 'pending' | 'succeeded' | 'failed'; failureCode?: string }
+  | { ok: false; reason: string } {
+  if (parseSwishRefundId(refund.id) !== expected.refundId) {
+    return { ok: false, reason: 'Swish refund ID mismatch' };
+  }
+  if (String(refund.originalPaymentReference ?? '').trim() !== expected.originalPaymentReference) {
+    return { ok: false, reason: 'Swish original payment reference mismatch' };
+  }
+  if (refund.amount == null || parseSwishAmountToOre(refund.amount) !== expected.amountOre) {
+    return { ok: false, reason: 'Swish refund amount mismatch' };
+  }
+  if (String(refund.currency ?? '').toUpperCase() !== 'SEK') {
+    return { ok: false, reason: 'Swish refund currency mismatch' };
+  }
+  if (String(refund.payerAlias ?? '').trim() !== expected.payerAlias) {
+    return { ok: false, reason: 'Swish refund payer mismatch' };
+  }
+  const status = String(refund.status ?? '').toUpperCase();
+  if (status === 'PAID') return { ok: true, status: 'succeeded' };
+  if (status === 'ERROR') {
+    const failureCode = String(refund.errorCode ?? 'provider_failed').trim().slice(0, 100);
+    return { ok: true, status: 'failed', failureCode };
+  }
+  if (status === 'DEBITED' || status === 'CREATED') return { ok: true, status: 'pending' };
+  return { ok: false, reason: 'Unexpected Swish refund status' };
 }
 
 export async function createSwishPaymentRequest(params: {
@@ -308,6 +389,41 @@ export async function getSwishPaymentRequest(instructionId: string): Promise<Swi
     'GET',
     `/swish-cpcapi/api/v1/paymentrequests/${validatedId}`
   );
+}
+
+export async function createSwishRefundRequest(params: {
+  refundId: string;
+  originalPaymentReference: string;
+  amountOre: number;
+  payerPaymentReference: string;
+  orderNumber: string;
+}): Promise<{ refundId: string }> {
+  const refundId = parseSwishRefundId(params.refundId);
+  const payerAlias = process.env.SWISH_PAYEE_ALIAS?.trim();
+  if (!refundId) throw new Error('Invalid Swish refund ID');
+  if (!payerAlias || !SWISH_PAYEE_PATTERN.test(payerAlias)) {
+    throw new Error('SWISH_PAYEE_ALIAS must contain 8 to 15 digits');
+  }
+  if (!/^[0-9A-F]{32}$/i.test(params.originalPaymentReference)) {
+    throw new Error('Invalid original Swish payment reference');
+  }
+  const body: SwishRefundRequestBody = {
+    originalPaymentReference: params.originalPaymentReference,
+    callbackUrl: swishRefundCallbackUrl(),
+    payerAlias,
+    amount: formatSwishAmount(params.amountOre),
+    currency: 'SEK',
+    payerPaymentReference: params.payerPaymentReference.slice(0, 35),
+    message: `Återbetalning ${params.orderNumber}`.slice(0, 50),
+  };
+  await swishRequest<unknown>('PUT', `/swish-cpcapi/api/v2/refunds/${refundId}`, body);
+  return { refundId };
+}
+
+export async function getSwishRefund(refundId: string): Promise<SwishRefundResponse> {
+  const validatedId = parseSwishRefundId(refundId);
+  if (!validatedId) throw new Error('Invalid Swish refund ID');
+  return swishRequest<SwishRefundResponse>('GET', `/swish-cpcapi/api/v1/refunds/${validatedId}`);
 }
 
 /** Deep link / QR token URL for customer (test MSS uses simulator). */
