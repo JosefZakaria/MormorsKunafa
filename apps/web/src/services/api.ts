@@ -9,6 +9,8 @@ import type {
   UpdateOrderNotesRequest,
   AdminSettings,
   PushSubscriptionRecord,
+  AdminRefundOverview,
+  CreateOrderRefundResult,
 } from '@shared/types';
 
 const adminRequest = apiRequest;
@@ -249,6 +251,45 @@ export const adminApi = {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
+  },
+
+  getRefundOverview: async (id: string): Promise<AdminRefundOverview> => {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+    return authenticatedRequest<AdminRefundOverview>(`/orders/admin/${id}/refunds`, { token });
+  },
+
+  createRefund: async (id: string, data: {
+    password: string;
+    confirmation: string;
+    items: Array<{ orderItemId: string; quantity: number }>;
+  }, idempotencyKey: string): Promise<CreateOrderRefundResult> => {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+    return authenticatedRequest<CreateOrderRefundResult>(`/orders/admin/${id}/refunds`, {
+      method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey },
+      body: JSON.stringify(data),
+      token,
+      timeout: 30_000,
+    });
+  },
+
+  reconcileRefund: async (orderId: string, refundId: string, data: {
+    password: string;
+    confirmation: string;
+  }): Promise<CreateOrderRefundResult> => {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+    return authenticatedRequest<CreateOrderRefundResult>(
+      `/orders/admin/${orderId}/refunds/${refundId}/reconcile`,
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+        token,
+        timeout: 30_000,
+      }
+    );
   },
 
   getSession: async (): Promise<{ admin: { id: string; email: string; name: string } }> => {

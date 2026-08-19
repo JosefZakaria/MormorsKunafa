@@ -19,6 +19,7 @@ import { isKitchenTicketPrintDue } from '@shared/utils/scheduledTime';
 import '../Admin.css';
 import { requestWakeLock, releaseWakeLock } from '../../../utils/wakeLock';
 import { startAlarm, stopAlarm, setAlarmVolume, AlarmType, getAudioState, unlockAudio, isAlarmActive } from '../../../utils/alarmPlayer';
+import { RefundOrderModal } from './RefundOrderModal';
 
 // --- Helper: countdown string from ISO time ---
 function getCountdown(isoTime: string | undefined): string {
@@ -253,10 +254,25 @@ function daysUntil(iso: string | undefined): number | null {
     return Math.round((targetUtc - todayUtc) / (1000 * 60 * 60 * 24));
 }
 
-function PreOrderCard({ order, onEditNotes, onCancel }: {
+function canRefundOrder(order: Order): boolean {
+    return order.paymentStatus === 'paid'
+        && ['card', 'app', 'swish'].includes(order.paymentMethod)
+        && order.refundStatus !== 'refunded';
+}
+
+function RefundStatusBadge({ order }: { order: Order }) {
+    if (!order.refundStatus || order.refundStatus === 'none') return null;
+    const label = order.refundStatus === 'refunded' ? 'Återbetald'
+        : order.refundStatus === 'partially_refunded' ? 'Delvis återbetald'
+            : order.refundStatus === 'pending' ? 'Återbetalning pågår' : 'Återbetalning misslyckades';
+    return <span className="status-badge refund-status">{label}</span>;
+}
+
+function PreOrderCard({ order, onEditNotes, onCancel, onRefund }: {
     order: Order;
     onEditNotes: (order: Order) => void;
     onCancel: (order: Order) => void;
+    onRefund: (order: Order) => void;
 }) {
     const dateLabel = formatScheduledDate(order.scheduledTime);
     const clockLabel = formatScheduledClock(order.scheduledTime);
@@ -274,6 +290,7 @@ function PreOrderCard({ order, onEditNotes, onCancel }: {
                     &nbsp;·&nbsp;
                     <OrderTypeLabel type={order.orderType} />
                 </h3>
+                <RefundStatusBadge order={order} />
                 <div className="preorder-date-banner">
                     <span className="preorder-date-relative">{relativeLabel}</span>
                     <span className="preorder-date-absolute">
@@ -304,15 +321,17 @@ function PreOrderCard({ order, onEditNotes, onCancel }: {
                 <Button size="sm" variant="ghost" style={{ color: '#DC2626' }} onClick={() => onCancel(order)}>
                     Avbryt
                 </Button>
+                {canRefundOrder(order) && <Button size="sm" variant="ghost" style={{ color: '#B91C1C' }} onClick={() => onRefund(order)}>Återbetala</Button>}
             </div>
         </div>
     );
 }
 
-function PendingOrderCard({ order, defaultPrepTime, onAccept }: {
+function PendingOrderCard({ order, defaultPrepTime, onAccept, onRefund }: {
     order: Order;
     defaultPrepTime: number;
     onAccept: (orderId: string, extraMinutes: number) => void;
+    onRefund: (order: Order) => void;
 }) {
     const [extraMinutes, setExtraMinutes] = useState(0);
     const totalMinutes = defaultPrepTime + extraMinutes;
@@ -326,6 +345,7 @@ function PendingOrderCard({ order, defaultPrepTime, onAccept }: {
                     <OrderTypeLabel type={order.orderType} />
                 </h3>
                 <span className="status-badge status-ny">Ny</span>
+                <RefundStatusBadge order={order} />
                 <ul style={{ margin: '0.5rem 0', paddingLeft: '1.2rem' }}>
                     {order.items.map((item, i) => (
                         <li key={i}>{item.quantity}x {item.productName} – {(item.price * item.quantity / 100).toFixed(0)} kr</li>
@@ -350,6 +370,7 @@ function PendingOrderCard({ order, defaultPrepTime, onAccept }: {
                 <Button size="sm" variant="primary" onClick={() => onAccept(order.id, extraMinutes)}>
                     Acceptera
                 </Button>
+                {canRefundOrder(order) && <Button size="sm" variant="ghost" style={{ color: '#B91C1C' }} onClick={() => onRefund(order)}>Återbetala</Button>}
             </div>
         </div>
     );
@@ -638,6 +659,7 @@ export const AdminDashboard: React.FC = () => {
     const [deleteAllSubmitting, setDeleteAllSubmitting] = useState(false);
     const [deleteAllPassword, setDeleteAllPassword] = useState('');
     const [deleteAllError, setDeleteAllError] = useState<string | null>(null);
+    const [refundOrder, setRefundOrder] = useState<Order | null>(null);
 
     const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const statsAuthPasswordRef = useRef('');
@@ -1330,6 +1352,12 @@ export const AdminDashboard: React.FC = () => {
                     onConfirm={handleDeleteAllHistory}
                     loading={deleteAllSubmitting}
                 />
+                <RefundOrderModal
+                    open={refundOrder !== null}
+                    order={refundOrder}
+                    onClose={() => setRefundOrder(null)}
+                    onChanged={() => { void fetchOrders(); }}
+                />
 
                 <div className="admin-content animate-in">
                     {/* ── INKOMMANDE ORDRAR ── */}
@@ -1346,6 +1374,7 @@ export const AdminDashboard: React.FC = () => {
                                         order={order}
                                         defaultPrepTime={settings?.defaultPreparationTime ?? 30}
                                         onAccept={handleAcceptOrder}
+                                        onRefund={setRefundOrder}
                                     />
                                 ))
                             )}
@@ -1390,6 +1419,7 @@ export const AdminDashboard: React.FC = () => {
                                                         order={o}
                                                         onEditNotes={openNotesModal}
                                                         onCancel={(order) => openCancelModal(order.id)}
+                                                        onRefund={setRefundOrder}
                                                     />
                                                 ))}
                                             </div>
@@ -1419,6 +1449,7 @@ export const AdminDashboard: React.FC = () => {
                                             <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
                                                 <OrderTimer estimatedReadyTime={order.estimatedReadyTime} />
                                                 <span className={`status-badge status-${order.status}`}>{order.status}</span>
+                                                <RefundStatusBadge order={order} />
                                             </div>
                                             {order.orderType === 'delivery' && (
                                                 <p style={{ fontSize: '0.8rem', color: '#6b5f52', margin: '0.25rem 0 0' }}>
@@ -1448,6 +1479,7 @@ export const AdminDashboard: React.FC = () => {
                                             <Button size="sm" variant="ghost" onClick={() => handlePrintReceipt(order)}>
                                                 Kvitto
                                             </Button>
+                                            {canRefundOrder(order) && <Button size="sm" variant="ghost" style={{ color: '#B91C1C' }} onClick={() => setRefundOrder(order)}>Återbetala</Button>}
                                         </div>
                                     </div>
                                 ))
@@ -1504,6 +1536,7 @@ export const AdminDashboard: React.FC = () => {
                                             <span className={`status-badge ${order.status === 'avbruten' ? 'status-avbruten' : 'status-klar'}`}>
                                                 {order.status === 'avbruten' ? 'Avbruten' : 'Klar'}
                                             </span>
+                                            <RefundStatusBadge order={order} />
                                             <ul style={{ margin: '0.5rem 0', paddingLeft: '1.2rem' }}>
                                                 {order.items.map((item, i) => (
                                                     <li key={i}>{item.quantity}x {item.productName}</li>
@@ -1542,6 +1575,7 @@ export const AdminDashboard: React.FC = () => {
                                             <Button size="sm" variant="ghost" style={{ color: '#DC2626' }} onClick={() => openDeleteModal(order)}>
                                                 Ta bort
                                             </Button>
+                                            {canRefundOrder(order) && <Button size="sm" variant="ghost" style={{ color: '#B91C1C' }} onClick={() => setRefundOrder(order)}>Återbetala</Button>}
                                         </div>
                                     </div>
                                 ))
