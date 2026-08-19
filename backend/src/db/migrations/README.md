@@ -173,3 +173,18 @@ After staging deployment, test partial and full refunds with provider test
 payments, duplicate submissions and a simulated callback retry. Confirm that
 the sum of succeeded refunds never exceeds `orders.total_ore` and that each
 refund has matching immutable security-audit entries.
+
+Validate the two new order constraints after the migration and before recording
+the deployment as verified:
+
+```sql
+ALTER TABLE public.orders
+  VALIDATE CONSTRAINT orders_refunded_amount_ck,
+  VALIDATE CONSTRAINT orders_refund_status_ck;
+```
+
+Set `REFUND_PASSWORD_HASH` to a bcrypt hash with cost 10 or higher. Keep the
+plaintext password outside Git and deployment configuration. Stripe's signed
+webhook must subscribe to `refund.created`, `refund.updated` and `refund.failed`
+in addition to `checkout.session.completed`; Swish continues to use the verified
+mTLS callback endpoint.

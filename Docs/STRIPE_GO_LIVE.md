@@ -13,7 +13,7 @@ Utan steg 3–4 kan betalningen lyckas i Stripe men ordern stannar på `pending`
 
 1. **Developers → Webhooks → Add endpoint**
 2. **Endpoint URL:** `https://mormors-kunafa-backend.vercel.app/api/stripe/webhook`
-3. **Events:** `checkout.session.completed`
+3. **Events:** `checkout.session.completed`, `refund.created`, `refund.updated`, `refund.failed`
 4. Kopiera **Signing secret** (`whsec_...`) – det är **inte** samma som test/CLI om du skapade endpoint i live.
 
 ## Vercel – backend-projekt
@@ -26,6 +26,7 @@ Sätt i **Production** (samma värden som lokalt när du är klar):
 | `STRIPE_WEBHOOK_SECRET` | `whsec_...` från live-webhook ovan |
 | `PUBLIC_WEB_APP_URL` | `https://mormorskunafa.se` |
 | `FRONTEND_URL` | `https://mormorskunafa.se` |
+| `REFUND_PASSWORD_HASH` | Bcrypt-hash (cost minst 10) av det separata refund-lösenordet; aldrig klartext |
 
 Efter ändring: **Redeploy** backend.
 
@@ -44,6 +45,8 @@ Efter ändring: **Redeploy** backend.
 3. I Stripe → Webhooks → din endpoint: senaste event ska vara **200**
 4. Ordern ska ha `payment_status: paid` i admin/databas
 5. Bekräftelsemail om kunden har e-post och Resend är konfigurerat
+6. Gör en liten delåterbetalning i admin och kontrollera att refund-eventet får **200**, rätt radantal markeras och beloppet stämmer i Stripe
+7. Skicka om samma webhook-event och kontrollera att resultatet förblir oförändrat
 
 ## Vanliga fel
 

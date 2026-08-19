@@ -39,7 +39,15 @@ Admin PWA notifications (Web Push):
 | `WEB_PUSH_VAPID_PUBLIC_KEY` | Public VAPID key (shared with web app as `VITE_WEB_PUSH_VAPID_PUBLIC_KEY`) |
 | `WEB_PUSH_VAPID_PRIVATE_KEY` | Private VAPID key (server only) |
 
-Live webhook: `POST https://<backend-host>/api/stripe/webhook` with event `checkout.session.completed`.  
+Admin refund authorization:
+
+| Variable | Description |
+|----------|-------------|
+| `REFUND_PASSWORD_HASH` | Bcrypt hash with cost 10 or higher for a dedicated refund password. Store only the hash in Vercel; never commit or deploy the plaintext password. Refund routes fail closed when this is absent or malformed. |
+
+Live webhook: `POST https://<backend-host>/api/stripe/webhook` with events
+`checkout.session.completed`, `refund.created`, `refund.updated` and
+`refund.failed`.
 See [docs/STRIPE_GO_LIVE.md](../docs/STRIPE_GO_LIVE.md) and `backend/.env.example`.
 
 Swish (direct API — requires Swish Handel + bank certificates):

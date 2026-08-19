@@ -17,6 +17,7 @@ Kopiera värden från lokal `backend/.env` till **Vercel → Project → Setting
 - `CRON_SECRET` (unik slumpsträng på minst 32 bytes; autentiserar Vercel Cron)
 - `FRONTEND_URL` eller `PUBLIC_WEB_APP_URL` = `https://mormorskunafa.se`
 - `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` (om kortbetalning ska fungera)
+- `REFUND_PASSWORD_HASH` (bcrypt cost minst 10; endast hash, aldrig refund-lösenordet i klartext)
 - `PUBLIC_WEB_APP_URL=https://mormorskunafa.se` (**krävs** för Stripe-återvändning efter kortbetalning — annars hamnar kunden på `localhost:5173`)
 - `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `SITE_PUBLIC_URL` (om ordermail ska skickas)
 
@@ -38,6 +39,9 @@ databasfunktioner eller obligatoriska secrets saknas.
 4. Kontrollera Vercel **Settings → Cron Jobs**. Den dagliga gallringen tar endast
    bort checkoututkast som varit pending i minst 48 timmar och aldrig fått ett
    Stripe- eller Swish-ID. Initierade betalningar måste provider-avstämmas först.
+5. Kontrollera att Stripe-webhooken prenumererar på `checkout.session.completed`,
+   `refund.created`, `refund.updated` och `refund.failed`. Testa delrefund och
+   full refund i provider-testläge före riktiga pengar används.
 
 ## Frontend
 
