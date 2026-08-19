@@ -69,6 +69,18 @@ export interface CreateOrderRefundResult {
   amount: number;
 }
 
+export interface PaymentSecurityAlert {
+  eventId: string;
+  eventType: string;
+  outcome:
+    | 'alert_missing_order_id'
+    | 'alert_order_not_found'
+    | 'alert_paid_session_validation_failed';
+  orderId?: string;
+  receivedAt: string;
+  processedAt?: string;
+}
+
 export type FoodAllergen =
   | 'gluten'
   | 'crustaceans'

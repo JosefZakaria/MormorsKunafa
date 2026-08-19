@@ -32,13 +32,13 @@ async function markOrderPaidFromSession(
   const orderId = session.metadata?.orderId?.trim();
   if (!orderId) {
     console.warn('[stripe webhook] checkout.session.completed missing metadata.orderId');
-    return { orderId: null, outcome: 'ignored_missing_order_id' };
+    return { orderId: null, outcome: 'alert_missing_order_id' };
   }
 
   const result = await getOrderById(orderId);
   if (!result) {
     console.warn('[stripe webhook] order not found', orderId);
-    return { orderId, outcome: 'ignored_order_not_found' };
+    return { orderId, outcome: 'alert_order_not_found' };
   }
 
   const validation = validateStripeCheckoutSession(result.order, session);
@@ -48,7 +48,7 @@ async function markOrderPaidFromSession(
       orderId,
       error: validation.error,
     });
-    return { orderId, outcome: 'ignored_validation_failed' };
+    return { orderId, outcome: 'alert_paid_session_validation_failed' };
   }
 
   const newlyPaid = await markOrderPaid(orderId, { paidAmountOre: validation.paidAmountOre });

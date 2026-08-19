@@ -34,6 +34,7 @@ import { hasRealtimeCapacity } from '../utils/realtimeCapacity.js';
 import { logUnexpectedError } from '../utils/safeErrorMetadata.js';
 import { consumeRealtimeTicket, issueRealtimeTicket } from '../middleware/realtimeTicket.js';
 import { hashAuditSubject, recordSecurityAuditEvent } from '../services/securityAudit.js';
+import { listPaymentSecurityAlerts } from '../db/paymentEventRepository.js';
 
 const loginLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000, // 15 min window
@@ -292,6 +293,16 @@ router.get('/notifications/health', requireAdmin, (_req: Request, res: Response)
     webPushConfigured: isWebPushConfigured(),
     realtime: status,
   });
+});
+
+router.get('/payment-alerts', requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json(await listPaymentSecurityAlerts());
+  } catch (error) {
+    logUnexpectedError('GET /admin/payment-alerts failed', error);
+    res.status(503).json({ error: 'Payment alerts unavailable' });
+  }
 });
 
 router.get('/push-subscriptions', requireAdmin, async (req: Request, res: Response) => {
