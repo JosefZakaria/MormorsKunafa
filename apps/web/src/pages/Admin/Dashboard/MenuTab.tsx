@@ -1,4 +1,3 @@
-import React, { useRef, useState } from 'react';
 import { ApiError } from '@shared/api';
 import type { AdminSettings } from '@shared/types';
 import { adminApi } from '../../../services/api';
