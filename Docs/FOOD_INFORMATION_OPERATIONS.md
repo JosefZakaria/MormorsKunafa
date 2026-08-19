@@ -12,6 +12,14 @@ site provides a prominent phone contact and shows structured information only
 after an administrator has verified it. See the Swedish Food Agency guidance
 for [non-prepacked food sold at a distance](https://kontrollwiki.livsmedelsverket.se/artikel/51/distansforsaljning-inte-fardigforpackat).
 
+The owner confirmed on 2026-08-19 that trained staff can provide current
+ingredient, allergen and trace information by phone at `072-868 25 92` every
+day from 11:00 to 22:00. The menu and checkout must display those hours and
+tell customers not to complete an order until they have received the information
+they need. If the phone cannot be reliably answered or staff cannot verify the
+answer from the current recipe, supplier labels and kitchen routine, pause this
+oral flow and publish verified written information before accepting online orders.
+
 ## Verification before publication
 
 For every product, the responsible kitchen operator must:
