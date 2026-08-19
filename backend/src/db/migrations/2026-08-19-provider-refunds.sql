@@ -56,6 +56,13 @@ CREATE TABLE IF NOT EXISTS public.order_refund_items (
 CREATE INDEX IF NOT EXISTS order_refund_items_item_idx
   ON public.order_refund_items(order_item_id);
 
+-- These tables may be installed after the repository-wide RLS migration on an
+-- existing deployment, so protect them in this migration as well.
+ALTER TABLE public.order_refunds ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.order_refunds FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.order_refund_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.order_refund_items FORCE ROW LEVEL SECURITY;
+
 ALTER TABLE public.orders
   DROP CONSTRAINT IF EXISTS orders_refunded_amount_ck;
 ALTER TABLE public.orders
@@ -86,7 +93,7 @@ RETURNS TABLE(
   created boolean
 )
 LANGUAGE plpgsql
-SECURITY INVOKER
+SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
 DECLARE
@@ -247,7 +254,7 @@ CREATE OR REPLACE FUNCTION public.set_order_refund_provider_reference(
 )
 RETURNS boolean
 LANGUAGE plpgsql
-SECURITY INVOKER
+SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
 BEGIN
@@ -271,7 +278,7 @@ CREATE OR REPLACE FUNCTION public.finalize_order_refund(
 )
 RETURNS TABLE(order_id uuid, refund_status text, order_status text)
 LANGUAGE plpgsql
-SECURITY INVOKER
+SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
 DECLARE
@@ -355,8 +362,9 @@ $$;
 
 REVOKE ALL ON TABLE public.order_refunds, public.order_refund_items
   FROM PUBLIC, anon, authenticated;
-GRANT SELECT, INSERT, UPDATE ON TABLE public.order_refunds TO service_role;
-GRANT SELECT, INSERT ON TABLE public.order_refund_items TO service_role;
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON TABLE public.order_refunds, public.order_refund_items
+  FROM service_role;
+GRANT SELECT ON TABLE public.order_refunds, public.order_refund_items TO service_role;
 
 REVOKE ALL ON FUNCTION public.reserve_order_refund(uuid, uuid, text, text, jsonb)
   FROM PUBLIC, anon, authenticated;

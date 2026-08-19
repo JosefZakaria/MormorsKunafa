@@ -17,7 +17,9 @@ BEGIN
     'admin_push_subscriptions',
     'admin_push_delivery_logs',
     'payment_provider_events',
-    'security_audit_log'
+    'security_audit_log',
+    'order_refunds',
+    'order_refund_items'
   ]
   LOOP
     IF to_regclass(format('public.%I', protected_table)) IS NULL THEN

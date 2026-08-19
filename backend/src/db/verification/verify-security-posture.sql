@@ -11,7 +11,9 @@ WITH expected_tables(table_name) AS (
     ('admin_push_subscriptions'),
     ('admin_push_delivery_logs'),
     ('payment_provider_events'),
-    ('security_audit_log')
+    ('security_audit_log'),
+    ('order_refunds'),
+    ('order_refund_items')
 )
 SELECT expected_tables.table_name AS missing_or_unprotected_table
 FROM expected_tables
