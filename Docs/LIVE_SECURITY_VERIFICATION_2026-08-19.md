@@ -44,3 +44,18 @@ policy could not offer TLS 1.0 or 1.1. This does not prove the server rejects
 those protocols, so the combined HTTPS/HSTS/modern-TLS checklist item remains
 open. A real browser/accessibility pass and production account checks also
 remain open.
+
+## Public DNS snapshot
+
+Windows DNS and Google Public DNS-over-HTTPS were queried read-only on the same
+date:
+
+- the root domain had no MX answer, so reception for
+  `info@mormorskunafa.se` is not publicly routable through an MX record;
+- `_dmarc.mormorskunafa.se` returned `v=DMARC1; p=none;`;
+- the root domain had no DS answer, so DNSSEC delegation is not enabled; and
+- the root domain had no CAA answer.
+
+Inbox delivery still needs an end-to-end test after MX is configured. Move
+DMARC to `quarantine` or `reject` only after legitimate senders are aligned and
+reporting has been reviewed.
