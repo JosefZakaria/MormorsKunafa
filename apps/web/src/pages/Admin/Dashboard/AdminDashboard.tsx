@@ -20,6 +20,12 @@ import '../Admin.css';
 import { requestWakeLock, releaseWakeLock } from '../../../utils/wakeLock';
 import { startAlarm, stopAlarm, setAlarmVolume, AlarmType, getAudioState, unlockAudio, isAlarmActive } from '../../../utils/alarmPlayer';
 import { RefundOrderModal } from './RefundOrderModal';
+import {
+    readPersistentValue,
+    STORAGE_KEYS,
+    STORAGE_TTL_MS,
+    writePersistentValue,
+} from '../../../utils/browserStorage';
 
 // --- Helper: countdown string from ISO time ---
 function getCountdown(isoTime: string | undefined): string {
@@ -158,8 +164,12 @@ function PrinterSettings() {
     const [testing, setTesting] = useState(false);
 
     const handleSave = () => {
-        setPrinterConfig(ip.trim(), deviceId.trim() || undefined);
-        setTestResult('Inställningar sparade.');
+        try {
+            setPrinterConfig(ip.trim(), deviceId.trim() || undefined);
+            setTestResult('Inställningar sparade.');
+        } catch (error) {
+            setTestResult(error instanceof Error ? error.message : 'Ogiltiga skrivarinställningar.');
+        }
     };
 
     const handleTest = async () => {
@@ -167,7 +177,12 @@ function PrinterSettings() {
             setTestResult('Ange en IP-adress först.');
             return;
         }
-        setPrinterConfig(ip.trim(), deviceId.trim() || undefined);
+        try {
+            setPrinterConfig(ip.trim(), deviceId.trim() || undefined);
+        } catch (error) {
+            setTestResult(error instanceof Error ? error.message : 'Ogiltiga skrivarinställningar.');
+            return;
+        }
         setTesting(true);
         setTestResult(null);
         const res = await testConnection();
@@ -680,8 +695,18 @@ export const AdminDashboard: React.FC = () => {
     const [activeAlarmOrder, setActiveAlarmOrder] = useState<Order | null>(null);
     const alarmType: AlarmType = 'ring';
     const [alarmVolume, setAlarmVolumeState] = useState<number>(() => {
-        const saved = localStorage.getItem('admin_alarm_volume');
-        return saved !== null ? Math.max(0.8, parseFloat(saved)) : 0.8;
+        return readPersistentValue(
+            STORAGE_KEYS.adminAlarmVolume,
+            (value): value is number => typeof value === 'number'
+                && Number.isFinite(value)
+                && value >= 0.8
+                && value <= 1,
+            STORAGE_TTL_MS.preference,
+            (raw) => {
+                const parsed = Number(raw);
+                return Number.isFinite(parsed) && parsed >= 0.8 && parsed <= 1 ? parsed : null;
+            }
+        ) ?? 0.8;
     });
     const [audioLocked, setAudioLocked] = useState<boolean>(true);
 
@@ -1805,7 +1830,11 @@ export const AdminDashboard: React.FC = () => {
                                                 const vol = parseFloat(e.target.value);
                                                 setAlarmVolumeState(vol);
                                                 setAlarmVolume(vol);
-                                                localStorage.setItem('admin_alarm_volume', String(vol));
+                                                writePersistentValue(
+                                                    STORAGE_KEYS.adminAlarmVolume,
+                                                    vol,
+                                                    STORAGE_TTL_MS.preference
+                                                );
                                             }}
                                         />
                                         <span className="volume-value">{Math.round(alarmVolume * 100)}%</span>

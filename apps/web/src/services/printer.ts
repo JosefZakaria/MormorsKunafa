@@ -1,21 +1,53 @@
 import type { Order } from '@shared/types';
 import { safePrinterText } from '@shared/utils/safePrinterText';
 import { includedVatFromGrossOre } from '@shared/utils/vat';
+import {
+  readPersistentValue,
+  STORAGE_KEYS,
+  STORAGE_TTL_MS,
+  writePersistentValue,
+} from '../utils/browserStorage';
 
-const PRINTER_IP_KEY = 'printer_ip';
-const PRINTER_DEVID_KEY = 'printer_devid';
+function isPrinterIpv4(value: unknown): value is string {
+  if (typeof value !== 'string' || value.length > 15) return false;
+  const parts = value.split('.');
+  return parts.length === 4 && parts.every((part) => /^\d{1,3}$/.test(part) && Number(part) <= 255);
+}
+
+function isPrinterDeviceId(value: unknown): value is string {
+  return typeof value === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(value);
+}
 
 function getPrinterIp(): string {
-  return localStorage.getItem(PRINTER_IP_KEY) || '';
+  return readPersistentValue(
+    STORAGE_KEYS.printerIp,
+    isPrinterIpv4,
+    STORAGE_TTL_MS.preference,
+    (raw) => isPrinterIpv4(raw) ? raw : null
+  ) ?? '';
 }
 
 function getDeviceId(): string {
-  return localStorage.getItem(PRINTER_DEVID_KEY) || 'local_printer';
+  return readPersistentValue(
+    STORAGE_KEYS.printerDeviceId,
+    isPrinterDeviceId,
+    STORAGE_TTL_MS.preference,
+    (raw) => isPrinterDeviceId(raw) ? raw : null
+  ) ?? 'local_printer';
 }
 
 export function setPrinterConfig(ip: string, deviceId?: string) {
-  localStorage.setItem(PRINTER_IP_KEY, ip);
-  if (deviceId) localStorage.setItem(PRINTER_DEVID_KEY, deviceId);
+  if (!isPrinterIpv4(ip)) throw new Error('Skrivarens adress måste vara en giltig IPv4-adress.');
+  const resolvedDeviceId = deviceId || 'local_printer';
+  if (!isPrinterDeviceId(resolvedDeviceId)) {
+    throw new Error('Skrivarens enhets-ID får endast innehålla bokstäver, siffror, _ och -.');
+  }
+  writePersistentValue(STORAGE_KEYS.printerIp, ip, STORAGE_TTL_MS.preference);
+  writePersistentValue(
+    STORAGE_KEYS.printerDeviceId,
+    resolvedDeviceId,
+    STORAGE_TTL_MS.preference
+  );
 }
 
 export function getPrinterConfig(): { ip: string; deviceId: string } {

@@ -13,7 +13,7 @@ export const Privacy: React.FC = () => {
           <p className="legal-lead">
             في كنافة جدتي (Mormors Kunafa)، نولي أهمية قصوى لخصوصيتك وحماية بياناتك الشخصية. تشرح هذه السياسة كيفية جمع بياناتك واستخدامها وحمايتها وفقاً للائحة العامة لحماية البيانات في الاتحاد الأوروبي (GDPR).
           </p>
-          <p><strong>الإصدار 2.0 – ساري اعتباراً من 9 أغسطس 2026.</strong></p>
+          <p><strong>الإصدار 2.1 – ساري اعتباراً من 19 أغسطس 2026.</strong></p>
 
           <section className="legal-section">
             <h2>1. المسؤول عن البيانات (Personuppgiftsansvarig)</h2>
@@ -83,6 +83,19 @@ export const Privacy: React.FC = () => {
             </ul>
             <p>بيانات الاتصال والتسليم المطلوبة في صفحة الدفع ضرورية لتنفيذ الطلب. إذا لم تقدمها، فلن نتمكن من إتمام الطلب أو تسليمه.</p>
           </section>
+
+          <section className="legal-section">
+            <h2>7. ملفات تعريف الارتباط والتخزين المحلي</h2>
+            <p>لا نستخدم ملفات تعريف ارتباط للإعلانات أو التحليلات، ولا نحمل خرائط أو خطوطاً من أطراف ثالثة تلقائياً. رابط Google Maps لا يفتح إلا بعد نقر المستخدم.</p>
+            <ul>
+              <li><strong>سلة التسوق:</strong> تخزين محلي لمدة أقصاها 30 يوماً من آخر تغيير.</li>
+              <li><strong>اللغة:</strong> تخزين محلي لمدة أقصاها 365 يوماً من آخر اختيار.</li>
+              <li><strong>نوع الطلب ورمز حالة الطلب:</strong> تخزين خاص بعلامة التبويب حتى إغلاقها.</li>
+              <li><strong>جلسة الإدارة وحماية CSRF:</strong> ملفا ارتباط ضروريان لمدة 30 دقيقة، ويُحذفان عند تسجيل الخروج.</li>
+              <li><strong>إعدادات الطابعة والتنبيه:</strong> إعدادات خاصة بواجهة الإدارة لمدة أقصاها 365 يوماً.</li>
+            </ul>
+            <p>تُحذف القيم المنتهية أو غير الصالحة تلقائياً. يمكنك أيضاً حذف بيانات الموقع من إعدادات المتصفح في أي وقت.</p>
+          </section>
         </div>
       </div>
     );
@@ -96,7 +109,7 @@ export const Privacy: React.FC = () => {
           <p className="legal-lead">
             At Mormors Kunafa, we value your privacy and are committed to protecting your personal data. This policy explains how we collect, process, and safeguard your data in accordance with the EU General Data Protection Regulation (GDPR).
           </p>
-          <p><strong>Version 2.0 – effective 9 August 2026.</strong></p>
+          <p><strong>Version 2.1 – effective 19 August 2026.</strong></p>
 
           <section className="legal-section">
             <h2>1. Data Controller</h2>
@@ -165,6 +178,19 @@ export const Privacy: React.FC = () => {
             </ul>
             <p>The contact and delivery details marked as required at checkout are necessary to fulfil the order. Without them, we cannot complete or deliver the order.</p>
           </section>
+
+          <section className="legal-section">
+            <h2>7. Cookies and Local Storage</h2>
+            <p>We use no advertising or analytics cookies and do not automatically load third-party maps or fonts. Google Maps opens only after you follow an ordinary external link.</p>
+            <ul>
+              <li><strong>Shopping cart:</strong> Local storage for no more than 30 days from the latest cart change.</li>
+              <li><strong>Language:</strong> Local storage for no more than 365 days from the latest selection.</li>
+              <li><strong>Order type and order-status token:</strong> Tab-only session storage until the tab is closed.</li>
+              <li><strong>Admin session and CSRF protection:</strong> Two strictly necessary 30-minute cookies, deleted on logout.</li>
+              <li><strong>Printer and alarm preferences:</strong> Admin-only settings for no more than 365 days.</li>
+            </ul>
+            <p>Expired or invalid values are removed automatically. You can also delete site data in your browser settings at any time.</p>
+          </section>
         </div>
       </div>
     );
@@ -178,7 +204,7 @@ export const Privacy: React.FC = () => {
         <p className="legal-lead">
           Hos Mormors Kunafa värnar vi om din personliga integritet. Denna integritetspolicy beskriver hur vi samlar in, använder, sparar och skyddar dina personuppgifter i enlighet med EU:s dataskyddsförordning (GDPR).
         </p>
-        <p><strong>Version 2.0 – gäller från och med 9 augusti 2026.</strong></p>
+        <p><strong>Version 2.1 – gäller från och med 19 augusti 2026.</strong></p>
 
         <section className="legal-section">
           <h2>1. Personuppgiftsansvarig</h2>
@@ -251,6 +277,19 @@ export const Privacy: React.FC = () => {
           <p>
             Kontakt- och leveransuppgifter som markeras som obligatoriska i kassan behövs för att fullgöra beställningen. Om de inte lämnas kan vi inte genomföra eller leverera ordern.
           </p>
+        </section>
+
+        <section className="legal-section">
+          <h2>7. Kakor och lokal lagring</h2>
+          <p>Vi använder inga reklam- eller analyskakor och laddar inte automatiskt kartor eller typsnitt från tredje part. Google Maps öppnas endast när du följer en vanlig extern länk.</p>
+          <ul>
+            <li><strong>Varukorg:</strong> Lokal lagring i högst 30 dagar från den senaste ändringen.</li>
+            <li><strong>Språk:</strong> Lokal lagring i högst 365 dagar från det senaste valet.</li>
+            <li><strong>Ordertyp och orderstatustoken:</strong> Sessionslagring för den aktuella fliken tills den stängs.</li>
+            <li><strong>Adminsession och CSRF-skydd:</strong> Två strikt nödvändiga 30-minuterskakor som raderas vid utloggning.</li>
+            <li><strong>Skrivar- och larminställningar:</strong> Endast i admin, i högst 365 dagar.</li>
+          </ul>
+          <p>Utgångna eller ogiltiga värden raderas automatiskt. Du kan också när som helst radera webbplatsdata i webbläsarens inställningar.</p>
         </section>
       </div>
     </div>
