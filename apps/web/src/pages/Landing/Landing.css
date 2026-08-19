@@ -59,10 +59,23 @@
     align-items: flex-start;
     padding: var(--spacing-xl) 0 calc(var(--spacing-3xl) + 72px);
     background-color: var(--color-primary-red);
-    background-image: url('/images/kunafa-ashta.jpg');
-    background-size: cover;
-    background-position: 75% bottom;
-    background-repeat: no-repeat;
+    overflow: hidden;
+}
+
+.landing__hero-media {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    display: block;
+    pointer-events: none;
+}
+
+.landing__hero-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: 75% bottom;
+    user-select: none;
 }
 
 @media (max-width: 968px) {
@@ -71,10 +84,10 @@
         min-height: 480px;
         padding-bottom: calc(var(--spacing-3xl) + 88px);
         background-color: var(--color-primary-red);
-        background-image: url('/images/ny-kunafa-bild.jpg');
-        /* Samma edge-to-edge som desktop – undviker skarv vid knapparna */
-        background-size: cover;
-        background-position: center 40%;
+    }
+
+    .landing__hero-img {
+        object-position: center 40%;
     }
 }
 

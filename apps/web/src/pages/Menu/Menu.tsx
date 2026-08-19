@@ -126,7 +126,8 @@ const getMockProducts = (t: (key: string) => string): Product[] => {
         nameKey: string,
         descKey: string,
         image: string,
-        priceOre: number
+        priceOre: number,
+        sortOrder: number
     ): Product => ({
         id,
         name: t(nameKey),
@@ -134,21 +135,22 @@ const getMockProducts = (t: (key: string) => string): Product[] => {
         description: t(descKey),
         image,
         inStock: true,
+        sortOrder,
         createdAt: now,
         updatedAt: now,
     });
     return [
-        mock('1ae3fd7a-0042-4220-b330-b27b3147a0a6', 'products.1.name', 'products.1.desc', '/images/pistage-baklawa.jpg', 8900),
-        mock('054b4adf-4da3-42c0-aa9b-b939023aafad', 'products.2.name', 'products.2.desc', '/images/walnut-baklawa.jpg', 6900),
-        mock('77048580-fd68-454d-b34b-395b351a96d4', 'products.3.name', 'products.3.desc', '/images/finmald-kunafa.jpg', 14900),
-        mock('fc469599-82e8-4ea3-aa18-0436bc2a2afd', 'products.5.name', 'products.5.desc', '/images/kunafa-ashta.jpg', 14900),
-        mock('6c1efa0e-149c-4259-9bd0-f85fd35f4b62', 'products.7.name', 'products.7.desc', '/images/ostkaka.jpg', 7900),
-        mock('37b8b656-2604-4ca6-9745-e0d6f52338c1', 'products.8.name', 'products.8.desc', '/images/krispig-kunafa.jpg', 14900),
-        mock('856b591e-08b3-40ec-b505-cb3b143293bb', 'products.9.name', 'products.9.desc', '/images/kaake-kunafa.jpg', 1500),
-        mock('94fd4a72-2685-4bc4-8813-0f5e5eaa4a1c', 'products.11.name', 'products.11.desc', '/images/harise-ashta.jpg', 7900),
-        mock('c005c8af-3f2e-401c-923f-7dac0f682cda', 'products.12.name', 'products.12.desc', '/images/mormorsbox-mix.jpg', 29900),
-        mock('6312f48a-b156-431b-9f6d-103cc30bc9f8', 'products.13.name', 'products.13.desc', '/images/mamoul-pistage.jpg', 17900),
-        mock('9e6d210b-8637-4deb-889c-0726060288aa', 'products.14.name', 'products.14.desc', '/images/pistagemix.jpg', 49900),
+        mock('1ae3fd7a-0042-4220-b330-b27b3147a0a6', 'products.1.name', 'products.1.desc', '/images/pistage-baklawa.jpg', 8900, 1),
+        mock('054b4adf-4da3-42c0-aa9b-b939023aafad', 'products.2.name', 'products.2.desc', '/images/walnut-baklawa.jpg', 6900, 2),
+        mock('77048580-fd68-454d-b34b-395b351a96d4', 'products.3.name', 'products.3.desc', '/images/finmald-kunafa.jpg', 14900, 3),
+        mock('fc469599-82e8-4ea3-aa18-0436bc2a2afd', 'products.5.name', 'products.5.desc', '/images/kunafa-ashta.jpg', 14900, 4),
+        mock('6c1efa0e-149c-4259-9bd0-f85fd35f4b62', 'products.7.name', 'products.7.desc', '/images/ostkaka.jpg', 7900, 5),
+        mock('37b8b656-2604-4ca6-9745-e0d6f52338c1', 'products.8.name', 'products.8.desc', '/images/krispig-kunafa.jpg', 14900, 6),
+        mock('856b591e-08b3-40ec-b505-cb3b143293bb', 'products.9.name', 'products.9.desc', '/images/kaake-kunafa.jpg', 1500, 7),
+        mock('94fd4a72-2685-4bc4-8813-0f5e5eaa4a1c', 'products.11.name', 'products.11.desc', '/images/harise-ashta.jpg', 7900, 8),
+        mock('c005c8af-3f2e-401c-923f-7dac0f682cda', 'products.12.name', 'products.12.desc', '/images/mormorsbox-mix.jpg', 29900, 9),
+        mock('6312f48a-b156-431b-9f6d-103cc30bc9f8', 'products.13.name', 'products.13.desc', '/images/mamoul-pistage.jpg', 17900, 10),
+        mock('9e6d210b-8637-4deb-889c-0726060288aa', 'products.14.name', 'products.14.desc', '/images/pistagemix.jpg', 49900, 11),
     ];
 };
 
@@ -192,6 +194,11 @@ export const Menu: React.FC = () => {
                             .filter(
                                 (p) => !MENU_EXCLUDE_PRODUCT_IDS.has(p.id) && !isMenuExcluded(p)
                             )
+                            .sort((a, b) => {
+                                const order = (a.sortOrder || 0) - (b.sortOrder || 0);
+                                if (order !== 0) return order;
+                                return a.name.localeCompare(b.name, 'sv');
+                            })
                             .map((p) => ({
                                 ...p,
                                 image: resolveProductImage(p.id, p.image),

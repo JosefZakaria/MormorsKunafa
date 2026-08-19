@@ -4,6 +4,7 @@ import { supabase, type Row, logSupabaseError, nowIso } from '../db/connection.j
 import { applyAdminSettingsPatch, rowToAdminSettings } from '../db/adminSettings.js';
 import { requireAdmin, signToken, verifyAdminToken } from '../middleware/auth.js';
 import { isDeliveryFeeLineItem } from '../constants/deliveryFee.js';
+import { registerAdminMediaRoutes } from './adminMedia.js';
 import {
   disablePushSubscriptionById,
   listActivePushSubscriptions,
@@ -13,6 +14,7 @@ import { getRealtimeStatus, registerRealtimeClient } from '../services/realtimeE
 import { isWebPushConfigured } from '../services/pushNotifications.js';
 
 const router = Router();
+registerAdminMediaRoutes(router);
 
 const COMPLETED_STATUSES = ['klar', 'uthämtad', 'levererad'] as const;
 

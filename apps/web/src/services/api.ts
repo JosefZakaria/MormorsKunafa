@@ -35,6 +35,52 @@ export const productApi = {
       token,
     });
   },
+
+  create: async (data: {
+    name: string;
+    price: number;
+    description?: string;
+    image?: string;
+  }): Promise<Product> => {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    return authenticatedRequest<Product>('/products', {
+      method: 'POST',
+      body: JSON.stringify(data),
+      token,
+    });
+  },
+
+  update: async (
+    id: string,
+    data: {
+      name?: string;
+      price?: number;
+      description?: string;
+      image?: string;
+    }
+  ): Promise<Product> => {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    return authenticatedRequest<Product>(`/products/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+      token,
+    });
+  },
+
+  reorder: async (orderedIds: string[]): Promise<Product[]> => {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    return authenticatedRequest<Product[]>('/products/reorder', {
+      method: 'PATCH',
+      body: JSON.stringify({ orderedIds }),
+      token,
+    });
+  },
 };
 
 // Orders API
@@ -241,6 +287,27 @@ export const adminApi = {
       method: 'PATCH',
       body: JSON.stringify(settings),
       token,
+    });
+  },
+
+  uploadImage: async (
+    kind: 'product' | 'hero-desktop' | 'hero-mobile',
+    file: File,
+    productId?: string
+  ): Promise<{ url: string; settings?: AdminSettings; product?: Product }> => {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    const body = new FormData();
+    body.append('file', file);
+    body.append('kind', kind);
+    if (productId) body.append('productId', productId);
+
+    return authenticatedRequest('/admin/uploads', {
+      method: 'POST',
+      body,
+      token,
+      timeout: 60_000,
     });
   },
 

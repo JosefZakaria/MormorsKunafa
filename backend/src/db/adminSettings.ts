@@ -1,15 +1,20 @@
 import type { Row } from './connection.js';
 
+const DEFAULT_HERO_DESKTOP = '/images/kunafa-ashta.jpg';
+const DEFAULT_HERO_MOBILE = '/images/ny-kunafa-bild.jpg';
+
 export type AdminSettingsDto = {
   defaultPreparationTime: number;
   isPaused: boolean;
   eatHereEnabled: boolean;
   takeawayEnabled: boolean;
   deliveryEnabled: boolean;
+  heroImageDesktop: string;
+  heroImageMobile: string;
 };
 
 export const ADMIN_SETTINGS_PUBLIC_SELECT =
-  'default_preparation_time_minutes, is_paused, eat_here_enabled, takeaway_enabled, delivery_enabled';
+  'default_preparation_time_minutes, is_paused, eat_here_enabled, takeaway_enabled, delivery_enabled, hero_image_desktop_url, hero_image_mobile_url';
 
 const ORDER_TYPE_ENABLED_COLUMN: Record<string, string> = {
   'eat-here': 'eat_here_enabled',
@@ -27,6 +32,11 @@ function flagEnabled(value: unknown): boolean {
   return value !== false;
 }
 
+function heroUrl(value: unknown, fallback: string): string {
+  const trimmed = String(value ?? '').trim();
+  return trimmed || fallback;
+}
+
 export function rowToAdminSettings(r: Row): AdminSettingsDto {
   return {
     defaultPreparationTime: Number(r.default_preparation_time_minutes) || 30,
@@ -34,6 +44,8 @@ export function rowToAdminSettings(r: Row): AdminSettingsDto {
     eatHereEnabled: flagEnabled(r.eat_here_enabled),
     takeawayEnabled: flagEnabled(r.takeaway_enabled),
     deliveryEnabled: flagEnabled(r.delivery_enabled),
+    heroImageDesktop: heroUrl(r.hero_image_desktop_url, DEFAULT_HERO_DESKTOP),
+    heroImageMobile: heroUrl(r.hero_image_mobile_url, DEFAULT_HERO_MOBILE),
   };
 }
 
@@ -55,6 +67,12 @@ export function applyAdminSettingsPatch(
   }
   if (typeof body.deliveryEnabled === 'boolean') {
     patch.delivery_enabled = body.deliveryEnabled;
+  }
+  if (typeof body.heroImageDesktop === 'string') {
+    patch.hero_image_desktop_url = body.heroImageDesktop.trim() || DEFAULT_HERO_DESKTOP;
+  }
+  if (typeof body.heroImageMobile === 'string') {
+    patch.hero_image_mobile_url = body.heroImageMobile.trim() || DEFAULT_HERO_MOBILE;
   }
 }
 

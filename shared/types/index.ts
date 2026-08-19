@@ -28,6 +28,8 @@ export interface Product {
   description: string;
   image: string;
   inStock: boolean;
+  /** Display order on the public menu (lower first). */
+  sortOrder: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -99,6 +101,10 @@ export interface AdminSettings {
   eatHereEnabled: boolean;
   takeawayEnabled: boolean;
   deliveryEnabled: boolean;
+  /** Landing hero image for desktop / wide viewports. */
+  heroImageDesktop: string;
+  /** Landing hero image for mobile / narrow viewports. */
+  heroImageMobile: string;
 }
 
 // Sales History Entry (F.Admin.6)
