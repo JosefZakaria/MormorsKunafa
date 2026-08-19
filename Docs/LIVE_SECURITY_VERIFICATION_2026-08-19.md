@@ -8,6 +8,8 @@ Read-only checks were run against the public production URLs at approximately
 - `https://mormorskunafa.se/*` redirects with HTTP 307 to the `www` host.
 - The final `www` host responds over HTTPS and sends
   `Strict-Transport-Security: max-age=63072000`.
+- Explicit TLS handshakes received a server `protocol version` rejection for
+  TLS 1.0 and TLS 1.1, while TLS 1.2 negotiated successfully.
 - `/`, `/privacy` and `/terms` return HTTP 200. The latter two currently use the
   SPA fallback; rendering of their final client-side content was not counted as
   browser-verified because no controllable browser was available.
@@ -39,11 +41,9 @@ environment rotation and deployments are performed in the documented order.
 
 ## Scope limits
 
-The Windows TLS client successfully negotiated TLS 1.2, but its local Schannel
-policy could not offer TLS 1.0 or 1.1. This does not prove the server rejects
-those protocols, so the combined HTTPS/HSTS/modern-TLS checklist item remains
-open. A real browser/accessibility pass and production account checks also
-remain open.
+The protocol result was confirmed separately with Python/OpenSSL after Windows
+Schannel could not offer the deprecated versions. A real browser/accessibility
+pass and production account checks remain open.
 
 ## Public DNS snapshot
 
