@@ -8,6 +8,7 @@ import maintenanceRouter from './routes/maintenance.js';
 import refundsRouter from './routes/refunds.js';
 import { handleStripeWebhook } from './routes/stripeWebhook.js';
 import { handleSwishCallback } from './routes/swishCallback.js';
+import { handleSwishRefundCallback } from './routes/swishRefundCallback.js';
 import {
   assertPublicUrlConfiguration,
   getPublicWebAppUrlDiagnostics,
@@ -76,6 +77,9 @@ app.post('/api/stripe/webhook', paymentCallbackLimiter, express.raw({ type: 'app
 });
 app.post('/api/swish/callback', paymentCallbackLimiter, express.json({ limit: '32kb' }), (req, res) => {
   void handleSwishCallback(req, res);
+});
+app.post('/api/swish/refund-callback', paymentCallbackLimiter, express.json({ limit: '32kb' }), (req, res) => {
+  void handleSwishRefundCallback(req, res);
 });
 app.use(express.json({ limit: '64kb' }));
 
