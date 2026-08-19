@@ -134,6 +134,14 @@ export interface Product {
   foodInformationVerifiedAt?: string;
 }
 
+export interface VerifiedFoodInformationUpdate {
+  ingredients: ProductIngredient[];
+  allergens: FoodAllergen[];
+  mayContainAllergens: FoodAllergen[];
+  isPrepacked: boolean;
+  verificationConfirmed: true;
+}
+
 // Order Item Interface
 export interface OrderItem {
   id: string;

@@ -13,6 +13,7 @@ import type {
   CreateOrderRefundResult,
   PaymentSecurityAlert,
   DuplicatePaymentAlertDetail,
+  VerifiedFoodInformationUpdate,
 } from '@shared/types';
 
 const adminRequest = apiRequest;
@@ -62,6 +63,24 @@ export const productApi = {
       method: 'PATCH',
       body: JSON.stringify({ inStock }),
       token,
+    });
+  },
+
+  updateFoodInformation: async (
+    id: string,
+    input: VerifiedFoodInformationUpdate
+  ): Promise<Product> => {
+    if (!getToken()) throw new Error('Not authenticated');
+    return authenticatedRequest<Product>(`/products/${id}/food-information`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    });
+  },
+
+  revokeFoodInformation: async (id: string): Promise<Product> => {
+    if (!getToken()) throw new Error('Not authenticated');
+    return authenticatedRequest<Product>(`/products/${id}/food-information`, {
+      method: 'DELETE',
     });
   },
 };

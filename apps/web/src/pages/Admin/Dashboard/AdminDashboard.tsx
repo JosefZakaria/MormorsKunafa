@@ -23,6 +23,7 @@ import { requestWakeLock, releaseWakeLock } from '../../../utils/wakeLock';
 import { startAlarm, stopAlarm, setAlarmVolume, AlarmType, getAudioState, unlockAudio, isAlarmActive } from '../../../utils/alarmPlayer';
 import { RefundOrderModal } from './RefundOrderModal';
 import { DuplicatePaymentRefundModal } from './DuplicatePaymentRefundModal';
+import { FoodInformationModal } from './FoodInformationModal';
 import {
     readPersistentValue,
     STORAGE_KEYS,
@@ -600,9 +601,11 @@ function ConfirmDeleteAllHistoryModal({
 function StockRow({
     product,
     onToggle,
+    onEditFoodInformation,
 }: {
     product: Product;
     onToggle: (product: Product) => void;
+    onEditFoodInformation: (product: Product) => void;
 }) {
     const { t } = useLanguage();
     const outOfStock = !product.inStock;
@@ -622,6 +625,12 @@ function StockRow({
             <span className={`stock-status ${product.inStock ? 'text-success' : 'text-error'}`}>
                 {product.inStock ? 'I lager' : 'Avstängd'}
             </span>
+            <span className={product.foodInformationVerifiedAt ? 'text-success' : 'text-error'}>
+                {product.foodInformationVerifiedAt ? 'Matinfo verifierad' : 'Matinfo saknas'}
+            </span>
+            <Button type="button" size="sm" variant="outline" onClick={() => onEditFoodInformation(product)}>
+                Ingredienser
+            </Button>
         </div>
     );
 }
@@ -679,6 +688,7 @@ export const AdminDashboard: React.FC = () => {
     const [refundOrder, setRefundOrder] = useState<Order | null>(null);
     const [paymentAlerts, setPaymentAlerts] = useState<PaymentSecurityAlert[]>([]);
     const [selectedPaymentAlertId, setSelectedPaymentAlertId] = useState<string | null>(null);
+    const [foodInformationProduct, setFoodInformationProduct] = useState<Product | null>(null);
 
     const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const statsAuthPasswordRef = useRef('');
@@ -1151,6 +1161,11 @@ export const AdminDashboard: React.FC = () => {
         } catch {
             setError('Kunde inte uppdatera lagerstatus.');
         }
+    };
+
+    const handleFoodInformationSaved = (product: Product) => {
+        setProducts(current => current.map(item => item.id === product.id ? product : item));
+        setFoodInformationProduct(null);
     };
 
     // --- Settings ---
@@ -1678,9 +1693,18 @@ export const AdminDashboard: React.FC = () => {
                                     key={product.id}
                                     product={product}
                                     onToggle={handleToggleStock}
+                                    onEditFoodInformation={setFoodInformationProduct}
                                 />
                             ))}
                         </div>
+                    )}
+
+                    {foodInformationProduct && (
+                        <FoodInformationModal
+                            product={foodInformationProduct}
+                            onClose={() => setFoodInformationProduct(null)}
+                            onSaved={handleFoodInformationSaved}
+                        />
                     )}
 
                     {/* ── STATISTIK ── */}
