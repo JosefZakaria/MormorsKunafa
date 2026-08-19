@@ -59,7 +59,7 @@
     align-items: flex-start;
     padding: var(--spacing-xl) 0 calc(var(--spacing-3xl) + 72px);
     background-color: var(--color-primary-red);
-    overflow: hidden;
+    overflow: visible;
 }
 
 .landing__hero-media {
@@ -67,6 +67,7 @@
     inset: 0;
     z-index: 0;
     display: block;
+    overflow: hidden;
     pointer-events: none;
 }
 
@@ -138,7 +139,8 @@
     letter-spacing: 0.05em;
     text-transform: uppercase;
     text-align: center;
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
 }
 
 
@@ -622,7 +624,8 @@
         padding: var(--spacing-xs);
         font-size: 0.68rem;
         border-radius: 12px !important;
-        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
     }
 
     .landing__btn-icon svg {
