@@ -33,6 +33,7 @@ import { verifyAdminPassword } from '../utils/adminPassword.js';
 import { hasRealtimeCapacity } from '../utils/realtimeCapacity.js';
 import { logUnexpectedError } from '../utils/safeErrorMetadata.js';
 import { consumeRealtimeTicket, issueRealtimeTicket } from '../middleware/realtimeTicket.js';
+import { hashAuditSubject, recordSecurityAuditEvent } from '../services/securityAudit.js';
 
 const loginLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000, // 15 min window
@@ -99,8 +100,10 @@ function inRange(createdAt: string, start: Date | null, end: Date | null): boole
 }
 
 router.post('/login', loginLimiter, async (req: Request, res: Response) => {
+  let loginSubjectHash = hashAuditSubject(String(req.body?.email ?? '').slice(0, 254));
   try {
     const { email, password } = parseAdminLoginInput(req.body?.email, req.body?.password);
+    loginSubjectHash = hashAuditSubject(email);
 
     const { data: user, error } = await supabase
       .from('admin_users')
@@ -119,6 +122,14 @@ router.post('/login', loginLimiter, async (req: Request, res: Response) => {
       user ? String((user as Row).password_hash ?? '') : undefined
     );
     if (!user || !ok || (user as Row).is_active !== true) {
+      await recordSecurityAuditEvent({
+        subjectHash: loginSubjectHash,
+        action: 'admin_login',
+        httpMethod: 'POST',
+        routeTemplate: '/api/admin/login',
+        resourceType: 'admin',
+        outcome: 'denied',
+      });
       res.status(401).json({ error: 'Invalid credentials' });
       return;
     }
@@ -138,6 +149,16 @@ router.post('/login', loginLimiter, async (req: Request, res: Response) => {
       tokenVersion: Number((user as Row).token_version),
     });
     const csrfToken = crypto.randomBytes(32).toString('base64url');
+    await recordSecurityAuditEvent({
+      actorAdminId: String((user as Row).id),
+      subjectHash: loginSubjectHash,
+      action: 'admin_login',
+      httpMethod: 'POST',
+      routeTemplate: '/api/admin/login',
+      resourceType: 'admin',
+      resourceId: String((user as Row).id),
+      outcome: 'succeeded',
+    });
     res.setHeader('Set-Cookie', createAdminSessionCookies(token, csrfToken));
     res.json({
       admin: {
@@ -148,6 +169,20 @@ router.post('/login', loginLimiter, async (req: Request, res: Response) => {
     });
   } catch (e) {
     if (e instanceof AdminInputError) {
+      try {
+        await recordSecurityAuditEvent({
+          subjectHash: loginSubjectHash,
+          action: 'admin_login',
+          httpMethod: 'POST',
+          routeTemplate: '/api/admin/login',
+          resourceType: 'admin',
+          outcome: 'denied',
+        });
+      } catch (auditError) {
+        logUnexpectedError('POST /admin/login audit failed', auditError);
+        res.status(503).json({ error: 'Login unavailable' });
+        return;
+      }
       res.status(400).json({ error: e.message });
       return;
     }

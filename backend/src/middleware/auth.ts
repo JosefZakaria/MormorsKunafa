@@ -3,6 +3,10 @@ import jwt from 'jsonwebtoken';
 import { timingSafeEqual } from 'node:crypto';
 import { supabase, type Row, logSupabaseError } from '../db/connection.js';
 import { logUnexpectedError } from '../utils/safeErrorMetadata.js';
+import {
+  authenticatedRequestAuditEvent,
+  recordSecurityAuditEvent,
+} from '../services/securityAudit.js';
 
 const JWT_ISSUER = 'mormors-kunafa-backend';
 const JWT_AUDIENCE = 'mormors-kunafa-admin';
@@ -146,6 +150,13 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
     }
 
     (req as Request & { admin?: JwtPayload }).admin = decoded;
+    await recordSecurityAuditEvent(authenticatedRequestAuditEvent({
+      adminId: decoded.adminId,
+      method: req.method,
+      baseUrl: req.baseUrl,
+      routePath: req.route?.path,
+      resourceId: req.params?.id,
+    }));
     res.setHeader('Cache-Control', 'private, no-store');
     next();
   } catch (error) {

@@ -98,3 +98,13 @@ at most 500 rows per transaction using `SKIP LOCKED`.
 It only removes `pending` online-payment drafts that have neither a Stripe
 Checkout Session ID nor a Swish instruction ID. This is intentional: initiated
 payments must be checked with the provider before they can be safely removed.
+
+## 2026-08-19 immutable security audit
+
+Apply `2026-08-19-immutable-security-audit.sql` before deploying the matching
+backend. Database triggers reject updates, deletes and truncation, including
+through the service-role client. The application records route templates and
+internal resource IDs, never request bodies; login email is HMAC-hashed.
+
+Authenticated admin requests fail closed if the audit write fails. Establish a
+documented retention/export process before the table approaches storage limits.
