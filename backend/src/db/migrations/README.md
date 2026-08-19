@@ -124,3 +124,21 @@ Do not mark a product verified from marketing copy. Reconcile every ingredient,
 allergen and trace warning with the current recipe, supplier label and kitchen
 cross-contamination procedure first. Prepacked products may require additional
 mandatory fields beyond this initial structure.
+
+## 2026-08-19 row-level security
+
+Apply `2026-08-19-row-level-security.sql` last. It fails closed if any expected
+table is absent, enables and forces RLS, and removes direct `anon` and
+`authenticated` access. The application currently serves all product, order and
+admin data through the backend's service-role client; no browser or mobile code
+should query Supabase tables directly.
+
+Before applying it, confirm that the backend is configured with a service-role
+key rather than an anonymous key. Afterwards, run the read-only checks in
+`../verification/verify-security-posture.sql`. Do not treat a local SQL review
+as production verification: save the staging and production results with the
+deployment record.
+
+Any future direct Supabase client access requires a separate, narrowly scoped
+policy and a security review. Do not add a broad `USING (true)` policy to make a
+failing client work.
