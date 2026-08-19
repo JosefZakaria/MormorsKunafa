@@ -48,6 +48,25 @@ WHERE routine_schema = 'public'
   AND grantee IN ('PUBLIC', 'anon', 'authenticated')
 ORDER BY routine_name, grantee;
 
+-- Both reconciliation RPCs cross forced RLS and must therefore remain narrow
+-- SECURITY DEFINER functions with a fixed search_path. This result must be empty.
+WITH expected_functions(function_name) AS (
+  VALUES
+    ('list_initiated_checkout_drafts'),
+    ('delete_reconciled_checkout_draft')
+)
+SELECT expected_functions.function_name AS missing_or_unsafe_reconciliation_function
+FROM expected_functions
+LEFT JOIN pg_catalog.pg_proc AS functions
+  ON functions.proname = expected_functions.function_name
+LEFT JOIN pg_catalog.pg_namespace AS schemas
+  ON schemas.oid = functions.pronamespace
+  AND schemas.nspname = 'public'
+WHERE functions.oid IS NULL
+   OR schemas.oid IS NULL
+   OR NOT functions.prosecdef
+   OR NOT ('search_path=public, pg_temp' = ANY(functions.proconfig));
+
 -- NOT VALID constraints are intentional during deployment, but this must be
 -- empty after the documented data preflight and VALIDATE CONSTRAINT steps.
 SELECT tables.relname AS table_name, constraints.conname AS constraint_name

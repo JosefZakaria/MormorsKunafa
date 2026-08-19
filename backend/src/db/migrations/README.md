@@ -104,6 +104,20 @@ It only removes `pending` online-payment drafts that have neither a Stripe
 Checkout Session ID nor a Swish instruction ID. This is intentional: initiated
 payments must be checked with the provider before they can be safely removed.
 
+Apply `2026-08-19-initiated-checkout-reconciliation.sql` before enabling the
+cron. It exposes only order ID, payment method, total and provider identifiers;
+customer PII is never returned to the reconciliation worker. The worker fetches
+the canonical provider object and validates every immutable field. It marks an
+exact paid match as paid, deletes only Stripe `expired` + `unpaid` sessions or
+exact terminal unpaid Swish payments, and retains open, unknown or mismatched
+records for a later run. The final delete repeats the age, status, payment method
+and provider-reference checks atomically so a concurrently paid order survives.
+
+Provider availability failures are counted and retried by the next daily run.
+After staging deployment, create abandoned Stripe and Swish test payments and
+verify the cron both preserves paid/open attempts and deletes terminal unpaid
+attempts after the 24-hour cutoff.
+
 ## 2026-08-19 immutable security audit
 
 Apply `2026-08-19-immutable-security-audit.sql` before deploying the matching
