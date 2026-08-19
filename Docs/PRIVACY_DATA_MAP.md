@@ -7,6 +7,11 @@ This inventory describes what the current code sends. It does not prove a
 provider's production region, contract, log retention or subprocessor list;
 those items remain explicitly open in `PROCESSOR_REGISTER.md`.
 
+Public provider material reviewed on 2026-08-19 is indexed in
+`PROCESSOR_EVIDENCE_2026-08-19.md`. Account-specific confirmation remains
+mandatory because public DPA availability does not prove the production plan,
+region, accepted version or configured retention.
+
 ## Customer and order flows
 
 | Data category | Source | Internal storage/use | External recipient | Code-verified minimization |
