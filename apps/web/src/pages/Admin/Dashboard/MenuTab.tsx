@@ -1,4 +1,5 @@
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState, type DragEvent } from 'react';
+import { GripVertical } from 'lucide-react';
 import { ApiError } from '@shared/api';
 import type { AdminSettings, Product } from '@shared/types';
 import { Button } from '../../../components/common/Button/Button';
@@ -246,17 +247,38 @@ function ProductFormModal({
 
 function ProductCard({
     product,
+    isFirst,
+    isLast,
+    isDragging,
+    isDropTarget,
     onEdit,
     onUpdated,
     onError,
+    onMoveUp,
+    onMoveDown,
+    onDragStart,
+    onDragOver,
+    onDrop,
+    onDragEnd,
 }: {
     product: Product;
+    isFirst: boolean;
+    isLast: boolean;
+    isDragging: boolean;
+    isDropTarget: boolean;
     onEdit: () => void;
     onUpdated: (product: Product) => void;
     onError: (message: string) => void;
+    onMoveUp: () => void;
+    onMoveDown: () => void;
+    onDragStart: (event: DragEvent<HTMLElement>) => void;
+    onDragOver: (event: DragEvent<HTMLElement>) => void;
+    onDrop: (event: DragEvent<HTMLElement>) => void;
+    onDragEnd: () => void;
 }) {
     const { t } = useLanguage();
     const inputRef = useRef<HTMLInputElement>(null);
+    const cardRef = useRef<HTMLElement>(null);
     const [busy, setBusy] = useState(false);
 
     const handleFile = async (file: File | undefined) => {
@@ -277,10 +299,42 @@ function ProductCard({
         }
     };
 
+    const handleGripDragStart = (event: DragEvent<HTMLElement>) => {
+        const card = cardRef.current;
+        if (card) {
+            const rect = card.getBoundingClientRect();
+            event.dataTransfer.setDragImage(card, event.clientX - rect.left, event.clientY - rect.top);
+        }
+        onDragStart(event);
+    };
+
     return (
-        <article className="admin-menu-card">
+        <article
+            ref={cardRef}
+            className={`admin-menu-card${isDragging ? ' is-dragging' : ''}${isDropTarget ? ' is-drop-target' : ''}`}
+            onDragOver={onDragOver}
+            onDrop={onDrop}
+            onDragEnd={onDragEnd}
+        >
+            <div className="admin-menu-card__top">
+                <button
+                    type="button"
+                    className="admin-menu-card__grip"
+                    draggable
+                    onDragStart={handleGripDragStart}
+                    aria-label="Dra för att flytta"
+                    title="Dra för att flytta"
+                >
+                    <GripVertical size={18} />
+                    <span>Dra</span>
+                </button>
+                <div className="admin-menu-card__order-btns">
+                    <button type="button" className="admin-menu-card__order-btn" onClick={onMoveUp} disabled={isFirst || busy} aria-label="Flytta upp">↑</button>
+                    <button type="button" className="admin-menu-card__order-btn" onClick={onMoveDown} disabled={isLast || busy} aria-label="Flytta ner">↓</button>
+                </div>
+            </div>
             <div className="admin-menu-card__image">
-                <img src={product.image} alt="" />
+                <img src={product.image} alt="" draggable={false} />
                 {busy && <div className="hero-upload-card__overlay">Laddar upp…</div>}
             </div>
             <h3 className="admin-menu-card__name">{getDisplayName(product, t)}</h3>
@@ -321,11 +375,38 @@ export function MenuTab({
     onError: (message: string) => void;
 }) {
     const [formProduct, setFormProduct] = useState<Product | 'new' | null>(null);
+    const [dragId, setDragId] = useState<string | null>(null);
+    const [dropId, setDropId] = useState<string | null>(null);
+    const [savingOrder, setSavingOrder] = useState(false);
     const sorted = useMemo(() => sortProducts(products), [products]);
 
     const upsertProduct = (next: Product) => {
         const without = products.filter((p) => p.id !== next.id);
         onProductsChange(sortProducts([...without, next]));
+    };
+
+    const persistOrder = async (nextList: Product[]) => {
+        const previous = products;
+        const ordered = nextList.map((product, index) => ({ ...product, sortOrder: index + 1 }));
+        onProductsChange(ordered);
+        setSavingOrder(true);
+        try {
+            const saved = await productApi.reorder(ordered.map((product) => product.id));
+            onProductsChange(sortProducts(saved));
+        } catch (err) {
+            onProductsChange(previous);
+            onError(productErrorMessage(err, 'Kunde inte spara ordningen. Försök igen.'));
+        } finally {
+            setSavingOrder(false);
+        }
+    };
+
+    const moveProduct = (fromIndex: number, toIndex: number) => {
+        if (toIndex < 0 || toIndex >= sorted.length || fromIndex === toIndex) return;
+        const next = [...sorted];
+        const [moved] = next.splice(fromIndex, 1);
+        next.splice(toIndex, 0, moved);
+        void persistOrder(next);
     };
 
     return (
@@ -364,7 +445,9 @@ export function MenuTab({
             <div className="admin-menu-toolbar">
                 <div>
                     <h2 className="menu-tab__title">Varor</h2>
-                    <p className="menu-tab__lead">Lägg till en vara eller byt bild, namn och pris.</p>
+                    <p className="menu-tab__lead">
+                        Dra korten för att ändra ordningen på menyn. På surfplatta kan du använda pilarna.
+                    </p>
                 </div>
                 <Button variant="primary" onClick={() => setFormProduct('new')}>
                     + Lägg till vara
@@ -374,14 +457,44 @@ export function MenuTab({
             {loadingProducts ? (
                 <p>Laddar varor…</p>
             ) : (
-                <div className="admin-menu-grid">
-                    {sorted.map((product) => (
+                <div className={`admin-menu-grid${savingOrder ? ' is-saving' : ''}`}>
+                    {sorted.map((product, index) => (
                         <ProductCard
                             key={product.id}
                             product={product}
+                            isFirst={index === 0}
+                            isLast={index === sorted.length - 1}
+                            isDragging={dragId === product.id}
+                            isDropTarget={dropId === product.id && dragId !== product.id}
                             onEdit={() => setFormProduct(product)}
                             onUpdated={upsertProduct}
                             onError={onError}
+                            onMoveUp={() => moveProduct(index, index - 1)}
+                            onMoveDown={() => moveProduct(index, index + 1)}
+                            onDragStart={(event) => {
+                                event.dataTransfer.effectAllowed = 'move';
+                                event.dataTransfer.setData('text/plain', product.id);
+                                setDragId(product.id);
+                            }}
+                            onDragOver={(event) => {
+                                event.preventDefault();
+                                event.dataTransfer.dropEffect = 'move';
+                                if (dropId !== product.id) setDropId(product.id);
+                            }}
+                            onDrop={(event) => {
+                                event.preventDefault();
+                                const fromId = event.dataTransfer.getData('text/plain') || dragId;
+                                setDragId(null);
+                                setDropId(null);
+                                if (!fromId || fromId === product.id) return;
+                                const fromIndex = sorted.findIndex((item) => item.id === fromId);
+                                const toIndex = sorted.findIndex((item) => item.id === product.id);
+                                moveProduct(fromIndex, toIndex);
+                            }}
+                            onDragEnd={() => {
+                                setDragId(null);
+                                setDropId(null);
+                            }}
                         />
                     ))}
                 </div>

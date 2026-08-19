@@ -1349,6 +1349,11 @@ select.stats-modal-input {
     gap: 1rem;
 }
 
+.admin-menu-grid.is-saving {
+    opacity: 0.72;
+    pointer-events: none;
+}
+
 @media (min-width: 1024px) {
     .admin-menu-grid {
         grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1363,6 +1368,63 @@ select.stats-modal-input {
     box-shadow: var(--shadow-sm);
     padding: 0.75rem;
     border: 1px solid var(--color-gray-200);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+}
+
+.admin-menu-card.is-dragging {
+    opacity: 0.4;
+}
+
+.admin-menu-card.is-drop-target {
+    border-color: var(--color-primary-red);
+    box-shadow: 0 0 0 2px rgba(92, 42, 47, 0.2);
+}
+
+.admin-menu-card__top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.admin-menu-card__grip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    border: none;
+    background: #f3eee6;
+    color: #6b5b53;
+    border-radius: 6px;
+    padding: 0.3rem 0.5rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: grab;
+}
+
+.admin-menu-card__grip:active {
+    cursor: grabbing;
+}
+
+.admin-menu-card__order-btns {
+    display: flex;
+    gap: 0.25rem;
+}
+
+.admin-menu-card__order-btn {
+    width: 32px;
+    height: 32px;
+    border: 1px solid var(--color-gray-200);
+    background: var(--color-white);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+}
+
+.admin-menu-card__order-btn:disabled {
+    opacity: 0.35;
+    cursor: default;
 }
 
 .admin-menu-card__image {

@@ -70,6 +70,17 @@ export const productApi = {
       token,
     });
   },
+
+  reorder: async (orderedIds: string[]): Promise<Product[]> => {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    return authenticatedRequest<Product[]>('/products/reorder', {
+      method: 'PATCH',
+      body: JSON.stringify({ orderedIds }),
+      token,
+    });
+  },
 };
 
 // Orders API
