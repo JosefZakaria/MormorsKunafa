@@ -6,7 +6,7 @@ import { requireAdmin } from '../middleware/auth.js';
 const router = Router();
 
 const PRODUCT_COLUMNS =
-  'id, name, slug, description, image_url, price_ore, stock_status, created_at, updated_at';
+  'id, name, slug, description, image_url, price_ore, stock_status, sort_order, created_at, updated_at';
 
 function rowToProduct(r: Row): {
   id: string;
@@ -15,6 +15,7 @@ function rowToProduct(r: Row): {
   description: string;
   image: string;
   inStock: boolean;
+  sortOrder: number;
   createdAt: string;
   updatedAt: string;
 } {
@@ -29,6 +30,7 @@ function rowToProduct(r: Row): {
     description: String(r.description ?? ''),
     image: resolveProductImage(String(r.id), r.image_url as string | null, r.slug as string | null),
     inStock,
+    sortOrder: Number(r.sort_order) || 0,
     createdAt:
       createdAt instanceof Date ? createdAt.toISOString() : String(createdAt ?? ''),
     updatedAt:
@@ -41,6 +43,7 @@ router.get('/', async (_req: Request, res: Response) => {
     const { data, error } = await supabase
       .from('products')
       .select(PRODUCT_COLUMNS)
+      .order('sort_order', { ascending: true })
       .order('name', { ascending: true });
 
     if (error) {
