@@ -71,14 +71,28 @@ export function validateStripeCheckoutSessionIdentity(
   order: Row,
   session: Stripe.Checkout.Session
 ): { ok: true; paidAmountOre: number } | { ok: false; error: string } {
-  const orderId = String(order.id ?? '').trim();
-  if (!orderId || session.metadata?.orderId?.trim() !== orderId) {
-    return { ok: false, error: 'Session does not match order' };
-  }
+  const fields = validateStripeCheckoutSessionOrderFields(order, session);
+  if (!fields.ok) return fields;
 
   const storedSessionId = String(order.stripe_checkout_session_id ?? '').trim();
   if (!storedSessionId || storedSessionId !== session.id) {
     return { ok: false, error: 'Session id does not match order' };
+  }
+  return fields;
+}
+
+/**
+ * Validate the immutable order-bound fields shared by the original-session
+ * and duplicate-session flows. Session ownership is intentionally checked by
+ * each caller because those flows require opposite session-id relationships.
+ */
+export function validateStripeCheckoutSessionOrderFields(
+  order: Row,
+  session: Stripe.Checkout.Session
+): { ok: true; paidAmountOre: number } | { ok: false; error: string } {
+  const orderId = String(order.id ?? '').trim();
+  if (!orderId || session.metadata?.orderId?.trim() !== orderId) {
+    return { ok: false, error: 'Session does not match order' };
   }
   if (session.mode !== 'payment') {
     return { ok: false, error: 'Invalid checkout mode' };

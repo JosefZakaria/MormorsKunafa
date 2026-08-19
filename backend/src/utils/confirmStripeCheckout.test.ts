@@ -4,6 +4,7 @@ import type Stripe from 'stripe';
 import {
   validateStripeCheckoutSession,
   validateStripeCheckoutSessionIdentity,
+  validateStripeCheckoutSessionOrderFields,
 } from './confirmStripeCheckout.js';
 
 const orderId = '0aa461da-4f24-45ed-b1f2-79d6a7bb72d2';
@@ -44,6 +45,13 @@ test('accepts immutable identity for an expired unpaid Stripe session without tr
     paidAmountOre: 17_900,
   });
   assert.equal(validateStripeCheckoutSession(order, expired).ok, false);
+});
+
+test('validates common order fields independently of the session id', () => {
+  assert.deepEqual(validateStripeCheckoutSessionOrderFields(order, session({ id: 'cs_test_second' })), {
+    ok: true,
+    paidAmountOre: 17_900,
+  });
 });
 
 const mismatches: Array<[string, Partial<Stripe.Checkout.Session>]> = [
