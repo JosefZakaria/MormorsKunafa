@@ -12,6 +12,7 @@ import type {
   AdminRefundOverview,
   CreateOrderRefundResult,
   PaymentSecurityAlert,
+  DuplicatePaymentAlertDetail,
 } from '@shared/types';
 
 const adminRequest = apiRequest;
@@ -378,6 +379,33 @@ export const adminApi = {
     const token = getToken();
     if (!token) throw new Error('Not authenticated');
     return authenticatedRequest<PaymentSecurityAlert[]>('/admin/payment-alerts', { token });
+  },
+
+  getPaymentAlertDetail: async (eventId: string): Promise<DuplicatePaymentAlertDetail> => {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+    return authenticatedRequest<DuplicatePaymentAlertDetail>(
+      `/admin/payment-alerts/${encodeURIComponent(eventId)}`,
+      { token }
+    );
+  },
+
+  refundDuplicatePayment: async (
+    eventId: string,
+    body: { password: string; confirmation: string },
+    idempotencyKey: string
+  ): Promise<DuplicatePaymentAlertDetail> => {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+    return authenticatedRequest<DuplicatePaymentAlertDetail>(
+      `/admin/payment-alerts/${encodeURIComponent(eventId)}/refund`,
+      {
+        method: 'POST',
+        headers: { 'Idempotency-Key': idempotencyKey },
+        body: JSON.stringify(body),
+        token,
+      }
+    );
   },
 
   getRealtimeEventsUrl: (ticket: string): string => {

@@ -719,6 +719,25 @@ select.stats-modal-input {
 .payment-security-alert ul { margin: 0.75rem 0; padding-left: 1.25rem; }
 .payment-security-alert code { overflow-wrap: anywhere; color: #450a0a; }
 .payment-security-alert__instruction { font-weight: 700; }
+.payment-security-alert li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0.5rem 0;
+}
+.duplicate-refund-modal { border: 2px solid #b91c1c; }
+.duplicate-refund-event {
+  display: block;
+  margin: -0.25rem 0 1rem;
+  overflow-wrap: anywhere;
+  color: #7f1d1d;
+}
+.duplicate-refund-summary { border-color: #fecaca; background: #fff7f7; }
+
+@media (max-width: 640px) {
+  .payment-security-alert li { align-items: flex-start; flex-direction: column; }
+}
 .refund-success { color: #047857 !important; font-weight: 700; margin-top: 1rem !important; }
 .refund-status { margin-left: 0.5rem; background: #FEE2E2; color: #991B1B; }
 

@@ -81,6 +81,20 @@ export interface PaymentSecurityAlert {
   processedAt?: string;
 }
 
+export type DuplicatePaymentRefundStatus =
+  | 'eligible'
+  | 'investigation_only'
+  | RefundAttemptStatus;
+
+export interface DuplicatePaymentAlertDetail {
+  eventId: string;
+  status: DuplicatePaymentRefundStatus;
+  orderId?: string;
+  orderNumber?: string;
+  amount?: number;
+  confirmation?: string;
+}
+
 export type FoodAllergen =
   | 'gluten'
   | 'crustaceans'

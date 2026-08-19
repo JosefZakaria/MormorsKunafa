@@ -21,6 +21,7 @@ import '../Admin.css';
 import { requestWakeLock, releaseWakeLock } from '../../../utils/wakeLock';
 import { startAlarm, stopAlarm, setAlarmVolume, AlarmType, getAudioState, unlockAudio, isAlarmActive } from '../../../utils/alarmPlayer';
 import { RefundOrderModal } from './RefundOrderModal';
+import { DuplicatePaymentRefundModal } from './DuplicatePaymentRefundModal';
 import {
     readPersistentValue,
     STORAGE_KEYS,
@@ -677,6 +678,7 @@ export const AdminDashboard: React.FC = () => {
     const [deleteAllError, setDeleteAllError] = useState<string | null>(null);
     const [refundOrder, setRefundOrder] = useState<Order | null>(null);
     const [paymentAlerts, setPaymentAlerts] = useState<PaymentSecurityAlert[]>([]);
+    const [selectedPaymentAlertId, setSelectedPaymentAlertId] = useState<string | null>(null);
 
     const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const statsAuthPasswordRef = useRef('');
@@ -1303,9 +1305,14 @@ export const AdminDashboard: React.FC = () => {
                         <ul>
                             {paymentAlerts.map((alert) => (
                                 <li key={alert.eventId}>
-                                    <code>{alert.eventId}</code>
-                                    {alert.orderId ? <> · order-ID <code>{alert.orderId}</code></> : ' · order-ID saknas'}
-                                    {' · '}{new Date(alert.receivedAt).toLocaleString('sv-SE')}
+                                    <span>
+                                        <code>{alert.eventId}</code>
+                                        {alert.orderId ? <> · order-ID <code>{alert.orderId}</code></> : ' · order-ID saknas'}
+                                        {' · '}{new Date(alert.receivedAt).toLocaleString('sv-SE')}
+                                    </span>
+                                    <Button size="sm" variant="ghost" onClick={() => setSelectedPaymentAlertId(alert.eventId)}>
+                                        Granska larm
+                                    </Button>
                                 </li>
                             ))}
                         </ul>
@@ -1423,6 +1430,10 @@ export const AdminDashboard: React.FC = () => {
                     order={refundOrder}
                     onClose={() => setRefundOrder(null)}
                     onChanged={() => { void fetchOrders(); }}
+                />
+                <DuplicatePaymentRefundModal
+                    eventId={selectedPaymentAlertId}
+                    onClose={() => setSelectedPaymentAlertId(null)}
                 />
 
                 <div className="admin-content animate-in">
