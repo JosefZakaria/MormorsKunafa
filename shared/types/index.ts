@@ -37,6 +37,38 @@ export interface OrderRefundAttempt {
   allocations: OrderRefundAllocation[];
 }
 
+export interface AdminRefundableItem {
+  orderItemId: string;
+  productName: string;
+  unitPrice: number;
+  orderedQuantity: number;
+  pendingQuantity: number;
+  refundedQuantity: number;
+  refundableQuantity: number;
+  isDeliveryFee: boolean;
+}
+
+export interface AdminRefundOverview {
+  orderId: string;
+  orderNumber: string;
+  paymentMethod: PaymentMethod;
+  paymentStatus: 'pending' | 'paid';
+  refundStatus: RefundStatus;
+  totalPrice: number;
+  refundedAmount: number;
+  pendingAmount: number;
+  refundableAmount: number;
+  items: AdminRefundableItem[];
+  attempts: OrderRefundAttempt[];
+}
+
+export interface CreateOrderRefundResult {
+  refundId: string;
+  status: RefundAttemptStatus;
+  refundStatus: RefundStatus;
+  amount: number;
+}
+
 export type FoodAllergen =
   | 'gluten'
   | 'crustaceans'
