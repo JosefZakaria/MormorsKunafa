@@ -88,3 +88,13 @@ FROM public.payment_provider_events
 WHERE provider = 'stripe' AND (status = 'failed' OR attempts > 1)
 ORDER BY received_at DESC;
 ```
+
+## 2026-08-19 abandoned checkout cleanup
+
+Apply `2026-08-19-abandoned-checkout-cleanup.sql` before enabling the matching
+daily Vercel cron. The function refuses cutoffs newer than 48 hours and deletes
+at most 500 rows per transaction using `SKIP LOCKED`.
+
+It only removes `pending` online-payment drafts that have neither a Stripe
+Checkout Session ID nor a Swish instruction ID. This is intentional: initiated
+payments must be checked with the provider before they can be safely removed.

@@ -3,7 +3,7 @@ import test from 'node:test';
 import { assertOperationalSecretsConfiguration } from './operationalSecrets.js';
 
 function withProductionSecrets(
-  values: { jwt?: string; deletion?: string; statistics?: string },
+  values: { jwt?: string; deletion?: string; statistics?: string; cron?: string },
   action: () => void
 ): void {
   const previous = {
@@ -11,11 +11,13 @@ function withProductionSecrets(
     JWT_SECRET: process.env.JWT_SECRET,
     DELETE_PASSWORD: process.env.DELETE_PASSWORD,
     STATS_PASSWORD: process.env.STATS_PASSWORD,
+    CRON_SECRET: process.env.CRON_SECRET,
   };
   process.env.NODE_ENV = 'production';
   process.env.JWT_SECRET = values.jwt;
   process.env.DELETE_PASSWORD = values.deletion;
   process.env.STATS_PASSWORD = values.statistics;
+  process.env.CRON_SECRET = values.cron;
   try {
     action();
   } finally {
@@ -29,18 +31,18 @@ function withProductionSecrets(
 test('rejects missing, short and reused production operational secrets', () => {
   withProductionSecrets({}, () => assert.throws(assertOperationalSecretsConfiguration));
   withProductionSecrets(
-    { jwt: 'j'.repeat(32), deletion: 'short', statistics: 's'.repeat(32) },
+    { jwt: 'j'.repeat(32), deletion: 'short', statistics: 's'.repeat(32), cron: 'c'.repeat(32) },
     () => assert.throws(assertOperationalSecretsConfiguration)
   );
   withProductionSecrets(
-    { jwt: 'j'.repeat(32), deletion: 'd'.repeat(32), statistics: 'd'.repeat(32) },
+    { jwt: 'j'.repeat(32), deletion: 'd'.repeat(32), statistics: 'd'.repeat(32), cron: 'c'.repeat(32) },
     () => assert.throws(assertOperationalSecretsConfiguration)
   );
 });
 
 test('accepts unique high-entropy-length operational secrets', () => {
   withProductionSecrets(
-    { jwt: 'j'.repeat(32), deletion: 'd'.repeat(32), statistics: 's'.repeat(32) },
+    { jwt: 'j'.repeat(32), deletion: 'd'.repeat(32), statistics: 's'.repeat(32), cron: 'c'.repeat(32) },
     () => assert.doesNotThrow(assertOperationalSecretsConfiguration)
   );
 });

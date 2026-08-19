@@ -3,6 +3,12 @@
   "framework": null,
   "installCommand": "cd .. && npm ci",
   "buildCommand": "npm run build && node -e \"const fs = require('fs'); fs.mkdirSync('public', { recursive: true }); fs.writeFileSync('public/index.html', 'OK');\"",
+  "crons": [
+    {
+      "path": "/api/internal/maintenance/cleanup-uninitiated-checkout-drafts",
+      "schedule": "17 3 * * *"
+    }
+  ],
   "rewrites": [
     {
       "source": "/(.*)",
