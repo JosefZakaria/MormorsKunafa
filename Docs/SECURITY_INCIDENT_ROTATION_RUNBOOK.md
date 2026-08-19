@@ -41,6 +41,25 @@ verification outcomes.
    refs from a dedicated mirror clone, coordinate every developer clone and
    contact GitHub Support about cached/orphaned objects.
 
+### History rewrite gate
+
+Use `scripts/Invoke-SafeHistoryRewrite.ps1` first without
+`-ExecuteLocalRewrite` to validate the mirror and exact origin. Keep the mirror
+outside the active workspace and make an offline recovery copy before the
+confirmed local rewrite. Then:
+
+1. Run `scripts/Test-GitHistorySanitization.ps1` against the rewritten mirror.
+2. Run an independent full secret/PII scan; the targeted verifier proves only
+   that the two known blobs and their known paths are unreachable.
+3. Compare the expected ref inventory with the mirror and coordinate clone
+   replacement with every contributor.
+4. The user performs the force-push. Neither prepared script can push.
+5. Verify the remote refs from a fresh clone, then ask GitHub Support to clear
+   cached views and unreachable sensitive objects where applicable.
+
+Abort before force-push if any known blob remains, a ref is missing, a rotated
+secret still works, or the matching deployment has not passed its checks.
+
 ## Post-deployment checks
 
 - Backend `/api/health` returns only the minimal production shape and never

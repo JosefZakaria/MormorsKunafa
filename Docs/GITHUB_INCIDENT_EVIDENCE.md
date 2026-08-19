@@ -65,3 +65,32 @@ powershell -ExecutionPolicy Bypass -File scripts/collect-git-incident-evidence.p
 
 Store the output in the restricted incident journal, not in Git, if it contains
 new account-specific ref names or operational timestamps.
+
+## Prepared rewrite tooling
+
+Two PowerShell scripts prepare the destructive phase without granting it push
+access:
+
+- `scripts/Invoke-SafeHistoryRewrite.ps1` validates a dedicated bare mirror,
+  its exact GitHub origin and its ref set. Its default mode is read-only. The
+  local rewrite requires `-ExecuteLocalRewrite`, an interactive confirmation
+  and `git-filter-repo`.
+- `scripts/Test-GitHistorySanitization.ps1` fails if any known dump/archive path
+  or either confirmed blob ID remains reachable from any ref. It reports only
+  metadata and never reads object contents.
+
+Create the mirror outside this workspace only after the rotation/deployment
+stop conditions are satisfied. Example placeholders (do not copy a real token
+into the command line):
+
+```powershell
+git clone --mirror https://github.com/OWNER/REPOSITORY.git C:\safe-location\repository-cleanup.git
+powershell -ExecutionPolicy Bypass -File scripts/Invoke-SafeHistoryRewrite.ps1 `
+  -MirrorPath C:\safe-location\repository-cleanup.git `
+  -ExpectedOrigin https://github.com/OWNER/REPOSITORY.git
+```
+
+After preflight, take a recoverable offline copy of the mirror, run the command
+again with `-ExecuteLocalRewrite`, and independently scan the rewritten refs for
+other secrets and personal data. The scripts never push. The user coordinates
+and performs any later force-push.
