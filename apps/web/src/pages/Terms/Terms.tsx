@@ -13,7 +13,7 @@ export const Terms: React.FC = () => {
           <p className="legal-lead">
             مرحباً بكم في كنافة جدتي (Mormors Kunafa). تسرنا خدمتكم! توضح هذه الشروط والأحكام قواعد القوانين السويدية المتعلقة بالشراء والتوصيل وحقوق المستهلك.
           </p>
-          <p><strong>الإصدار 2.1 – ساري اعتباراً من 19 أغسطس 2026.</strong></p>
+          <p><strong>الإصدار 2.2 – ساري اعتباراً من 19 أغسطس 2026.</strong></p>
 
           <section className="legal-section">
             <h2>1. معلومات الشركة (Företagsinformation)</h2>
@@ -23,7 +23,7 @@ export const Terms: React.FC = () => {
               <strong>رقم ضريبة القيمة المضافة:</strong> SE559424482301<br />
               <strong>العنوان:</strong> Karolingatan 1, 212 34 Malmö, السويد.<br />
               <strong>الهاتف:</strong> 072-868 25 92<br />
-              <strong>البريد الإلكتروني:</strong> info@mormorskunafa.se
+              <strong>البريد الإلكتروني:</strong> Mormorskunafa@gmail.com
             </p>
           </section>
 
@@ -82,7 +82,7 @@ export const Terms: React.FC = () => {
           <p className="legal-lead">
             Welcome to Mormors Kunafa! These Terms and Conditions govern your purchases and use of our online store in accordance with Swedish and EU consumer laws.
           </p>
-          <p><strong>Version 2.1 – effective 19 August 2026.</strong></p>
+          <p><strong>Version 2.2 – effective 19 August 2026.</strong></p>
 
           <section className="legal-section">
             <h2>1. Company Information</h2>
@@ -92,7 +92,7 @@ export const Terms: React.FC = () => {
               <strong>VAT registration number:</strong> SE559424482301<br />
               <strong>Address:</strong> Karolingatan 1, 212 34 Malmö, Sweden.<br />
               <strong>Phone:</strong> 072-868 25 92<br />
-              <strong>Email:</strong> info@mormorskunafa.se
+              <strong>Email:</strong> Mormorskunafa@gmail.com
             </p>
           </section>
 
@@ -150,7 +150,7 @@ export const Terms: React.FC = () => {
         <p className="legal-lead">
           Välkommen till Mormors Kunafa! Dessa köpvillkor gäller för alla beställningar som görs via vår webbplats och följer svensk konsumenträtt, E-handelslagen och Distansavtalslagen.
         </p>
-        <p><strong>Version 2.1 – gäller från och med 19 augusti 2026.</strong></p>
+        <p><strong>Version 2.2 – gäller från och med 19 augusti 2026.</strong></p>
 
         <section className="legal-section">
           <h2>1. Företagsinformation</h2>
@@ -160,7 +160,7 @@ export const Terms: React.FC = () => {
             <strong>Momsregistreringsnummer:</strong> SE559424482301<br />
             <strong>Adress:</strong> Karolingatan 1, 212 34 Malmö<br />
             <strong>Telefon:</strong> 072-868 25 92<br />
-            <strong>E-post:</strong> info@mormorskunafa.se
+            <strong>E-post:</strong> Mormorskunafa@gmail.com
           </p>
         </section>
 
@@ -204,7 +204,7 @@ export const Terms: React.FC = () => {
         <section className="legal-section">
           <h2>6. Reklamation och Tvist</h2>
           <p>
-            Om din beställning är felaktig eller skadad vid leverans/upphämtning ska du kontakta oss omedelbart på 072-868 25 92 eller info@mormorskunafa.se med beskrivning och eventuell bild på felet. Vid godkänd reklamation ersätter vi produkten eller återbetalar beloppet.
+            Om din beställning är felaktig eller skadad vid leverans/upphämtning ska du kontakta oss omedelbart på 072-868 25 92 eller Mormorskunafa@gmail.com med beskrivning och eventuell bild på felet. Vid godkänd reklamation ersätter vi produkten eller återbetalar beloppet.
           </p>
           <p>
             Om vi har fått möjlighet att ta ställning till ditt krav och tvisten ändå inte löses kan du anmäla ett behörigt ärende till Allmänna reklamationsnämnden (ARN). Vi följer ARN:s rekommendationer. Läs om villkor och aktuell avgift på <a href="https://www.arn.se" target="_blank" rel="noopener noreferrer">arn.se</a>.

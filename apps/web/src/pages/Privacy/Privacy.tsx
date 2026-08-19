@@ -13,7 +13,7 @@ export const Privacy: React.FC = () => {
           <p className="legal-lead">
             في كنافة جدتي (Mormors Kunafa)، نولي أهمية قصوى لخصوصيتك وحماية بياناتك الشخصية. تشرح هذه السياسة كيفية جمع بياناتك واستخدامها وحمايتها وفقاً للائحة العامة لحماية البيانات في الاتحاد الأوروبي (GDPR).
           </p>
-          <p><strong>الإصدار 2.1 – ساري اعتباراً من 19 أغسطس 2026.</strong></p>
+          <p><strong>الإصدار 2.2 – ساري اعتباراً من 19 أغسطس 2026.</strong></p>
 
           <section className="legal-section">
             <h2>1. المسؤول عن البيانات (Personuppgiftsansvarig)</h2>
@@ -23,7 +23,7 @@ export const Privacy: React.FC = () => {
               رقم تسجيل الشركة: 559424-4823<br />
               رقم ضريبة القيمة المضافة: SE559424482301<br />
               العنوان: Karolingatan 1, 212 34 Malmö, السويد<br />
-              البريد الإلكتروني: info@mormorskunafa.se<br />
+              البريد الإلكتروني: Mormorskunafa@gmail.com<br />
               الهاتف: 072-868 25 92
             </p>
           </section>
@@ -44,6 +44,7 @@ export const Privacy: React.FC = () => {
             <ul>
               <li><strong>إتمام الطلبات والخدمة (تنفيذ العقد - Art 6.1 b GDPR):</strong> لمعالجة الطلب، وتجهيز الحلويات، وإرسال رسائل التجميع والتوصيل عبر SMS أو البريد الإلكتروني.</li>
               <li><strong>الالتزام بالقوانين المحاسبية (التزام قانوني - Art 6.1 c GDPR):</strong> حفظ سجلات المعاملات والسيولة المالية لمدة 7 سنوات بموجب قانون المحاسبة السويدي (Bokföringslagen 1999:1078).</li>
+              <li><strong>خدمة العملاء والشكاوى والنزاعات (المصلحة المشروعة - Art 6.1 f GDPR):</strong> للاحتفاظ ببيانات اتصال محدودة وربطها بالطلب حتى نتمكن من العثور على المشتريات السابقة ومعالجة الشكاوى خلال مدتها القانونية.</li>
               <li><strong>تحسين الخدمة والأمان (المصلحة المشروعة - Art 6.1 f GDPR):</strong> لحماية الموقع من الاحتيال ومنع سوء الاستخدام.</li>
             </ul>
           </section>
@@ -54,6 +55,7 @@ export const Privacy: React.FC = () => {
             <ul>
               <li><strong>Stripe وSwish:</strong> لمعالجة المدفوعات.</li>
               <li><strong>Resend وSinch:</strong> لإرسال البريد الإلكتروني ورسائل SMS الخاصة بالطلب.</li>
+              <li><strong>Google Gmail:</strong> لاستقبال طلبات العملاء والشكاوى وطلبات الخصوصية.</li>
               <li><strong>Supabase:</strong> لتخزين بيانات الطلب.</li>
               <li><strong>Vercel:</strong> لاستضافة الموقع وواجهة البرمجة.</li>
               <li><strong>Upstash:</strong> للحد من إساءة استخدام الخدمة.</li>
@@ -66,7 +68,7 @@ export const Privacy: React.FC = () => {
           <section className="legal-section">
             <h2>5. فترة الاحتفاظ بالبيانات (Lagringstid)</h2>
             <p>
-              نحتفظ بالسجلات المالية والمحاسبية المطلوبة لمدة <strong>7 سنوات</strong>. بيانات الاتصال والتوصيل والنصوص الحرة التشغيلية ليست سجلات محاسبية تلقائياً، ويتم حذفها أو إخفاء هويتها بعد انتهاء الحاجة التشغيلية وفترة الشكاوى المعتمدة، ما لم ينطبق تعليق قانوني موثق.
+              نحتفظ بمعلومات التسليم والملاحظات التشغيلية والتعديلات النصية لمدة تصل إلى <strong>90 يوماً</strong> بعد إغلاق الطلب. نحتفظ بالاسم ورقم الهاتف والبريد الإلكتروني لمدة تصل إلى <strong>3 سنوات</strong> لخدمة العملاء والشكاوى والنزاعات، ثم نخفي هويتها. تُحفظ السجلات المالية والمحاسبية المطلوبة وفقاً لفترة السبع سنوات القانونية. لا تسري عملية الحذف على طلب محدد أثناء وجود تعليق قانوني موثق.
             </p>
           </section>
 
@@ -109,7 +111,7 @@ export const Privacy: React.FC = () => {
           <p className="legal-lead">
             At Mormors Kunafa, we value your privacy and are committed to protecting your personal data. This policy explains how we collect, process, and safeguard your data in accordance with the EU General Data Protection Regulation (GDPR).
           </p>
-          <p><strong>Version 2.1 – effective 19 August 2026.</strong></p>
+          <p><strong>Version 2.2 – effective 19 August 2026.</strong></p>
 
           <section className="legal-section">
             <h2>1. Data Controller</h2>
@@ -119,7 +121,7 @@ export const Privacy: React.FC = () => {
               Company registration number: 559424-4823<br />
               VAT registration number: SE559424482301<br />
               Address: Karolingatan 1, 212 34 Malmö, Sweden<br />
-              Email: info@mormorskunafa.se<br />
+              Email: Mormorskunafa@gmail.com<br />
               Phone: 072-868 25 92
             </p>
           </section>
@@ -140,6 +142,7 @@ export const Privacy: React.FC = () => {
             <ul>
               <li><strong>Order Fulfillment (Performance of Contract - Art. 6.1 b GDPR):</strong> To process, prepare, deliver, and send SMS/email order updates.</li>
               <li><strong>Accounting Compliance (Legal Obligation - Art. 6.1 c GDPR):</strong> To retain sales transaction receipts for 7 years as required by the Swedish Bookkeeping Act (Bokföringslagen 1999:1078).</li>
+              <li><strong>Customer service, complaints and disputes (Legitimate Interest - Art. 6.1 f GDPR):</strong> To retain limited contact details linked to an order so we can locate and handle previous purchases during the complaint period.</li>
               <li><strong>Security & Improvements (Legitimate Interest - Art. 6.1 f GDPR):</strong> To prevent fraud and abuse.</li>
             </ul>
           </section>
@@ -150,6 +153,7 @@ export const Privacy: React.FC = () => {
             <ul>
               <li><strong>Stripe and Swish:</strong> Payment processing.</li>
               <li><strong>Resend and Sinch:</strong> Order emails and SMS notifications.</li>
+              <li><strong>Google Gmail:</strong> Receipt of customer-service, complaint and privacy requests.</li>
               <li><strong>Supabase:</strong> Order database hosting.</li>
               <li><strong>Vercel:</strong> Website and API hosting.</li>
               <li><strong>Upstash:</strong> Abuse prevention and request rate limiting.</li>
@@ -162,7 +166,7 @@ export const Privacy: React.FC = () => {
           <section className="legal-section">
             <h2>5. Data Retention</h2>
             <p>
-              Required financial and accounting records are retained for <strong>7 years</strong>. Operational contact, delivery and free-text data are not automatically accounting records and are erased or anonymised after the approved operational and complaint period, unless a documented legal hold applies.
+              Delivery details, operational notes and free-text modifications are retained for up to <strong>90 days</strong> after an order reaches a terminal state. Name, phone number and email are retained for up to <strong>3 years</strong> for customer service, complaints and disputes, and are then anonymised. Required financial and accounting records are retained for the statutory seven-year period. A documented legal hold pauses deletion only for the affected order.
             </p>
           </section>
 
@@ -205,7 +209,7 @@ export const Privacy: React.FC = () => {
         <p className="legal-lead">
           Hos Mormors Kunafa värnar vi om din personliga integritet. Denna integritetspolicy beskriver hur vi samlar in, använder, sparar och skyddar dina personuppgifter i enlighet med EU:s dataskyddsförordning (GDPR).
         </p>
-        <p><strong>Version 2.1 – gäller från och med 19 augusti 2026.</strong></p>
+        <p><strong>Version 2.2 – gäller från och med 19 augusti 2026.</strong></p>
 
         <section className="legal-section">
           <h2>1. Personuppgiftsansvarig</h2>
@@ -215,7 +219,7 @@ export const Privacy: React.FC = () => {
             Organisationsnummer: 559424-4823<br />
             Momsregistreringsnummer: SE559424482301<br />
             Adress: Karolingatan 1, 212 34 Malmö<br />
-            E-post: info@mormorskunafa.se<br />
+            E-post: Mormorskunafa@gmail.com<br />
             Telefon: 072-868 25 92
           </p>
         </section>
@@ -235,7 +239,8 @@ export const Privacy: React.FC = () => {
           <h2>3. Ändamål och rättslig grund för behandlingen</h2>
           <ul>
             <li><strong>Hantera och leverera beställning (Fullgörande av avtal - Art 6.1 b GDPR):</strong> För att behandla din order, tillaga maten, skicka orderbekräftelse via e-post samt SMS-avisering när maten är klar eller på väg.</li>
-            <li><strong>Bokföring och redovisning (Rättslig förpliktelse - Art 6.1 c GDPR):</strong> Vi är enligt den svenska **Bokföringslagen (1999:1078)** skyldiga att spara orderunderlag och transaktionshistorik i **7 år**.</li>
+            <li><strong>Bokföring och redovisning (Rättslig förpliktelse - Art 6.1 c GDPR):</strong> Vi är enligt den svenska <strong>Bokföringslagen (1999:1078)</strong> skyldiga att spara nödvändiga ekonomiska underlag under den lagstadgade sjuårsperioden.</li>
+            <li><strong>Kundservice, reklamationer och tvister (Berättigat intresse - Art 6.1 f GDPR):</strong> Vi sparar begränsade kontaktuppgifter och kopplingen till ordern för att kunna hitta och hantera tidigare köp under reklamationsperioden.</li>
             <li><strong>Säkerhet och missbruksförebyggande (Berättigat intresse - Art 6.1 f GDPR):</strong> För att skydda våra system mot missbruk och bedrägerier.</li>
           </ul>
         </section>
@@ -246,6 +251,7 @@ export const Privacy: React.FC = () => {
           <ul>
             <li><strong>Stripe och Swish:</strong> För betalningshantering.</li>
             <li><strong>Resend och Sinch:</strong> För ordermejl och SMS-aviseringar.</li>
+            <li><strong>Google Gmail:</strong> För att ta emot kundservice-, reklamations- och integritetsärenden.</li>
             <li><strong>Supabase:</strong> För lagring av orderuppgifter.</li>
             <li><strong>Vercel:</strong> För drift av webbplats och API.</li>
             <li><strong>Upstash:</strong> För missbruksskydd och anropsbegränsning.</li>
@@ -260,8 +266,9 @@ export const Privacy: React.FC = () => {
         <section className="legal-section">
           <h2>5. Hur länge sparar vi dina uppgifter?</h2>
           <p>
-            Nödvändiga ekonomiska underlag och bokföringsposter sparas i <strong>7 år</strong> i enlighet med Bokföringslagen.
-            Operativa kontakt-, leverans- och fritextuppgifter är inte automatiskt bokföringsmaterial och raderas eller anonymiseras efter den godkända drift- och reklamationsperioden, om inte en dokumenterad legal hold gäller.
+            Leveransuppgifter, operativa anteckningar och produktanpassningar i fritext sparas i högst <strong>90 dagar</strong> efter att ordern har avslutats.
+            Namn, telefonnummer och e-postadress sparas i högst <strong>3 år</strong> för kundservice, reklamationer och tvister och anonymiseras därefter.
+            Nödvändiga ekonomiska underlag och bokföringsposter sparas under den lagstadgade sjuårsperioden. En dokumenterad legal hold pausar gallringen endast för den berörda ordern.
           </p>
         </section>
 
