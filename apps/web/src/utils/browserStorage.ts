@@ -8,6 +8,12 @@ export const STORAGE_KEYS = {
   adminAlarmVolume: 'admin_alarm_volume',
 } as const;
 
+export const LEGACY_STORAGE_KEYS = {
+  adminToken: 'authToken',
+  adminInfo: 'adminInfo',
+  deliveryInfo: 'deliveryInfo',
+} as const;
+
 export const STORAGE_TTL_MS = {
   cart: 30 * 24 * 60 * 60 * 1000,
   preference: 365 * 24 * 60 * 60 * 1000,

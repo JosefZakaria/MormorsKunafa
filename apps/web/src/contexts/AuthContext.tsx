@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { adminApi } from '../services/api';
+import { LEGACY_STORAGE_KEYS, removePersistentValue } from '../utils/browserStorage';
 
 interface AdminInfo {
     id: string;
@@ -25,8 +26,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     useEffect(() => {
         // Remove credentials left by older builds; authentication now lives only
         // in the HttpOnly cookie that JavaScript cannot read.
-        localStorage.removeItem('authToken');
-        localStorage.removeItem('adminInfo');
+        removePersistentValue(LEGACY_STORAGE_KEYS.adminToken);
+        removePersistentValue(LEGACY_STORAGE_KEYS.adminInfo);
         let active = true;
         void adminApi.getSession()
             .then((result) => {

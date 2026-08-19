@@ -23,6 +23,7 @@ import {
     isStoreClosedNow,
 } from '@shared/utils/openingHours';
 import './Cart.css';
+import { LEGACY_STORAGE_KEYS, removePersistentValue } from '../../utils/browserStorage';
 
 /** Set to true when Swish checkout is ready for customers. */
 const SWISH_CHECKOUT_ENABLED = false;
@@ -69,7 +70,7 @@ export const Cart: React.FC = () => {
     const orderIdempotencyRef = useRef<{ payload: string; key: string } | null>(null);
 
     useEffect(() => {
-        localStorage.removeItem('deliveryInfo');
+        removePersistentValue(LEGACY_STORAGE_KEYS.deliveryInfo);
     }, []);
 
     const needsInlineCustomerInfo = orderType === 'eat-here' || orderType === 'takeaway' || orderType === 'delivery';
