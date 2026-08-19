@@ -4,6 +4,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { supabase, type Row, logSupabaseError } from '../db/connection.js';
 import { logUnexpectedError } from '../utils/safeErrorMetadata.js';
 import {
+  auditOutcomeForHttpStatus,
   authenticatedRequestAuditEvent,
   recordSecurityAuditEvent,
 } from '../services/securityAudit.js';
@@ -150,13 +151,21 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
     }
 
     (req as Request & { admin?: JwtPayload }).admin = decoded;
-    await recordSecurityAuditEvent(authenticatedRequestAuditEvent({
+    const auditInput = {
       adminId: decoded.adminId,
       method: req.method,
       baseUrl: req.baseUrl,
       routePath: req.route?.path,
       resourceId: req.params?.id,
-    }));
+    };
+    await recordSecurityAuditEvent(authenticatedRequestAuditEvent(auditInput));
+    res.once('finish', () => {
+      void recordSecurityAuditEvent(
+        authenticatedRequestAuditEvent(auditInput, auditOutcomeForHttpStatus(res.statusCode))
+      ).catch((auditError) => {
+        logUnexpectedError('admin request outcome audit failed', auditError);
+      });
+    });
     res.setHeader('Cache-Control', 'private, no-store');
     next();
   } catch (error) {

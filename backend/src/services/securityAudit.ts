@@ -12,6 +12,8 @@ export type SecurityAuditEvent = {
   outcome: 'attempted' | 'succeeded' | 'denied' | 'failed';
 };
 
+export type SecurityAuditOutcome = SecurityAuditEvent['outcome'];
+
 function bounded(value: unknown, max: number): string {
   return typeof value === 'string' ? value.trim().slice(0, max) : '';
 }
@@ -32,7 +34,7 @@ export function authenticatedRequestAuditEvent(input: {
   baseUrl?: string;
   routePath?: unknown;
   resourceId?: unknown;
-}): SecurityAuditEvent {
+}, outcome: SecurityAuditOutcome = 'attempted'): SecurityAuditEvent {
   const baseUrl = bounded(input.baseUrl, 128);
   const routePath = bounded(input.routePath, 127);
   const routeTemplate = `${baseUrl}${routePath}`.slice(0, 255);
@@ -48,8 +50,14 @@ export function authenticatedRequestAuditEvent(input: {
     routeTemplate,
     resourceType,
     resourceId: bounded(input.resourceId, 128),
-    outcome: 'attempted',
+    outcome,
   };
+}
+
+export function auditOutcomeForHttpStatus(statusCode: number): Exclude<SecurityAuditOutcome, 'attempted'> {
+  if (statusCode === 401 || statusCode === 403) return 'denied';
+  if (statusCode >= 200 && statusCode < 400) return 'succeeded';
+  return 'failed';
 }
 
 export async function recordSecurityAuditEvent(event: SecurityAuditEvent): Promise<void> {

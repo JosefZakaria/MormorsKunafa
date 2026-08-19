@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { authenticatedRequestAuditEvent, hashAuditSubject } from './securityAudit.js';
+import {
+  auditOutcomeForHttpStatus,
+  authenticatedRequestAuditEvent,
+  hashAuditSubject,
+} from './securityAudit.js';
 
 test('builds bounded audit metadata from route templates without request bodies', () => {
   assert.deepEqual(
@@ -30,4 +34,26 @@ test('hashes normalized login subjects without retaining the email', () => {
   assert.equal(first, second);
   assert.match(first, /^[A-Za-z0-9_-]{43}$/);
   assert.doesNotMatch(first, /admin|example/i);
+});
+
+test('classifies completed admin request outcomes without exposing response bodies', () => {
+  assert.equal(auditOutcomeForHttpStatus(204), 'succeeded');
+  assert.equal(auditOutcomeForHttpStatus(302), 'succeeded');
+  assert.equal(auditOutcomeForHttpStatus(401), 'denied');
+  assert.equal(auditOutcomeForHttpStatus(403), 'denied');
+  assert.equal(auditOutcomeForHttpStatus(404), 'failed');
+  assert.equal(auditOutcomeForHttpStatus(503), 'failed');
+
+  const event = authenticatedRequestAuditEvent(
+    {
+      adminId: 'admin-1',
+      method: 'delete',
+      baseUrl: '/api/orders',
+      routePath: '/admin/:id',
+      resourceId: 'order-1',
+    },
+    'succeeded'
+  );
+  assert.equal(event.outcome, 'succeeded');
+  assert.equal(Object.hasOwn(event, 'responseBody'), false);
 });
