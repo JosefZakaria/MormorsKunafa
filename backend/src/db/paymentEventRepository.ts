@@ -94,3 +94,35 @@ export async function listPaymentSecurityAlerts(limit = 25): Promise<PaymentSecu
     }];
   });
 }
+
+export async function getPaymentSecurityAlert(eventId: string): Promise<PaymentSecurityAlert | null> {
+  if (!/^evt_[A-Za-z0-9_]{8,255}$/.test(eventId)) return null;
+  const { data, error } = await supabase
+    .from('payment_provider_events')
+    .select('event_id, event_type, outcome, order_id, received_at, processed_at')
+    .eq('provider', 'stripe')
+    .eq('event_id', eventId)
+    .eq('status', 'processed')
+    .maybeSingle();
+  if (error) {
+    logSupabaseError('get payment security alert', error);
+    throw error;
+  }
+  if (!data) return null;
+  const row = data as Row;
+  if (
+    !isPaymentSecurityAlertOutcome(row.outcome)
+    || row.event_type !== 'checkout.session.completed'
+    || !Number.isFinite(Date.parse(String(row.received_at ?? '')))
+  ) return null;
+  const orderId = String(row.order_id ?? '').trim();
+  const processedAt = String(row.processed_at ?? '').trim();
+  return {
+    eventId,
+    eventType: 'checkout.session.completed',
+    outcome: row.outcome,
+    ...(orderId ? { orderId } : {}),
+    receivedAt: String(row.received_at),
+    ...(processedAt && Number.isFinite(Date.parse(processedAt)) ? { processedAt } : {}),
+  };
+}

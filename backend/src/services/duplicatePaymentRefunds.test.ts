@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type Stripe from 'stripe';
-import { validateDuplicateStripePayment } from './duplicatePaymentRefunds.js';
+import {
+  expectedDuplicateRefundConfirmation,
+  validateDuplicateStripePayment,
+} from './duplicatePaymentRefunds.js';
 
 const orderId = '0aa461da-4f24-45ed-b1f2-79d6a7bb72d2';
 const originalSessionId = 'cs_test_original_session';
@@ -61,3 +64,10 @@ for (const [name, candidateOrder, override] of rejected) {
     assert.equal(validateDuplicateStripePayment(candidateOrder, duplicate(override)).ok, false);
   });
 }
+
+test('binds the destructive confirmation phrase to the visible order number', () => {
+  assert.equal(
+    expectedDuplicateRefundConfirmation('#1042'),
+    'ÅTERBETALA DUBBELBETALNING #1042'
+  );
+});

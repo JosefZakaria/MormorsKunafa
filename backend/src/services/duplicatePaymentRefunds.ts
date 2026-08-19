@@ -1,12 +1,21 @@
 import type Stripe from 'stripe';
 import type { Row } from '../db/connection.js';
+import { getOrderById } from '../db/orderRepository.js';
 import { validateStripeCheckoutSessionOrderFields } from '../utils/confirmStripeCheckout.js';
+import { isExpectedStripeEventMode } from '../utils/stripeSecurity.js';
+import { getStripe } from './stripeClient.js';
+import { stripeRefundOutcome, type ProviderRefundOutcome } from './refundProviders.js';
 
 export type VerifiedDuplicateStripePayment = {
   orderId: string;
   sessionId: string;
   paymentIntentId: string;
   amountOre: number;
+};
+
+export type DuplicateStripePaymentContext = {
+  payment: VerifiedDuplicateStripePayment;
+  orderNumber: string;
 };
 
 /**
@@ -52,4 +61,55 @@ export function validateDuplicateStripePayment(
       amountOre: fields.paidAmountOre,
     },
   };
+}
+
+export async function getDuplicateStripePaymentContext(
+  eventId: string
+): Promise<DuplicateStripePaymentContext> {
+  if (!/^evt_[A-Za-z0-9_]{8,255}$/.test(eventId)) {
+    throw new Error('Invalid Stripe event identifier');
+  }
+  const stripe = getStripe();
+  const event = await stripe.events.retrieve(eventId);
+  if (
+    event.id !== eventId
+    || event.type !== 'checkout.session.completed'
+    || !isExpectedStripeEventMode(event.livemode)
+    || event.data.object.object !== 'checkout.session'
+  ) {
+    throw new Error('Stripe event is not an eligible checkout completion');
+  }
+  const eventSession = event.data.object as Stripe.Checkout.Session;
+  const session = await stripe.checkout.sessions.retrieve(eventSession.id);
+  if (session.id !== eventSession.id) throw new Error('Stripe returned another Checkout Session');
+  const orderId = session.metadata?.orderId?.trim() ?? '';
+  const order = orderId ? await getOrderById(orderId) : null;
+  if (!order) throw new Error('Duplicate payment order does not exist');
+  const verified = validateDuplicateStripePayment(order.order, session);
+  if (!verified.ok) throw new Error(verified.reason);
+  const orderNumber = String(order.order.order_number ?? '').trim();
+  if (!orderNumber) throw new Error('Duplicate payment order number is missing');
+  return { payment: verified.payment, orderNumber };
+}
+
+export async function createDuplicateStripeRefund(input: {
+  refundId: string;
+  eventId: string;
+  payment: VerifiedDuplicateStripePayment;
+}): Promise<ProviderRefundOutcome> {
+  const refund = await getStripe().refunds.create({
+    payment_intent: input.payment.paymentIntentId,
+    amount: input.payment.amountOre,
+    reason: 'duplicate',
+    metadata: {
+      orderId: input.payment.orderId,
+      duplicateRefundId: input.refundId,
+      duplicatePaymentEventId: input.eventId,
+    },
+  }, { idempotencyKey: `duplicate-payment-refund-${input.refundId}` });
+  return stripeRefundOutcome(refund);
+}
+
+export function expectedDuplicateRefundConfirmation(orderNumber: string): string {
+  return `ÅTERBETALA DUBBELBETALNING ${orderNumber}`;
 }

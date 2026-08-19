@@ -6,6 +6,7 @@ import ordersRouter from './routes/orders.js';
 import adminRouter from './routes/admin.js';
 import maintenanceRouter from './routes/maintenance.js';
 import refundsRouter from './routes/refunds.js';
+import paymentAlertsRouter from './routes/paymentAlerts.js';
 import { handleStripeWebhook } from './routes/stripeWebhook.js';
 import { handleSwishCallback } from './routes/swishCallback.js';
 import { handleSwishRefundCallback } from './routes/swishRefundCallback.js';
@@ -89,6 +90,7 @@ app.use('/api/products', requireCsrfProtection);
 app.use('/api/products', productsRouter);
 app.use('/api/orders/admin', refundsRouter);
 app.use('/api/orders', ordersRouter);
+app.use('/api/admin/payment-alerts', paymentAlertsRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/internal/maintenance', maintenanceRouter);
 
