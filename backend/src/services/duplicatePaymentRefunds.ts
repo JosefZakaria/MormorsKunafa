@@ -110,6 +110,43 @@ export async function createDuplicateStripeRefund(input: {
   return stripeRefundOutcome(refund);
 }
 
+export function validateDuplicateStripeRefundEvent(
+  refund: Stripe.Refund,
+  expected: {
+    refundId: string;
+    eventId: string;
+    orderId: string;
+    paymentIntentId: string;
+    amountOre: number;
+    providerRefundId?: string;
+  }
+): { ok: true; outcome: ProviderRefundOutcome } | { ok: false; reason: string } {
+  if (
+    refund.metadata?.duplicateRefundId !== expected.refundId
+    || refund.metadata?.duplicatePaymentEventId !== expected.eventId
+    || refund.metadata?.orderId !== expected.orderId
+  ) {
+    return { ok: false, reason: 'Duplicate refund metadata mismatch' };
+  }
+  if (expected.providerRefundId && refund.id !== expected.providerRefundId) {
+    return { ok: false, reason: 'Duplicate refund ID mismatch' };
+  }
+  if (refund.amount !== expected.amountOre || String(refund.currency).toLowerCase() !== 'sek') {
+    return { ok: false, reason: 'Duplicate refund amount mismatch' };
+  }
+  const paymentIntentId = typeof refund.payment_intent === 'string'
+    ? refund.payment_intent
+    : refund.payment_intent?.id;
+  if (paymentIntentId !== expected.paymentIntentId) {
+    return { ok: false, reason: 'Duplicate refund payment intent mismatch' };
+  }
+  try {
+    return { ok: true, outcome: stripeRefundOutcome(refund) };
+  } catch {
+    return { ok: false, reason: 'Unexpected duplicate refund status' };
+  }
+}
+
 export function expectedDuplicateRefundConfirmation(orderNumber: string): string {
   return `ÅTERBETALA DUBBELBETALNING ${orderNumber}`;
 }

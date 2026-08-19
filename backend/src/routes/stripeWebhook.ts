@@ -25,6 +25,12 @@ import {
   validateStripeRefundSession,
 } from '../services/refundProviders.js';
 import { isCanonicalUuidV4 } from '../utils/resourceId.js';
+import {
+  finalizeDuplicateStripeRefund,
+  getDuplicateStripeRefundByEvent,
+  setDuplicateStripeRefundProviderReference,
+} from '../db/duplicateStripeRefundRepository.js';
+import { validateDuplicateStripeRefundEvent } from '../services/duplicatePaymentRefunds.js';
 
 async function markOrderPaidFromSession(
   session: Stripe.Checkout.Session
@@ -58,6 +64,45 @@ async function markOrderPaidFromSession(
 async function reconcileStripeRefundEvent(
   refund: Stripe.Refund
 ): Promise<{ orderId: string | null; outcome: string }> {
+  const duplicateEventId = refund.metadata?.duplicatePaymentEventId?.trim();
+  const duplicateRefundId = refund.metadata?.duplicateRefundId?.trim();
+  if (duplicateEventId || duplicateRefundId) {
+    if (
+      !duplicateEventId
+      || !/^evt_[A-Za-z0-9_]{8,255}$/.test(duplicateEventId)
+      || !isCanonicalUuidV4(duplicateRefundId)
+    ) {
+      return { orderId: null, outcome: 'ignored_invalid_duplicate_refund_metadata' };
+    }
+    const duplicate = await getDuplicateStripeRefundByEvent(duplicateEventId);
+    if (!duplicate || duplicate.id !== duplicateRefundId) {
+      return { orderId: null, outcome: 'ignored_unknown_duplicate_refund' };
+    }
+    const validation = validateDuplicateStripeRefundEvent(refund, {
+      refundId: duplicate.id,
+      eventId: duplicate.eventId,
+      orderId: duplicate.orderId,
+      amountOre: duplicate.amountOre,
+      paymentIntentId: duplicate.paymentIntentId,
+      providerRefundId: duplicate.providerRefundId,
+    });
+    if (!validation.ok) throw new Error(validation.reason);
+    if (!duplicate.providerRefundId) {
+      await setDuplicateStripeRefundProviderReference(duplicate.id, refund.id);
+    }
+    if (validation.outcome.status !== 'pending') {
+      await finalizeDuplicateStripeRefund({
+        refundId: duplicate.id,
+        succeeded: validation.outcome.status === 'succeeded',
+        failureCode: validation.outcome.failureCode,
+      });
+    }
+    return {
+      orderId: duplicate.orderId,
+      outcome: `duplicate_refund_${validation.outcome.status}`,
+    };
+  }
+
   const refundId = refund.metadata?.refundId?.trim();
   const orderId = refund.metadata?.orderId?.trim();
   if (!isCanonicalUuidV4(refundId) || !isCanonicalUuidV4(orderId)) {

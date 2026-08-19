@@ -3,6 +3,7 @@ import test from 'node:test';
 import type Stripe from 'stripe';
 import {
   expectedDuplicateRefundConfirmation,
+  validateDuplicateStripeRefundEvent,
   validateDuplicateStripePayment,
 } from './duplicatePaymentRefunds.js';
 
@@ -71,3 +72,46 @@ test('binds the destructive confirmation phrase to the visible order number', ()
     'ÅTERBETALA DUBBELBETALNING #1042'
   );
 });
+
+function refund(overrides: Partial<Stripe.Refund> = {}): Stripe.Refund {
+  return {
+    id: 're_test_duplicate_refund',
+    object: 'refund',
+    amount: 17_900,
+    currency: 'sek',
+    status: 'succeeded',
+    payment_intent: 'pi_test_duplicate_payment',
+    metadata: {
+      duplicateRefundId: 'c5260eea-8f4f-4a12-a58f-79de348de289',
+      duplicatePaymentEventId: 'evt_test_duplicate_payment',
+      orderId,
+    },
+    ...overrides,
+  } as Stripe.Refund;
+}
+
+const expectedRefund = {
+  refundId: 'c5260eea-8f4f-4a12-a58f-79de348de289',
+  eventId: 'evt_test_duplicate_payment',
+  orderId,
+  paymentIntentId: 'pi_test_duplicate_payment',
+  amountOre: 17_900,
+};
+
+test('accepts only an exact signed duplicate refund result', () => {
+  assert.deepEqual(validateDuplicateStripeRefundEvent(refund(), expectedRefund), {
+    ok: true,
+    outcome: { providerRefundId: 're_test_duplicate_refund', status: 'succeeded' },
+  });
+});
+
+for (const [name, override] of [
+  ['metadata', { metadata: { ...refund().metadata, orderId: 'another-order' } }],
+  ['amount', { amount: 1 }],
+  ['currency', { currency: 'eur' }],
+  ['payment intent', { payment_intent: 'pi_other_payment' }],
+] as Array<[string, Partial<Stripe.Refund>]>) {
+  test(`rejects a duplicate Stripe refund ${name} mismatch`, () => {
+    assert.equal(validateDuplicateStripeRefundEvent(refund(override), expectedRefund).ok, false);
+  });
+}
