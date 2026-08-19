@@ -70,7 +70,7 @@ router.post('/:orderId', swishStartLimiter, async (req: Request, res: Response) 
     }
 
     const orderId = req.params.orderId;
-    if (!requireOrderStatusToken(req, res, orderId)) return;
+    if (!await requireOrderStatusToken(req, res, orderId)) return;
     const order = await fetchOrderRow(orderId);
     if (!order) {
       res.status(404).json({ error: 'Order not found' });
@@ -160,7 +160,7 @@ router.post('/:orderId', swishStartLimiter, async (req: Request, res: Response) 
 router.get('/:orderId/status', swishStatusLimiter, async (req: Request, res: Response) => {
   try {
     const orderId = req.params.orderId;
-    if (!requireOrderStatusToken(req, res, orderId)) return;
+    if (!await requireOrderStatusToken(req, res, orderId)) return;
     const order = await fetchOrderRow(orderId);
     if (!order) {
       res.status(404).json({ error: 'Order not found' });

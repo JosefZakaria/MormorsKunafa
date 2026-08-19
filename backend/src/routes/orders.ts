@@ -262,6 +262,7 @@ router.post('/', orderLimiter, orderContactLimiter, async (req: Request, res: Re
     idempotencyContext = idempotency.context;
 
     const orderId = generateId();
+    const statusAccess = createOrderStatusToken(orderId);
     const orderInsert = {
       id: orderId,
       status: 'ny',
@@ -275,6 +276,8 @@ router.post('/', orderLimiter, orderContactLimiter, async (req: Request, res: Re
       customer_email: customer.customerEmail,
       customer_phone: customer.customerPhone,
       delivery_info_json: customer.deliveryInfo,
+      order_status_token_hash: statusAccess.tokenHash,
+      order_status_token_expires_at: statusAccess.expiresAt,
     };
 
     const itemRows: Array<{
@@ -332,7 +335,7 @@ router.post('/', orderLimiter, orderContactLimiter, async (req: Request, res: Re
 
     const responseBody = {
       ...orderRowToOrder(result.order, result.items),
-      statusToken: createOrderStatusToken(orderId),
+      statusToken: statusAccess.token,
     };
     try {
       await completeOrderIdempotency(idempotencyContext, responseBody);
@@ -380,7 +383,7 @@ router.post('/checkout-session/:orderId', checkoutLimiter, async (req: Request, 
     }
 
     const orderId = req.params.orderId;
-    if (!requireOrderStatusToken(req, res, orderId)) return;
+    if (!await requireOrderStatusToken(req, res, orderId)) return;
     const result = await getOrderById(orderId);
     if (!result) {
       res.status(404).json({ error: 'Order not found' });
@@ -507,7 +510,7 @@ router.post('/stripe-confirm', paymentConfirmLimiter, async (req: Request, res: 
       res.status(400).json({ error: 'orderId and sessionId required' });
       return;
     }
-    if (!requireOrderStatusToken(req, res, orderId)) return;
+    if (!await requireOrderStatusToken(req, res, orderId)) return;
 
     const outcome = await confirmStripeCheckoutSession(orderId, sessionId);
     if (!outcome.ok) {
@@ -843,6 +846,34 @@ router.post('/admin/:id/cancel', requireAdmin, async (req: Request, res: Respons
   }
 });
 
+router.post('/admin/:id/revoke-status-token', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { data, error } = await supabase
+      .from('orders')
+      .update({
+        order_status_token_hash: null,
+        order_status_token_expires_at: null,
+        updated_at: nowIso(),
+      })
+      .eq('id', req.params.id)
+      .select('id')
+      .maybeSingle();
+    if (error) {
+      logSupabaseError('POST /admin/:id/revoke-status-token', error);
+      res.status(500).json({ error: 'Failed to revoke order status token' });
+      return;
+    }
+    if (!data) {
+      res.status(404).json({ error: 'Order not found' });
+      return;
+    }
+    res.status(204).send();
+  } catch (error) {
+    logUnexpectedError('POST /admin/:id/revoke-status-token', error);
+    res.status(500).json({ error: 'Failed to revoke order status token' });
+  }
+});
+
 // Admin: update status
 router.patch('/admin/:id/status', requireAdmin, async (req: Request, res: Response) => {
   try {
@@ -1013,7 +1044,7 @@ router.get('/settings', async (_req: Request, res: Response) => {
 
 router.get('/:id', orderStatusLimiter, async (req: Request, res: Response) => {
   try {
-    if (!requireOrderStatusToken(req, res, req.params.id)) return;
+    if (!await requireOrderStatusToken(req, res, req.params.id)) return;
     const order = await fetchOrderRow(req.params.id);
     if (!order) {
       res.status(404).json({ error: 'Order not found' });

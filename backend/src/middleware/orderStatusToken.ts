@@ -1,5 +1,6 @@
-import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import type { Request, Response } from 'express';
+import { logSupabaseError, supabase, type Row } from '../db/connection.js';
 
 const TOKEN_VERSION = 'v1';
 const TOKEN_LIFETIME_SECONDS = 7 * 24 * 60 * 60;
@@ -18,10 +19,22 @@ function signature(orderId: string, expiresAt: string, nonce: string): string {
     .digest('base64url');
 }
 
-export function createOrderStatusToken(orderId: string): string {
-  const expiresAt = String(Math.floor(Date.now() / 1000) + TOKEN_LIFETIME_SECONDS);
+export function hashOrderStatusToken(token: string): string {
+  return createHash('sha256').update(token).digest('base64url');
+}
+
+export function createOrderStatusToken(
+  orderId: string,
+  now = Date.now()
+): { token: string; tokenHash: string; expiresAt: string } {
+  const expiresAtSeconds = String(Math.floor(now / 1000) + TOKEN_LIFETIME_SECONDS);
   const nonce = randomBytes(16).toString('base64url');
-  return `${TOKEN_VERSION}.${expiresAt}.${nonce}.${signature(orderId, expiresAt, nonce)}`;
+  const token = `${TOKEN_VERSION}.${expiresAtSeconds}.${nonce}.${signature(orderId, expiresAtSeconds, nonce)}`;
+  return {
+    token,
+    tokenHash: hashOrderStatusToken(token),
+    expiresAt: new Date(Number(expiresAtSeconds) * 1000).toISOString(),
+  };
 }
 
 export function verifyOrderStatusToken(orderId: string, token: string): boolean {
@@ -42,12 +55,58 @@ export function verifyOrderStatusToken(orderId: string, token: string): boolean 
   return expected.length === supplied.length && timingSafeEqual(expected, supplied);
 }
 
-export function requireOrderStatusToken(req: Request, res: Response, orderId: string): boolean {
+export function verifyStoredOrderStatusToken(
+  orderId: string,
+  token: string,
+  storedHash: unknown,
+  storedExpiresAt: unknown,
+  now = Date.now()
+): boolean {
+  if (!verifyOrderStatusToken(orderId, token)) return false;
+  const hash = typeof storedHash === 'string' ? storedHash : '';
+  const expiresAt = new Date(String(storedExpiresAt ?? '')).getTime();
+  if (!/^[A-Za-z0-9_-]{43}$/.test(hash) || !Number.isFinite(expiresAt) || expiresAt <= now) {
+    return false;
+  }
+  const expected = Buffer.from(hashOrderStatusToken(token));
+  const supplied = Buffer.from(hash);
+  return expected.length === supplied.length && timingSafeEqual(expected, supplied);
+}
+
+export async function requireOrderStatusToken(
+  req: Request,
+  res: Response,
+  orderId: string
+): Promise<boolean> {
   const header = req.headers['x-order-status-token'];
   const token = Array.isArray(header) ? header[0] : header;
   if (!token || !verifyOrderStatusToken(orderId, token)) {
     res.setHeader('Cache-Control', 'private, no-store');
     res.status(401).json({ error: 'Invalid or expired order status token' });
+    return false;
+  }
+
+  const { data, error } = await supabase
+    .from('orders')
+    .select('order_status_token_hash, order_status_token_expires_at')
+    .eq('id', orderId)
+    .maybeSingle();
+  if (error) {
+    logSupabaseError('requireOrderStatusToken', error);
+    res.status(503).json({ error: 'Order status authentication unavailable' });
+    return false;
+  }
+  if (
+    !data ||
+    !verifyStoredOrderStatusToken(
+      orderId,
+      token,
+      (data as Row).order_status_token_hash,
+      (data as Row).order_status_token_expires_at
+    )
+  ) {
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.status(401).json({ error: 'Invalid, expired or revoked order status token' });
     return false;
   }
   return true;

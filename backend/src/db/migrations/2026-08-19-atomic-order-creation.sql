@@ -6,6 +6,10 @@ BEGIN;
 
 CREATE SEQUENCE IF NOT EXISTS public.order_number_seq AS bigint;
 
+ALTER TABLE public.orders
+  ADD COLUMN IF NOT EXISTS order_status_token_hash text,
+  ADD COLUMN IF NOT EXISTS order_status_token_expires_at timestamptz;
+
 -- Continue above existing numeric display numbers such as #0042. setval(...,
 -- false) means the first nextval() returns the calculated value itself.
 SELECT setval(
@@ -67,7 +71,9 @@ BEGIN
     customer_name,
     customer_email,
     customer_phone,
-    delivery_info_json
+    delivery_info_json,
+    order_status_token_hash,
+    order_status_token_expires_at
   ) VALUES (
     v_order_id,
     v_order_number,
@@ -82,7 +88,9 @@ BEGIN
     NULLIF(p_order->>'customer_name', ''),
     NULLIF(p_order->>'customer_email', ''),
     p_order->>'customer_phone',
-    p_order->'delivery_info_json'
+    p_order->'delivery_info_json',
+    p_order->>'order_status_token_hash',
+    (p_order->>'order_status_token_expires_at')::timestamptz
   );
 
   INSERT INTO public.order_items (
@@ -127,7 +135,14 @@ ALTER TABLE public.orders
   ADD CONSTRAINT orders_payment_method_ck
     CHECK (payment_method IN ('card', 'swish', 'cash', 'app')) NOT VALID,
   ADD CONSTRAINT orders_payment_status_ck
-    CHECK (payment_status IN ('pending', 'paid')) NOT VALID;
+    CHECK (payment_status IN ('pending', 'paid')) NOT VALID,
+  ADD CONSTRAINT orders_status_token_ck CHECK (
+    (order_status_token_hash IS NULL AND order_status_token_expires_at IS NULL)
+    OR (
+      order_status_token_hash ~ '^[A-Za-z0-9_-]{43}$'
+      AND order_status_token_expires_at > created_at
+    )
+  ) NOT VALID;
 
 ALTER TABLE public.order_items
   ADD CONSTRAINT order_items_quantity_ck CHECK (quantity BETWEEN 1 AND 50) NOT VALID,

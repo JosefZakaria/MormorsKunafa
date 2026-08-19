@@ -44,7 +44,8 @@ ALTER TABLE public.orders
   VALIDATE CONSTRAINT orders_status_ck,
   VALIDATE CONSTRAINT orders_type_ck,
   VALIDATE CONSTRAINT orders_payment_method_ck,
-  VALIDATE CONSTRAINT orders_payment_status_ck;
+  VALIDATE CONSTRAINT orders_payment_status_ck,
+  VALIDATE CONSTRAINT orders_status_token_ck;
 
 ALTER TABLE public.order_items
   VALIDATE CONSTRAINT order_items_quantity_ck,
@@ -53,6 +54,9 @@ ALTER TABLE public.order_items
 
 Smoke-test a complete checkout in staging. If the function is missing, the new
 backend intentionally fails closed instead of returning a partially saved order.
+The same migration stores only a SHA-256 hash of each seven-day customer status
+token. Revocation clears that hash; existing legacy tokens intentionally stop
+working after deployment.
 
 ## 2026-08-19 admin session revocation
 
