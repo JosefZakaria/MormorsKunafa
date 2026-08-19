@@ -5,6 +5,10 @@ import { requireAdmin } from '../middleware/auth.js';
 import { isCanonicalUuidV4 } from '../utils/resourceId.js';
 import { logUnexpectedError } from '../utils/safeErrorMetadata.js';
 import type { FoodAllergen, ProductIngredient } from '../shared/types/index.js';
+import {
+  FOOD_ALLERGEN_VALUES,
+  parseVerifiedFoodInformationInput,
+} from '../utils/foodInformationInput.js';
 
 const router = Router();
 
@@ -19,10 +23,7 @@ router.param('id', (_req, res, next, value) => {
 const PRODUCT_COLUMNS =
   'id, name, slug, description, image_url, price_ore, stock_status, created_at, updated_at, ingredients_json, allergens, may_contain_allergens, is_prepacked, food_information_verified_at';
 
-const FOOD_ALLERGENS = new Set<FoodAllergen>([
-  'gluten', 'crustaceans', 'eggs', 'fish', 'peanuts', 'soybeans', 'milk',
-  'nuts', 'celery', 'mustard', 'sesame', 'sulphites', 'lupin', 'molluscs',
-]);
+const FOOD_ALLERGENS = new Set<FoodAllergen>(FOOD_ALLERGEN_VALUES);
 
 function parseAllergens(value: unknown): FoodAllergen[] {
   if (!Array.isArray(value)) return [];
@@ -160,6 +161,72 @@ router.patch('/:id/stock', requireAdmin, async (req: Request, res: Response) => 
   } catch (e) {
     logUnexpectedError('PATCH /api/products/:id/stock unexpected error', e);
     return res.status(500).json({ error: 'Failed to update stock' });
+  }
+});
+
+router.patch('/:id/food-information', requireAdmin, async (req: Request, res: Response) => {
+  const input = parseVerifiedFoodInformationInput(req.body);
+  if (!input) {
+    return res.status(400).json({
+      error: 'Food information must be complete, consistent and explicitly verified',
+    });
+  }
+  const admin = (req as Request & { admin?: { adminId?: string } }).admin;
+  if (!admin?.adminId) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    const verifiedAt = nowIso();
+    const { data, error } = await supabase
+      .from('products')
+      .update({
+        ingredients_json: input.ingredients,
+        allergens: input.allergens,
+        may_contain_allergens: input.mayContainAllergens,
+        is_prepacked: input.isPrepacked,
+        food_information_verified_at: verifiedAt,
+        food_information_verified_by: admin.adminId,
+        updated_at: verifiedAt,
+      })
+      .eq('id', req.params.id)
+      .select(PRODUCT_COLUMNS)
+      .maybeSingle();
+    if (error) {
+      logSupabaseError('PATCH /api/products/:id/food-information', error);
+      return res.status(500).json({ error: 'Failed to update food information' });
+    }
+    if (!data) return res.status(404).json({ error: 'Product not found' });
+    return res.status(200).json(rowToProduct(data as Row));
+  } catch (error) {
+    logUnexpectedError('PATCH /api/products/:id/food-information unexpected error', error);
+    return res.status(500).json({ error: 'Failed to update food information' });
+  }
+});
+
+router.delete('/:id/food-information', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { data, error } = await supabase
+      .from('products')
+      .update({
+        ingredients_json: null,
+        allergens: null,
+        may_contain_allergens: null,
+        is_prepacked: null,
+        food_information_verified_at: null,
+        food_information_verified_by: null,
+        updated_at: nowIso(),
+      })
+      .eq('id', req.params.id)
+      .select(PRODUCT_COLUMNS)
+      .maybeSingle();
+    if (error) {
+      logSupabaseError('DELETE /api/products/:id/food-information', error);
+      return res.status(500).json({ error: 'Failed to revoke food information' });
+    }
+    if (!data) return res.status(404).json({ error: 'Product not found' });
+    return res.status(200).json(rowToProduct(data as Row));
+  } catch (error) {
+    logUnexpectedError('DELETE /api/products/:id/food-information unexpected error', error);
+    return res.status(500).json({ error: 'Failed to revoke food information' });
   }
 });
 
