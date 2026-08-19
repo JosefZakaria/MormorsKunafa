@@ -60,12 +60,17 @@ const IconDelivery = () => (
     </svg>
 );
 
+const DEFAULT_HERO_DESKTOP = '/images/kunafa-ashta.jpg';
+const DEFAULT_HERO_MOBILE = '/images/ny-kunafa-bild.jpg';
+
 const LOCALE_MAP: Record<string, string> = { sv: 'sv-SE', en: 'en-GB', ar: 'ar' };
 
 export const Landing: React.FC = () => {
     const navigate = useNavigate();
     const { t, language } = useLanguage();
     const [flags, setFlags] = useState<OrderTypeFlags>(DEFAULT_ORDER_TYPE_FLAGS);
+    const [heroDesktop, setHeroDesktop] = useState(DEFAULT_HERO_DESKTOP);
+    const [heroMobile, setHeroMobile] = useState(DEFAULT_HERO_MOBILE);
     const [pausedPopup, setPausedPopup] = useState<OrderType | 'all' | null>(null);
 
     useEffect(() => {
@@ -79,6 +84,8 @@ export const Landing: React.FC = () => {
                     takeawayEnabled: settings.takeawayEnabled !== false,
                     deliveryEnabled: settings.deliveryEnabled !== false,
                 });
+                if (settings.heroImageDesktop) setHeroDesktop(settings.heroImageDesktop);
+                if (settings.heroImageMobile) setHeroMobile(settings.heroImageMobile);
             })
             .catch((err) => {
                 console.error('Failed to fetch public settings:', err);
@@ -115,6 +122,14 @@ export const Landing: React.FC = () => {
         <div className="landing">
             {/* HERO */}
             <section className="landing__hero" id="top">
+                <picture className="landing__hero-media">
+                    <source media="(max-width: 968px)" srcSet={heroMobile} />
+                    <img
+                        src={heroDesktop}
+                        alt=""
+                        className="landing__hero-img"
+                    />
+                </picture>
                 {/* Orderknappar – samma position som tidigare (överlappar hero-kanten) */}
                 <div id="start-order-button-group-placeholder">
                     <div className="landing__actions">

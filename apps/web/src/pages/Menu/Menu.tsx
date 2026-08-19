@@ -194,6 +194,11 @@ export const Menu: React.FC = () => {
                             .filter(
                                 (p) => !MENU_EXCLUDE_PRODUCT_IDS.has(p.id) && !isMenuExcluded(p)
                             )
+                            .sort((a, b) => {
+                                const order = (a.sortOrder || 0) - (b.sortOrder || 0);
+                                if (order !== 0) return order;
+                                return a.name.localeCompare(b.name, 'sv');
+                            })
                             .map((p) => ({
                                 ...p,
                                 image: resolveProductImage(p.id, p.image),
