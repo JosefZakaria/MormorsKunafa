@@ -21,6 +21,7 @@ export const Privacy: React.FC = () => {
               المسؤول عن معالجة بياناتك الشخصية هو:<br />
               <strong>Mormors Kunafa Aktiebolag</strong><br />
               رقم تسجيل الشركة: 559424-4823<br />
+              رقم ضريبة القيمة المضافة: SE559424482301<br />
               العنوان: Karolingatan 1, 212 34 Malmö, السويد<br />
               البريد الإلكتروني: info@mormorskunafa.se<br />
               الهاتف: 072-868 25 92
@@ -65,8 +66,7 @@ export const Privacy: React.FC = () => {
           <section className="legal-section">
             <h2>5. فترة الاحتفاظ بالبيانات (Lagringstid)</h2>
             <p>
-              نحتفظ ببيانات الطلبات والبيانات المالية لمدة <strong>7 سنوات</strong> وفقاً لمتطلبات قانون المحاسبة السويدي (Bokföringslagen). 
-              البيانات الأخرى غير المحاسبية تُحذف أو تُجهل عندما لا نعود بحاجة إليها لإكمال الخدمة.
+              نحتفظ بالسجلات المالية والمحاسبية المطلوبة لمدة <strong>7 سنوات</strong>. بيانات الاتصال والتوصيل والنصوص الحرة التشغيلية ليست سجلات محاسبية تلقائياً، ويتم حذفها أو إخفاء هويتها بعد انتهاء الحاجة التشغيلية وفترة الشكاوى المعتمدة، ما لم ينطبق تعليق قانوني موثق.
             </p>
           </section>
 
@@ -117,6 +117,7 @@ export const Privacy: React.FC = () => {
               The data controller responsible for your personal data is:<br />
               <strong>Mormors Kunafa Aktiebolag</strong><br />
               Company registration number: 559424-4823<br />
+              VAT registration number: SE559424482301<br />
               Address: Karolingatan 1, 212 34 Malmö, Sweden<br />
               Email: info@mormorskunafa.se<br />
               Phone: 072-868 25 92
@@ -161,7 +162,7 @@ export const Privacy: React.FC = () => {
           <section className="legal-section">
             <h2>5. Data Retention</h2>
             <p>
-              Financial records and order receipts are retained for <strong>7 years</strong> in accordance with Swedish bookkeeping laws (Bokföringslagen). Personal data not required by law is deleted once it is no longer needed.
+              Required financial and accounting records are retained for <strong>7 years</strong>. Operational contact, delivery and free-text data are not automatically accounting records and are erased or anonymised after the approved operational and complaint period, unless a documented legal hold applies.
             </p>
           </section>
 
@@ -212,6 +213,7 @@ export const Privacy: React.FC = () => {
             Personuppgiftsansvarig för behandlingen av dina personuppgifter är:<br />
             <strong>Mormors Kunafa Aktiebolag</strong><br />
             Organisationsnummer: 559424-4823<br />
+            Momsregistreringsnummer: SE559424482301<br />
             Adress: Karolingatan 1, 212 34 Malmö<br />
             E-post: info@mormorskunafa.se<br />
             Telefon: 072-868 25 92
@@ -258,8 +260,8 @@ export const Privacy: React.FC = () => {
         <section className="legal-section">
           <h2>5. Hur länge sparar vi dina uppgifter?</h2>
           <p>
-            Order- och betalningsunderlag sparas i <strong>7 år</strong> i enlighet med Bokföringslagen. 
-            Personuppgifter som inte omfattas av lagstadgade krav raderas eller anonymiseras så snart de inte längre behövs för att uppfylla det ändamål de samlades in för.
+            Nödvändiga ekonomiska underlag och bokföringsposter sparas i <strong>7 år</strong> i enlighet med Bokföringslagen.
+            Operativa kontakt-, leverans- och fritextuppgifter är inte automatiskt bokföringsmaterial och raderas eller anonymiseras efter den godkända drift- och reklamationsperioden, om inte en dokumenterad legal hold gäller.
           </p>
         </section>
 

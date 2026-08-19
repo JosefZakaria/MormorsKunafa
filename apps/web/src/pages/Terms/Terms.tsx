@@ -13,13 +13,14 @@ export const Terms: React.FC = () => {
           <p className="legal-lead">
             مرحباً بكم في كنافة جدتي (Mormors Kunafa). تسرنا خدمتكم! توضح هذه الشروط والأحكام قواعد القوانين السويدية المتعلقة بالشراء والتوصيل وحقوق المستهلك.
           </p>
-          <p><strong>الإصدار 2.0 – ساري اعتباراً من 9 أغسطس 2026.</strong></p>
+          <p><strong>الإصدار 2.1 – ساري اعتباراً من 19 أغسطس 2026.</strong></p>
 
           <section className="legal-section">
             <h2>1. معلومات الشركة (Företagsinformation)</h2>
             <p>
               يتم تشغيل هذا الموقع من قبل <strong>Mormors Kunafa Aktiebolag</strong>.<br />
               <strong>رقم تسجيل الشركة:</strong> 559424-4823<br />
+              <strong>رقم ضريبة القيمة المضافة:</strong> SE559424482301<br />
               <strong>العنوان:</strong> Karolingatan 1, 212 34 Malmö, السويد.<br />
               <strong>الهاتف:</strong> 072-868 25 92<br />
               <strong>البريد الإلكتروني:</strong> info@mormorskunafa.se
@@ -42,6 +43,7 @@ export const Terms: React.FC = () => {
               وفقاً لقانون العقود عن بُعد السويدي (Distansavtalslagen الفصل 2 الفقرة 11 البند 4)،
               <strong>لا ينطبق حق الانسحاب القانوني على الأغذية التي يمكن أن تتلف بسرعة.</strong>
             </p>
+            <p>يتم تحضير منتجاتنا يدوياً بعد تقديم الطلب وليست منتجات غذائية معبأة مسبقاً.</p>
             <p>
               يمكننا مع ذلك محاولة إيقاف الطلب قبل بدء التحضير إذا اتصلت فوراً على 072-868 25 92، لكن ذلك غير مضمون.
             </p>
@@ -80,13 +82,14 @@ export const Terms: React.FC = () => {
           <p className="legal-lead">
             Welcome to Mormors Kunafa! These Terms and Conditions govern your purchases and use of our online store in accordance with Swedish and EU consumer laws.
           </p>
-          <p><strong>Version 2.0 – effective 9 August 2026.</strong></p>
+          <p><strong>Version 2.1 – effective 19 August 2026.</strong></p>
 
           <section className="legal-section">
             <h2>1. Company Information</h2>
             <p>
               This website is operated by <strong>Mormors Kunafa Aktiebolag</strong>.<br />
               <strong>Company registration number:</strong> 559424-4823<br />
+              <strong>VAT registration number:</strong> SE559424482301<br />
               <strong>Address:</strong> Karolingatan 1, 212 34 Malmö, Sweden.<br />
               <strong>Phone:</strong> 072-868 25 92<br />
               <strong>Email:</strong> info@mormorskunafa.se
@@ -109,6 +112,7 @@ export const Terms: React.FC = () => {
               Under the Swedish Distance Contracts Act (Distansavtalslagen Ch. 2 § 11 item 4),
               <strong>there is no statutory right of withdrawal for food that can deteriorate quickly.</strong>
             </p>
+            <p>Our products are prepared manually after an order is placed and are not sold as prepacked food.</p>
             <p>
               We may nevertheless be able to stop an order before preparation starts if you call 072-868 25 92 immediately, but this cannot be guaranteed.
             </p>
@@ -146,13 +150,14 @@ export const Terms: React.FC = () => {
         <p className="legal-lead">
           Välkommen till Mormors Kunafa! Dessa köpvillkor gäller för alla beställningar som görs via vår webbplats och följer svensk konsumenträtt, E-handelslagen och Distansavtalslagen.
         </p>
-        <p><strong>Version 2.0 – gäller från och med 9 augusti 2026.</strong></p>
+        <p><strong>Version 2.1 – gäller från och med 19 augusti 2026.</strong></p>
 
         <section className="legal-section">
           <h2>1. Företagsinformation</h2>
           <p>
             Webbplatsen drivs av <strong>Mormors Kunafa Aktiebolag</strong>.<br />
             <strong>Organisationsnummer:</strong> 559424-4823<br />
+            <strong>Momsregistreringsnummer:</strong> SE559424482301<br />
             <strong>Adress:</strong> Karolingatan 1, 212 34 Malmö<br />
             <strong>Telefon:</strong> 072-868 25 92<br />
             <strong>E-post:</strong> info@mormorskunafa.se
@@ -175,6 +180,7 @@ export const Terms: React.FC = () => {
             Enligt lagen om distansavtal och avtal utanför affärslokaler (2005:59, 2 kap. 11 § punkt 4) gäller
             <strong>ingen lagstadgad ångerrätt för varor som snabbt kan försämras eller bli för gamla, exempelvis färsk mat.</strong>
           </p>
+          <p>Våra produkter tillverkas manuellt efter att beställningen har lagts och säljs inte som färdigförpackade livsmedel.</p>
           <p>
             Vi kan ändå försöka stoppa en order innan tillagningen har börjat om du omedelbart ringer 072-868 25 92, men det kan inte garanteras.
           </p>
