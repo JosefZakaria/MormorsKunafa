@@ -524,6 +524,25 @@
     font-weight: 700;
 }
 
+.menu-modal__food-info {
+    margin-bottom: var(--spacing-lg);
+    padding: var(--spacing-md);
+    border: 2px solid #5C2A2F;
+    border-radius: 8px;
+    color: var(--color-gray-800);
+    background: #fffaf4;
+}
+
+.menu-modal__food-info h3 {
+    margin: 0 0 var(--spacing-xs);
+    color: #5C2A2F;
+}
+
+.menu-modal__food-info p {
+    margin: var(--spacing-xs) 0 0;
+    line-height: 1.5;
+}
+
 .menu-modal__footer {
     flex-shrink: 0;
     padding: var(--spacing-md) var(--spacing-lg) var(--spacing-lg);

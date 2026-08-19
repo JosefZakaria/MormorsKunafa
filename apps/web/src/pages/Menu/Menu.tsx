@@ -8,7 +8,7 @@ import { productApi } from '../../services/api';
 import { API_CONFIG } from '@shared/api';
 import { resolveProductImage } from '@shared/utils/productImage.ts';
 import { AllergenNotice } from '../../components/common/AllergenNotice/AllergenNotice';
-import type { Product } from '@shared/types';
+import type { FoodAllergen, Product } from '@shared/types';
 import { getDisplayName, getTranslationIndex } from '../../utils/productDisplayName';
 import {
     BREAD_UNIT_PRICE_ORE,
@@ -25,6 +25,23 @@ import {
 import './Menu.css';
 
 const SHORT_DESC_LENGTH = 100;
+
+const ALLERGEN_LABELS: Record<FoodAllergen, string> = {
+    gluten: 'gluten',
+    crustaceans: 'kräftdjur',
+    eggs: 'ägg',
+    fish: 'fisk',
+    peanuts: 'jordnötter',
+    soybeans: 'soja',
+    milk: 'mjölk',
+    nuts: 'nötter',
+    celery: 'selleri',
+    mustard: 'senap',
+    sesame: 'sesam',
+    sulphites: 'sulfiter',
+    lupin: 'lupin',
+    molluscs: 'blötdjur',
+};
 
 function stripHtmlAndTruncate(html: string, maxLen: number): string {
     const sanitized = DOMPurify.sanitize(html, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] });
@@ -559,6 +576,33 @@ export const Menu: React.FC = () => {
                                     />
                                 );
                             })()}
+                            {selectedProduct.foodInformationVerifiedAt && selectedProduct.ingredients && (
+                                <section className="menu-modal__food-info" aria-label="Ingredienser och allergener">
+                                    <h3>Ingredienser</h3>
+                                    <p>
+                                        {selectedProduct.ingredients.map((ingredient, index) => (
+                                            <React.Fragment key={`${ingredient.name}-${index}`}>
+                                                {index > 0 && ', '}
+                                                {ingredient.allergens?.length
+                                                    ? <strong>{ingredient.name}</strong>
+                                                    : ingredient.name}
+                                            </React.Fragment>
+                                        ))}
+                                    </p>
+                                    <p>
+                                        <strong>Allergener:</strong>{' '}
+                                        {selectedProduct.allergens?.length
+                                            ? selectedProduct.allergens.map((item) => ALLERGEN_LABELS[item]).join(', ')
+                                            : 'Inga deklarerade allergener'}
+                                    </p>
+                                    {!!selectedProduct.mayContainAllergens?.length && (
+                                        <p>
+                                            <strong>Kan innehålla spår av:</strong>{' '}
+                                            {selectedProduct.mayContainAllergens.map((item) => ALLERGEN_LABELS[item]).join(', ')}
+                                        </p>
+                                    )}
+                                </section>
+                            )}
                             <AllergenNotice />
                         </div>
                         <div className="menu-modal__footer">

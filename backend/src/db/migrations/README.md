@@ -108,3 +108,15 @@ internal resource IDs, never request bodies; login email is HMAC-hashed.
 
 Authenticated admin requests fail closed if the audit write fails. Establish a
 documented retention/export process before the table approaches storage limits.
+
+## 2026-08-19 structured food information
+
+Apply `2026-08-19-structured-food-information.sql` before deploying the matching
+product API. It adds a closed list of the 14 regulated allergen categories and a
+structured ingredient list. The API exposes these fields only after
+`food_information_verified_at` and `food_information_verified_by` are set.
+
+Do not mark a product verified from marketing copy. Reconcile every ingredient,
+allergen and trace warning with the current recipe, supplier label and kitchen
+cross-contamination procedure first. Prepacked products may require additional
+mandatory fields beyond this initial structure.

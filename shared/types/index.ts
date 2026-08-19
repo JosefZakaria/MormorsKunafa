@@ -20,6 +20,28 @@ export type PaymentMethod = 'card' | 'swish' | 'cash' | 'app';
 export type CheckoutPaymentChoice = 'card' | 'swish';
 export type RefundStatus = 'none' | 'pending' | 'refunded' | 'failed';
 
+export type FoodAllergen =
+  | 'gluten'
+  | 'crustaceans'
+  | 'eggs'
+  | 'fish'
+  | 'peanuts'
+  | 'soybeans'
+  | 'milk'
+  | 'nuts'
+  | 'celery'
+  | 'mustard'
+  | 'sesame'
+  | 'sulphites'
+  | 'lupin'
+  | 'molluscs';
+
+export interface ProductIngredient {
+  name: string;
+  /** The whole ingredient name is emphasized when it contains an allergen. */
+  allergens?: FoodAllergen[];
+}
+
 // Product Interface
 export interface Product {
   id: string;
@@ -30,6 +52,11 @@ export interface Product {
   inStock: boolean;
   createdAt: string;
   updatedAt: string;
+  ingredients?: ProductIngredient[];
+  allergens?: FoodAllergen[];
+  mayContainAllergens?: FoodAllergen[];
+  isPrepacked?: boolean;
+  foodInformationVerifiedAt?: string;
 }
 
 // Order Item Interface

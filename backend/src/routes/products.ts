@@ -4,6 +4,7 @@ import { supabase, type Row, logSupabaseError, nowIso } from '../db/connection.j
 import { requireAdmin } from '../middleware/auth.js';
 import { isCanonicalUuidV4 } from '../utils/resourceId.js';
 import { logUnexpectedError } from '../utils/safeErrorMetadata.js';
+import type { FoodAllergen, ProductIngredient } from '../shared/types/index.js';
 
 const router = Router();
 
@@ -16,7 +17,31 @@ router.param('id', (_req, res, next, value) => {
 });
 
 const PRODUCT_COLUMNS =
-  'id, name, slug, description, image_url, price_ore, stock_status, created_at, updated_at';
+  'id, name, slug, description, image_url, price_ore, stock_status, created_at, updated_at, ingredients_json, allergens, may_contain_allergens, is_prepacked, food_information_verified_at';
+
+const FOOD_ALLERGENS = new Set<FoodAllergen>([
+  'gluten', 'crustaceans', 'eggs', 'fish', 'peanuts', 'soybeans', 'milk',
+  'nuts', 'celery', 'mustard', 'sesame', 'sulphites', 'lupin', 'molluscs',
+]);
+
+function parseAllergens(value: unknown): FoodAllergen[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is FoodAllergen =>
+    typeof item === 'string' && FOOD_ALLERGENS.has(item as FoodAllergen)
+  );
+}
+
+function parseIngredients(value: unknown): ProductIngredient[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!item || typeof item !== 'object') return [];
+    const row = item as Record<string, unknown>;
+    const name = typeof row.name === 'string' ? row.name.trim().slice(0, 200) : '';
+    if (!name) return [];
+    const allergens = parseAllergens(row.allergens);
+    return [{ name, ...(allergens.length ? { allergens } : {}) }];
+  }).slice(0, 100);
+}
 
 function rowToProduct(r: Row): {
   id: string;
@@ -27,12 +52,17 @@ function rowToProduct(r: Row): {
   inStock: boolean;
   createdAt: string;
   updatedAt: string;
+  ingredients?: ProductIngredient[];
+  allergens?: FoodAllergen[];
+  mayContainAllergens?: FoodAllergen[];
+  isPrepacked?: boolean;
+  foodInformationVerifiedAt?: string;
 } {
   const status = (r.stock_status as string) ?? 'instock';
   const inStock = status === 'instock';
   const createdAt = r.created_at as string | Date | undefined;
   const updatedAt = r.updated_at as string | Date | undefined;
-  return {
+  const product = {
     id: String(r.id),
     name: String(r.name),
     price: Number(r.price_ore),
@@ -43,6 +73,17 @@ function rowToProduct(r: Row): {
       createdAt instanceof Date ? createdAt.toISOString() : String(createdAt ?? ''),
     updatedAt:
       updatedAt instanceof Date ? updatedAt.toISOString() : String(updatedAt ?? ''),
+  };
+  const verifiedAt = String(r.food_information_verified_at ?? '').trim();
+  if (!verifiedAt) return product;
+
+  return {
+    ...product,
+    ingredients: parseIngredients(r.ingredients_json),
+    allergens: parseAllergens(r.allergens),
+    mayContainAllergens: parseAllergens(r.may_contain_allergens),
+    isPrepacked: r.is_prepacked === true,
+    foodInformationVerifiedAt: verifiedAt,
   };
 }
 
