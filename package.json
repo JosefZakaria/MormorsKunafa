@@ -25,7 +25,8 @@
     "test": "npm run test:backend && npm run typecheck:mobile",
     "test:backend": "npm run test --workspace=@mormors-kunafa/backend",
     "typecheck:mobile": "npm exec --workspace=@mormors-kunafa/mobile -- tsc --noEmit",
-    "check": "npm run build:web && npm test",
+    "check": "npm run build:web && npm run verify:web-build && npm test",
+    "verify:web-build": "node scripts/verify-web-build-security.mjs",
     "web:build": "npm run build --workspace=apps/web",
     "web:preview": "npm run preview --workspace=apps/web"
   },
