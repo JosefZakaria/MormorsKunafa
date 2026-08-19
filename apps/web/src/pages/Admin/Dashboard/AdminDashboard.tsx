@@ -913,6 +913,10 @@ export const AdminDashboard: React.FC = () => {
     }, []);
 
     useEffect(() => {
+        if (activeTab === 'menu') {
+            productApi.getAll().then(setProducts).catch(() => undefined);
+            return;
+        }
         if (activeTab !== 'stock') return;
         const refresh = () => productApi.getAll().then(setProducts).catch(() => undefined);
         const id = setInterval(refresh, 5000);
@@ -1592,7 +1596,10 @@ export const AdminDashboard: React.FC = () => {
                     {activeTab === 'menu' && (
                         <MenuTab
                             settings={settings}
+                            products={products}
+                            loadingProducts={loadingProducts}
                             onSettingsChange={setSettings}
+                            onProductsChange={setProducts}
                             onError={setError}
                         />
                     )}

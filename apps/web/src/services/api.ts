@@ -35,6 +35,41 @@ export const productApi = {
       token,
     });
   },
+
+  create: async (data: {
+    name: string;
+    price: number;
+    description?: string;
+    image?: string;
+  }): Promise<Product> => {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    return authenticatedRequest<Product>('/products', {
+      method: 'POST',
+      body: JSON.stringify(data),
+      token,
+    });
+  },
+
+  update: async (
+    id: string,
+    data: {
+      name?: string;
+      price?: number;
+      description?: string;
+      image?: string;
+    }
+  ): Promise<Product> => {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    return authenticatedRequest<Product>(`/products/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+      token,
+    });
+  },
 };
 
 // Orders API
