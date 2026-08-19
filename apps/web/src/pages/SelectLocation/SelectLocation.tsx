@@ -25,7 +25,11 @@ export const SelectLocation: React.FC = () => {
 
                     <form onSubmit={handleSubmit} className="select-location-form">
                         <div className="form-group">
+                            <label htmlFor="location-city" className="location-label">
+                                {t('select_location.title')}
+                            </label>
                             <select
+                                id="location-city"
                                 className="location-select"
                                 value={city}
                                 onChange={(e) => setCity(e.target.value)}

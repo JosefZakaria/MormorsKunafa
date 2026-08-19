@@ -22,10 +22,13 @@ export const ToastProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     const newToast: Toast = { id, message, type };
     setToasts((prev) => [...prev, newToast]);
 
-    // Auto-remove after 3 seconds
-    setTimeout(() => {
-      removeToast(id);
-    }, 3000);
+    // Errors require an explicit dismissal so important information does not
+    // disappear before keyboard or assistive-technology users can review it.
+    if (type !== 'error') {
+      setTimeout(() => {
+        removeToast(id);
+      }, 5000);
+    }
   };
 
   const removeToast = (id: string) => {
