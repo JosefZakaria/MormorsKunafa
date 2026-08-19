@@ -13,7 +13,8 @@ WITH expected_tables(table_name) AS (
     ('payment_provider_events'),
     ('security_audit_log'),
     ('order_refunds'),
-    ('order_refund_items')
+    ('order_refund_items'),
+    ('duplicate_stripe_refunds')
 )
 SELECT expected_tables.table_name AS missing_or_unprotected_table
 FROM expected_tables

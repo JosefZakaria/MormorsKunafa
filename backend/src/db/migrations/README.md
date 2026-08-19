@@ -202,3 +202,18 @@ plaintext password outside Git and deployment configuration. Stripe's signed
 webhook must subscribe to `refund.created`, `refund.updated` and `refund.failed`
 in addition to `checkout.session.completed`; Swish continues to use the verified
 mTLS callback endpoint.
+
+## 2026-08-19 duplicate Stripe refunds
+
+Apply `2026-08-19-duplicate-stripe-refunds.sql` after the Stripe event,
+immutable audit and provider-refund migrations, and before deploying the
+matching backend. It creates a separate ledger for a verified second paid
+Checkout Session. It deliberately does not change item allocations, the
+original order's refunded amount or its fulfillment status.
+
+The reservation function accepts only an already-processed
+`alert_paid_session_validation_failed` event tied to the same already-paid
+card order. The backend additionally retrieves the canonical Stripe event and
+session and requires an exact order, amount, currency and payment-mode match
+with a session ID different from the stored original. Test the three-step admin
+confirmation in Stripe test mode before enabling this operation in production.

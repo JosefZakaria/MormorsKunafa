@@ -19,7 +19,8 @@ BEGIN
     'payment_provider_events',
     'security_audit_log',
     'order_refunds',
-    'order_refund_items'
+    'order_refund_items',
+    'duplicate_stripe_refunds'
   ]
   LOOP
     IF to_regclass(format('public.%I', protected_table)) IS NULL THEN
