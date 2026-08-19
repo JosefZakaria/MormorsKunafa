@@ -4,7 +4,8 @@ import { requireMaintenanceAuthorization } from '../middleware/maintenanceAuth.j
 import { logUnexpectedError } from '../utils/safeErrorMetadata.js';
 
 const router = Router();
-const RETENTION_HOURS = 48;
+// The cron runs daily, so a 24-hour cutoff removes drafts after 24–48 hours.
+const RETENTION_HOURS = 24;
 const BATCH_SIZE = 500;
 const MAX_BATCHES = 10;
 

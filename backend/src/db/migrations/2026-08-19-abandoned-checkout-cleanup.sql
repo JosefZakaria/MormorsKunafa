@@ -16,8 +16,8 @@ AS $$
 DECLARE
   v_deleted integer := 0;
 BEGIN
-  IF p_before > now() - interval '48 hours' THEN
-    RAISE EXCEPTION 'cleanup cutoff must be at least 48 hours old' USING ERRCODE = '22023';
+  IF p_before > now() - interval '24 hours' THEN
+    RAISE EXCEPTION 'cleanup cutoff must be at least 24 hours old' USING ERRCODE = '22023';
   END IF;
   IF p_limit NOT BETWEEN 1 AND 500 THEN
     RAISE EXCEPTION 'cleanup batch size must be between 1 and 500' USING ERRCODE = '22023';

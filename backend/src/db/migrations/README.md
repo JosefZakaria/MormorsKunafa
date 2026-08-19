@@ -96,8 +96,9 @@ ORDER BY received_at DESC;
 ## 2026-08-19 abandoned checkout cleanup
 
 Apply `2026-08-19-abandoned-checkout-cleanup.sql` before enabling the matching
-daily Vercel cron. The function refuses cutoffs newer than 48 hours and deletes
-at most 500 rows per transaction using `SKIP LOCKED`.
+daily Vercel cron. The function refuses cutoffs newer than 24 hours and deletes
+at most 500 rows per transaction using `SKIP LOCKED`. A 24-hour cutoff combined
+with the daily schedule removes eligible drafts after 24–48 hours.
 
 It only removes `pending` online-payment drafts that have neither a Stripe
 Checkout Session ID nor a Swish instruction ID. This is intentional: initiated
