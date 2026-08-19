@@ -54,7 +54,9 @@ ORDER BY routine_name, grantee;
 WITH expected_functions(function_name) AS (
   VALUES
     ('list_initiated_checkout_drafts'),
-    ('delete_reconciled_checkout_draft')
+    ('delete_reconciled_checkout_draft'),
+    ('preview_operational_order_pii_retention'),
+    ('anonymize_operational_order_pii')
 )
 SELECT expected_functions.function_name AS missing_or_unsafe_reconciliation_function
 FROM expected_functions
@@ -67,6 +69,27 @@ WHERE functions.oid IS NULL
    OR schemas.oid IS NULL
    OR NOT functions.prosecdef
    OR NOT ('search_path=public, pg_temp' = ANY(functions.proconfig));
+
+-- This result must be empty. Anonymized orders must not retain operational
+-- contact fields, free text or customer status credentials.
+SELECT id AS incompletely_anonymized_order
+FROM public.orders
+WHERE operational_pii_anonymized_at IS NOT NULL
+  AND (
+    customer_name IS NOT NULL
+    OR customer_email IS NOT NULL
+    OR COALESCE(customer_phone, '') <> ''
+    OR delivery_info_json IS NOT NULL
+    OR internal_notes IS NOT NULL
+    OR cancellation_reason IS NOT NULL
+    OR order_status_token_hash IS NOT NULL
+    OR order_status_token_expires_at IS NOT NULL
+    OR EXISTS (
+      SELECT 1 FROM public.order_items
+      WHERE order_items.order_id = orders.id
+        AND order_items.modifications_json IS NOT NULL
+    )
+  );
 
 -- NOT VALID constraints are intentional during deployment, but this must be
 -- empty after the documented data preflight and VALIDATE CONSTRAINT steps.

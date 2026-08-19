@@ -161,6 +161,33 @@ Any future direct Supabase client access requires a separate, narrowly scoped
 policy and a security review. Do not add a broad `USING (true)` policy to make a
 failing client work.
 
+## 2026-08-19 operational order PII retention
+
+Apply `2026-08-19-operational-pii-retention.sql` after the immutable audit
+migration. It adds an explicit legal-hold flag and two service-role-only RPCs.
+Neither the migration nor the daily checkout cleanup schedules fulfilled-order
+anonymization automatically.
+
+Before execution, the controller and accountant must approve the operational
+retention interval and confirm that the preserved order number, product, amount,
+payment and refund fields cover the required accounting evidence. Start with the
+authenticated maintenance endpoint in dry-run mode:
+
+```json
+{"retentionDays":365,"limit":100,"dryRun":true}
+```
+
+Review every returned order ID and number without exporting customer data. Set
+`operational_pii_legal_hold = true` for disputes, active rights requests,
+incidents or other documented holds. Only then repeat the exact request with
+`"dryRun":false`. The operation clears contact/address data, internal free text,
+customer status tokens and item modification text, while preserving financial
+and provider records. Each changed order receives an immutable audit event.
+
+Run small batches, retain only counts and non-secret execution metadata, and
+never add this endpoint to Vercel Cron until the approved interval and an owner
+have been recorded in the restricted operations journal.
+
 ## 2026-08-19 provider refunds
 
 Apply `2026-08-19-provider-refunds.sql` only after the immutable audit migration

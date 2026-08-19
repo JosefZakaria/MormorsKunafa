@@ -7,6 +7,14 @@ import {
   reconcileInitiatedCheckoutDraft,
   type CheckoutDraftReconciliationOutcome,
 } from '../services/checkoutDraftReconciliation.js';
+import {
+  anonymizeOperationalOrderPii,
+  previewOperationalOrderPiiRetention,
+} from '../db/orderPiiRetentionRepository.js';
+import {
+  operationalPiiCutoff,
+  parseOperationalPiiRetentionRequest,
+} from '../utils/orderPiiRetention.js';
 
 const router = Router();
 // The cron runs daily, so a 24-hour cutoff removes drafts after 24–48 hours.
@@ -92,6 +100,46 @@ router.get(
     } catch (error) {
       logUnexpectedError('cleanup uninitiated checkout drafts failed', error);
       res.status(500).json({ error: 'Cleanup failed' });
+    }
+  }
+);
+
+router.post(
+  '/operational-order-pii-retention',
+  requireMaintenanceAuthorization,
+  async (req: Request, res: Response) => {
+    res.setHeader('Cache-Control', 'private, no-store');
+    const request = parseOperationalPiiRetentionRequest(req.body);
+    if (!request) {
+      res.status(400).json({
+        error: 'retentionDays must be 30-3650, limit must be 1-500, and dryRun must be boolean',
+      });
+      return;
+    }
+
+    try {
+      const cutoff = operationalPiiCutoff(request.retentionDays);
+      if (request.dryRun) {
+        const candidates = await previewOperationalOrderPiiRetention(cutoff, request.limit);
+        res.json({
+          ok: true,
+          dryRun: true,
+          cutoff,
+          candidateCount: candidates.length,
+          candidates,
+        });
+        return;
+      }
+
+      const anonymized = await anonymizeOperationalOrderPii(cutoff, request.limit);
+      console.info('[maintenance] anonymized operational order PII', {
+        anonymized,
+        retentionDays: request.retentionDays,
+      });
+      res.json({ ok: true, dryRun: false, cutoff, anonymized });
+    } catch (error) {
+      logUnexpectedError('operational order PII retention failed', error);
+      res.status(503).json({ error: 'Operational PII retention unavailable' });
     }
   }
 );

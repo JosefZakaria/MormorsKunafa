@@ -93,3 +93,27 @@ Authoritative guidance:
 - provider contract/region/subprocessor evidence;
 - backup retention and restore-test schedule;
 - paper destruction method and responsible closing-role.
+
+## Fulfilled-order operational PII anonymization
+
+The versioned database migration and maintenance API support a dry-run-first,
+bounded anonymization process. They deliberately remain unscheduled until an
+accountant has confirmed the bookkeeping fields and the controller has approved
+an operational retention interval.
+
+1. Confirm that no dispute, incident, DSAR or other legal hold applies. Set the
+   order's `operational_pii_legal_hold` flag when a hold is required.
+2. Call `POST /api/internal/maintenance/operational-order-pii-retention` with the
+   rotated maintenance bearer secret and `dryRun: true`.
+3. Review only the returned internal order IDs, order numbers, states and
+   terminal timestamps. Do not export customer data for the review.
+4. Record the approved cutoff, owner, candidate count and rollback decision in
+   the restricted journal, then repeat the same bounded request with
+   `dryRun: false`.
+5. Retain the immutable audit result and run the read-only database verification.
+
+The operation preserves order numbers, product/quantity/price snapshots,
+payment-provider identifiers and refund ledgers. It removes names, phone and
+email, delivery data, internal/cancellation free text, item modification text
+and customer status credentials. Restoring a backup can reintroduce erased PII;
+after a restore, re-run the approved anonymization cutoff and document it.
