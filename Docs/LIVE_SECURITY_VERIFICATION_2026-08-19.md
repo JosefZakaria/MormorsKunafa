@@ -56,6 +56,9 @@ date:
 - the root domain had no DS answer, so DNSSEC delegation is not enabled; and
 - the root domain had no CAA answer.
 
-Inbox delivery still needs an end-to-end test after MX is configured. Move
-DMARC to `quarantine` or `reject` only after legitimate senders are aligned and
-reporting has been reviewed.
+This is retained as historical evidence rather than rewritten. The public
+contact was later changed to `Mormorskunafa@gmail.com`, so the old domain MX gap
+no longer blocks receipt at the published address. Inbound and outbound Gmail
+delivery still require an end-to-end production test. Domain authentication for
+transactional senders remains separate: move DMARC to `quarantine` or `reject`
+only after legitimate senders are aligned and reporting has been reviewed.

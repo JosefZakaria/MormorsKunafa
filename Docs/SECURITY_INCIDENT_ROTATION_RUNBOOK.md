@@ -82,9 +82,12 @@ secret still works, or the matching deployment has not passed its checks.
 ## DNS and mail follow-up
 
 The 2026-08-19 public snapshot found no MX, no DS and no CAA, with DMARC
-`p=none`. Configure and verify MX with the chosen mailbox provider, test inbound
-mail to `info@mormorskunafa.se`, align SPF/DKIM, then progress DMARC after
-monitoring. Enable DNSSEC/DS and narrow CAA records through the authoritative
+`p=none`. The public contact was subsequently changed to
+`Mormorskunafa@gmail.com`; verify inbound and outbound delivery on that exact
+account before deployment. Domain MX is no longer a prerequisite for receiving
+public complaints, but any domain used by Resend or another sender still needs
+aligned SPF/DKIM and monitored DMARC before progressing to `quarantine` or
+`reject`. Enable DNSSEC/DS and narrow CAA records through the authoritative
 DNS/registrar account. Preserve before/after DNS answers in the journal.
 
 ## Completion evidence
