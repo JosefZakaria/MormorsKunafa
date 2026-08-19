@@ -19,6 +19,7 @@ import { isKitchenTicketPrintDue } from '@shared/utils/scheduledTime';
 import '../Admin.css';
 import { requestWakeLock, releaseWakeLock } from '../../../utils/wakeLock';
 import { startAlarm, stopAlarm, setAlarmVolume, AlarmType, getAudioState, unlockAudio, isAlarmActive } from '../../../utils/alarmPlayer';
+import { MenuTab } from './MenuTab';
 
 // --- Helper: countdown string from ISO time ---
 function getCountdown(isoTime: string | undefined): string {
@@ -620,7 +621,7 @@ function StockRow({
 export const AdminDashboard: React.FC = () => {
     const { logout, admin } = useAuth();
     const navigate = useNavigate();
-    const [activeTab, setActiveTab] = useState<'pending' | 'preorders' | 'active' | 'history' | 'stock' | 'rush' | 'stats'>('pending');
+    const [activeTab, setActiveTab] = useState<'pending' | 'preorders' | 'active' | 'history' | 'stock' | 'menu' | 'rush' | 'stats'>('pending');
 
     // Data state
     const [pendingOrders, setPendingOrders] = useState<Order[]>([]);
@@ -1278,6 +1279,9 @@ export const AdminDashboard: React.FC = () => {
                     <button className={`admin-tab ${activeTab === 'stock' ? 'active' : ''}`} onClick={() => { setActiveTab('stock'); setStatsData(null); }}>
                         Lager
                     </button>
+                    <button className={`admin-tab ${activeTab === 'menu' ? 'active' : ''}`} onClick={() => { setActiveTab('menu'); setStatsData(null); }}>
+                        Meny
+                    </button>
                     <button className={`admin-tab ${activeTab === 'rush' ? 'active' : ''}`} onClick={() => { setActiveTab('rush'); setStatsData(null); }}>
                         Inställningar
                     </button>
@@ -1582,6 +1586,15 @@ export const AdminDashboard: React.FC = () => {
                                 />
                             ))}
                         </div>
+                    )}
+
+                    {/* ── MENY ── */}
+                    {activeTab === 'menu' && (
+                        <MenuTab
+                            settings={settings}
+                            onSettingsChange={setSettings}
+                            onError={setError}
+                        />
                     )}
 
                     {/* ── STATISTIK ── */}

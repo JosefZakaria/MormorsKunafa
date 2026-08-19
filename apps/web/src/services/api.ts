@@ -244,6 +244,27 @@ export const adminApi = {
     });
   },
 
+  uploadImage: async (
+    kind: 'product' | 'hero-desktop' | 'hero-mobile',
+    file: File,
+    productId?: string
+  ): Promise<{ url: string; settings?: AdminSettings; product?: Product }> => {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    const body = new FormData();
+    body.append('file', file);
+    body.append('kind', kind);
+    if (productId) body.append('productId', productId);
+
+    return authenticatedRequest('/admin/uploads', {
+      method: 'POST',
+      body,
+      token,
+      timeout: 60_000,
+    });
+  },
+
   getNotifications: async (limit?: number): Promise<any[]> => {
     const token = getToken();
     if (!token) throw new Error('Not authenticated');

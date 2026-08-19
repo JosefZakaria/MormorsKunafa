@@ -95,6 +95,7 @@
 
 .admin-tabs {
     display: flex;
+    flex-wrap: wrap;
     gap: var(--spacing-md);
     margin-bottom: var(--spacing-lg);
     border-bottom: 2px solid var(--color-gray-200);
@@ -1224,5 +1225,108 @@ select.stats-modal-input {
 @keyframes text-pulse {
     from { opacity: 0.85; transform: scale(0.98); }
     to { opacity: 1; transform: scale(1.02); }
+}
+
+/* Menu tab — hero images */
+.menu-tab {
+    max-width: 920px;
+}
+
+.menu-tab__title {
+    font-family: var(--font-family-display);
+    font-size: 1.35rem;
+    margin: 0 0 0.35rem;
+    color: var(--color-black);
+}
+
+.menu-tab__lead {
+    margin: 0 0 1.25rem;
+    color: var(--color-gray-500);
+}
+
+.hero-upload-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+@media (max-width: 700px) {
+    .hero-upload-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.hero-upload-card {
+    display: flex;
+    flex-direction: column;
+    background: var(--color-white);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+    cursor: pointer;
+    border: 1px solid var(--color-gray-200);
+}
+
+.hero-upload-card.is-busy {
+    cursor: wait;
+}
+
+.hero-upload-card__preview {
+    position: relative;
+    background: #f3eee6;
+    overflow: hidden;
+}
+
+.hero-upload-card--desktop .hero-upload-card__preview {
+    aspect-ratio: 16 / 9;
+}
+
+.hero-upload-card--mobile .hero-upload-card__preview {
+    aspect-ratio: 3 / 4;
+    max-height: 320px;
+}
+
+.hero-upload-card__preview img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.hero-upload-card__overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.45);
+    color: #fff;
+    font-weight: 700;
+    font-family: var(--font-family-display);
+}
+
+.hero-upload-card__meta {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    padding: 0.85rem 1rem 1rem;
+}
+
+.hero-upload-card__meta strong {
+    font-family: var(--font-family-display);
+    font-size: 1.05rem;
+}
+
+.hero-upload-card__meta span {
+    color: var(--color-gray-500);
+    font-size: 0.875rem;
+}
+
+.hero-upload-card__status {
+    margin-top: 0.25rem;
+    color: #059669;
+    font-style: normal;
+    font-size: 0.875rem;
+    font-weight: 600;
 }
 
