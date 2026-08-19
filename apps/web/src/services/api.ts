@@ -328,9 +328,13 @@ export const adminApi = {
     });
   },
 
-  getRealtimeEventsUrl: (): string => {
+  createRealtimeTicket: async (): Promise<{ ticket: string; expiresInSeconds: number }> => {
+    return authenticatedRequest('/admin/events/ticket', { method: 'POST' });
+  },
+
+  getRealtimeEventsUrl: (ticket: string): string => {
     const base = API_CONFIG.baseUrl.replace(/\/+$/, '');
-    return `${base}/admin/events`;
+    return `${base}/admin/events?ticket=${encodeURIComponent(ticket)}`;
   },
 
   getStatistics: async (password: string, startDate?: string, endDate?: string): Promise<{

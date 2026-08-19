@@ -704,13 +704,15 @@ export const AdminDashboard: React.FC = () => {
         let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
         let closed = false;
 
-        const connect = () => {
+        const connect = async () => {
             if (closed) return;
             try {
-                const url = adminApi.getRealtimeEventsUrl();
-                eventSource = new EventSource(url, { withCredentials: true });
+                const { ticket } = await adminApi.createRealtimeTicket();
+                if (closed) return;
+                const url = adminApi.getRealtimeEventsUrl(ticket);
+                eventSource = new EventSource(url);
             } catch {
-                setError('Kunde inte starta realtidskanalen.');
+                if (!closed) reconnectTimer = setTimeout(() => { void connect(); }, 1500);
                 return;
             }
 
@@ -736,12 +738,12 @@ export const AdminDashboard: React.FC = () => {
             eventSource.onerror = () => {
                 eventSource?.close();
                 if (!closed) {
-                    reconnectTimer = setTimeout(connect, 1500);
+                    reconnectTimer = setTimeout(() => { void connect(); }, 1500);
                 }
             };
         };
 
-        connect();
+        void connect();
 
         return () => {
             closed = true;

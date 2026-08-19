@@ -32,6 +32,7 @@ import {
 import { verifyAdminPassword } from '../utils/adminPassword.js';
 import { hasRealtimeCapacity } from '../utils/realtimeCapacity.js';
 import { logUnexpectedError } from '../utils/safeErrorMetadata.js';
+import { consumeRealtimeTicket, issueRealtimeTicket } from '../middleware/realtimeTicket.js';
 
 const loginLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000, // 15 min window
@@ -193,20 +194,60 @@ router.get('/session', requireAdmin, (req: Request, res: Response) => {
   });
 });
 
-router.get('/events', eventsLimiter, requireAdmin, (req: Request, res: Response) => {
-  const admin = (req as Request & { admin: { adminId: string } }).admin;
-  if (!hasRealtimeCapacity(getRealtimeStatus(), admin.adminId)) {
-    res.status(429).json({ error: 'Too many realtime connections' });
-    return;
+router.post('/events/ticket', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const admin = (req as Request & { admin: import('../middleware/auth.js').JwtPayload }).admin;
+    const ticket = await issueRealtimeTicket(admin.adminId, admin.tokenVersion);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json(ticket);
+  } catch (error) {
+    logUnexpectedError('POST /admin/events/ticket failed', error);
+    res.status(503).json({ error: 'Could not create realtime ticket' });
   }
+});
 
-  res.setHeader('Content-Type', 'text/event-stream');
+router.get('/events', eventsLimiter, async (req: Request, res: Response) => {
   res.setHeader('Cache-Control', 'private, no-store, no-transform');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders();
+  try {
+    const ticket = await consumeRealtimeTicket(req.query.ticket);
+    if (!ticket) {
+      res.status(401).json({ error: 'Invalid or expired realtime ticket' });
+      return;
+    }
 
-  const cleanup = registerRealtimeClient(admin.adminId, res);
-  req.on('close', cleanup);
+    const { data: admin, error } = await supabase
+      .from('admin_users')
+      .select('id, token_version, is_active')
+      .eq('id', ticket.adminId)
+      .maybeSingle();
+    if (error) {
+      logSupabaseError('GET /admin/events session check', error);
+      res.status(503).json({ error: 'Authentication service unavailable' });
+      return;
+    }
+    if (
+      !admin ||
+      (admin as Row).is_active !== true ||
+      Number((admin as Row).token_version) !== ticket.tokenVersion
+    ) {
+      res.status(401).json({ error: 'Admin session is no longer valid' });
+      return;
+    }
+    if (!hasRealtimeCapacity(getRealtimeStatus(), ticket.adminId)) {
+      res.status(429).json({ error: 'Too many realtime connections' });
+      return;
+    }
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    const cleanup = registerRealtimeClient(ticket.adminId, res);
+    req.on('close', cleanup);
+  } catch (error) {
+    logUnexpectedError('GET /admin/events failed', error);
+    res.status(503).json({ error: 'Realtime authentication unavailable' });
+  }
 });
 
 router.get('/notifications/health', requireAdmin, (_req: Request, res: Response) => {
