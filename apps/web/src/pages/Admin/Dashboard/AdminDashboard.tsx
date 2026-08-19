@@ -1304,8 +1304,9 @@ export const AdminDashboard: React.FC = () => {
                 </header>
 
                 {error && (
-                    <div style={{ padding: '0.75rem 1rem', background: '#fee', color: '#c00', borderRadius: '8px', marginBottom: '1rem' }}>
-                        {error} <button onClick={() => setError(null)} style={{ marginLeft: '1rem', cursor: 'pointer' }}>✕</button>
+                    <div role="alert" style={{ padding: '0.75rem 1rem', background: '#fee', color: '#c00', borderRadius: '8px', marginBottom: '1rem' }}>
+                        {error}{' '}
+                        <button type="button" aria-label="Stäng felmeddelande" onClick={() => setError(null)} style={{ marginLeft: '1rem', cursor: 'pointer' }}>✕</button>
                     </div>
                 )}
 
@@ -1340,41 +1341,47 @@ export const AdminDashboard: React.FC = () => {
 
                 {/* --- Autoplay warning banner --- */}
                 {audioLocked && (
-                    <div className="audio-unlock-banner" onClick={async () => {
-                        const unlocked = await unlockAudio();
-                        if (unlocked) setAudioLocked(false);
-                    }}>
+                    <div className="audio-unlock-banner" role="status">
                         <div className="audio-unlock-content">
                             <span className="icon">⚠️</span>
                             <span>Ljudlarmet är blockerat av webbläsaren. Klicka på "SLÅ PÅ" i menyn högst upp för att aktivera larmet!</span>
                         </div>
-                        <button className="audio-unlock-btn" type="button">Aktivera här</button>
+                        <button
+                            className="audio-unlock-btn"
+                            type="button"
+                            onClick={async () => {
+                                const unlocked = await unlockAudio();
+                                if (unlocked) setAudioLocked(false);
+                            }}
+                        >
+                            Aktivera här
+                        </button>
                     </div>
                 )}
 
-                <div className="admin-tabs">
-                    <button className={`admin-tab ${activeTab === 'preorders' ? 'active' : ''}`} onClick={() => { setActiveTab('preorders'); setStatsData(null); }}>
+                <nav className="admin-tabs" aria-label="Adminsektioner">
+                    <button type="button" aria-current={activeTab === 'preorders' ? 'page' : undefined} className={`admin-tab ${activeTab === 'preorders' ? 'active' : ''}`} onClick={() => { setActiveTab('preorders'); setStatsData(null); }}>
                         Förbeställningar {preOrders.length > 0 && <span className="tab-badge">{preOrders.length}</span>}
                     </button>
-                    <button className={`admin-tab ${activeTab === 'pending' ? 'active' : ''}`} onClick={() => { setActiveTab('pending'); setStatsData(null); }}>
+                    <button type="button" aria-current={activeTab === 'pending' ? 'page' : undefined} className={`admin-tab ${activeTab === 'pending' ? 'active' : ''}`} onClick={() => { setActiveTab('pending'); setStatsData(null); }}>
                         Inkommande {pendingOrders.length > 0 && <span className="tab-badge">{pendingOrders.length}</span>}
                     </button>
-                    <button className={`admin-tab ${activeTab === 'active' ? 'active' : ''}`} onClick={() => { setActiveTab('active'); setStatsData(null); }}>
+                    <button type="button" aria-current={activeTab === 'active' ? 'page' : undefined} className={`admin-tab ${activeTab === 'active' ? 'active' : ''}`} onClick={() => { setActiveTab('active'); setStatsData(null); }}>
                         Aktiva Ordrar ({activeOrders.length})
                     </button>
-                    <button className={`admin-tab ${activeTab === 'history' ? 'active' : ''}`} onClick={() => { setActiveTab('history'); setStatsData(null); }}>
+                    <button type="button" aria-current={activeTab === 'history' ? 'page' : undefined} className={`admin-tab ${activeTab === 'history' ? 'active' : ''}`} onClick={() => { setActiveTab('history'); setStatsData(null); }}>
                         Orderhistorik
                     </button>
-                    <button className={`admin-tab ${activeTab === 'stock' ? 'active' : ''}`} onClick={() => { setActiveTab('stock'); setStatsData(null); }}>
+                    <button type="button" aria-current={activeTab === 'stock' ? 'page' : undefined} className={`admin-tab ${activeTab === 'stock' ? 'active' : ''}`} onClick={() => { setActiveTab('stock'); setStatsData(null); }}>
                         Lager
                     </button>
-                    <button className={`admin-tab ${activeTab === 'rush' ? 'active' : ''}`} onClick={() => { setActiveTab('rush'); setStatsData(null); }}>
+                    <button type="button" aria-current={activeTab === 'rush' ? 'page' : undefined} className={`admin-tab ${activeTab === 'rush' ? 'active' : ''}`} onClick={() => { setActiveTab('rush'); setStatsData(null); }}>
                         Inställningar
                     </button>
-                    <button className={`admin-tab ${activeTab === 'stats' ? 'active' : ''}`} onClick={handleStatsTabClick}>
+                    <button type="button" aria-current={activeTab === 'stats' ? 'page' : undefined} className={`admin-tab ${activeTab === 'stats' ? 'active' : ''}`} onClick={handleStatsTabClick}>
                         Statistik
                     </button>
-                </div>
+                </nav>
 
                 {/* ── STATISTIK LÖSENORDS-POPUP ── */}
                 {showStatsModal && (

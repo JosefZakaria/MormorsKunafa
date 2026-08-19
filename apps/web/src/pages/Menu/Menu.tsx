@@ -371,6 +371,7 @@ export const Menu: React.FC = () => {
                                     onClick={() => setSelectedProduct(product)}
                                     role="button"
                                     tabIndex={0}
+                                    aria-label={`Visa ${getDisplayName(product, t)}`}
                                     onKeyDown={(e) => {
                                         if (e.key === 'Enter' || e.key === ' ') {
                                             e.preventDefault();

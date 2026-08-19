@@ -138,6 +138,11 @@
     flex-direction: column;
 }
 
+.menu-item-simple__clickable:focus-visible {
+    outline: 3px solid var(--color-primary-red);
+    outline-offset: 3px;
+}
+
 .menu-item-simple__content {
     display: flex;
     flex-direction: column;

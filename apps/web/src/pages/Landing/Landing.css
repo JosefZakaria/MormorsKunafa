@@ -170,6 +170,11 @@
 
 .favorites__img-wrap { aspect-ratio: 1 / 1; overflow: hidden; cursor: pointer; }
 
+.favorites__img-wrap:focus-visible {
+    outline: 3px solid var(--color-primary-red);
+    outline-offset: 3px;
+}
+
 .favorites__img {
     width: 100%;
     height: 100%;
