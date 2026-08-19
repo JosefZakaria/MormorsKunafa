@@ -11,6 +11,7 @@ import type {
   PushSubscriptionRecord,
   AdminRefundOverview,
   CreateOrderRefundResult,
+  PaymentSecurityAlert,
 } from '@shared/types';
 
 const adminRequest = apiRequest;
@@ -371,6 +372,12 @@ export const adminApi = {
 
   createRealtimeTicket: async (): Promise<{ ticket: string; expiresInSeconds: number }> => {
     return authenticatedRequest('/admin/events/ticket', { method: 'POST' });
+  },
+
+  getPaymentAlerts: async (): Promise<PaymentSecurityAlert[]> => {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+    return authenticatedRequest<PaymentSecurityAlert[]>('/admin/payment-alerts', { token });
   },
 
   getRealtimeEventsUrl: (ticket: string): string => {

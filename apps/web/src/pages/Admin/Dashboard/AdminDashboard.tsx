@@ -13,6 +13,7 @@ import type {
     Product,
     AdminSettings,
     OrderCreatedRealtimeEvent,
+    PaymentSecurityAlert,
 } from '@shared/types';
 import { parseApiTimestamp } from '@shared/utils/parseApiTimestamp';
 import { isKitchenTicketPrintDue } from '@shared/utils/scheduledTime';
@@ -675,6 +676,7 @@ export const AdminDashboard: React.FC = () => {
     const [deleteAllPassword, setDeleteAllPassword] = useState('');
     const [deleteAllError, setDeleteAllError] = useState<string | null>(null);
     const [refundOrder, setRefundOrder] = useState<Order | null>(null);
+    const [paymentAlerts, setPaymentAlerts] = useState<PaymentSecurityAlert[]>([]);
 
     const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const statsAuthPasswordRef = useRef('');
@@ -745,6 +747,21 @@ export const AdminDashboard: React.FC = () => {
         pollingRef.current = setInterval(fetchOrders, 3000);
         return () => { if (pollingRef.current) clearInterval(pollingRef.current); };
     }, [fetchOrders]);
+
+    useEffect(() => {
+        let active = true;
+        const refreshPaymentAlerts = async () => {
+            try {
+                const alerts = await adminApi.getPaymentAlerts();
+                if (active) setPaymentAlerts(alerts);
+            } catch {
+                // Order polling remains available; the next alert poll retries.
+            }
+        };
+        void refreshPaymentAlerts();
+        const id = setInterval(() => { void refreshPaymentAlerts(); }, 60_000);
+        return () => { active = false; clearInterval(id); };
+    }, []);
 
     useEffect(() => {
         let eventSource: EventSource | null = null;
@@ -1273,6 +1290,30 @@ export const AdminDashboard: React.FC = () => {
                     <div style={{ padding: '0.75rem 1rem', background: '#fee', color: '#c00', borderRadius: '8px', marginBottom: '1rem' }}>
                         {error} <button onClick={() => setError(null)} style={{ marginLeft: '1rem', cursor: 'pointer' }}>✕</button>
                     </div>
+                )}
+
+                {paymentAlerts.length > 0 && (
+                    <section className="payment-security-alert" role="alert" aria-live="assertive">
+                        <h2>⚠ Kritiskt betalningslarm</h2>
+                        <p>
+                            Stripe har rapporterat {paymentAlerts.length} betald checkout-händelse
+                            {paymentAlerts.length === 1 ? '' : 'r'} som inte säkert kunde kopplas till den sparade ordern.
+                            Kontrollera varje Event-ID i Stripe innan ordern lämnas ut eller pengar återbetalas.
+                        </p>
+                        <ul>
+                            {paymentAlerts.map((alert) => (
+                                <li key={alert.eventId}>
+                                    <code>{alert.eventId}</code>
+                                    {alert.orderId ? <> · order-ID <code>{alert.orderId}</code></> : ' · order-ID saknas'}
+                                    {' · '}{new Date(alert.receivedAt).toLocaleString('sv-SE')}
+                                </li>
+                            ))}
+                        </ul>
+                        <p className="payment-security-alert__instruction">
+                            Använd inte den vanliga returknappen för en andra okänd Stripe-session;
+                            den är bunden till orderns sparade originalbetalning.
+                        </p>
+                    </section>
                 )}
 
                 {/* --- Autoplay warning banner --- */}
