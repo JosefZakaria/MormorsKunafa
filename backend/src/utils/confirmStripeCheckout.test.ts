@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type Stripe from 'stripe';
-import { validateStripeCheckoutSession } from './confirmStripeCheckout.js';
+import {
+  validateStripeCheckoutSession,
+  validateStripeCheckoutSessionIdentity,
+} from './confirmStripeCheckout.js';
 
 const orderId = '0aa461da-4f24-45ed-b1f2-79d6a7bb72d2';
 const sessionId = 'cs_test_authoritative';
@@ -34,6 +37,15 @@ test('accepts an exact Stripe Checkout match', () => {
   });
 });
 
+test('accepts immutable identity for an expired unpaid Stripe session without treating it as paid', () => {
+  const expired = session({ status: 'expired', payment_status: 'unpaid' });
+  assert.deepEqual(validateStripeCheckoutSessionIdentity(order, expired), {
+    ok: true,
+    paidAmountOre: 17_900,
+  });
+  assert.equal(validateStripeCheckoutSession(order, expired).ok, false);
+});
+
 const mismatches: Array<[string, Partial<Stripe.Checkout.Session>]> = [
   ['metadata', { metadata: { orderId: 'another-order' } }],
   ['session id', { id: 'cs_test_other' }],
@@ -46,5 +58,11 @@ const mismatches: Array<[string, Partial<Stripe.Checkout.Session>]> = [
 for (const [name, override] of mismatches) {
   test(`rejects a Stripe ${name} mismatch`, () => {
     assert.equal(validateStripeCheckoutSession(order, session(override)).ok, false);
+  });
+}
+
+for (const [name, override] of mismatches) {
+  test(`rejects a Stripe ${name} identity mismatch during reconciliation`, () => {
+    assert.equal(validateStripeCheckoutSessionIdentity(order, session(override)).ok, false);
   });
 }

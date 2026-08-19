@@ -54,6 +54,23 @@ export function validateStripeCheckoutSession(
   order: Row,
   session: Stripe.Checkout.Session
 ): { ok: true; paidAmountOre: number } | { ok: false; error: string } {
+  const identity = validateStripeCheckoutSessionIdentity(order, session);
+  if (!identity.ok) return identity;
+
+  if (session.payment_status !== 'paid' || session.status !== 'complete') {
+    return { ok: false, error: 'Payment not completed yet' };
+  }
+  return identity;
+}
+
+/**
+ * Validate immutable checkout fields without assuming that payment succeeded.
+ * Used both for fulfillment and for safe cleanup of terminal unpaid sessions.
+ */
+export function validateStripeCheckoutSessionIdentity(
+  order: Row,
+  session: Stripe.Checkout.Session
+): { ok: true; paidAmountOre: number } | { ok: false; error: string } {
   const orderId = String(order.id ?? '').trim();
   if (!orderId || session.metadata?.orderId?.trim() !== orderId) {
     return { ok: false, error: 'Session does not match order' };
@@ -68,9 +85,6 @@ export function validateStripeCheckoutSession(
   }
   if (String(session.currency ?? '').toLowerCase() !== 'sek') {
     return { ok: false, error: 'Invalid checkout currency' };
-  }
-  if (session.payment_status !== 'paid' || session.status !== 'complete') {
-    return { ok: false, error: 'Payment not completed yet' };
   }
   if (
     !Array.isArray(session.payment_method_types) ||

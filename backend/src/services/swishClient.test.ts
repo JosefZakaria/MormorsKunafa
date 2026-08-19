@@ -8,6 +8,7 @@ import {
   resolveSwishInstructionId,
   validateSwishCallbackBaseUrl,
   verifySwishPaymentRequest,
+  verifySwishPaymentRequestIdentity,
   verifySwishRefund,
   type SwishPaymentRequestResponse,
 } from './swishClient.js';
@@ -38,6 +39,15 @@ test('accepts an exact Swish API payment match', () => {
   });
 });
 
+test('accepts immutable Swish identity for a terminal unpaid payment without treating it as paid', () => {
+  const declined = payment({ status: 'DECLINED' });
+  assert.deepEqual(verifySwishPaymentRequestIdentity(declined, expected), {
+    ok: true,
+    paidAmountOre: 17_900,
+  });
+  assert.equal(verifySwishPaymentRequest(declined, expected).ok, false);
+});
+
 for (const [name, override] of [
   ['amount', { amount: 0.01 }],
   ['currency', { currency: 'EUR' }],
@@ -46,6 +56,7 @@ for (const [name, override] of [
 ] as const) {
   test(`rejects a Swish ${name} mismatch`, () => {
     assert.equal(verifySwishPaymentRequest(payment(override), expected).ok, false);
+    assert.equal(verifySwishPaymentRequestIdentity(payment(override), expected).ok, false);
   });
 }
 

@@ -255,8 +255,8 @@ export type SwishPaymentVerification =
   | { ok: true; paidAmountOre: number }
   | { ok: false; reason: string };
 
-/** Validate a payment fetched directly from Swish over the configured mTLS connection. */
-export function verifySwishPaymentRequest(
+/** Validate immutable payment fields independently of the current provider status. */
+export function verifySwishPaymentRequestIdentity(
   payment: SwishPaymentRequestResponse,
   expected: {
     instructionId: string;
@@ -267,9 +267,6 @@ export function verifySwishPaymentRequest(
 ): SwishPaymentVerification {
   if (payment.id !== expected.instructionId) {
     return { ok: false, reason: 'Swish instruction ID mismatch' };
-  }
-  if (String(payment.status ?? '').toUpperCase() !== 'PAID') {
-    return { ok: false, reason: 'Swish payment is not paid' };
   }
   if (payment.amount == null) {
     return { ok: false, reason: 'Swish payment amount missing' };
@@ -288,6 +285,24 @@ export function verifySwishPaymentRequest(
     return { ok: false, reason: 'Swish order reference mismatch' };
   }
   return { ok: true, paidAmountOre };
+}
+
+/** Validate a payment fetched directly from Swish over the configured mTLS connection. */
+export function verifySwishPaymentRequest(
+  payment: SwishPaymentRequestResponse,
+  expected: {
+    instructionId: string;
+    amountOre: number;
+    payeeAlias: string;
+    payeePaymentReference: string;
+  }
+): SwishPaymentVerification {
+  const identity = verifySwishPaymentRequestIdentity(payment, expected);
+  if (!identity.ok) return identity;
+  if (String(payment.status ?? '').toUpperCase() !== 'PAID') {
+    return { ok: false, reason: 'Swish payment is not paid' };
+  }
+  return identity;
 }
 
 const SWISH_REFUND_ID_PATTERN = /^[0-9A-F]{32}$/;
