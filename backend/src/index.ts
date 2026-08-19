@@ -4,6 +4,7 @@ import cors from 'cors';
 import productsRouter from './routes/products.js';
 import ordersRouter from './routes/orders.js';
 import adminRouter from './routes/admin.js';
+import maintenanceRouter from './routes/maintenance.js';
 import { handleStripeWebhook } from './routes/stripeWebhook.js';
 import { handleSwishCallback } from './routes/swishCallback.js';
 import {
@@ -83,6 +84,7 @@ app.use('/api/products', requireCsrfProtection);
 app.use('/api/products', productsRouter);
 app.use('/api/orders', ordersRouter);
 app.use('/api/admin', adminRouter);
+app.use('/api/internal/maintenance', maintenanceRouter);
 
 app.get('/api/health', (_req, res) => {
   const hasSupabase = Boolean(
