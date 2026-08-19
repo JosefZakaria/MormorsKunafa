@@ -18,9 +18,11 @@ function apiErrorMessage(error: unknown, fallback: string): string {
 export function DuplicatePaymentRefundModal({
   eventId,
   onClose,
+  onResolved,
 }: {
   eventId: string | null;
   onClose: () => void;
+  onResolved: (eventId: string) => void;
 }) {
   const [stage, setStage] = useState<Stage>('warning');
   const [detail, setDetail] = useState<DuplicatePaymentAlertDetail | null>(null);
@@ -71,6 +73,7 @@ export function DuplicatePaymentRefundModal({
         idempotencyKeyRef.current
       );
       setDetail(result);
+      if (result.status === 'succeeded') onResolved(eventId);
       setPassword('');
       setConfirmation('');
     } catch (submitError) {

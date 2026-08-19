@@ -65,12 +65,12 @@ export async function listPaymentSecurityAlerts(limit = 25): Promise<PaymentSecu
     .eq('status', 'processed')
     .in('outcome', [...PAYMENT_SECURITY_ALERT_OUTCOMES])
     .order('received_at', { ascending: false })
-    .limit(limit);
+    .limit(100);
   if (error) {
     logSupabaseError('list payment security alerts', error);
     throw error;
   }
-  return (data ?? []).flatMap((raw) => {
+  const alerts = (data ?? []).flatMap((raw) => {
     const row = raw as Row;
     const outcome = row.outcome;
     const eventId = String(row.event_id ?? '');
@@ -93,6 +93,21 @@ export async function listPaymentSecurityAlerts(limit = 25): Promise<PaymentSecu
       ...(processedAt && Number.isFinite(Date.parse(processedAt)) ? { processedAt } : {}),
     }];
   });
+  if (alerts.length === 0) return alerts;
+
+  const { data: resolved, error: resolvedError } = await supabase
+    .from('duplicate_stripe_refunds')
+    .select('stripe_event_id')
+    .in('stripe_event_id', alerts.map((alert) => alert.eventId))
+    .eq('status', 'succeeded');
+  if (resolvedError) {
+    logSupabaseError('list resolved duplicate Stripe refunds', resolvedError);
+    throw resolvedError;
+  }
+  const resolvedEventIds = new Set(
+    (resolved ?? []).map((row) => String((row as Row).stripe_event_id ?? ''))
+  );
+  return alerts.filter((alert) => !resolvedEventIds.has(alert.eventId)).slice(0, limit);
 }
 
 export async function getPaymentSecurityAlert(eventId: string): Promise<PaymentSecurityAlert | null> {

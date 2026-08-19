@@ -1437,6 +1437,9 @@ export const AdminDashboard: React.FC = () => {
                 <DuplicatePaymentRefundModal
                     eventId={selectedPaymentAlertId}
                     onClose={() => setSelectedPaymentAlertId(null)}
+                    onResolved={(eventId) => {
+                        setPaymentAlerts((current) => current.filter((alert) => alert.eventId !== eventId));
+                    }}
                 />
 
                 <div className="admin-content animate-in">
