@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { supabase, type Row, logSupabaseError, nowIso } from '../db/connection.js';
 import { getOrderById } from '../db/orderRepository.js';
 import { sendOrderConfirmationEmail } from './OrderConfirmationEmail.js';
@@ -43,19 +44,18 @@ export async function markOrderPaid(orderId: string, options?: MarkOrderPaidOpti
   }
 
   const paidAt = nowIso();
-  const { data, error } = await supabase
-    .from('orders')
-    .update({ payment_status: 'paid', updated_at: paidAt })
-    .eq('id', orderId)
-    .eq('payment_status', 'pending')
-    .select('id');
+  const { data, error } = await supabase.rpc('mark_order_paid_with_audit', {
+    p_order_id: orderId,
+    p_paid_at: paidAt,
+    p_event_id: randomUUID(),
+  });
 
   if (error) {
     logSupabaseError('markOrderPaid', error);
     throw error;
   }
 
-  if (!data || data.length === 0) return false;
+  if (data !== true) return false;
 
   const refreshed = await getOrderById(orderId);
   if (!refreshed) return true;

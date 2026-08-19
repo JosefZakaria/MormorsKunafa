@@ -1,4 +1,5 @@
--- Append-only audit trail for admin access and authentication attempts.
+-- Append-only audit trail for admin access, authentication attempts and
+-- security-relevant payment state changes.
 -- Apply manually before deploying the matching backend.
 
 BEGIN;
@@ -84,6 +85,51 @@ AS $$
   );
 $$;
 
+CREATE OR REPLACE FUNCTION public.mark_order_paid_with_audit(
+  p_order_id uuid,
+  p_paid_at timestamptz,
+  p_event_id uuid
+)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_payment_method text;
+BEGIN
+  UPDATE public.orders
+  SET payment_status = 'paid', updated_at = p_paid_at
+  WHERE id = p_order_id
+    AND payment_status = 'pending'
+  RETURNING payment_method INTO v_payment_method;
+
+  IF NOT FOUND THEN
+    RETURN false;
+  END IF;
+
+  INSERT INTO public.security_audit_log (
+    event_id,
+    action,
+    resource_type,
+    resource_id,
+    outcome
+  ) VALUES (
+    p_event_id,
+    CASE v_payment_method
+      WHEN 'card' THEN 'stripe_payment_confirmed'
+      WHEN 'swish' THEN 'swish_payment_confirmed'
+      ELSE 'online_payment_confirmed'
+    END,
+    'order',
+    p_order_id::text,
+    'succeeded'
+  );
+
+  RETURN true;
+END;
+$$;
+
 REVOKE ALL ON TABLE public.security_audit_log FROM PUBLIC, anon, authenticated;
 GRANT SELECT, INSERT ON TABLE public.security_audit_log TO service_role;
 REVOKE ALL ON FUNCTION public.append_security_audit_event(
@@ -92,5 +138,9 @@ REVOKE ALL ON FUNCTION public.append_security_audit_event(
 GRANT EXECUTE ON FUNCTION public.append_security_audit_event(
   uuid, text, text, text, text, text, text, text, text
 ) TO service_role;
+REVOKE ALL ON FUNCTION public.mark_order_paid_with_audit(uuid, timestamptz, uuid)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.mark_order_paid_with_audit(uuid, timestamptz, uuid)
+  TO service_role;
 
 COMMIT;

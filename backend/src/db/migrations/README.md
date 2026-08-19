@@ -113,6 +113,9 @@ internal resource IDs, never request bodies; login email is HMAC-hashed.
 
 Authenticated admin requests fail closed if the audit write fails. Establish a
 documented retention/export process before the table approaches storage limits.
+The same migration makes each successful `pending` to `paid` transition and its
+provider-specific audit event one database transaction. A failed audit insert
+therefore cannot leave an unaudited paid order.
 
 ## 2026-08-19 structured food information
 
