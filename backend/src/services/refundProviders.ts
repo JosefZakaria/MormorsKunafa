@@ -39,7 +39,7 @@ export function validateStripeRefundSession(
   return { ok: true, paymentIntentId };
 }
 
-function stripeRefundOutcome(refund: Stripe.Refund): ProviderRefundOutcome {
+export function stripeRefundOutcome(refund: Stripe.Refund): ProviderRefundOutcome {
   const status = String(refund.status ?? '').toLowerCase();
   if (status === 'succeeded') return { providerRefundId: refund.id, status: 'succeeded' };
   if (status === 'failed' || status === 'canceled') {
@@ -53,6 +53,38 @@ function stripeRefundOutcome(refund: Stripe.Refund): ProviderRefundOutcome {
     return { providerRefundId: refund.id, status: 'pending' };
   }
   throw new Error('Stripe returned an unexpected refund status');
+}
+
+export function validateStripeRefundEvent(
+  refund: Stripe.Refund,
+  expected: {
+    refundId: string;
+    orderId: string;
+    amountOre: number;
+    paymentIntentId: string;
+    providerRefundId?: string;
+  }
+): { ok: true; outcome: ProviderRefundOutcome } | { ok: false; reason: string } {
+  if (refund.metadata?.refundId !== expected.refundId || refund.metadata?.orderId !== expected.orderId) {
+    return { ok: false, reason: 'Stripe refund metadata mismatch' };
+  }
+  if (expected.providerRefundId && refund.id !== expected.providerRefundId) {
+    return { ok: false, reason: 'Stripe refund ID mismatch' };
+  }
+  if (refund.amount !== expected.amountOre || String(refund.currency).toLowerCase() !== 'sek') {
+    return { ok: false, reason: 'Stripe refund amount mismatch' };
+  }
+  const paymentIntentId = typeof refund.payment_intent === 'string'
+    ? refund.payment_intent
+    : refund.payment_intent?.id;
+  if (paymentIntentId !== expected.paymentIntentId) {
+    return { ok: false, reason: 'Stripe refund payment intent mismatch' };
+  }
+  try {
+    return { ok: true, outcome: stripeRefundOutcome(refund) };
+  } catch {
+    return { ok: false, reason: 'Unexpected Stripe refund status' };
+  }
 }
 
 export async function createStripeOrderRefund(input: {

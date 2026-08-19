@@ -15,6 +15,16 @@ import {
   completeStripeEvent,
   failStripeEvent,
 } from '../db/paymentEventRepository.js';
+import {
+  finalizeOrderRefund,
+  getRefundRecord,
+  setRefundProviderReference,
+} from '../db/refundRepository.js';
+import {
+  validateStripeRefundEvent,
+  validateStripeRefundSession,
+} from '../services/refundProviders.js';
+import { isCanonicalUuidV4 } from '../utils/resourceId.js';
 
 async function markOrderPaidFromSession(
   session: Stripe.Checkout.Session
@@ -43,6 +53,49 @@ async function markOrderPaidFromSession(
 
   const newlyPaid = await markOrderPaid(orderId, { paidAmountOre: validation.paidAmountOre });
   return { orderId, outcome: newlyPaid ? 'order_marked_paid' : 'order_already_paid' };
+}
+
+async function reconcileStripeRefundEvent(
+  refund: Stripe.Refund
+): Promise<{ orderId: string | null; outcome: string }> {
+  const refundId = refund.metadata?.refundId?.trim();
+  const orderId = refund.metadata?.orderId?.trim();
+  if (!isCanonicalUuidV4(refundId) || !isCanonicalUuidV4(orderId)) {
+    return { orderId: null, outcome: 'ignored_invalid_refund_metadata' };
+  }
+  const record = await getRefundRecord(refundId);
+  if (!record || record.provider !== 'stripe' || record.orderId !== orderId) {
+    return { orderId, outcome: 'ignored_unknown_refund' };
+  }
+  const order = await getOrderById(orderId);
+  const sessionId = String(order?.order.stripe_checkout_session_id ?? '').trim();
+  const totalPaidOre = Number(order?.order.total_ore);
+  if (!order || !sessionId || !Number.isSafeInteger(totalPaidOre) || totalPaidOre <= 0) {
+    throw new Error('Stripe refund order is inconsistent');
+  }
+  const stripe = getStripe();
+  const session = await stripe.checkout.sessions.retrieve(sessionId);
+  const original = validateStripeRefundSession(session, { orderId, sessionId, totalPaidOre });
+  if (!original.ok) throw new Error(original.reason);
+  const validation = validateStripeRefundEvent(refund, {
+    refundId,
+    orderId,
+    amountOre: record.amountOre,
+    paymentIntentId: original.paymentIntentId,
+    providerRefundId: record.providerRefundId,
+  });
+  if (!validation.ok) throw new Error(validation.reason);
+  if (!record.providerRefundId) {
+    await setRefundProviderReference(refundId, refund.id);
+  }
+  if (validation.outcome.status !== 'pending') {
+    await finalizeOrderRefund({
+      refundId,
+      succeeded: validation.outcome.status === 'succeeded',
+      failureCode: validation.outcome.failureCode,
+    });
+  }
+  return { orderId, outcome: `refund_${validation.outcome.status}` };
 }
 
 export async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
@@ -106,6 +159,14 @@ export async function handleStripeWebhook(req: Request, res: Response): Promise<
         orderId = session.metadata?.orderId?.trim() || null;
         outcome = 'ignored_unpaid_session';
       }
+    } else if (
+      event.type === 'refund.created' ||
+      event.type === 'refund.updated' ||
+      event.type === 'refund.failed'
+    ) {
+      const result = await reconcileStripeRefundEvent(event.data.object as Stripe.Refund);
+      orderId = result.orderId;
+      outcome = result.outcome;
     }
     await completeStripeEvent(event.id, orderId, outcome);
     res.json({ received: true });

@@ -3,6 +3,7 @@ import test from 'node:test';
 import type Stripe from 'stripe';
 import {
   validateOriginalSwishPayment,
+  validateStripeRefundEvent,
   validateStripeRefundSession,
 } from './refundProviders.js';
 
@@ -71,4 +72,27 @@ test('rejects Swish sources with altered amount, order or payment reference', ()
   assert.equal(validateOriginalSwishPayment({ ...base, amount: '0.01' }, expected).ok, false);
   assert.equal(validateOriginalSwishPayment({ ...base, payeePaymentReference: 'another' }, expected).ok, false);
   assert.equal(validateOriginalSwishPayment({ ...base, paymentReference: 'missing' }, expected).ok, false);
+});
+
+test('accepts only a Stripe refund tied to the reserved order and payment intent', () => {
+  const refund = {
+    id: 're_expected',
+    object: 'refund',
+    amount: 7_900,
+    currency: 'sek',
+    metadata: { orderId, refundId: '223e4567-e89b-42d3-a456-426614174000' },
+    payment_intent: 'pi_expected',
+    status: 'succeeded',
+  } as unknown as Stripe.Refund;
+  const expected = {
+    refundId: '223e4567-e89b-42d3-a456-426614174000',
+    orderId,
+    amountOre: 7_900,
+    paymentIntentId: 'pi_expected',
+    providerRefundId: 're_expected',
+  };
+  assert.equal(validateStripeRefundEvent(refund, expected).ok, true);
+  assert.equal(validateStripeRefundEvent({ ...refund, amount: 1 }, expected).ok, false);
+  assert.equal(validateStripeRefundEvent({ ...refund, payment_intent: 'pi_other' }, expected).ok, false);
+  assert.equal(validateStripeRefundEvent({ ...refund, metadata: {} }, expected).ok, false);
 });

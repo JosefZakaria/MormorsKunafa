@@ -20,8 +20,14 @@ import {
   type ProviderRefundOutcome,
 } from '../services/refundProviders.js';
 import {
+  reconcileStripeRefund,
+  reconcileSwishRefund,
+} from '../services/refundReconciliation.js';
+import { getOrderById } from '../db/orderRepository.js';
+import {
   parseRefundIdempotencyKey,
   parseRefundRequest,
+  expectedRefundConfirmation,
   RefundInputError,
 } from '../utils/refundSelection.js';
 import {
@@ -200,6 +206,74 @@ router.post('/:id/refunds', refundLimiter, requireAdmin, async (req: Request, re
         ? 'Återbetalningstjänsten är inte tillgänglig.'
         : 'Återbetalningen kunde inte reserveras.',
     });
+  }
+});
+
+router.post('/:id/refunds/:refundId/reconcile', refundLimiter, requireAdmin, async (req, res) => {
+  try {
+    if (!isCanonicalUuidV4(req.params.refundId)) {
+      res.status(400).json({ error: 'Invalid refund identifier' });
+      return;
+    }
+    if (!isRefundPasswordConfigured()) {
+      res.status(503).json({ error: 'Återbetalningslösenord är inte konfigurerat.' });
+      return;
+    }
+    const overview = await getAdminRefundOverview(req.params.id);
+    if (!overview) {
+      res.status(404).json({ error: 'Order not found' });
+      return;
+    }
+    const password = typeof req.body?.password === 'string' ? req.body.password : '';
+    const confirmation = typeof req.body?.confirmation === 'string' ? req.body.confirmation : '';
+    if (confirmation !== expectedRefundConfirmation(overview.orderNumber)) {
+      res.status(400).json({ error: 'Bekräftelsetexten stämmer inte med ordern.' });
+      return;
+    }
+    if (!await verifyRefundPassword(password)) {
+      res.status(401).json({ error: 'Felaktigt återbetalningslösenord.' });
+      return;
+    }
+    const record = await getRefundRecord(req.params.refundId);
+    if (!record || record.orderId !== overview.orderId) {
+      res.status(404).json({ error: 'Återbetalningen hittades inte för ordern.' });
+      return;
+    }
+    let outcome: ProviderRefundOutcome;
+    if (!record.providerRefundId && record.status === 'pending') {
+      const order = await getOrderById(record.orderId);
+      if (!order) throw new Error('Refund order disappeared');
+      const reservation: ReservedRefund = {
+        refundId: record.id,
+        amountOre: record.amountOre,
+        provider: record.provider,
+        orderNumber: overview.orderNumber,
+        stripeCheckoutSessionId: String(order.order.stripe_checkout_session_id ?? '').trim() || undefined,
+        swishInstructionId: String(order.order.swish_instruction_id ?? '').trim() || undefined,
+        created: false,
+      };
+      outcome = await callProvider(reservation, record.orderId, overview.totalPrice);
+      await setRefundProviderReference(record.id, outcome.providerRefundId);
+      if (outcome.status !== 'pending') {
+        await finalizeOrderRefund({
+          refundId: record.id,
+          succeeded: outcome.status === 'succeeded',
+          failureCode: outcome.failureCode,
+        });
+      }
+    } else if (record.provider === 'stripe') {
+      outcome = await reconcileStripeRefund(record.id);
+    } else {
+      outcome = await reconcileSwishRefund(record.id);
+    }
+    const after = await getAdminRefundOverview(record.orderId);
+    if (!after) throw new Error('Order disappeared after refund reconciliation');
+    res.status(outcome.status === 'pending' ? 202 : 200).json(
+      resultFromOverview(record.id, record.amountOre, after)
+    );
+  } catch (error) {
+    logUnexpectedError('POST /orders/admin/:id/refunds/:refundId/reconcile', error);
+    res.status(502).json({ error: 'Kunde inte stämma av återbetalningen med betalningsleverantören.' });
   }
 });
 
