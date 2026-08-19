@@ -3,6 +3,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { Container } from '../../../components/common/Container/Container';
 import { Button } from '../../../components/common/Button/Button';
+import { AccessibleDialog } from '../../../components/common/AccessibleDialog/AccessibleDialog';
 import { orderApi, productApi, adminApi } from '../../../services/api';
 import { printKitchenTicket, printReceipt, testConnection, isPrinterConfigured, getPrinterConfig, setPrinterConfig } from '../../../services/printer';
 import { useLanguage } from '../../../contexts/LanguageContext';
@@ -416,9 +417,8 @@ function CancelOrderModal({
 }) {
     if (!open) return null;
     return (
-        <div className="stats-modal-overlay" onClick={onClose}>
-            <div className="stats-modal" onClick={(e) => e.stopPropagation()}>
-                <h2>Avbryt beställning</h2>
+        <AccessibleDialog labelledBy="cancel-order-title" onClose={onClose} closeDisabled={loading}>
+                <h2 id="cancel-order-title">Avbryt beställning</h2>
                 <p>Ange anledning till avbokning.</p>
                 <textarea
                     value={reason}
@@ -450,8 +450,7 @@ function CancelOrderModal({
                         {loading ? 'Sparar...' : 'Spara och avbryt'}
                     </Button>
                 </div>
-            </div>
-        </div>
+        </AccessibleDialog>
     );
 }
 
@@ -472,9 +471,8 @@ function InternalNotesModal({
 }) {
     if (!open) return null;
     return (
-        <div className="stats-modal-overlay" onClick={onClose}>
-            <div className="stats-modal" onClick={(e) => e.stopPropagation()}>
-                <h2>Intern notis</h2>
+        <AccessibleDialog labelledBy="internal-notes-title" onClose={onClose} closeDisabled={loading}>
+                <h2 id="internal-notes-title">Intern notis</h2>
                 <p>Spara en intern anteckning för ordern.</p>
                 <textarea
                     value={notes}
@@ -493,8 +491,7 @@ function InternalNotesModal({
                         {loading ? 'Sparar...' : 'Spara'}
                     </Button>
                 </div>
-            </div>
-        </div>
+        </AccessibleDialog>
     );
 }
 
@@ -519,9 +516,8 @@ function ConfirmDeleteOrderModal({
 }) {
     if (!open) return null;
     return (
-        <div className="stats-modal-overlay" onClick={onClose}>
-            <div className="stats-modal" onClick={(e) => e.stopPropagation()}>
-                <h2>Ta bort order</h2>
+        <AccessibleDialog labelledBy="delete-order-title" onClose={onClose} closeDisabled={loading}>
+                <h2 id="delete-order-title">Ta bort order</h2>
                 <p>
                     Är du säker på att du vill ta bort {orderNumber ? `order ${orderNumber}` : 'den här ordern'}?
                     Detta går inte att ångra.
@@ -544,8 +540,7 @@ function ConfirmDeleteOrderModal({
                         {loading ? 'Tar bort...' : 'Ta bort'}
                     </Button>
                 </div>
-            </div>
-        </div>
+        </AccessibleDialog>
     );
 }
 
@@ -568,9 +563,8 @@ function ConfirmDeleteAllHistoryModal({
 }) {
     if (!open) return null;
     return (
-        <div className="stats-modal-overlay" onClick={onClose}>
-            <div className="stats-modal" onClick={(e) => e.stopPropagation()}>
-                <h2>Radera all historik</h2>
+        <AccessibleDialog labelledBy="delete-history-title" onClose={onClose} closeDisabled={loading}>
+                <h2 id="delete-history-title">Radera all historik</h2>
                 <p>
                     Är du säker på att du vill radera hela orderhistoriken? Detta går inte att ångra.
                 </p>
@@ -592,8 +586,7 @@ function ConfirmDeleteAllHistoryModal({
                         {loading ? 'Raderar...' : 'Radera allt'}
                     </Button>
                 </div>
-            </div>
-        </div>
+        </AccessibleDialog>
     );
 }
 
@@ -1363,9 +1356,12 @@ export const AdminDashboard: React.FC = () => {
 
                 {/* ── STATISTIK LÖSENORDS-POPUP ── */}
                 {showStatsModal && (
-                    <div className="stats-modal-overlay">
-                        <div className="stats-modal">
-                            <h2>Statistik</h2>
+                    <AccessibleDialog
+                        labelledBy="statistics-login-title"
+                        onClose={() => { setShowStatsModal(false); setStatsPassword(''); setStatsError(null); }}
+                        closeDisabled={statsLoading}
+                    >
+                            <h2 id="statistics-login-title">Statistik</h2>
                             <p>Ange lösenord för att se statistiken</p>
                             <input
                                 id="stats-password-input"
@@ -1384,8 +1380,7 @@ export const AdminDashboard: React.FC = () => {
                                     {statsLoading ? 'Laddar...' : 'Öppna'}
                                 </Button>
                             </div>
-                        </div>
-                    </div>
+                    </AccessibleDialog>
                 )}
                 <CancelOrderModal
                     open={cancelModalOpen}

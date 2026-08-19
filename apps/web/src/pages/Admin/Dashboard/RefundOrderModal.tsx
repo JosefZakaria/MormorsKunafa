@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AdminRefundOverview, Order } from '@shared/types';
 import { Button } from '../../../components/common/Button/Button';
+import { AccessibleDialog } from '../../../components/common/AccessibleDialog/AccessibleDialog';
 import { adminApi } from '../../../services/api';
 
 type Stage = 'warning' | 'selection' | 'authorize';
@@ -132,9 +133,13 @@ export function RefundOrderModal({
   };
 
   return (
-    <div className="stats-modal-overlay" onClick={submitting ? undefined : onClose}>
-      <div className="stats-modal refund-modal" onClick={(event) => event.stopPropagation()}>
-        <h2>Återbetala {order.orderNumber}</h2>
+    <AccessibleDialog
+      labelledBy="refund-dialog-title"
+      onClose={onClose}
+      closeDisabled={submitting}
+      dialogClassName="refund-modal"
+    >
+        <h2 id="refund-dialog-title">Återbetala {order.orderNumber}</h2>
 
         {stage === 'warning' && (
           <>
@@ -275,7 +280,6 @@ export function RefundOrderModal({
             </div>
           </>
         )}
-      </div>
-    </div>
+    </AccessibleDialog>
   );
 }

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import DOMPurify from 'dompurify';
 import { Container } from '../../components/common/Container/Container';
 import { Button } from '../../components/common/Button/Button';
+import { AccessibleDialog } from '../../components/common/AccessibleDialog/AccessibleDialog';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useCart } from '../../contexts/CartContext';
 import { productApi } from '../../services/api';
@@ -417,18 +418,13 @@ export const Menu: React.FC = () => {
             </div>
 
             {selectedProduct && (
-                <div
-                    className="menu-modal-overlay"
-                    onClick={() => setSelectedProduct(null)}
-                    role="dialog"
-                    aria-modal="true"
-                    aria-labelledby="menu-modal-title"
+                <AccessibleDialog
+                    key={`modal-${selectedProduct.id}-${language}`}
+                    overlayClassName="menu-modal-overlay"
+                    dialogClassName="menu-modal"
+                    onClose={() => setSelectedProduct(null)}
+                    labelledBy="menu-modal-title"
                 >
-                    <div
-                        key={`modal-${selectedProduct.id}-${language}`}
-                        className="menu-modal"
-                        onClick={(e) => e.stopPropagation()}
-                    >
                         <button
                             type="button"
                             className="menu-modal__close"
@@ -628,8 +624,7 @@ export const Menu: React.FC = () => {
                                     : t('menu.out_of_stock')}
                             </Button>
                         </div>
-                    </div>
-                </div>
+                </AccessibleDialog>
             )}
         </>
     );

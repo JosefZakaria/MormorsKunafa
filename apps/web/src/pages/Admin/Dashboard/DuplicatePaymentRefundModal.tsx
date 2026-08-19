@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { DuplicatePaymentAlertDetail } from '@shared/types';
 import { Button } from '../../../components/common/Button/Button';
+import { AccessibleDialog } from '../../../components/common/AccessibleDialog/AccessibleDialog';
 import { adminApi } from '../../../services/api';
 
 type Stage = 'warning' | 'review' | 'authorize';
@@ -80,9 +81,13 @@ export function DuplicatePaymentRefundModal({
   };
 
   return (
-    <div className="stats-modal-overlay" onClick={submitting ? undefined : onClose}>
-      <div className="stats-modal refund-modal duplicate-refund-modal" onClick={(event) => event.stopPropagation()}>
-        <h2>Granska dubbelbetalning</h2>
+    <AccessibleDialog
+      labelledBy="duplicate-refund-dialog-title"
+      onClose={onClose}
+      closeDisabled={submitting}
+      dialogClassName="refund-modal duplicate-refund-modal"
+    >
+        <h2 id="duplicate-refund-dialog-title">Granska dubbelbetalning</h2>
         <code className="duplicate-refund-event">{eventId}</code>
 
         {loading && <p>Verifierar event och betalning direkt hos Stripe...</p>}
@@ -174,7 +179,6 @@ export function DuplicatePaymentRefundModal({
             {pending && <Button variant="primary" onClick={() => void load()} style={{ flex: 1 }}>Stäm av igen</Button>}
           </div>
         )}
-      </div>
-    </div>
+    </AccessibleDialog>
   );
 }
