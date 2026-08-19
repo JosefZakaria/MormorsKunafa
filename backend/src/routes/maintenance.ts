@@ -2,12 +2,49 @@ import { Router, type Request, type Response } from 'express';
 import { logSupabaseError, supabase } from '../db/connection.js';
 import { requireMaintenanceAuthorization } from '../middleware/maintenanceAuth.js';
 import { logUnexpectedError } from '../utils/safeErrorMetadata.js';
+import { listInitiatedCheckoutDrafts } from '../db/checkoutDraftRepository.js';
+import {
+  reconcileInitiatedCheckoutDraft,
+  type CheckoutDraftReconciliationOutcome,
+} from '../services/checkoutDraftReconciliation.js';
 
 const router = Router();
 // The cron runs daily, so a 24-hour cutoff removes drafts after 24–48 hours.
 const RETENTION_HOURS = 24;
 const BATCH_SIZE = 500;
 const MAX_BATCHES = 10;
+const MAX_PROVIDER_RECONCILIATIONS = 40;
+const PROVIDER_CONCURRENCY = 4;
+
+type MaintenanceCounts = Record<CheckoutDraftReconciliationOutcome | 'errors', number>;
+
+async function reconcileProviderDrafts(cutoff: string): Promise<MaintenanceCounts> {
+  const drafts = await listInitiatedCheckoutDrafts(cutoff, MAX_PROVIDER_RECONCILIATIONS);
+  const counts: MaintenanceCounts = {
+    paid: 0,
+    deleted: 0,
+    pending: 0,
+    rejected: 0,
+    errors: 0,
+  };
+  let cursor = 0;
+  const worker = async (): Promise<void> => {
+    while (cursor < drafts.length) {
+      const draft = drafts[cursor++];
+      try {
+        const outcome = await reconcileInitiatedCheckoutDraft(draft, cutoff);
+        counts[outcome] += 1;
+      } catch (error) {
+        counts.errors += 1;
+        logUnexpectedError('checkout draft provider reconciliation failed', error);
+      }
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(PROVIDER_CONCURRENCY, drafts.length) }, () => worker())
+  );
+  return counts;
+}
 
 router.get(
   '/cleanup-uninitiated-checkout-drafts',
@@ -38,9 +75,20 @@ router.get(
         if (batchDeleted < BATCH_SIZE) break;
       }
 
-      console.info('[maintenance] removed uninitiated checkout drafts', { deleted, batches });
+      const providerReconciliation = await reconcileProviderDrafts(cutoff);
+
+      console.info('[maintenance] reconciled checkout drafts', {
+        deletedUninitiated: deleted,
+        batches,
+        providerReconciliation,
+      });
       res.setHeader('Cache-Control', 'private, no-store');
-      res.json({ ok: true, deleted, retentionHours: RETENTION_HOURS });
+      res.json({
+        ok: true,
+        deletedUninitiated: deleted,
+        providerReconciliation,
+        retentionHours: RETENTION_HOURS,
+      });
     } catch (error) {
       logUnexpectedError('cleanup uninitiated checkout drafts failed', error);
       res.status(500).json({ error: 'Cleanup failed' });
