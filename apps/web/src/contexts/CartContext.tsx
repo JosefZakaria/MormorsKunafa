@@ -6,6 +6,13 @@ import {
   isBreadProduct,
   parseBreadQuantity,
 } from '../utils/productVariantPrices';
+import {
+  readPersistentValue,
+  removePersistentValue,
+  STORAGE_KEYS,
+  STORAGE_TTL_MS,
+  writePersistentValue,
+} from '../utils/browserStorage';
 
 export interface CartItem {
   productId: string;
@@ -27,22 +34,50 @@ interface CartContextType {
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
-const CART_STORAGE_KEY = 'mormors-kunafa-cart';
+function isStoredCart(value: unknown): value is CartItem[] {
+  return Array.isArray(value)
+    && value.length <= 100
+    && value.every((item) => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
+      const candidate = item as Partial<CartItem>;
+      return typeof candidate.productId === 'string'
+        && candidate.productId.length > 0
+        && candidate.productId.length <= 300
+        && typeof candidate.productName === 'string'
+        && candidate.productName.length > 0
+        && candidate.productName.length <= 300
+        && Number.isSafeInteger(candidate.price)
+        && (candidate.price ?? -1) >= 0
+        && Number.isSafeInteger(candidate.quantity)
+        && (candidate.quantity ?? 0) >= 1
+        && (candidate.quantity ?? 0) <= 50
+        && (candidate.image == null
+          || (typeof candidate.image === 'string' && candidate.image.length <= 2_048));
+    });
+}
 
 export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [items, setItems] = useState<CartItem[]>(() => {
-    // Load from localStorage on mount
     try {
-      const stored = localStorage.getItem(CART_STORAGE_KEY);
-      return stored ? JSON.parse(stored) : [];
+      return readPersistentValue(
+        STORAGE_KEYS.cart,
+        isStoredCart,
+        STORAGE_TTL_MS.cart,
+        (raw) => {
+          try { return JSON.parse(raw) as unknown as CartItem[]; } catch { return null; }
+        }
+      ) ?? [];
     } catch {
       return [];
     }
   });
 
-  // Save to localStorage whenever items change
   useEffect(() => {
-    localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items));
+    if (items.length === 0) {
+      removePersistentValue(STORAGE_KEYS.cart);
+      return;
+    }
+    writePersistentValue(STORAGE_KEYS.cart, items, STORAGE_TTL_MS.cart);
   }, [items]);
 
   const addItem = (product: Product, quantity: number = 1, option?: string) => {

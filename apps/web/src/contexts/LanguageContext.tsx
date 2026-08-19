@@ -1,5 +1,11 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { translations, Language } from '../translations/translations';
+import {
+    readPersistentValue,
+    STORAGE_KEYS,
+    STORAGE_TTL_MS,
+    writePersistentValue,
+} from '../utils/browserStorage';
 
 type LanguageContextType = {
     language: Language;
@@ -12,12 +18,16 @@ const LanguageContext = createContext<LanguageContextType | undefined>(undefined
 
 export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [language, setLanguage] = useState<Language>(() => {
-        const saved = localStorage.getItem('language');
-        return (saved as Language) || 'sv';
+        return readPersistentValue(
+            STORAGE_KEYS.language,
+            (value): value is Language => value === 'sv' || value === 'en' || value === 'ar',
+            STORAGE_TTL_MS.preference,
+            (raw) => raw === 'sv' || raw === 'en' || raw === 'ar' ? raw : null
+        ) ?? 'sv';
     });
 
     useEffect(() => {
-        localStorage.setItem('language', language);
+        writePersistentValue(STORAGE_KEYS.language, language, STORAGE_TTL_MS.preference);
     }, [language]);
 
     const t = (key: string): string => {
