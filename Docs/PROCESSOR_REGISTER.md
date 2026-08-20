@@ -23,7 +23,7 @@ not what is enabled or contractually applicable to the production accounts.
 | Stripe | Customer email, server-created line items/amount, order ID metadata, payment/refund identifiers | Processor/controller role varies by Stripe activity | Current services agreement/DPA, product-specific role statement, transfer safeguards, retention, subprocessors |
 | Swish/connected bank | Phone alias, amount, currency, order reference and payment/refund identifiers over mTLS | Bank/controller and provider/recipient chain must follow the merchant agreement | Merchant agreement, role statement, retention and recipient chain |
 | Web Push providers | Admin push endpoint/keys and paid-order notification payload | Recipient/processor depends on browser endpoint | Identify enrolled endpoint providers, privacy terms, retention; reset unknown subscriptions |
-| Local Epson printer | Minimum operational order and delivery fields printed in the kitchen | Internal recipient/device | Physical access owner, paper destruction routine, device/network inventory |
+| Local Epson printer | Optional printer integration exists in code, but the owner states that staff currently reads orders on a tablet and no customer tickets are printed | Inactive internal recipient/device | Keep `PRINTER_IP` unset; complete a physical-access and paper-destruction review only if printing is activated later |
 | GitHub | Source code and CI metadata; must contain no production personal data or secrets | Processor for repository data | Repository visibility, secret scanning, incident/history cleanup, organization security settings |
 
 ## Onboarding gate for a new provider

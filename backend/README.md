@@ -35,7 +35,7 @@ Admin PWA notifications (Web Push):
 
 | Variable | Description |
 |----------|-------------|
-| `WEB_PUSH_SUBJECT` | Contact URI for VAPID, e.g. `mailto:admin@mormorskunafa.se` |
+| `WEB_PUSH_SUBJECT` | Monitored contact URI for VAPID, e.g. `mailto:Mormorskunafa@gmail.com` |
 | `WEB_PUSH_VAPID_PUBLIC_KEY` | Public VAPID key (shared with web app as `VITE_WEB_PUSH_VAPID_PUBLIC_KEY`) |
 | `WEB_PUSH_VAPID_PRIVATE_KEY` | Private VAPID key (server only) |
 

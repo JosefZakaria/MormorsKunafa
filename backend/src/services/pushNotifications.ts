@@ -38,7 +38,7 @@ export function configureWebPush(): void {
   if (vapidConfigured) return;
   const publicKey = process.env.WEB_PUSH_VAPID_PUBLIC_KEY?.trim();
   const privateKey = process.env.WEB_PUSH_VAPID_PRIVATE_KEY?.trim();
-  const subject = process.env.WEB_PUSH_SUBJECT?.trim() || 'mailto:admin@mormorskunafa.se';
+  const subject = process.env.WEB_PUSH_SUBJECT?.trim() || 'mailto:Mormorskunafa@gmail.com';
 
   if (!publicKey || !privateKey) {
     console.warn('[push] VAPID keys missing; Web Push disabled');
