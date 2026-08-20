@@ -7,6 +7,36 @@ Apply migrations in filename order in a controlled Supabase maintenance window.
 Take a backup, use a staging database first, and keep the matching backend deploy
 paused until the migration has committed successfully.
 
+### Free-plan backup and restore gate
+
+Supabase Free does not provide customer-accessible daily backups. Before any
+production migration, set `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`,
+`PGPASSWORD` and `PGSSLMODE=require` in the operator's private shell and run
+`scripts/New-SupabaseSafetyBackup.ps1`. The destination must be encrypted,
+access-restricted and outside both Git and ordinary cloud-synced folders. The
+script creates a custom-format archive plus a SHA-256 manifest and rejects an
+archive missing the core accounting/order tables.
+
+Restore that exact archive into a separate disposable PostgreSQL database with
+`scripts/Test-SupabaseBackupRestore.ps1`. Restore credentials use the
+`RESTORE_PG*` environment-variable prefix. The script rejects the source host,
+requires the exact disposable database name, uses a single transaction and runs
+`../verification/verify-restored-database.sql`. Never use production as the
+restore target. Retain only the manifest, timestamps, aggregate verification
+result and operator approval in the restricted migration journal.
+
+Immediately before migration, stop writes during the agreed night maintenance
+window, take and restore-test a fresh archive, then record the last accepted
+order number and paid gross aggregate. After migration, run both read-only
+verification files and compare those aggregates before reopening writes. A
+failed check means rollback/restore review, not manual deletion of live rows.
+
+For the historical eat-here VAT question, run
+`../verification/review-eat-here-accounting.sql` privately. If its first count
+is zero, record that no paid eat-here order was found from 2026-04-01 onward. If
+rows exist, give the non-PII order-number report and original receipts to the
+accounting adviser; the query is evidence collection, not an accounting ruling.
+
 ## 2026-08-19 atomic order creation
 
 Before applying `2026-08-19-atomic-order-creation.sql`, verify that no duplicate
