@@ -62,24 +62,22 @@ Swish (direct API — requires Swish Handel + bank certificates):
 | `SWISH_CA_PATH` | Optional CA bundle PEM |
 | `SWISH_CALLBACK_BASE_URL` | Public HTTPS base URL of this API (no trailing slash), e.g. `https://api.example.se` — Swish POSTs to `{base}/api/swish/callback` |
 
-Run `npm run db:migrate:swish` after deploy to add `orders.swish_instruction_id`.
-
 ## Setup
 
-1. **Create the app database** (e.g. in MySQL):
-
-   ```sql
-   CREATE DATABASE mormors_kunafa CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-   ```
-
-2. **Install and run schema** (from repo root or `backend/`):
+1. **Install dependencies** (from the repository root):
 
    ```bash
    npm install
-   npm run db:migrate --workspace=@mormors-kunafa/backend
    ```
 
-   This runs `backend/src/db/schema.sql` against `DB_DATABASE`.
+2. **Configure a Supabase project** with `SUPABASE_URL` and
+   `SUPABASE_SERVICE_ROLE_KEY` in the private environment.
+
+   Database migrations are PostgreSQL files under `src/db/migrations`. The app
+   never applies them automatically. Follow that directory's README: create and
+   restore-test a full external backup, test in staging, use the approved night
+   maintenance window and verify accounting aggregates before reopening writes.
+   Never run a migration merely to make a local build pass.
 
 3. **Start the server**
 
@@ -130,9 +128,6 @@ The shared API config defaults to `http://localhost:3000/api`. To use this backe
 | `npm run dev` | Start with `tsx watch` (development) |
 | `npm run build` | Compile TypeScript to `dist/` |
 | `npm run start` | Run `node dist/index.js` (production) |
-| `npm run db:migrate` | Apply `src/db/schema.sql` to `DB_DATABASE` |
-| `npm run db:migrate:remove-rush-time-adjustment` | Drop `admin_settings.rush_time_adjustment_minutes` if it exists |
-| `npm run db:migrate:swish` | Add `orders.swish_instruction_id` for Swish payments |
 
 ## API overview
 
