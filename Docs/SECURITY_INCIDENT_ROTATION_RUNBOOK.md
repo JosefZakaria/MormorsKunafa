@@ -14,6 +14,22 @@ verification outcomes.
   consumer and has a rollback plan.
 - Do not reuse one value for multiple environment variables.
 
+## Owner-deferred deviations — 2026-08-20
+
+The owner has decided that the repository remains public, checkout remains open
+while preparation continues, credential rotation is performed later and the
+IMY assessment is deferred. These are constraints, not verified mitigations:
+the repository incident remains uncontained while its sensitive history is
+public, and the currently deployed credentials/session state remain at risk
+until rotation and deployment complete. Do not mark the corresponding master
+checklist items complete.
+
+Because the repository remains public, shorten the interval between rotation
+and the targeted rewrite. The rewrite must still wait for rotation and a
+verified deployment, must preserve the commit topology, and requires both Alper
+and Josef to replace their clones according to
+`Docs/CONTRIBUTOR_HISTORY_REWRITE.md`.
+
 ## Ordered execution
 
 1. Make the GitHub repository private and record the containment timestamp.
@@ -52,7 +68,9 @@ confirmed local rewrite. Then:
 2. Run an independent full secret/PII scan; the targeted verifier proves only
    that the two known blobs and their known paths are unreachable.
 3. Compare the expected ref inventory with the mirror and coordinate clone
-   replacement with every contributor.
+   replacement with every contributor. The guarded rewrite must also report the
+   same total, merge and root commit counts before and after; commit SHAs are
+   expected to change.
 4. The user performs the force-push. Neither prepared script can push.
 5. Verify the remote refs from a fresh clone, then ask GitHub Support to clear
    cached views and unreachable sensitive objects where applicable.
