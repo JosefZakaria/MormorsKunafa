@@ -126,7 +126,7 @@ The shared API config defaults to `http://localhost:3000/api`. To use this backe
 | Script | Description |
 |--------|-------------|
 | `npm run dev` | Start with `tsx watch` (development) |
-| `npm run build` | Compile TypeScript to `dist/` |
+| `npm run build` | Remove the verified backend `dist/` target, then compile current TypeScript so deleted files cannot survive into tests or deployment |
 | `npm run start` | Run `node dist/index.js` (production) |
 
 ## API overview
