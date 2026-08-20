@@ -22,3 +22,9 @@ The read-only `check-menu.ts` utility was retained, ported to Supabase and made
 subject to the shared external-output guard. It requires an explicit absolute
 output path outside the repository, refuses accidental overwrite and never
 prints the extracted menu data to stdout.
+
+The old WordPress-to-MySQL migration and SQL-generation commands were also
+removed. They targeted the superseded database model, imported legacy orders
+with inaccurate payment/status assumptions and could republish unreviewed
+WordPress product copy. Historical WordPress material is incident evidence to
+be protected and removed from Git history, not an approved production seed.

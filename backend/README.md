@@ -64,17 +64,6 @@ Swish (direct API — requires Swish Handel + bank certificates):
 
 Run `npm run db:migrate:swish` after deploy to add `orders.swish_instruction_id`.
 
-Optional, for one-time WordPress migration only:
-
-| Variable | Description |
-|----------|-------------|
-| `WP_DB_DATABASE` | WordPress/WooCommerce database name |
-| `WP_DB_HOST` | (optional) WP DB host; falls back to `DB_HOST` |
-| `WP_DB_PORT` | (optional) WP DB port |
-| `WP_DB_USER` | (optional) WP DB user |
-| `WP_DB_PASSWORD` | (optional) WP DB password |
-| `WP_TABLE_PREFIX` | (optional) WP table prefix; default `wp_` |
-
 ## Setup
 
 1. **Create the app database** (e.g. in MySQL):
@@ -92,23 +81,7 @@ Optional, for one-time WordPress migration only:
 
    This runs `backend/src/db/schema.sql` against `DB_DATABASE`.
 
-3. **(Optional) Migrate from WordPress**
-
-   - Restore your WordPress/WooCommerce SQL dump into a MySQL database.
-   - Set `WP_DB_DATABASE` (and other `WP_DB_*` if needed) in `.env`.
-   - Run:
-
-   ```bash
-   npm run db:seed-wp --workspace=@mormors-kunafa/backend
-   ```
-
-   Products and orders are copied. Admin migration is disabled unless
-   `WP_MIGRATION_ADMIN_PASSWORDS_JSON` maps each selected admin email to a unique
-   temporary password of 16–256 bytes. The script never prints passwords and
-   never overwrites an existing admin account. Reset every temporary password
-   after first login.
-
-4. **Start the server**
+3. **Start the server**
 
    ```bash
    npm run dev --workspace=@mormors-kunafa/backend
@@ -160,16 +133,6 @@ The shared API config defaults to `http://localhost:3000/api`. To use this backe
 | `npm run db:migrate` | Apply `src/db/schema.sql` to `DB_DATABASE` |
 | `npm run db:migrate:remove-rush-time-adjustment` | Drop `admin_settings.rush_time_adjustment_minutes` if it exists |
 | `npm run db:migrate:swish` | Add `orders.swish_instruction_id` for Swish payments |
-| `npm run db:seed-wp` | One-time migration from WordPress DB (requires `WP_DB_*`) |
-| `npm run db:generate-product-sql -- <dump.sql> --output <absolute-external-path>` | Read a WordPress dump and write product SQL to an explicitly selected protected location outside the repository (no DB connection) |
-
-### Product SQL from WordPress dump (no DB connection)
-
-If you have the WordPress SQL dump file (e.g. `Database/845466_...sql`) but no remote DB access:
-
-1. Store the source dump and output in a protected local directory outside the repository.
-2. Run: `npm run db:generate-product-sql --workspace=@mormors-kunafa/backend -- <absolute-dump-path> --output <absolute-output-path>`.
-3. Review the generated SQL before running it against any target database. Add `--overwrite` only when intentionally replacing an existing local output file.
 
 ## API overview
 
