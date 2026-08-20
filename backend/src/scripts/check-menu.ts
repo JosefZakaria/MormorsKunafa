@@ -1,7 +1,22 @@
 import 'dotenv/config';
-import { db } from '../db/connection.js';
-import fs from 'fs';
+import { logSupabaseError, supabase } from '../db/connection.js';
+import { requireExternalOutputPath, writeSensitiveArtifact } from './safe-local-artifact.js';
 
-const [rows] = await db.query('SELECT name FROM products ORDER BY name ASC') as any[];
-fs.writeFileSync('menu_output.json', JSON.stringify(rows, null, 2), 'utf8');
-process.exit(0);
+async function run() {
+  const outputPath = requireExternalOutputPath(process.argv.slice(2));
+  const { data, error } = await supabase
+    .from('products')
+    .select('name')
+    .order('name', { ascending: true });
+  if (error) {
+    logSupabaseError('check-menu', error);
+    throw new Error('Kunde inte läsa produktmenyn.');
+  }
+  writeSensitiveArtifact(outputPath, JSON.stringify(data ?? [], null, 2));
+  console.log('Menyfilen skrevs till den uttryckligen valda platsen utanför repot.');
+}
+
+run().then(() => process.exit(0)).catch((error: unknown) => {
+  console.error(error instanceof Error ? error.message : 'Menyexporten misslyckades.');
+  process.exit(1);
+});
