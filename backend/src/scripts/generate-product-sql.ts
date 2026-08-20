@@ -3,15 +3,13 @@
  * + wp_postmeta for images), and writes a new .sql file with INSERT statements for the
  * `products` table. Run the generated file in phpMyAdmin to complete the menu migration.
  *
- * Usage: npx tsx src/scripts/generate-product-sql.ts [path-to-wp-dump.sql] [output.sql]
- * Default: Database/845466_f2374cba400138f050cfb9bde30d163e.sql -> backend/generated-products.sql
+ * Usage: npx tsx src/scripts/generate-product-sql.ts <path-to-wp-dump.sql>
+ *   --output <absolute-path-outside-repo> [--overwrite]
  */
 
-import { readFileSync, writeFileSync } from 'fs';
-import { join, resolve } from 'path';
-import { fileURLToPath } from 'url';
-
-const __dirname = fileURLToPath(new URL('.', import.meta.url));
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { requireExternalOutputPath, writeSensitiveArtifact } from './safe-local-artifact.js';
 
 const WP_PREFIX = 'wp_';
 
@@ -223,16 +221,15 @@ function toOre(value: unknown): number {
 }
 
 function main() {
-  const repoRoot = resolve(__dirname, '..', '..', '..');
-  const defaultInput = join(repoRoot, 'Database', '845466_f2374cba400138f050cfb9bde30d163e.sql');
-  const defaultOutput = join(repoRoot, 'backend', 'generated-products.sql');
+  const args = process.argv.slice(2);
+  const inputValue = args[0];
+  if (!inputValue || inputValue.startsWith('--')) {
+    throw new Error('Ange dumpfilen explicit som första argument. Scriptet har ingen inbyggd sökväg till historiska dumpfiler.');
+  }
+  const inputPath = resolve(inputValue);
+  const outputPath = requireExternalOutputPath(args);
 
-  const inputPath = resolve(process.argv[2] ?? defaultInput);
-  const outputPath = resolve(process.argv[3] ?? defaultOutput);
-
-  console.log('Reading dump:', inputPath);
   const content = readFileSync(inputPath, 'utf-8');
-  console.log('Dump size:', (content.length / 1024 / 1024).toFixed(2), 'MB');
 
   const postsTable = `${WP_PREFIX}posts`;
   const lookupTable = `${WP_PREFIX}wc_product_meta_lookup`;
@@ -336,8 +333,13 @@ function main() {
   }
 
   const out = inserts.join('\n');
-  writeFileSync(outputPath, out, 'utf-8');
-  console.log(`Wrote ${productIds.length} product INSERTs to ${outputPath}`);
+  writeSensitiveArtifact(outputPath, out);
+  console.log(`Skrev ${productIds.length} produktposter till den uttryckligen valda platsen utanför repot.`);
 }
 
-main();
+try {
+  main();
+} catch (error: unknown) {
+  console.error(error instanceof Error ? error.message : 'Genereringen misslyckades.');
+  process.exit(1);
+}

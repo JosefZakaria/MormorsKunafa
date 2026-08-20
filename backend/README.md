@@ -161,14 +161,15 @@ The shared API config defaults to `http://localhost:3000/api`. To use this backe
 | `npm run db:migrate:remove-rush-time-adjustment` | Drop `admin_settings.rush_time_adjustment_minutes` if it exists |
 | `npm run db:migrate:swish` | Add `orders.swish_instruction_id` for Swish payments |
 | `npm run db:seed-wp` | One-time migration from WordPress DB (requires `WP_DB_*`) |
-| `npm run db:generate-product-sql` | Read WordPress dump file, output `backend/generated-products.sql` for the `products` table (no DB connection) |
+| `npm run db:generate-product-sql -- <dump.sql> --output <absolute-external-path>` | Read a WordPress dump and write product SQL to an explicitly selected protected location outside the repository (no DB connection) |
 
 ### Product SQL from WordPress dump (no DB connection)
 
 If you have the WordPress SQL dump file (e.g. `Database/845466_...sql`) but no remote DB access:
 
-1. Run: `npm run db:generate-product-sql --workspace=@mormors-kunafa/backend`
-2. Open `backend/generated-products.sql` and run its contents in phpMyAdmin on your target database to insert products.
+1. Store the source dump and output in a protected local directory outside the repository.
+2. Run: `npm run db:generate-product-sql --workspace=@mormors-kunafa/backend -- <absolute-dump-path> --output <absolute-output-path>`.
+3. Review the generated SQL before running it against any target database. Add `--overwrite` only when intentionally replacing an existing local output file.
 
 ## API overview
 
