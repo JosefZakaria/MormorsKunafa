@@ -16,6 +16,8 @@ export const translations = {
         "footer.about_us": "Om oss",
         "footer.tagline": "Handbakad kunafa och baklawa. Mitt i Malmö.",
         "footer.about_text": "Vi serverar autentisk kunafa gjord med kärlek och tradition. Vårt recept har gått i arv i generationer för att ge dig den sanna smaken av Mellanöstern.",
+        "footer.terms": "Köpvillkor",
+        "footer.privacy": "Integritetspolicy (GDPR)",
 
         // Landing
         "landing.title": "Smaka på traditionen",
@@ -207,6 +209,8 @@ export const translations = {
         "footer.about_us": "About us",
         "footer.tagline": "Handmade kunafa and baklawa. In the heart of Malmö.",
         "footer.about_text": "We serve authentic kunafa made with love and tradition. Our recipe has been passed down through generations to bring you the true taste of the Middle East.",
+        "footer.terms": "Terms & Conditions",
+        "footer.privacy": "Privacy Policy (GDPR)",
 
         // Landing
         "landing.title": "Taste the Tradition",
@@ -411,6 +415,8 @@ export const translations = {
         "footer.about_us": "من نحن",
         "footer.tagline": "كنافة وبقلاوة مصنوعة يدوياً. في قلب مالمو.",
         "footer.about_text": "نقدم كنافة أصيلة مصنوعة بالحب والتقاليد. وصفاتنا موروثة عبر الأجيال لتمنحك الطعم الأصيل للشرق الأوسط.",
+        "footer.terms": "الشروط والأحكام",
+        "footer.privacy": "سياسة الخصوصية (GDPR)",
 
         // Landing
         "landing.title": "تذوق التقاليد",
