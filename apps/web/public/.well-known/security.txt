@@ -1,0 +1,4 @@
+Contact: mailto:Mormorskunafa@gmail.com
+Canonical: https://mormorskunafa.se/.well-known/security.txt
+Preferred-Languages: sv, en
+Expires: 2027-08-01T00:00:00.000Z
