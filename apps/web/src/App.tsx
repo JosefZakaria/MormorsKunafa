@@ -7,6 +7,8 @@ import { Cart } from './pages/Cart/Cart';
 import { OrderStatus } from './pages/OrderStatus/OrderStatus';
 import { SwishPay } from './pages/SwishPay/SwishPay';
 import { SelectLocation } from './pages/SelectLocation/SelectLocation';
+import { Terms } from './pages/Terms/Terms';
+import { Privacy } from './pages/Privacy/Privacy';
 import { AdminLogin } from './pages/Admin/Login/AdminLogin';
 import { AdminDashboard } from './pages/Admin/Dashboard/AdminDashboard';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -37,6 +39,8 @@ function App() {
               <Route path="status" element={<OrderStatus />} />
               <Route path="pay/swish" element={<SwishPay />} />
               <Route path="select-location" element={<SelectLocation />} />
+              <Route path="terms" element={<Terms />} />
+              <Route path="privacy" element={<Privacy />} />
             </Route>
 
             {/* Admin Routes */}

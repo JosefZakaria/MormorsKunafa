@@ -22,6 +22,7 @@ import {
     isMenuExcluded,
 } from '../../utils/productVariantPrices';
 import './Menu.css';
+import { AllergenNotice } from '../../components/common/AllergenNotice/AllergenNotice';
 
 const SHORT_DESC_LENGTH = 100;
 
@@ -561,6 +562,7 @@ export const Menu: React.FC = () => {
                                     />
                                 );
                             })()}
+                            <AllergenNotice />
                         </div>
                         <div className="menu-modal__footer">
                             <Button

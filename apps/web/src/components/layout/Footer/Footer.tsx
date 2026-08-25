@@ -6,6 +6,7 @@ import { useLanguage } from '../../../contexts/LanguageContext';
 import { LanguageSelector } from '../../common/LanguageSelector/LanguageSelector';
 
 const TEL_LINK = 'tel:0728682592';
+const CONTACT_EMAIL = 'Mormorskunafa@gmail.com';
 
 export const Footer: React.FC = () => {
     const { t } = useLanguage();
@@ -26,6 +27,14 @@ export const Footer: React.FC = () => {
                         <h3 id="footer-contact" className="footer__col-title">{t('footer.contact')}</h3>
                         <span className="footer__item">{t('landing.findus.address')}</span>
                         <a href={TEL_LINK} className="footer__item footer__link">{t('footer.phone')}</a>
+                        <a href={`mailto:${CONTACT_EMAIL}`} className="footer__item footer__link">{CONTACT_EMAIL}</a>
+                        <span className="footer__item">Org.nr 559424-4823</span>
+                    </div>
+
+                    <div className="footer__col" aria-labelledby="footer-legal">
+                        <h3 id="footer-legal" className="footer__col-title">Information</h3>
+                        <Link to="/terms" className="footer__item footer__link">{t('footer.terms')}</Link>
+                        <Link to="/privacy" className="footer__item footer__link">{t('footer.privacy')}</Link>
                     </div>
                 </div>
             </div>

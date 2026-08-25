@@ -16,6 +16,12 @@ export const translations = {
         "footer.about_us": "Om oss",
         "footer.tagline": "Handbakad kunafa och baklawa. Mitt i Malmö.",
         "footer.about_text": "Vi serverar autentisk kunafa gjord med kärlek och tradition. Vårt recept har gått i arv i generationer för att ge dig den sanna smaken av Mellanöstern.",
+        "footer.terms": "Köpvillkor",
+        "footer.privacy": "Integritetspolicy (GDPR)",
+        "allergens.title": "Allergi eller överkänslighet?",
+        "allergens.before_order": "Kontakta oss före beställning för aktuell information om ingredienser, allergener och spår på",
+        "allergens.phone_hours": "alla dagar kl. 11–22",
+        "allergens.wait_for_answer": "Beställ inte innan du har fått den information du behöver. Vi kan diskutera individuella anpassningar, men kan aldrig garantera en allergenfri produkt eller utesluta spår från köket.",
 
         // Landing
         "landing.title": "Smaka på traditionen",
@@ -212,6 +218,12 @@ export const translations = {
         "footer.about_us": "About us",
         "footer.tagline": "Handmade kunafa and baklawa. In the heart of Malmö.",
         "footer.about_text": "We serve authentic kunafa made with love and tradition. Our recipe has been passed down through generations to bring you the true taste of the Middle East.",
+        "footer.terms": "Terms & Conditions",
+        "footer.privacy": "Privacy Policy (GDPR)",
+        "allergens.title": "Allergy or hypersensitivity?",
+        "allergens.before_order": "Before ordering, contact us for current information about ingredients, allergens and traces at",
+        "allergens.phone_hours": "daily, 11:00–22:00",
+        "allergens.wait_for_answer": "Do not order until you have received the information you need. We can discuss individual adjustments, but cannot guarantee an allergen-free product or exclude traces from the kitchen.",
 
         // Landing
         "landing.title": "Taste the Tradition",
@@ -421,6 +433,12 @@ export const translations = {
         "footer.about_us": "من نحن",
         "footer.tagline": "كنافة وبقلاوة مصنوعة يدوياً. في قلب مالمو.",
         "footer.about_text": "نقدم كنافة أصيلة مصنوعة بالحب والتقاليد. وصفاتنا موروثة عبر الأجيال لتمنحك الطعم الأصيل للشرق الأوسط.",
+        "footer.terms": "الشروط والأحكام",
+        "footer.privacy": "سياسة الخصوصية (GDPR)",
+        "allergens.title": "هل لديك حساسية أو فرط تحسس؟",
+        "allergens.before_order": "تواصل معنا قبل الطلب للحصول على معلومات محدثة عن المكونات ومسببات الحساسية وآثارها على الرقم",
+        "allergens.phone_hours": "يومياً من الساعة 11:00 إلى 22:00",
+        "allergens.wait_for_answer": "لا تطلب قبل أن تحصل على المعلومات التي تحتاجها. يمكننا مناقشة التعديلات الفردية، لكن لا يمكننا ضمان منتج خالٍ من مسببات الحساسية أو استبعاد آثارها من المطبخ.",
 
         // Landing
         "landing.title": "تذوق التقاليد",

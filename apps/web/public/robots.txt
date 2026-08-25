@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /admin/
+Disallow: /cart
+Disallow: /pay/
+Disallow: /status
+
+Sitemap: https://mormorskunafa.se/sitemap.xml

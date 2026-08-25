@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Truck } from 'lucide-react';
 import { Container } from '../../components/common/Container/Container';
 import { Button } from '../../components/common/Button/Button';
+import { AllergenNotice } from '../../components/common/AllergenNotice/AllergenNotice';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useCart } from '../../contexts/CartContext';
 import { orderApi } from '../../services/api';
@@ -747,6 +748,8 @@ export const Cart: React.FC = () => {
                                     </label>
                                 )}
                             </div>
+
+                            <AllergenNotice />
 
                             <Button
                                 variant="primary"
