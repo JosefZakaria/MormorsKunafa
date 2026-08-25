@@ -1,17 +1,50 @@
-import type { Row } from './connection.js';
-import { getOrderById } from './orderRepository.js';
+import { supabase, type Row, logSupabaseError } from './connection.js';
 import { dbTimestampToIso } from '../utils/dbTimestamp.js';
 import { sanitizeProductName } from '../utils/sanitizeProductName.js';
 
-export async function rowsToOrders(orderRows: Row[]): Promise<Record<string, unknown>[]> {
-  const out: Record<string, unknown>[] = [];
-  for (const o of orderRows) {
-    const full = await getOrderById(String(o.id));
-    if (full) {
-      out.push(orderRowToOrder(full.order, full.items));
+const ITEM_ID_CHUNK = 80;
+const ITEM_PAGE_SIZE = 1000;
+
+async function fetchItemsForOrderIds(orderIds: string[]): Promise<Map<string, Row[]>> {
+  const itemsByOrderId = new Map<string, Row[]>();
+  if (orderIds.length === 0) return itemsByOrderId;
+
+  for (let i = 0; i < orderIds.length; i += ITEM_ID_CHUNK) {
+    const chunk = orderIds.slice(i, i + ITEM_ID_CHUNK);
+    let from = 0;
+    while (true) {
+      const { data, error } = await supabase
+        .from('order_items')
+        .select('*')
+        .in('order_id', chunk)
+        .range(from, from + ITEM_PAGE_SIZE - 1);
+
+      if (error) {
+        logSupabaseError('rowsToOrders items', error);
+        throw error;
+      }
+
+      const rows = (data ?? []) as Row[];
+      for (const item of rows) {
+        const oid = String(item.order_id ?? '');
+        const list = itemsByOrderId.get(oid) ?? [];
+        list.push(item);
+        itemsByOrderId.set(oid, list);
+      }
+
+      if (rows.length < ITEM_PAGE_SIZE) break;
+      from += ITEM_PAGE_SIZE;
     }
   }
-  return out;
+
+  return itemsByOrderId;
+}
+
+export async function rowsToOrders(orderRows: Row[]): Promise<Record<string, unknown>[]> {
+  if (orderRows.length === 0) return [];
+
+  const itemsByOrderId = await fetchItemsForOrderIds(orderRows.map((o) => String(o.id)));
+  return orderRows.map((o) => orderRowToOrder(o, itemsByOrderId.get(String(o.id)) ?? []));
 }
 
 export function orderRowToOrder(r: Row, items: Row[]): Record<string, unknown> {

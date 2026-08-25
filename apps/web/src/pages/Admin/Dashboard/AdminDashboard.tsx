@@ -923,20 +923,28 @@ export const AdminDashboard: React.FC = () => {
         return () => clearInterval(id);
     }, [activeTab]);
 
-    // --- Fetch history when tab opens + poll while on tab ---
+    // Historik hämtas vid öppning och när datumfiltret ändras — ingen polling.
+    // Live-uppdatering sköts av pending/active; historik ändras sällan.
     useEffect(() => {
         if (activeTab !== 'history') return;
 
-        const fetchHistory = () => {
-            orderApi.getHistory(200, historyDateFrom || undefined, historyDateTo || undefined)
-                .then(setHistoryOrders)
-                .finally(() => setLoadingHistory(false));
-        };
-
+        let cancelled = false;
         setLoadingHistory(true);
-        fetchHistory();
-        const id = setInterval(fetchHistory, 5000);
-        return () => clearInterval(id);
+
+        orderApi.getHistory(200, historyDateFrom || undefined, historyDateTo || undefined)
+            .then((orders) => {
+                if (!cancelled) setHistoryOrders(orders);
+            })
+            .catch(() => {
+                if (!cancelled) setError('Kunde inte hämta historik.');
+            })
+            .finally(() => {
+                if (!cancelled) setLoadingHistory(false);
+            });
+
+        return () => {
+            cancelled = true;
+        };
     }, [activeTab, historyDateFrom, historyDateTo]);
 
     // --- Accept pending order ---
