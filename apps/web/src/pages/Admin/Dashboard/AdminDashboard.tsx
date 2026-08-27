@@ -5,8 +5,6 @@ import { Container } from '../../../components/common/Container/Container';
 import { Button } from '../../../components/common/Button/Button';
 import { orderApi, productApi, adminApi } from '../../../services/api';
 import { printKitchenTicket, printReceipt, testConnection, isPrinterConfigured, getPrinterConfig, setPrinterConfig } from '../../../services/printer';
-import { useLanguage } from '../../../contexts/LanguageContext';
-import { getDisplayName } from '../../../utils/productDisplayName';
 import type {
     DeliveryInfo,
     Order,
@@ -596,12 +594,11 @@ function StockRow({
     product: Product;
     onToggle: (product: Product) => void;
 }) {
-    const { t } = useLanguage();
     const outOfStock = !product.inStock;
 
     return (
         <div className={`admin-stock-card ${outOfStock ? 'stock-card-out' : ''}`}>
-            <span className="stock-name">{getDisplayName(product, t)}</span>
+            <span className="stock-name">{product.name}</span>
 
             <label className="switch">
                 <input

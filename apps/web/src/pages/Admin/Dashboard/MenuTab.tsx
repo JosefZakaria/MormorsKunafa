@@ -1,12 +1,13 @@
-import { useMemo, useRef, useState, type DragEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { GripVertical } from 'lucide-react';
 import { ApiError } from '@shared/api';
 import type { AdminSettings, Product } from '@shared/types';
 import { Button } from '../../../components/common/Button/Button';
-import { useLanguage } from '../../../contexts/LanguageContext';
 import { adminApi, productApi } from '../../../services/api';
-import { getDisplayName } from '../../../utils/productDisplayName';
 import { getEditablePriceFields } from '../../../utils/productVariantPrices';
+import { prepareDescriptionHtml, sanitizeDescriptionHtml } from '../../../utils/productDescriptionHtml';
+import { DescriptionEditor } from './DescriptionEditor';
 
 const DEFAULT_HERO_DESKTOP = '/images/kunafa-ashta.jpg';
 const DEFAULT_HERO_MOBILE = '/images/ny-kunafa-bild.jpg';
@@ -133,7 +134,9 @@ function ProductFormModal({
         for (const field of priceFields) next[field.key] = formatPriceKr(field.ore);
         return next;
     });
-    const [description, setDescription] = useState(isNew ? '' : product.description ?? '');
+    const [description, setDescription] = useState(
+        isNew ? '' : prepareDescriptionHtml(product.description ?? '')
+    );
     const [file, setFile] = useState<File | null>(null);
     const [preview, setPreview] = useState<string | null>(isNew ? null : product.image);
     const [saving, setSaving] = useState(false);
@@ -189,7 +192,7 @@ function ProductFormModal({
                 const created = await productApi.create({
                     name: trimmed,
                     price: priceOre,
-                    description: description.trim(),
+                    description: sanitizeDescriptionHtml(description),
                     image,
                 });
                 onSaved(created, 'create');
@@ -197,7 +200,7 @@ function ProductFormModal({
                 const updated = await productApi.update(product.id, {
                     name: trimmed,
                     price: priceOre,
-                    description: description.trim(),
+                    description: sanitizeDescriptionHtml(description),
                     ...(variantPrices ? { variantPrices } : {}),
                 });
                 onSaved(updated, 'update');
@@ -211,7 +214,15 @@ function ProductFormModal({
         }
     };
 
-    return (
+    useEffect(() => {
+        const previous = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        return () => {
+            document.body.style.overflow = previous;
+        };
+    }, []);
+
+    return createPortal(
         <div className="stats-modal-overlay" onClick={onClose}>
             <div className="stats-modal admin-product-modal" onClick={(e) => e.stopPropagation()}>
                 <h2>{isNew ? 'Lägg till vara' : 'Ändra vara'}</h2>
@@ -259,12 +270,10 @@ function ProductFormModal({
                     </>
                 )}
                 <label className="form-label" htmlFor="admin-product-desc">Beskrivning (valfritt)</label>
-                <textarea
-                    id="admin-product-desc"
-                    className="stats-modal-input"
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    rows={3}
+                <DescriptionEditor
+                    value={isNew ? '' : product.description ?? ''}
+                    onChange={setDescription}
+                    disabled={saving}
                 />
                 {isNew && (
                     <>
@@ -290,7 +299,8 @@ function ProductFormModal({
                     </Button>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 }
 
@@ -342,7 +352,6 @@ function ProductCard({
     onDrop: (event: DragEvent<HTMLElement>) => void;
     onDragEnd: () => void;
 }) {
-    const { t } = useLanguage();
     const inputRef = useRef<HTMLInputElement>(null);
     const cardRef = useRef<HTMLElement>(null);
     const [busy, setBusy] = useState(false);
@@ -403,7 +412,7 @@ function ProductCard({
                 <img src={product.image} alt="" draggable={false} />
                 {busy && <div className="hero-upload-card__overlay">Laddar upp…</div>}
             </div>
-            <h3 className="admin-menu-card__name">{getDisplayName(product, t)}</h3>
+            <h3 className="admin-menu-card__name">{product.name}</h3>
             <ProductPriceLines product={product} />
             <div className="admin-menu-card__actions">
                 <input
