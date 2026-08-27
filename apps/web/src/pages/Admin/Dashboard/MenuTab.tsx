@@ -8,6 +8,8 @@ import { useLanguage } from '../../../contexts/LanguageContext';
 import { adminApi, productApi } from '../../../services/api';
 import { getDisplayName } from '../../../utils/productDisplayName';
 import { getEditablePriceFields } from '../../../utils/productVariantPrices';
+import { prepareDescriptionHtml, sanitizeDescriptionHtml } from '../../../utils/productDescriptionHtml';
+import { DescriptionEditor } from './DescriptionEditor';
 
 const DEFAULT_HERO_DESKTOP = '/images/kunafa-ashta.jpg';
 const DEFAULT_HERO_MOBILE = '/images/ny-kunafa-bild.jpg';
@@ -134,7 +136,9 @@ function ProductFormModal({
         for (const field of priceFields) next[field.key] = formatPriceKr(field.ore);
         return next;
     });
-    const [description, setDescription] = useState(isNew ? '' : product.description ?? '');
+    const [description, setDescription] = useState(
+        isNew ? '' : prepareDescriptionHtml(product.description ?? '')
+    );
     const [file, setFile] = useState<File | null>(null);
     const [preview, setPreview] = useState<string | null>(isNew ? null : product.image);
     const [saving, setSaving] = useState(false);
@@ -190,7 +194,7 @@ function ProductFormModal({
                 const created = await productApi.create({
                     name: trimmed,
                     price: priceOre,
-                    description: description.trim(),
+                    description: sanitizeDescriptionHtml(description),
                     image,
                 });
                 onSaved(created, 'create');
@@ -198,7 +202,7 @@ function ProductFormModal({
                 const updated = await productApi.update(product.id, {
                     name: trimmed,
                     price: priceOre,
-                    description: description.trim(),
+                    description: sanitizeDescriptionHtml(description),
                     ...(variantPrices ? { variantPrices } : {}),
                 });
                 onSaved(updated, 'update');
@@ -268,12 +272,10 @@ function ProductFormModal({
                     </>
                 )}
                 <label className="form-label" htmlFor="admin-product-desc">Beskrivning (valfritt)</label>
-                <textarea
-                    id="admin-product-desc"
-                    className="stats-modal-input"
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    rows={3}
+                <DescriptionEditor
+                    value={isNew ? '' : product.description ?? ''}
+                    onChange={setDescription}
+                    disabled={saving}
                 />
                 {isNew && (
                     <>

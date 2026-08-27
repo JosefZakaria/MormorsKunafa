@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState } from 'react';
-import DOMPurify from 'dompurify';
 import { Container } from '../../components/common/Container/Container';
 import { Button } from '../../components/common/Button/Button';
 import { useLanguage } from '../../contexts/LanguageContext';
@@ -23,6 +22,10 @@ import {
 } from '../../utils/productVariantPrices';
 import './Menu.css';
 import { AllergenNotice } from '../../components/common/AllergenNotice/AllergenNotice';
+import {
+    normalizeLineBreaks,
+    prepareDescriptionHtml,
+} from '../../utils/productDescriptionHtml';
 
 const SHORT_DESC_LENGTH = 100;
 
@@ -35,57 +38,13 @@ function stripHtmlAndTruncate(html: string, maxLen: number): string {
     return text.slice(0, maxLen).trim() + '…';
 }
 
-/** Remove escaped quotes (e.g. \\"ashta\\" from API) so text shows as ashta. */
-function stripEscapedQuotes(html: string): string {
-    if (!html || typeof html !== 'string') return html;
-    return html.replace(/\\"/g, '');
-}
-
-/** Replace literal \r\n and real newlines with <br> so they don't show as text. */
-function normalizeLineBreaks(html: string): string {
-    if (!html || typeof html !== 'string') return html;
-    return html
-        // Handle double-escaped (e.g. from JSON/DB: "\\\\r\\\\n" -> backslash+r+backslash+n)
-        .replace(/\\\\r\\\\n/g, '<br>')
-        .replace(/\\\\n/g, '<br>')
-        .replace(/\\\\r/g, '<br>')
-        // Handle literal backslash-r-backslash-n in string (one backslash each)
-        .replace(/\\r\\n/g, '<br>')
-        .replace(/\\n/g, '<br>')
-        .replace(/\\r/g, '<br>')
-        // Handle actual newline characters
-        .replace(/\r\n/g, '<br>')
-        .replace(/\n/g, '<br>')
-        .replace(/\r/g, '<br>');
-}
-
-/** Strip newlines and \r\n for plain-text display (e.g. truncated fallback). */
 function normalizeLineBreaksToSpaces(text: string): string {
     if (!text || typeof text !== 'string') return text;
     return normalizeLineBreaks(text).replace(/<br\s*\/?>/gi, ' ').replace(/\s+/g, ' ').trim();
 }
 
-/** Convert common header patterns like <p><strong>För vem?</strong></p> to <h3>För vem?</h3> for proper spacing. */
-function normalizeHeaders(html: string): string {
-    if (!html || typeof html !== 'string') return html;
-    // Convert <p><strong>För vem?</strong></p> or similar header patterns to <h3>
-    // Also handles cases with <br> tags: <p><strong>För vem?</strong><br /></p>
-    return html
-        .replace(
-            /<p[^>]*>\s*<strong[^>]*>(För vem\?|For whom\?|Who is it for\?|لمن هذا المنتج\?|لمن|Vem är den för\?|Vem passar den för\?)<\/strong>\s*(<br\s*\/?>)?\s*<\/p>/gi,
-            '<h3>$1</h3>'
-        )
-        .replace(
-            /<p[^>]*>\s*<strong[^>]*>(För vem\?|For whom\?|Who is it for\?|لمن هذا المنتج\?|لمن|Vem är den för\?|Vem passar den för\?)<\/strong>\s*<br\s*\/?>\s*/gi,
-            '<h3>$1</h3>'
-        );
-}
-
 function sanitizeHtml(html: string): string {
-    return DOMPurify.sanitize(
-        normalizeHeaders(normalizeLineBreaks(stripEscapedQuotes(html))),
-        { ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'h3', 'ul', 'li', 'span'] }
-    );
+    return prepareDescriptionHtml(html);
 }
 
 /** Remove leading <strong>displayName</strong><br /> so the modal doesn't repeat the product name (match Kunafa layout). */
