@@ -83,6 +83,16 @@ export const productApi = {
       token,
     });
   },
+
+  remove: async (id: string): Promise<void> => {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    await authenticatedRequest<{ ok: boolean }>(`/products/${id}`, {
+      method: 'DELETE',
+      token,
+    });
+  },
 };
 
 // Orders API

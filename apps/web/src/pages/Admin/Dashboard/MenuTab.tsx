@@ -328,6 +328,7 @@ function ProductCard({
     isDragging,
     isDropTarget,
     onEdit,
+    onDelete,
     onUpdated,
     onError,
     onMoveUp,
@@ -343,6 +344,7 @@ function ProductCard({
     isDragging: boolean;
     isDropTarget: boolean;
     onEdit: () => void;
+    onDelete: () => void;
     onUpdated: (product: Product) => void;
     onError: (message: string) => void;
     onMoveUp: () => void;
@@ -429,6 +431,9 @@ function ProductCard({
                 <Button variant="secondary" size="sm" onClick={onEdit} disabled={busy}>
                     Ändra
                 </Button>
+                <Button variant="ghost" size="sm" className="admin-menu-card__delete" onClick={onDelete} disabled={busy}>
+                    Ta bort
+                </Button>
             </div>
         </article>
     );
@@ -450,6 +455,8 @@ export function MenuTab({
     onError: (message: string) => void;
 }) {
     const [formProduct, setFormProduct] = useState<Product | 'new' | null>(null);
+    const [deleteProduct, setDeleteProduct] = useState<Product | null>(null);
+    const [deleting, setDeleting] = useState(false);
     const [dragId, setDragId] = useState<string | null>(null);
     const [dropId, setDropId] = useState<string | null>(null);
     const [savingOrder, setSavingOrder] = useState(false);
@@ -482,6 +489,20 @@ export function MenuTab({
         const [moved] = next.splice(fromIndex, 1);
         next.splice(toIndex, 0, moved);
         void persistOrder(next);
+    };
+
+    const handleDelete = async () => {
+        if (!deleteProduct || deleting) return;
+        setDeleting(true);
+        try {
+            await productApi.remove(deleteProduct.id);
+            onProductsChange(products.filter((p) => p.id !== deleteProduct.id));
+            setDeleteProduct(null);
+        } catch (err) {
+            onError(productErrorMessage(err, 'Kunde inte ta bort varan. Försök igen.'));
+        } finally {
+            setDeleting(false);
+        }
     };
 
     return (
@@ -542,6 +563,7 @@ export function MenuTab({
                             isDragging={dragId === product.id}
                             isDropTarget={dropId === product.id && dragId !== product.id}
                             onEdit={() => setFormProduct(product)}
+                            onDelete={() => setDeleteProduct(product)}
                             onUpdated={upsertProduct}
                             onError={onError}
                             onMoveUp={() => moveProduct(index, index - 1)}
@@ -586,6 +608,25 @@ export function MenuTab({
                     }}
                     onError={onError}
                 />
+            )}
+            {deleteProduct && createPortal(
+                <div className="stats-modal-overlay" onClick={() => !deleting && setDeleteProduct(null)}>
+                    <div className="stats-modal" onClick={(e) => e.stopPropagation()}>
+                        <h2>Ta bort vara</h2>
+                        <p>
+                            Vill du ta bort “{deleteProduct.name}”? Den försvinner från menyn. Detta går inte att ångra.
+                        </p>
+                        <div className="stats-modal-actions">
+                            <Button variant="ghost" onClick={() => setDeleteProduct(null)} style={{ flex: 1 }} disabled={deleting}>
+                                Avbryt
+                            </Button>
+                            <Button variant="primary" onClick={() => void handleDelete()} style={{ flex: 1 }} disabled={deleting}>
+                                {deleting ? 'Tar bort…' : 'Ta bort'}
+                            </Button>
+                        </div>
+                    </div>
+                </div>,
+                document.body
             )}
         </div>
     );

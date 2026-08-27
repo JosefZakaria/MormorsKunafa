@@ -1483,6 +1483,15 @@ select.stats-modal-input {
     margin-top: auto;
 }
 
+.admin-menu-card__delete {
+    color: #b91c1c !important;
+    margin-left: auto;
+}
+
+.admin-menu-card__delete:hover:not(:disabled) {
+    background: #fef2f2 !important;
+}
+
 .admin-product-modal {
     max-width: 540px;
     max-height: min(90vh, 720px);

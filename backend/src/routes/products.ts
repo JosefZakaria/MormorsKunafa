@@ -377,4 +377,45 @@ router.patch('/:id', requireAdmin, async (req: Request, res: Response) => {
   }
 });
 
+router.delete('/:id', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id ?? '').trim();
+    if (!id) {
+      return res.status(400).json({ error: 'id required' });
+    }
+
+    const { data: existing, error: lookupError } = await supabase
+      .from('products')
+      .select('id')
+      .eq('id', id)
+      .maybeSingle();
+    if (lookupError) {
+      logSupabaseError('DELETE /api/products/:id lookup', lookupError);
+      return res.status(500).json({ error: 'Failed to delete product', details: lookupError.message });
+    }
+    if (!existing) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
+
+    const { error: unlinkError } = await supabase
+      .from('order_items')
+      .update({ product_id: null })
+      .eq('product_id', id);
+    if (unlinkError) {
+      logSupabaseError('DELETE /api/products/:id unlink', unlinkError);
+      return res.status(500).json({ error: 'Failed to delete product', details: unlinkError.message });
+    }
+
+    const { error } = await supabase.from('products').delete().eq('id', id);
+    if (error) {
+      logSupabaseError('DELETE /api/products/:id', error);
+      return res.status(500).json({ error: 'Failed to delete product', details: error.message });
+    }
+    return res.status(200).json({ ok: true });
+  } catch (e) {
+    console.error('[DELETE /api/products/:id] unexpected error:', e);
+    return res.status(500).json({ error: 'Failed to delete product' });
+  }
+});
+
 export default router;
