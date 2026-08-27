@@ -41,6 +41,7 @@ export const productApi = {
     price: number;
     description?: string;
     image?: string;
+    variantPrices?: Record<string, number>;
   }): Promise<Product> => {
     const token = getToken();
     if (!token) throw new Error('Not authenticated');
@@ -59,6 +60,7 @@ export const productApi = {
       price?: number;
       description?: string;
       image?: string;
+      variantPrices?: Record<string, number>;
     }
   ): Promise<Product> => {
     const token = getToken();

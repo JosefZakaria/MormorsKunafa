@@ -17,6 +17,7 @@ import {
   isOnlinePayment,
 } from '../utils/paymentMethod.js';
 import { resolveProductIdFromLineId } from '../utils/resolveProductId.js';
+import { resolveLineOption, resolveUnitPriceOre, variantPricesForProduct } from '../utils/productPrices.js';
 import {
   DELIVERY_FEE_ORE,
   DELIVERY_FEE_LINE_NAME,
@@ -196,17 +197,51 @@ router.post('/', async (req: Request, res: Response) => {
 
     let totalOre = 0;
     const itemRows = [];
+    const productIds = [
+      ...new Set(
+        productItems
+          .map((it) => resolveProductIdFromLineId(it.productId))
+          .filter((id): id is string => Boolean(id))
+      ),
+    ];
+    const catalog = new Map<string, { priceOre: number; variantPrices: Record<string, number> | null }>();
+    if (productIds.length > 0) {
+      const { data: catalogRows, error: catalogError } = await supabase
+        .from('products')
+        .select('id, price_ore, variant_prices')
+        .in('id', productIds);
+      if (catalogError) {
+        logSupabaseError('POST /api/orders products', catalogError);
+        await supabase.from('orders').delete().eq('id', orderId);
+        res.status(500).json({ error: 'Failed to create order', details: catalogError.message });
+        return;
+      }
+      for (const row of catalogRows ?? []) {
+        const id = String((row as Row).id);
+        catalog.set(id, {
+          priceOre: Number((row as Row).price_ore),
+          variantPrices: variantPricesForProduct(id, (row as Row).variant_prices),
+        });
+      }
+    }
+
     for (const it of productItems) {
       const itemId = generateId();
-      const lineTotal = (it.price ?? 0) * (it.quantity ?? 1);
-      totalOre += lineTotal;
+      const productId = resolveProductIdFromLineId(it.productId);
+      const option = resolveLineOption(it.productId);
+      const catalogProduct = productId ? catalog.get(productId) : undefined;
+      const unitPriceOre = catalogProduct
+        ? resolveUnitPriceOre(catalogProduct.priceOre, catalogProduct.variantPrices, option)
+        : (it.price ?? 0);
+      const quantity = it.quantity ?? 1;
+      totalOre += unitPriceOre * quantity;
       itemRows.push({
         id: itemId,
         order_id: orderId,
-        product_id: resolveProductIdFromLineId(it.productId),
+        product_id: productId,
         product_name_snapshot: sanitizeProductName(String(it.productName ?? '')),
-        quantity: it.quantity ?? 1,
-        price_ore: it.price ?? 0,
+        quantity,
+        price_ore: unitPriceOre,
         modifications_json: it.modifications?.length ? it.modifications : null,
       });
     }

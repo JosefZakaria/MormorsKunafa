@@ -1456,6 +1456,22 @@ select.stats-modal-input {
     font-weight: 600;
 }
 
+.admin-menu-card__prices {
+    list-style: none;
+    margin: 0 0 0.75rem;
+    padding: 0;
+    color: var(--color-gray-500);
+    font-weight: 600;
+    font-size: 0.85rem;
+    line-height: 1.45;
+}
+
+.admin-menu-card__prices li {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
 .admin-menu-card__actions {
     display: flex;
     flex-wrap: wrap;
@@ -1464,11 +1480,34 @@ select.stats-modal-input {
 }
 
 .admin-product-modal {
-    max-width: 440px;
+    max-width: 480px;
 }
 
 .admin-product-modal .form-label {
     margin-bottom: 0.25rem;
+}
+
+.admin-product-modal__variants {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    margin-bottom: 0.75rem;
+}
+
+.admin-product-modal__variant-row {
+    display: grid;
+    grid-template-columns: 1fr 7.5rem;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.admin-product-modal__variant-row label {
+    font-size: 0.9rem;
+    color: var(--color-gray-600, #4b5563);
+}
+
+.admin-product-modal__variant-row .stats-modal-input {
+    margin: 0;
 }
 
 .admin-product-modal__preview {

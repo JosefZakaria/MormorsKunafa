@@ -6,6 +6,7 @@ import { Button } from '../../../components/common/Button/Button';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { adminApi, productApi } from '../../../services/api';
 import { getDisplayName } from '../../../utils/productDisplayName';
+import { getEditablePriceFields } from '../../../utils/productVariantPrices';
 
 const DEFAULT_HERO_DESKTOP = '/images/kunafa-ashta.jpg';
 const DEFAULT_HERO_MOBILE = '/images/ny-kunafa-bild.jpg';
@@ -124,8 +125,14 @@ function ProductFormModal({
     onError: (message: string) => void;
 }) {
     const isNew = product === 'new';
+    const priceFields = isNew ? [] : getEditablePriceFields(product);
     const [name, setName] = useState(isNew ? '' : product.name);
     const [priceKr, setPriceKr] = useState(isNew ? '' : formatPriceKr(product.price));
+    const [variantPricesKr, setVariantPricesKr] = useState<Record<string, string>>(() => {
+        const next: Record<string, string> = {};
+        for (const field of priceFields) next[field.key] = formatPriceKr(field.ore);
+        return next;
+    });
     const [description, setDescription] = useState(isNew ? '' : product.description ?? '');
     const [file, setFile] = useState<File | null>(null);
     const [preview, setPreview] = useState<string | null>(isNew ? null : product.image);
@@ -149,10 +156,26 @@ function ProductFormModal({
             setFormError('Ange ett namn.');
             return;
         }
-        const priceOre = parsePriceKrToOre(priceKr);
-        if (priceOre == null) {
-            setFormError('Ange ett giltigt pris i kronor.');
-            return;
+        let priceOre: number;
+        let variantPrices: Record<string, number> | undefined;
+        if (priceFields.length > 0) {
+            variantPrices = {};
+            for (const field of priceFields) {
+                const ore = parsePriceKrToOre(variantPricesKr[field.key] ?? '');
+                if (ore == null) {
+                    setFormError(`Ange ett giltigt pris för ${field.label}.`);
+                    return;
+                }
+                variantPrices[field.key] = ore;
+            }
+            priceOre = Math.min(...Object.values(variantPrices));
+        } else {
+            const parsed = parsePriceKrToOre(priceKr);
+            if (parsed == null) {
+                setFormError('Ange ett giltigt pris i kronor.');
+                return;
+            }
+            priceOre = parsed;
         }
         setSaving(true);
         setFormError(null);
@@ -175,6 +198,7 @@ function ProductFormModal({
                     name: trimmed,
                     price: priceOre,
                     description: description.trim(),
+                    ...(variantPrices ? { variantPrices } : {}),
                 });
                 onSaved(updated, 'update');
             }
@@ -200,15 +224,40 @@ function ProductFormModal({
                     maxLength={200}
                     autoFocus
                 />
-                <label className="form-label" htmlFor="admin-product-price">Pris (kr)</label>
-                <input
-                    id="admin-product-price"
-                    className="stats-modal-input"
-                    inputMode="decimal"
-                    value={priceKr}
-                    onChange={(e) => setPriceKr(e.target.value)}
-                    placeholder="149"
-                />
+                {priceFields.length > 0 ? (
+                    <>
+                        <p className="form-label">Priser (kr)</p>
+                        <div className="admin-product-modal__variants">
+                            {priceFields.map((field) => (
+                                <div key={field.key} className="admin-product-modal__variant-row">
+                                    <label htmlFor={`admin-product-price-${field.key}`}>{field.label}</label>
+                                    <input
+                                        id={`admin-product-price-${field.key}`}
+                                        className="stats-modal-input"
+                                        inputMode="decimal"
+                                        value={variantPricesKr[field.key] ?? ''}
+                                        onChange={(e) =>
+                                            setVariantPricesKr((prev) => ({ ...prev, [field.key]: e.target.value }))
+                                        }
+                                        placeholder="1"
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                    </>
+                ) : (
+                    <>
+                        <label className="form-label" htmlFor="admin-product-price">Pris (kr)</label>
+                        <input
+                            id="admin-product-price"
+                            className="stats-modal-input"
+                            inputMode="decimal"
+                            value={priceKr}
+                            onChange={(e) => setPriceKr(e.target.value)}
+                            placeholder="149"
+                        />
+                    </>
+                )}
                 <label className="form-label" htmlFor="admin-product-desc">Beskrivning (valfritt)</label>
                 <textarea
                     id="admin-product-desc"
@@ -242,6 +291,23 @@ function ProductFormModal({
                 </div>
             </div>
         </div>
+    );
+}
+
+function ProductPriceLines({ product }: { product: Product }) {
+    const fields = getEditablePriceFields(product);
+    if (!fields.length) {
+        return <p className="admin-menu-card__price">{formatPriceKr(product.price)} kr</p>;
+    }
+    return (
+        <ul className="admin-menu-card__prices">
+            {fields.map((field) => (
+                <li key={field.key}>
+                    <span>{field.label}</span>
+                    <span>{formatPriceKr(field.ore)} kr</span>
+                </li>
+            ))}
+        </ul>
     );
 }
 
@@ -338,7 +404,7 @@ function ProductCard({
                 {busy && <div className="hero-upload-card__overlay">Laddar upp…</div>}
             </div>
             <h3 className="admin-menu-card__name">{getDisplayName(product, t)}</h3>
-            <p className="admin-menu-card__price">{formatPriceKr(product.price)} kr</p>
+            <ProductPriceLines product={product} />
             <div className="admin-menu-card__actions">
                 <input
                     ref={inputRef}
@@ -446,7 +512,7 @@ export function MenuTab({
                 <div>
                     <h2 className="menu-tab__title">Varor</h2>
                     <p className="menu-tab__lead">
-                        Dra korten för att ändra ordningen på menyn. På surfplatta kan du använda pilarna.
+                        Dra korten för att ändra ordningen. Tryck på Ändra för att sätta pris per vikt eller storlek.
                     </p>
                 </div>
                 <Button variant="primary" onClick={() => setFormProduct('new')}>
@@ -502,6 +568,7 @@ export function MenuTab({
 
             {formProduct && (
                 <ProductFormModal
+                    key={formProduct === 'new' ? 'new' : formProduct.id}
                     product={formProduct}
                     onClose={() => setFormProduct(null)}
                     onSaved={(product) => {

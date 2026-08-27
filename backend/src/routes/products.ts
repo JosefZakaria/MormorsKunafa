@@ -3,11 +3,12 @@ import { resolveProductImage } from '../utils/productImage.js';
 import { generateId, supabase, type Row, logSupabaseError, nowIso } from '../db/connection.js';
 import { requireAdmin } from '../middleware/auth.js';
 import { sanitizeProductName } from '../utils/sanitizeProductName.js';
+import { parsePriceOre, parseVariantPricesInput, variantPricesForProduct } from '../utils/productPrices.js';
 
 const router = Router();
 
 export const PRODUCT_COLUMNS =
-  'id, name, slug, description, image_url, price_ore, stock_status, sort_order, created_at, updated_at';
+  'id, name, slug, description, image_url, price_ore, variant_prices, stock_status, sort_order, created_at, updated_at';
 
 export function rowToProduct(r: Row): {
   id: string;
@@ -17,6 +18,7 @@ export function rowToProduct(r: Row): {
   image: string;
   inStock: boolean;
   sortOrder: number;
+  variantPrices?: Record<string, number>;
   createdAt: string;
   updatedAt: string;
 } {
@@ -24,14 +26,17 @@ export function rowToProduct(r: Row): {
   const inStock = status === 'instock';
   const createdAt = r.created_at as string | Date | undefined;
   const updatedAt = r.updated_at as string | Date | undefined;
+  const id = String(r.id);
+  const variantPrices = variantPricesForProduct(id, r.variant_prices) ?? undefined;
   return {
-    id: String(r.id),
+    id,
     name: String(r.name),
     price: Number(r.price_ore),
     description: String(r.description ?? ''),
-    image: resolveProductImage(String(r.id), r.image_url as string | null, r.slug as string | null),
+    image: resolveProductImage(id, r.image_url as string | null, r.slug as string | null),
     inStock,
     sortOrder: Number(r.sort_order) || 0,
+    ...(variantPrices ? { variantPrices } : {}),
     createdAt:
       createdAt instanceof Date ? createdAt.toISOString() : String(createdAt ?? ''),
     updatedAt:
@@ -54,13 +59,6 @@ function slugify(name: string): string {
 
 function isHttpOrRelativeUrl(value: string): boolean {
   return value.startsWith('/') || value.startsWith('http://') || value.startsWith('https://');
-}
-
-function parsePriceOre(value: unknown): number | null {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
-  const ore = Math.round(value);
-  if (ore < 0 || ore > 10_000_000) return null;
-  return ore;
 }
 
 async function uniqueSlug(baseName: string): Promise<string> {
@@ -265,6 +263,15 @@ router.post('/', requireAdmin, async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'image must be a URL or a site path' });
     }
 
+    let variantPrices: Record<string, number> | null = null;
+    if (body.variantPrices !== undefined) {
+      const parsed = parseVariantPricesInput(body.variantPrices);
+      if (parsed === 'invalid') {
+        return res.status(400).json({ error: 'variantPrices must be option labels mapped to prices in öre' });
+      }
+      variantPrices = parsed;
+    }
+
     const inStock = body.inStock !== false;
     const id = generateId();
     const slug = await uniqueSlug(name);
@@ -279,6 +286,7 @@ router.post('/', requireAdmin, async (req: Request, res: Response) => {
         description,
         image_url: image || null,
         price_ore: priceOre,
+        variant_prices: variantPrices,
         stock_status: inStock ? 'instock' : 'outofstock',
         sort_order: sortOrder,
         created_at: nowIso(),
@@ -332,6 +340,16 @@ router.patch('/:id', requireAdmin, async (req: Request, res: Response) => {
     }
     if (typeof body.inStock === 'boolean') {
       patch.stock_status = body.inStock ? 'instock' : 'outofstock';
+    }
+    if (body.variantPrices !== undefined) {
+      const parsed = parseVariantPricesInput(body.variantPrices);
+      if (parsed === 'invalid') {
+        return res.status(400).json({ error: 'variantPrices must be option labels mapped to prices in öre' });
+      }
+      patch.variant_prices = parsed;
+      if (parsed && body.price === undefined) {
+        patch.price_ore = Math.min(...Object.values(parsed));
+      }
     }
 
     if (Object.keys(patch).length <= 1) {
