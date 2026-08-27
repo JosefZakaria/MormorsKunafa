@@ -58,9 +58,6 @@ function stripLeadingProductName(html: string, displayName: string): string {
     return html.replace(re, '').trim();
 }
 
-/** Product id to exclude from menu (Mormors Box – En Gåva av äkta Smaker). */
-const MENU_EXCLUDE_PRODUCT_IDS = new Set(['f05b6a24-7b90-4dfb-8f2f-be67a475cbfa']);
-
 /** Translated short description when we have a translation index; else normalized API description (no raw \r\n). */
 function getDisplayShortDesc(product: Product, t: (key: string) => string): string {
     const idx = getTranslationIndex(product);
@@ -151,9 +148,7 @@ export const Menu: React.FC = () => {
                 if (!cancelled) {
                     setProducts(
                         data
-                            .filter(
-                                (p) => !MENU_EXCLUDE_PRODUCT_IDS.has(p.id) && !isMenuExcluded(p)
-                            )
+                            .filter((p) => !isMenuExcluded(p))
                             .sort((a, b) => {
                                 const order = (a.sortOrder || 0) - (b.sortOrder || 0);
                                 if (order !== 0) return order;
