@@ -737,9 +737,6 @@ export function MenuTab({
     return (
         <div className="menu-tab">
             <h2 className="menu-tab__title">Startsidans bild</h2>
-            <p className="menu-tab__lead">
-                Tryck på en bild för att byta den. Ändringen syns direkt på startsidan.
-            </p>
             {!settings ? (
                 <p>Laddar…</p>
             ) : (
@@ -768,12 +765,7 @@ export function MenuTab({
             )}
 
             <div className="admin-menu-toolbar">
-                <div>
-                    <h2 className="menu-tab__title">Varor</h2>
-                    <p className="menu-tab__lead">
-                        Dra korten för att ändra ordningen. Ögat visar om varan syns på kundens meny: öppet öga syns, stängt öga är gömd.
-                    </p>
-                </div>
+                <h2 className="menu-tab__title">Varor</h2>
                 <Button variant="primary" onClick={() => setFormProduct('new')}>
                     + Lägg till vara
                 </Button>
