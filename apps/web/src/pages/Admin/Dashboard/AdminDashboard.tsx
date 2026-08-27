@@ -905,17 +905,17 @@ export const AdminDashboard: React.FC = () => {
 
     // --- Fetch products + settings on mount ---
     useEffect(() => {
-        productApi.getAll().then(setProducts).finally(() => setLoadingProducts(false));
+        productApi.getAllAdmin().then(setProducts).finally(() => setLoadingProducts(false));
         adminApi.getSettings().then(setSettings);
     }, []);
 
     useEffect(() => {
         if (activeTab === 'menu') {
-            productApi.getAll().then(setProducts).catch(() => undefined);
+            productApi.getAllAdmin().then(setProducts).catch(() => undefined);
             return;
         }
         if (activeTab !== 'stock') return;
-        const refresh = () => productApi.getAll().then(setProducts).catch(() => undefined);
+        const refresh = () => productApi.getAllAdmin().then(setProducts).catch(() => undefined);
         const id = setInterval(refresh, 5000);
         return () => clearInterval(id);
     }, [activeTab]);

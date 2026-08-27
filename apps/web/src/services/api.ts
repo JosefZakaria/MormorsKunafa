@@ -21,6 +21,13 @@ export const productApi = {
     return apiRequest<Product[]>('/products');
   },
 
+  getAllAdmin: async (): Promise<Product[]> => {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    return authenticatedRequest<Product[]>('/products', { token });
+  },
+
   getById: async (id: string): Promise<Product> => {
     return apiRequest<Product>(`/products/${id}`);
   },
@@ -61,6 +68,7 @@ export const productApi = {
       description?: string;
       image?: string;
       variantPrices?: Record<string, number> | null;
+      hidden?: boolean;
     }
   ): Promise<Product> => {
     const token = getToken();

@@ -1384,6 +1384,14 @@ select.stats-modal-input {
     box-shadow: 0 0 0 2px rgba(92, 42, 47, 0.2);
 }
 
+.admin-menu-card.is-hidden-product {
+    opacity: 0.62;
+}
+
+.admin-menu-card.is-hidden-product .admin-menu-card__image img {
+    filter: grayscale(0.35);
+}
+
 .admin-menu-card__top {
     display: flex;
     align-items: center;
@@ -1426,6 +1434,26 @@ select.stats-modal-input {
     line-height: 1;
 }
 
+.admin-menu-card__visibility {
+    width: 32px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--color-gray-200);
+    background: var(--color-white);
+    border-radius: 6px;
+    cursor: pointer;
+    color: #3f3a36;
+    padding: 0;
+}
+
+.admin-menu-card__visibility.is-off {
+    color: #9a8f88;
+    background: #f3eee6;
+}
+
+.admin-menu-card__visibility:disabled,
 .admin-menu-card__order-btn:disabled {
     opacity: 0.35;
     cursor: default;

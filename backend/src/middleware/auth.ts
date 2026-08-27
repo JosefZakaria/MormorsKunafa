@@ -16,17 +16,18 @@ export function verifyAdminToken(token: string): JwtPayload | null {
   }
 }
 
-export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
+export function readAdminFromRequest(req: Request): JwtPayload | null {
   const auth = req.headers.authorization;
   const token = auth?.startsWith('Bearer ') ? auth.slice(7) : null;
-  if (!token) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
+  if (!token) return null;
+  return verifyAdminToken(token);
+}
+
+export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
   try {
-    const decoded = verifyAdminToken(token);
+    const decoded = readAdminFromRequest(req);
     if (!decoded) {
-      res.status(401).json({ error: 'Invalid or expired token' });
+      res.status(401).json({ error: 'Unauthorized' });
       return;
     }
     (req as Request & { admin?: JwtPayload }).admin = decoded;

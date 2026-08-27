@@ -92,6 +92,7 @@ const getMockProducts = (t: (key: string) => string): Product[] => {
         description: t(descKey),
         image,
         inStock: true,
+        hidden: false,
         sortOrder,
         createdAt: now,
         updatedAt: now,
@@ -148,7 +149,7 @@ export const Menu: React.FC = () => {
                 if (!cancelled) {
                     setProducts(
                         data
-                            .filter((p) => !isMenuExcluded(p))
+                            .filter((p) => !isMenuExcluded(p) && !p.hidden)
                             .sort((a, b) => {
                                 const order = (a.sortOrder || 0) - (b.sortOrder || 0);
                                 if (order !== 0) return order;

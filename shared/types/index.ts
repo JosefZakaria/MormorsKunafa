@@ -28,6 +28,8 @@ export interface Product {
   description: string;
   image: string;
   inStock: boolean;
+  /** When true, the product stays in admin but is omitted from the customer menu. */
+  hidden: boolean;
   /** Display order on the public menu (lower first). */
   sortOrder: number;
   /** Option label → price in öre (e.g. "250 gram": 8900). Bread uses key "st". */
