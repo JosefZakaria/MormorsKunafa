@@ -10,9 +10,9 @@ import { resolveProductImage } from '@shared/utils/productImage.ts';
 import type { Product } from '@shared/types';
 import { getDisplayName, getTranslationIndex } from '../../utils/productDisplayName';
 import {
-    BREAD_UNIT_PRICE_ORE,
     formatBreadOption,
     getBreadDisplayPriceOre,
+    getBreadUnitPriceOre,
     getDisplayPriceOre,
     getFixedWeight,
     getOptionSelectorType,
@@ -299,7 +299,7 @@ export const Menu: React.FC = () => {
     const selectedIsBread = selectedProduct ? isBreadProduct(selectedProduct) : false;
     const modalPriceOre = selectedProduct
         ? selectedIsBread
-            ? getBreadDisplayPriceOre(breadQuantity)
+            ? getBreadDisplayPriceOre(selectedProduct, breadQuantity)
             : getDisplayPriceOre(selectedProduct, selectedOption)
         : 0;
     const canAddToCart =
@@ -504,7 +504,7 @@ export const Menu: React.FC = () => {
                                 {selectedIsBread && breadQuantity > 1 && (
                                     <span className="menu-modal__price-detail">
                                         {' '}
-                                        ({breadQuantity} × {(BREAD_UNIT_PRICE_ORE / 100).toFixed(0)} kr)
+                                        ({breadQuantity} × {(getBreadUnitPriceOre(selectedProduct) / 100).toFixed(0)} kr)
                                     </span>
                                 )}
                             </p>
