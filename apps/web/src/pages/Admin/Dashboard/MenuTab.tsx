@@ -5,7 +5,17 @@ import { ApiError } from '@shared/api';
 import type { AdminSettings, Product } from '@shared/types';
 import { Button } from '../../../components/common/Button/Button';
 import { adminApi, productApi } from '../../../services/api';
-import { getEditablePriceFields } from '../../../utils/productVariantPrices';
+import {
+    formatPersonOption,
+    getEditablePriceFields,
+    inferPricingMode,
+    MAX_VARIANT_OPTIONS,
+    nextPersonCount,
+    nextWeightLabel,
+    parsePersonCount,
+    WEIGHT_PRESETS,
+    type PricingMode,
+} from '../../../utils/productVariantPrices';
 import { prepareDescriptionHtml, sanitizeDescriptionHtml } from '../../../utils/productDescriptionHtml';
 import { DescriptionEditor } from './DescriptionEditor';
 
@@ -114,6 +124,38 @@ function HeroSlot({
     );
 }
 
+const PRICING_MODES: { id: PricingMode; title: string; hint: string }[] = [
+    { id: 'single', title: 'Fast pris', hint: 'Ett pris, ingen väljare' },
+    { id: 'weight', title: 'Efter vikt', hint: 't.ex. 250 g, 500 g, 1 kg' },
+    { id: 'persons', title: 'Antal personer', hint: 't.ex. kunafa 2 eller 4 pers.' },
+    { id: 'bread', title: 'Per styck', hint: 'Kunden väljer antal med +/−' },
+];
+
+type OptionRow = { id: string; label: string; priceKr: string };
+
+function newRowId(): string {
+    return crypto.randomUUID();
+}
+
+function defaultWeightRows(): OptionRow[] {
+    return WEIGHT_PRESETS.slice(0, 3).map((label) => ({ id: newRowId(), label, priceKr: '' }));
+}
+
+function defaultPersonRows(): OptionRow[] {
+    return [2, 4].map((n) => ({ id: newRowId(), label: String(n), priceKr: '' }));
+}
+
+function rowsFromProduct(product: Product, mode: PricingMode): OptionRow[] {
+    if (mode !== 'weight' && mode !== 'persons') return [];
+    const fields = getEditablePriceFields(product).filter((field) => field.key !== 'st');
+    if (!fields.length) return mode === 'weight' ? defaultWeightRows() : defaultPersonRows();
+    return fields.map((field) => ({
+        id: newRowId(),
+        label: mode === 'persons' ? String(parsePersonCount(field.key) ?? 2) : field.key,
+        priceKr: formatPriceKr(field.ore),
+    }));
+}
+
 function ProductFormModal({
     product,
     onClose,
@@ -126,14 +168,21 @@ function ProductFormModal({
     onError: (message: string) => void;
 }) {
     const isNew = product === 'new';
-    const priceFields = isNew ? [] : getEditablePriceFields(product);
+    const initialMode: PricingMode = isNew ? 'single' : inferPricingMode(product);
     const [name, setName] = useState(isNew ? '' : product.name);
-    const [priceKr, setPriceKr] = useState(isNew ? '' : formatPriceKr(product.price));
-    const [variantPricesKr, setVariantPricesKr] = useState<Record<string, string>>(() => {
-        const next: Record<string, string> = {};
-        for (const field of priceFields) next[field.key] = formatPriceKr(field.ore);
-        return next;
+    const [pricingMode, setPricingMode] = useState<PricingMode>(initialMode);
+    const [priceKr, setPriceKr] = useState(() => {
+        if (isNew) return '';
+        if (initialMode === 'bread') {
+            const styck = getEditablePriceFields(product).find((field) => field.key === 'st');
+            return formatPriceKr(styck?.ore ?? product.price);
+        }
+        if (initialMode === 'single') return formatPriceKr(product.price);
+        return '';
     });
+    const [optionRows, setOptionRows] = useState<OptionRow[]>(() =>
+        isNew ? [] : rowsFromProduct(product, initialMode)
+    );
     const [description, setDescription] = useState(
         isNew ? '' : prepareDescriptionHtml(product.description ?? '')
     );
@@ -141,6 +190,43 @@ function ProductFormModal({
     const [preview, setPreview] = useState<string | null>(isNew ? null : product.image);
     const [saving, setSaving] = useState(false);
     const [formError, setFormError] = useState<string | null>(null);
+
+    const updateRow = (id: string, patch: Partial<OptionRow>) => {
+        setOptionRows((prev) => prev.map((row) => (row.id === id ? { ...row, ...patch } : row)));
+    };
+
+    const applyPricingMode = (next: PricingMode) => {
+        if (next === pricingMode) return;
+        if ((next === 'single' || next === 'bread') && !priceKr.trim()) {
+            const first = optionRows.map((row) => row.priceKr).find((value) => parsePriceKrToOre(value) != null);
+            if (first) setPriceKr(first);
+        }
+        setPricingMode(next);
+        setFormError(null);
+        if (next === 'weight') setOptionRows(defaultWeightRows());
+        else if (next === 'persons') setOptionRows(defaultPersonRows());
+        else setOptionRows([]);
+    };
+
+    const addOptionRow = () => {
+        if (optionRows.length >= MAX_VARIANT_OPTIONS) return;
+        if (pricingMode === 'weight') {
+            setOptionRows((prev) => [
+                ...prev,
+                { id: newRowId(), label: nextWeightLabel(prev.map((row) => row.label)), priceKr: '' },
+            ]);
+            return;
+        }
+        if (pricingMode === 'persons') {
+            const counts = optionRows
+                .map((row) => Number.parseInt(row.label, 10))
+                .filter((n) => Number.isFinite(n) && n > 0);
+            setOptionRows((prev) => [
+                ...prev,
+                { id: newRowId(), label: String(nextPersonCount(counts)), priceKr: '' },
+            ]);
+        }
+    };
 
     const handleFile = (next: File | undefined) => {
         if (!next) return;
@@ -159,27 +245,58 @@ function ProductFormModal({
             setFormError('Ange ett namn.');
             return;
         }
+
         let priceOre: number;
-        let variantPrices: Record<string, number> | undefined;
-        if (priceFields.length > 0) {
-            variantPrices = {};
-            for (const field of priceFields) {
-                const ore = parsePriceKrToOre(variantPricesKr[field.key] ?? '');
-                if (ore == null) {
-                    setFormError(`Ange ett giltigt pris för ${field.label}.`);
-                    return;
-                }
-                variantPrices[field.key] = ore;
-            }
-            priceOre = Math.min(...Object.values(variantPrices));
-        } else {
+        let variantPrices: Record<string, number> | null = null;
+
+        if (pricingMode === 'single' || pricingMode === 'bread') {
             const parsed = parsePriceKrToOre(priceKr);
             if (parsed == null) {
-                setFormError('Ange ett giltigt pris i kronor.');
+                setFormError(pricingMode === 'bread' ? 'Ange ett giltigt pris per styck.' : 'Ange ett giltigt pris i kronor.');
                 return;
             }
             priceOre = parsed;
+            variantPrices = pricingMode === 'bread' ? { st: parsed } : null;
+        } else {
+            if (optionRows.length < 1) {
+                setFormError('Lägg till minst ett alternativ.');
+                return;
+            }
+            const next: Record<string, number> = {};
+            const seen = new Set<string>();
+            for (const row of optionRows) {
+                let label: string;
+                if (pricingMode === 'persons') {
+                    const count = Number.parseInt(row.label, 10);
+                    if (!Number.isFinite(count) || count < 1) {
+                        setFormError('Ange hur många personer varje alternativ gäller.');
+                        return;
+                    }
+                    label = formatPersonOption(count);
+                } else {
+                    label = row.label.trim();
+                    if (!label) {
+                        setFormError('Ange en vikt för varje rad.');
+                        return;
+                    }
+                }
+                const key = label.toLowerCase();
+                if (seen.has(key)) {
+                    setFormError(`Alternativet “${label}” är med mer än en gång.`);
+                    return;
+                }
+                seen.add(key);
+                const ore = parsePriceKrToOre(row.priceKr);
+                if (ore == null) {
+                    setFormError(`Ange ett giltigt pris för ${label}.`);
+                    return;
+                }
+                next[label] = ore;
+            }
+            variantPrices = next;
+            priceOre = Math.min(...Object.values(next));
         }
+
         setSaving(true);
         setFormError(null);
         try {
@@ -194,6 +311,7 @@ function ProductFormModal({
                     price: priceOre,
                     description: sanitizeDescriptionHtml(description),
                     image,
+                    ...(variantPrices ? { variantPrices } : {}),
                 });
                 onSaved(created, 'create');
             } else {
@@ -201,7 +319,7 @@ function ProductFormModal({
                     name: trimmed,
                     price: priceOre,
                     description: sanitizeDescriptionHtml(description),
-                    ...(variantPrices ? { variantPrices } : {}),
+                    variantPrices,
                 });
                 onSaved(updated, 'update');
             }
@@ -222,6 +340,8 @@ function ProductFormModal({
         };
     }, []);
 
+    const showOptionRows = pricingMode === 'weight' || pricingMode === 'persons';
+
     return createPortal(
         <div className="stats-modal-overlay" onClick={onClose}>
             <div className="stats-modal admin-product-modal" onClick={(e) => e.stopPropagation()}>
@@ -235,28 +355,26 @@ function ProductFormModal({
                     maxLength={200}
                     autoFocus
                 />
-                {priceFields.length > 0 ? (
-                    <>
-                        <p className="form-label">Priser (kr)</p>
-                        <div className="admin-product-modal__variants">
-                            {priceFields.map((field) => (
-                                <div key={field.key} className="admin-product-modal__variant-row">
-                                    <label htmlFor={`admin-product-price-${field.key}`}>{field.label}</label>
-                                    <input
-                                        id={`admin-product-price-${field.key}`}
-                                        className="stats-modal-input"
-                                        inputMode="decimal"
-                                        value={variantPricesKr[field.key] ?? ''}
-                                        onChange={(e) =>
-                                            setVariantPricesKr((prev) => ({ ...prev, [field.key]: e.target.value }))
-                                        }
-                                        placeholder="1"
-                                    />
-                                </div>
-                            ))}
-                        </div>
-                    </>
-                ) : (
+
+                <p className="form-label" id="admin-pricing-mode-label">Hur säljs varan?</p>
+                <div className="admin-product-modal__modes" role="radiogroup" aria-labelledby="admin-pricing-mode-label">
+                    {PRICING_MODES.map((mode) => (
+                        <button
+                            key={mode.id}
+                            type="button"
+                            role="radio"
+                            aria-checked={pricingMode === mode.id}
+                            className={`admin-product-modal__mode${pricingMode === mode.id ? ' is-active' : ''}`}
+                            onClick={() => applyPricingMode(mode.id)}
+                            disabled={saving}
+                        >
+                            <strong>{mode.title}</strong>
+                            <span>{mode.hint}</span>
+                        </button>
+                    ))}
+                </div>
+
+                {pricingMode === 'single' && (
                     <>
                         <label className="form-label" htmlFor="admin-product-price">Pris (kr)</label>
                         <input
@@ -269,6 +387,93 @@ function ProductFormModal({
                         />
                     </>
                 )}
+
+                {pricingMode === 'bread' && (
+                    <>
+                        <label className="form-label" htmlFor="admin-product-price">Pris per styck (kr)</label>
+                        <input
+                            id="admin-product-price"
+                            className="stats-modal-input"
+                            inputMode="decimal"
+                            value={priceKr}
+                            onChange={(e) => setPriceKr(e.target.value)}
+                            placeholder="15"
+                        />
+                    </>
+                )}
+
+                {showOptionRows && (
+                    <>
+                        <p className="form-label">
+                            {pricingMode === 'persons' ? 'Antal personer och priser' : 'Vikter och priser'}
+                        </p>
+                        <p className="admin-product-modal__hint">
+                            {pricingMode === 'persons'
+                                ? 'Varje rad är ett val i menyn, t.ex. 2 personer eller 4 personer.'
+                                : 'Lägg till de vikter kunden ska kunna välja. Varje vikt har ett eget pris.'}
+                        </p>
+                        <div className="admin-product-modal__variants">
+                            {optionRows.map((row, index) => (
+                                <div key={row.id} className="admin-product-modal__variant-row admin-product-modal__variant-row--edit">
+                                    {pricingMode === 'persons' ? (
+                                        <label className="admin-product-modal__person-field">
+                                            <input
+                                                className="stats-modal-input"
+                                                inputMode="numeric"
+                                                value={row.label}
+                                                onChange={(e) => updateRow(row.id, { label: e.target.value.replace(/[^\d]/g, '') })}
+                                                aria-label={`Antal personer, alternativ ${index + 1}`}
+                                                placeholder="2"
+                                            />
+                                            <span>personer</span>
+                                        </label>
+                                    ) : (
+                                        <input
+                                            className="stats-modal-input"
+                                            list="admin-weight-presets"
+                                            value={row.label}
+                                            onChange={(e) => updateRow(row.id, { label: e.target.value })}
+                                            placeholder="t.ex. 250 gram"
+                                            aria-label={`Vikt ${index + 1}`}
+                                        />
+                                    )}
+                                    <input
+                                        className="stats-modal-input"
+                                        inputMode="decimal"
+                                        value={row.priceKr}
+                                        onChange={(e) => updateRow(row.id, { priceKr: e.target.value })}
+                                        placeholder="kr"
+                                        aria-label={`Pris, alternativ ${index + 1}`}
+                                    />
+                                    <button
+                                        type="button"
+                                        className="admin-product-modal__remove"
+                                        onClick={() => setOptionRows((prev) => prev.filter((item) => item.id !== row.id))}
+                                        disabled={saving || optionRows.length <= 1}
+                                    >
+                                        Ta bort
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                        {pricingMode === 'weight' && (
+                            <datalist id="admin-weight-presets">
+                                {WEIGHT_PRESETS.map((preset) => (
+                                    <option key={preset} value={preset} />
+                                ))}
+                            </datalist>
+                        )}
+                        <button
+                            type="button"
+                            className="admin-product-modal__add"
+                            onClick={addOptionRow}
+                            disabled={saving || optionRows.length >= MAX_VARIANT_OPTIONS}
+                        >
+                            {pricingMode === 'persons' ? '+ Lägg till personantal' : '+ Lägg till vikt'}
+                        </button>
+                    </>
+                )}
+
                 <label className="form-label" htmlFor="admin-product-desc">Beskrivning (valfritt)</label>
                 <DescriptionEditor
                     value={isNew ? '' : product.description ?? ''}
@@ -542,7 +747,7 @@ export function MenuTab({
                 <div>
                     <h2 className="menu-tab__title">Varor</h2>
                     <p className="menu-tab__lead">
-                        Dra korten för att ändra ordningen. Tryck på Ändra för att sätta pris per vikt eller storlek.
+                        Dra korten för att ändra ordningen. När du lägger till eller ändrar en vara väljer du om den säljs till fast pris, efter vikt, efter antal personer eller per styck.
                     </p>
                 </div>
                 <Button variant="primary" onClick={() => setFormProduct('new')}>

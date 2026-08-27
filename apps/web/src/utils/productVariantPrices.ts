@@ -70,7 +70,13 @@ export const FIXED_WEIGHT_BY_INDEX: Record<string, string> = {
     '14': '1350 gram',
 };
 
-export type OptionSelectorType = 'weight' | 'persons' | 'bread' | 'fixed';
+export type OptionSelectorType = 'weight' | 'persons' | 'bread' | 'fixed' | 'none';
+
+export type PricingMode = 'single' | 'weight' | 'persons' | 'bread';
+
+export const WEIGHT_PRESETS = ['250 gram', '500 gram', '1 kg', '1350 gram'] as const;
+
+export const MAX_VARIANT_OPTIONS = 10;
 
 export type EditablePriceField = { key: string; label: string; ore: number };
 
@@ -109,6 +115,50 @@ export function hasVariantPricing(product: Product): boolean {
     return idx in VARIANT_PRICES;
 }
 
+export function formatPersonOption(count: number): string {
+    return `${count} personer`;
+}
+
+export function parsePersonCount(option: string): number | null {
+    const m = option.trim().match(/^(\d+)\s*personer$/i);
+    if (!m) return null;
+    const n = parseInt(m[1], 10);
+    return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function optionSortValue(label: string): number {
+    const persons = parsePersonCount(label);
+    if (persons != null) return persons;
+    const kg = label.trim().match(/^([\d.,]+)\s*kg$/i);
+    if (kg) return parseFloat(kg[1].replace(',', '.')) * 1000;
+    const gram = label.trim().match(/^([\d.,]+)\s*g(?:ram)?$/i);
+    if (gram) return parseFloat(gram[1].replace(',', '.'));
+    return Number.POSITIVE_INFINITY;
+}
+
+export function sortOptionLabels(labels: string[]): string[] {
+    return [...labels].sort((a, b) => {
+        const da = optionSortValue(a);
+        const db = optionSortValue(b);
+        if (da === db) return 0;
+        return da - db;
+    });
+}
+
+export function nextWeightLabel(existing: string[]): string {
+    const used = new Set(existing.map((s) => s.trim().toLowerCase()).filter(Boolean));
+    return WEIGHT_PRESETS.find((preset) => !used.has(preset.toLowerCase())) ?? '';
+}
+
+export function nextPersonCount(existingCounts: number[]): number {
+    const used = new Set(existingCounts);
+    for (const n of [2, 4, 6, 8, 10, 12]) {
+        if (!used.has(n)) return n;
+    }
+    const max = existingCounts.length ? Math.max(...existingCounts) : 0;
+    return Math.max(1, max + 1);
+}
+
 export function getProductOptions(product: Product): string[] {
     if (isBreadProduct(product)) return [];
     const idx = getTranslationIndex(product);
@@ -118,7 +168,8 @@ export function getProductOptions(product: Product): string[] {
     if (!storedKeys.length) return canonical;
     const fromCanonical = canonical.filter((key) => storedKeys.includes(key));
     const extra = storedKeys.filter((key) => !canonical.includes(key));
-    return fromCanonical.length || extra.length ? [...fromCanonical, ...extra] : canonical;
+    const ordered = fromCanonical.length || extra.length ? [...fromCanonical, ...extra] : canonical;
+    return sortOptionLabels(ordered);
 }
 
 export function getOptionSelectorType(product: Product): OptionSelectorType {
@@ -128,7 +179,16 @@ export function getOptionSelectorType(product: Product): OptionSelectorType {
     if (options.some((opt) => /personer/i.test(opt))) return 'persons';
     const idx = getTranslationIndex(product);
     if (idx === '3' || idx === '8') return 'persons';
-    return 'weight';
+    if (options.length > 0 || hasVariantPricing(product)) return 'weight';
+    return 'none';
+}
+
+export function inferPricingMode(product: Product): PricingMode {
+    const type = getOptionSelectorType(product);
+    if (type === 'bread') return 'bread';
+    if (type === 'persons') return 'persons';
+    if (type === 'weight') return 'weight';
+    return 'single';
 }
 
 /** Parse bread option "3 st" → 3. */

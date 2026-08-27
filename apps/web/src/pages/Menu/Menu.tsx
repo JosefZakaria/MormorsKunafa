@@ -251,14 +251,18 @@ export const Menu: React.FC = () => {
     };
 
     const selectedIsBread = selectedProduct ? isBreadProduct(selectedProduct) : false;
+    const selectedSelectorType = selectedProduct ? getOptionSelectorType(selectedProduct) : null;
     const modalPriceOre = selectedProduct
         ? selectedIsBread
             ? getBreadDisplayPriceOre(selectedProduct, breadQuantity)
             : getDisplayPriceOre(selectedProduct, selectedOption)
         : 0;
     const canAddToCart =
-        selectedProduct?.inStock &&
-        (selectedIsBread || !!selectedOption || !!getFixedWeight(selectedProduct));
+        !!selectedProduct?.inStock &&
+        (selectedIsBread ||
+            !!selectedOption ||
+            selectedSelectorType === 'fixed' ||
+            selectedSelectorType === 'none');
 
     if (loading) {
         return (
@@ -385,69 +389,70 @@ export const Menu: React.FC = () => {
                                     className="menu-modal__image"
                                 />
                             </div>
-                            <div className="menu-modal__options-box">
-                                {(() => {
-                                    const fixedWeight = getFixedWeight(selectedProduct);
-                                    if (fixedWeight) {
+                            {selectedSelectorType && selectedSelectorType !== 'none' && (
+                                <div className="menu-modal__options-box">
+                                    {(() => {
+                                        const fixedWeight = getFixedWeight(selectedProduct);
+                                        if (fixedWeight) {
+                                            return (
+                                                <>
+                                                    <label className="menu-modal__options-label">Vikt</label>
+                                                    <div className="menu-modal__fixed-weight">{fixedWeight}</div>
+                                                </>
+                                            );
+                                        }
+                                        if (selectedSelectorType === 'bread') {
+                                            return (
+                                                <>
+                                                    <label className="menu-modal__options-label">Välj antal</label>
+                                                    <div className="menu-modal__quantity" role="group" aria-label="Antal bröd">
+                                                        <button
+                                                            type="button"
+                                                            className="menu-modal__quantity-btn"
+                                                            onClick={() => setBreadQuantity((q) => Math.max(1, q - 1))}
+                                                            disabled={breadQuantity <= 1}
+                                                            aria-label="Minska antal"
+                                                        >
+                                                            −
+                                                        </button>
+                                                        <span className="menu-modal__quantity-value" aria-live="polite">
+                                                            {breadQuantity}
+                                                        </span>
+                                                        <button
+                                                            type="button"
+                                                            className="menu-modal__quantity-btn"
+                                                            onClick={() => setBreadQuantity((q) => q + 1)}
+                                                            aria-label="Öka antal"
+                                                        >
+                                                            +
+                                                        </button>
+                                                    </div>
+                                                </>
+                                            );
+                                        }
+                                        const options = getProductOptions(selectedProduct);
+                                        const label =
+                                            selectedSelectorType === 'persons'
+                                                ? 'Välj antal personer'
+                                                : 'Välj vikt';
                                         return (
                                             <>
-                                                <label className="menu-modal__options-label">Vikt</label>
-                                                <div className="menu-modal__fixed-weight">{fixedWeight}</div>
+                                                <label className="menu-modal__options-label">{label}</label>
+                                                <select
+                                                    className="menu-modal__select"
+                                                    value={selectedOption}
+                                                    onChange={(e) => setSelectedOption(e.target.value)}
+                                                >
+                                                    <option value="" disabled>Välj...</option>
+                                                    {options.map((opt) => (
+                                                        <option key={opt} value={opt}>{opt}</option>
+                                                    ))}
+                                                </select>
                                             </>
                                         );
-                                    }
-                                    const selectorType = getOptionSelectorType(selectedProduct);
-                                    if (selectorType === 'bread') {
-                                        return (
-                                            <>
-                                                <label className="menu-modal__options-label">Välj antal</label>
-                                                <div className="menu-modal__quantity" role="group" aria-label="Antal bröd">
-                                                    <button
-                                                        type="button"
-                                                        className="menu-modal__quantity-btn"
-                                                        onClick={() => setBreadQuantity((q) => Math.max(1, q - 1))}
-                                                        disabled={breadQuantity <= 1}
-                                                        aria-label="Minska antal"
-                                                    >
-                                                        −
-                                                    </button>
-                                                    <span className="menu-modal__quantity-value" aria-live="polite">
-                                                        {breadQuantity}
-                                                    </span>
-                                                    <button
-                                                        type="button"
-                                                        className="menu-modal__quantity-btn"
-                                                        onClick={() => setBreadQuantity((q) => q + 1)}
-                                                        aria-label="Öka antal"
-                                                    >
-                                                        +
-                                                    </button>
-                                                </div>
-                                            </>
-                                        );
-                                    }
-                                    const options = getProductOptions(selectedProduct);
-                                    const label =
-                                        selectorType === 'persons'
-                                            ? 'Välj antal personer'
-                                            : 'Välj vikt';
-                                    return (
-                                        <>
-                                            <label className="menu-modal__options-label">{label}</label>
-                                            <select
-                                                className="menu-modal__select"
-                                                value={selectedOption}
-                                                onChange={(e) => setSelectedOption(e.target.value)}
-                                            >
-                                                <option value="" disabled>Välj...</option>
-                                                {options.map((opt) => (
-                                                    <option key={opt} value={opt}>{opt}</option>
-                                                ))}
-                                            </select>
-                                        </>
-                                    );
-                                })()}
-                            </div>
+                                    })()}
+                                </div>
+                            )}
                         </div>
                         <div className="menu-modal__body">
                             <h2 id="menu-modal-title" className="text-heading-md menu-modal__title">
@@ -528,7 +533,12 @@ export const Menu: React.FC = () => {
                                     const option = selectedIsBread
                                         ? formatBreadOption(breadQuantity)
                                         : selectedOption || fixed || '';
-                                    if (!option) return;
+                                    if (
+                                        (selectedSelectorType === 'weight' || selectedSelectorType === 'persons') &&
+                                        !option
+                                    ) {
+                                        return;
+                                    }
                                     handleAddToCart(selectedProduct, option);
                                     setSelectedProduct(null);
                                 }}
