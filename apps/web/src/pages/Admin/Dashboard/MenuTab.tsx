@@ -4,9 +4,7 @@ import { GripVertical } from 'lucide-react';
 import { ApiError } from '@shared/api';
 import type { AdminSettings, Product } from '@shared/types';
 import { Button } from '../../../components/common/Button/Button';
-import { useLanguage } from '../../../contexts/LanguageContext';
 import { adminApi, productApi } from '../../../services/api';
-import { getDisplayName } from '../../../utils/productDisplayName';
 import { getEditablePriceFields } from '../../../utils/productVariantPrices';
 import { prepareDescriptionHtml, sanitizeDescriptionHtml } from '../../../utils/productDescriptionHtml';
 import { DescriptionEditor } from './DescriptionEditor';
@@ -354,7 +352,6 @@ function ProductCard({
     onDrop: (event: DragEvent<HTMLElement>) => void;
     onDragEnd: () => void;
 }) {
-    const { t } = useLanguage();
     const inputRef = useRef<HTMLInputElement>(null);
     const cardRef = useRef<HTMLElement>(null);
     const [busy, setBusy] = useState(false);
@@ -415,7 +412,7 @@ function ProductCard({
                 <img src={product.image} alt="" draggable={false} />
                 {busy && <div className="hero-upload-card__overlay">Laddar upp…</div>}
             </div>
-            <h3 className="admin-menu-card__name">{getDisplayName(product, t)}</h3>
+            <h3 className="admin-menu-card__name">{product.name}</h3>
             <ProductPriceLines product={product} />
             <div className="admin-menu-card__actions">
                 <input

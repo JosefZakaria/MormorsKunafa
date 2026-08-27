@@ -7,7 +7,7 @@ import { productApi } from '../../services/api';
 import { API_CONFIG } from '@shared/api';
 import { resolveProductImage } from '@shared/utils/productImage.ts';
 import type { Product } from '@shared/types';
-import { getDisplayName, getTranslationIndex } from '../../utils/productDisplayName';
+import { getTranslationIndex } from '../../utils/productDisplayName';
 import {
     formatBreadOption,
     getBreadDisplayPriceOre,
@@ -83,14 +83,14 @@ const getMockProducts = (t: (key: string) => string): Product[] => {
     const now = new Date().toISOString();
     const mock = (
         id: string,
-        nameKey: string,
+        name: string,
         descKey: string,
         image: string,
         priceOre: number,
         sortOrder: number
     ): Product => ({
         id,
-        name: t(nameKey),
+        name,
         price: priceOre,
         description: t(descKey),
         image,
@@ -100,17 +100,17 @@ const getMockProducts = (t: (key: string) => string): Product[] => {
         updatedAt: now,
     });
     return [
-        mock('1ae3fd7a-0042-4220-b330-b27b3147a0a6', 'products.1.name', 'products.1.desc', '/images/pistage-baklawa.jpg', 8900, 1),
-        mock('054b4adf-4da3-42c0-aa9b-b939023aafad', 'products.2.name', 'products.2.desc', '/images/walnut-baklawa.jpg', 6900, 2),
-        mock('77048580-fd68-454d-b34b-395b351a96d4', 'products.3.name', 'products.3.desc', '/images/finmald-kunafa.jpg', 14900, 3),
-        mock('fc469599-82e8-4ea3-aa18-0436bc2a2afd', 'products.5.name', 'products.5.desc', '/images/kunafa-ashta.jpg', 14900, 4),
-        mock('6c1efa0e-149c-4259-9bd0-f85fd35f4b62', 'products.7.name', 'products.7.desc', '/images/ostkaka.jpg', 7900, 5),
-        mock('37b8b656-2604-4ca6-9745-e0d6f52338c1', 'products.8.name', 'products.8.desc', '/images/krispig-kunafa.jpg', 14900, 6),
-        mock('856b591e-08b3-40ec-b505-cb3b143293bb', 'products.9.name', 'products.9.desc', '/images/kaake-kunafa.jpg', 1500, 7),
-        mock('94fd4a72-2685-4bc4-8813-0f5e5eaa4a1c', 'products.11.name', 'products.11.desc', '/images/harise-ashta.jpg', 7900, 8),
-        mock('c005c8af-3f2e-401c-923f-7dac0f682cda', 'products.12.name', 'products.12.desc', '/images/mormorsbox-mix.jpg', 29900, 9),
-        mock('6312f48a-b156-431b-9f6d-103cc30bc9f8', 'products.13.name', 'products.13.desc', '/images/mamoul-pistage.jpg', 17900, 10),
-        mock('9e6d210b-8637-4deb-889c-0726060288aa', 'products.14.name', 'products.14.desc', '/images/pistagemix.jpg', 49900, 11),
+        mock('1ae3fd7a-0042-4220-b330-b27b3147a0a6', 'Pistage Baklawa', 'products.1.desc', '/images/pistage-baklawa.jpg', 8900, 1),
+        mock('054b4adf-4da3-42c0-aa9b-b939023aafad', 'Walnut Baklawa', 'products.2.desc', '/images/walnut-baklawa.jpg', 6900, 2),
+        mock('77048580-fd68-454d-b34b-395b351a96d4', 'Finmald Kunafa', 'products.3.desc', '/images/finmald-kunafa.jpg', 14900, 3),
+        mock('fc469599-82e8-4ea3-aa18-0436bc2a2afd', 'Ashta Baklawa', 'products.5.desc', '/images/kunafa-ashta.jpg', 14900, 4),
+        mock('6c1efa0e-149c-4259-9bd0-f85fd35f4b62', 'Ostkaka (Halawet el Jibn)', 'products.7.desc', '/images/ostkaka.jpg', 7900, 5),
+        mock('37b8b656-2604-4ca6-9745-e0d6f52338c1', 'Krispig Kunafa', 'products.8.desc', '/images/krispig-kunafa.jpg', 14900, 6),
+        mock('856b591e-08b3-40ec-b505-cb3b143293bb', 'Bröd (kaek)', 'products.9.desc', '/images/kaake-kunafa.jpg', 1500, 7),
+        mock('94fd4a72-2685-4bc4-8813-0f5e5eaa4a1c', 'Mad bel Ashta', 'products.11.desc', '/images/harise-ashta.jpg', 7900, 8),
+        mock('c005c8af-3f2e-401c-923f-7dac0f682cda', 'Mormorsbox - BaklawaMix', 'products.12.desc', '/images/mormorsbox-mix.jpg', 29900, 9),
+        mock('6312f48a-b156-431b-9f6d-103cc30bc9f8', 'Mamoul Pistage', 'products.13.desc', '/images/mamoul-pistage.jpg', 17900, 10),
+        mock('9e6d210b-8637-4deb-889c-0726060288aa', 'Pistagemix', 'products.14.desc', '/images/pistagemix.jpg', 49900, 11),
     ];
 };
 
@@ -323,7 +323,7 @@ export const Menu: React.FC = () => {
                                     }}
                                 >
                                     <div className="menu-item-simple__image-container">
-                                        <img src={product.image} alt={getDisplayName(product, t)} className="menu-item-simple__image" />
+                                        <img src={product.image} alt={product.name} className="menu-item-simple__image" />
                                         {!product.inStock && (
                                             <div className="menu-item-simple__out-of-stock-badge">
                                                 {t('menu.out_of_stock')}
@@ -332,7 +332,7 @@ export const Menu: React.FC = () => {
                                     </div>
                                     <div className="menu-item-simple__content">
                                         <h3 className="menu-item-simple__title">
-                                            {getDisplayName(product, t)}
+                                            {product.name}
                                         </h3>
                                     </div>
                                 </div>
@@ -386,7 +386,7 @@ export const Menu: React.FC = () => {
                             <div className="menu-modal__image-wrap">
                                 <img
                                     src={selectedProduct.image}
-                                    alt={getDisplayName(selectedProduct, t)}
+                                    alt={selectedProduct.name}
                                     className="menu-modal__image"
                                 />
                             </div>
@@ -456,7 +456,7 @@ export const Menu: React.FC = () => {
                         </div>
                         <div className="menu-modal__body">
                             <h2 id="menu-modal-title" className="text-heading-md menu-modal__title">
-                                {getDisplayName(selectedProduct, t)}
+                                {selectedProduct.name}
                             </h2>
                             <p className="menu-modal__price">
                                 {(modalPriceOre / 100).toFixed(0)} kr
@@ -474,7 +474,7 @@ export const Menu: React.FC = () => {
                                 if (language === 'sv') {
                                     const descriptionHtml = stripLeadingProductName(
                                         sanitizedApiDescription,
-                                        getDisplayName(selectedProduct, t)
+                                        selectedProduct.name
                                     );
                                     return (
                                         <div
@@ -510,7 +510,7 @@ export const Menu: React.FC = () => {
                                 }
                                 const descriptionHtml = stripLeadingProductName(
                                     sanitizedApiDescription,
-                                    getDisplayName(selectedProduct, t)
+                                    selectedProduct.name
                                 );
                                 return (
                                     <div
