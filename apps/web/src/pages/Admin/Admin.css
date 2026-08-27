@@ -1239,13 +1239,8 @@ select.stats-modal-input {
 .menu-tab__title {
     font-family: var(--font-family-display);
     font-size: 1.35rem;
-    margin: 0 0 0.35rem;
+    margin: 0 0 1rem;
     color: var(--color-black);
-}
-
-.menu-tab__lead {
-    margin: 0 0 1.25rem;
-    color: var(--color-gray-500);
 }
 
 .hero-upload-grid {
@@ -1343,7 +1338,7 @@ select.stats-modal-input {
     margin: 2.25rem 0 1rem;
 }
 
-.admin-menu-toolbar .menu-tab__lead {
+.admin-menu-toolbar .menu-tab__title {
     margin-bottom: 0;
 }
 
