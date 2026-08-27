@@ -84,7 +84,8 @@ export const Cart: React.FC = () => {
         return stored || '';
     });
     const [orderTypeError, setOrderTypeError] = useState<string | null>(null);
-    const [customerName, setCustomerName] = useState('');
+    const [customerFirstName, setCustomerFirstName] = useState('');
+    const [customerLastName, setCustomerLastName] = useState('');
     const [customerPhone, setCustomerPhone] = useState('');
     const [customerEmail, setCustomerEmail] = useState('');
     const [deliveryAddress, setDeliveryAddress] = useState('');
@@ -354,15 +355,15 @@ export const Cart: React.FC = () => {
         }
 
         let customerInfo: CustomerInfo | undefined;
+        const fullName = `${customerFirstName.trim()} ${customerLastName.trim()}`.trim();
         if (needsInlineCustomerInfo) {
-            const name = customerName.trim();
             const phone = customerPhone.trim();
-            if (!name || !phone) {
+            if (!customerFirstName.trim() || !customerLastName.trim() || !phone) {
                 setCustomerInfoError(t('cart.customer_info_required'));
                 return;
             }
             const email = customerEmail.trim();
-            customerInfo = { name, phone, ...(email ? { email } : {}) };
+            customerInfo = { name: fullName, phone, ...(email ? { email } : {}) };
         }
 
         let deliveryInfo = undefined;
@@ -377,7 +378,7 @@ export const Cart: React.FC = () => {
             }
 
             deliveryInfo = {
-                name: customerName.trim(),
+                name: fullName,
                 phone: customerPhone.trim(),
                 email: customerEmail.trim(),
                 address,
@@ -582,20 +583,39 @@ export const Cart: React.FC = () => {
                             {needsInlineCustomerInfo && (
                                 <div className="customer-info">
                                     <h3 className="customer-info__title">{t('cart.customer_info_title')}</h3>
-                                    <div className="customer-info__field">
-                                        <label htmlFor="customer-name" className="customer-info__label">
-                                            {t('cart.customer_name')}
-                                            <span className="customer-info__required" aria-hidden="true">*</span>
-                                        </label>
-                                        <input
-                                            id="customer-name"
-                                            type="text"
-                                            className="customer-info__input"
-                                            placeholder={t('cart.customer_name_placeholder')}
-                                            value={customerName}
-                                            onChange={(e) => setCustomerName(e.target.value)}
-                                            required
-                                        />
+                                    <div className="customer-info__row">
+                                        <div className="customer-info__field">
+                                            <label htmlFor="customer-first-name" className="customer-info__label">
+                                                {t('cart.customer_first_name')}
+                                                <span className="customer-info__required" aria-hidden="true">*</span>
+                                            </label>
+                                            <input
+                                                id="customer-first-name"
+                                                type="text"
+                                                className="customer-info__input"
+                                                placeholder={t('cart.customer_first_name_placeholder')}
+                                                value={customerFirstName}
+                                                onChange={(e) => setCustomerFirstName(e.target.value)}
+                                                autoComplete="given-name"
+                                                required
+                                            />
+                                        </div>
+                                        <div className="customer-info__field">
+                                            <label htmlFor="customer-last-name" className="customer-info__label">
+                                                {t('cart.customer_last_name')}
+                                                <span className="customer-info__required" aria-hidden="true">*</span>
+                                            </label>
+                                            <input
+                                                id="customer-last-name"
+                                                type="text"
+                                                className="customer-info__input"
+                                                placeholder={t('cart.customer_last_name_placeholder')}
+                                                value={customerLastName}
+                                                onChange={(e) => setCustomerLastName(e.target.value)}
+                                                autoComplete="family-name"
+                                                required
+                                            />
+                                        </div>
                                     </div>
                                     <div className="customer-info__field">
                                         <label htmlFor="customer-phone" className="customer-info__label">
