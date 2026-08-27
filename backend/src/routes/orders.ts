@@ -204,11 +204,11 @@ router.post('/', async (req: Request, res: Response) => {
           .filter((id): id is string => Boolean(id))
       ),
     ];
-    const catalog = new Map<string, { priceOre: number; variantPrices: Record<string, number> | null }>();
+    const catalog = new Map<string, { priceOre: number; variantPrices: Record<string, number> | null; hidden: boolean }>();
     if (productIds.length > 0) {
       const { data: catalogRows, error: catalogError } = await supabase
         .from('products')
-        .select('id, price_ore, variant_prices')
+        .select('id, price_ore, variant_prices, hidden')
         .in('id', productIds);
       if (catalogError) {
         logSupabaseError('POST /api/orders products', catalogError);
@@ -221,6 +221,7 @@ router.post('/', async (req: Request, res: Response) => {
         catalog.set(id, {
           priceOre: Number((row as Row).price_ore),
           variantPrices: variantPricesForProduct(id, (row as Row).variant_prices),
+          hidden: (row as Row).hidden === true,
         });
       }
     }
@@ -230,6 +231,11 @@ router.post('/', async (req: Request, res: Response) => {
       const productId = resolveProductIdFromLineId(it.productId);
       const option = resolveLineOption(it.productId);
       const catalogProduct = productId ? catalog.get(productId) : undefined;
+      if (catalogProduct?.hidden) {
+        await supabase.from('orders').delete().eq('id', orderId);
+        res.status(400).json({ error: 'En eller flera varor finns inte längre på menyn' });
+        return;
+      }
       const unitPriceOre = catalogProduct
         ? resolveUnitPriceOre(catalogProduct.priceOre, catalogProduct.variantPrices, option)
         : (it.price ?? 0);

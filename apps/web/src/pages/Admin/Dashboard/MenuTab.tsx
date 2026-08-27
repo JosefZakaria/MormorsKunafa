@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { GripVertical } from 'lucide-react';
+import { Eye, EyeOff, GripVertical } from 'lucide-react';
 import { ApiError } from '@shared/api';
 import type { AdminSettings, Product } from '@shared/types';
 import { Button } from '../../../components/common/Button/Button';
@@ -581,6 +581,19 @@ function ProductCard({
         }
     };
 
+    const handleToggleHidden = async () => {
+        if (busy) return;
+        setBusy(true);
+        try {
+            const updated = await productApi.update(product.id, { hidden: !product.hidden });
+            onUpdated(updated);
+        } catch (err) {
+            onError(productErrorMessage(err, 'Kunde inte uppdatera synligheten. Försök igen.'));
+        } finally {
+            setBusy(false);
+        }
+    };
+
     const handleGripDragStart = (event: DragEvent<HTMLElement>) => {
         const card = cardRef.current;
         if (card) {
@@ -593,7 +606,7 @@ function ProductCard({
     return (
         <article
             ref={cardRef}
-            className={`admin-menu-card${isDragging ? ' is-dragging' : ''}${isDropTarget ? ' is-drop-target' : ''}`}
+            className={`admin-menu-card${isDragging ? ' is-dragging' : ''}${isDropTarget ? ' is-drop-target' : ''}${product.hidden ? ' is-hidden-product' : ''}`}
             onDragOver={onDragOver}
             onDrop={onDrop}
             onDragEnd={onDragEnd}
@@ -611,6 +624,17 @@ function ProductCard({
                     <span>Dra</span>
                 </button>
                 <div className="admin-menu-card__order-btns">
+                    <button
+                        type="button"
+                        className={`admin-menu-card__visibility${product.hidden ? ' is-off' : ''}`}
+                        onClick={() => void handleToggleHidden()}
+                        disabled={busy}
+                        aria-pressed={!product.hidden}
+                        aria-label={product.hidden ? 'Visa på menyn' : 'Göm från menyn'}
+                        title={product.hidden ? 'Visa på menyn' : 'Göm från menyn'}
+                    >
+                        {product.hidden ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
                     <button type="button" className="admin-menu-card__order-btn" onClick={onMoveUp} disabled={isFirst || busy} aria-label="Flytta upp">↑</button>
                     <button type="button" className="admin-menu-card__order-btn" onClick={onMoveDown} disabled={isLast || busy} aria-label="Flytta ner">↓</button>
                 </div>
@@ -747,7 +771,7 @@ export function MenuTab({
                 <div>
                     <h2 className="menu-tab__title">Varor</h2>
                     <p className="menu-tab__lead">
-                        Dra korten för att ändra ordningen. När du lägger till eller ändrar en vara väljer du om den säljs till fast pris, efter vikt, efter antal personer eller per styck.
+                        Dra korten för att ändra ordningen. Ögat visar om varan syns på kundens meny: öppet öga syns, stängt öga är gömd.
                     </p>
                 </div>
                 <Button variant="primary" onClick={() => setFormProduct('new')}>

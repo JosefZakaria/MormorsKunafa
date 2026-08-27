@@ -1,14 +1,14 @@
 import { Router, Request, Response } from 'express';
 import { resolveProductImage } from '../utils/productImage.js';
 import { generateId, supabase, type Row, logSupabaseError, nowIso } from '../db/connection.js';
-import { requireAdmin } from '../middleware/auth.js';
+import { readAdminFromRequest, requireAdmin } from '../middleware/auth.js';
 import { sanitizeProductName } from '../utils/sanitizeProductName.js';
 import { parsePriceOre, parseVariantPricesInput, variantPricesForProduct } from '../utils/productPrices.js';
 
 const router = Router();
 
 export const PRODUCT_COLUMNS =
-  'id, name, slug, description, image_url, price_ore, variant_prices, stock_status, sort_order, created_at, updated_at';
+  'id, name, slug, description, image_url, price_ore, variant_prices, stock_status, hidden, sort_order, created_at, updated_at';
 
 export function rowToProduct(r: Row): {
   id: string;
@@ -17,6 +17,7 @@ export function rowToProduct(r: Row): {
   description: string;
   image: string;
   inStock: boolean;
+  hidden: boolean;
   sortOrder: number;
   variantPrices?: Record<string, number>;
   createdAt: string;
@@ -35,6 +36,7 @@ export function rowToProduct(r: Row): {
     description: String(r.description ?? ''),
     image: resolveProductImage(id, r.image_url as string | null, r.slug as string | null),
     inStock,
+    hidden: r.hidden === true,
     sortOrder: Number(r.sort_order) || 0,
     ...(variantPrices ? { variantPrices } : {}),
     createdAt:
@@ -93,13 +95,18 @@ async function nextSortOrder(): Promise<number> {
   return (Number((data as Row | null)?.sort_order) || 0) + 1;
 }
 
-router.get('/', async (_req: Request, res: Response) => {
+router.get('/', async (req: Request, res: Response) => {
   try {
-    const { data, error } = await supabase
+    const includeHidden = Boolean(readAdminFromRequest(req));
+    let query = supabase
       .from('products')
       .select(PRODUCT_COLUMNS)
       .order('sort_order', { ascending: true })
       .order('name', { ascending: true });
+    if (!includeHidden) {
+      query = query.eq('hidden', false);
+    }
+    const { data, error } = await query;
 
     if (error) {
       logSupabaseError('GET /api/products', error);
@@ -133,6 +140,10 @@ router.get('/:id', async (req: Request, res: Response) => {
     }
 
     if (!data) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
+
+    if ((data as Row).hidden === true && !readAdminFromRequest(req)) {
       return res.status(404).json({ error: 'Product not found' });
     }
 
@@ -340,6 +351,9 @@ router.patch('/:id', requireAdmin, async (req: Request, res: Response) => {
     }
     if (typeof body.inStock === 'boolean') {
       patch.stock_status = body.inStock ? 'instock' : 'outofstock';
+    }
+    if (typeof body.hidden === 'boolean') {
+      patch.hidden = body.hidden;
     }
     if (body.variantPrices !== undefined) {
       const parsed = parseVariantPricesInput(body.variantPrices);
