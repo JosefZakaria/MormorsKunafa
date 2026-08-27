@@ -665,6 +665,8 @@ input:checked+.slider:before {
     align-items: center;
     justify-content: center;
     z-index: 1000;
+    padding: var(--spacing-lg);
+    overflow: auto;
 }
 
 .stats-modal {
@@ -673,6 +675,8 @@ input:checked+.slider:before {
     padding: var(--spacing-2xl);
     width: 100%;
     max-width: 400px;
+    max-height: min(90vh, 720px);
+    overflow-y: auto;
     box-shadow: var(--shadow-lg);
 }
 
@@ -1481,6 +1485,7 @@ select.stats-modal-input {
 
 .admin-product-modal {
     max-width: 480px;
+    max-height: min(90vh, 720px);
 }
 
 .admin-product-modal .form-label {

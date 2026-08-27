@@ -1,4 +1,5 @@
-import { useMemo, useRef, useState, type DragEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { GripVertical } from 'lucide-react';
 import { ApiError } from '@shared/api';
 import type { AdminSettings, Product } from '@shared/types';
@@ -211,7 +212,15 @@ function ProductFormModal({
         }
     };
 
-    return (
+    useEffect(() => {
+        const previous = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        return () => {
+            document.body.style.overflow = previous;
+        };
+    }, []);
+
+    return createPortal(
         <div className="stats-modal-overlay" onClick={onClose}>
             <div className="stats-modal admin-product-modal" onClick={(e) => e.stopPropagation()}>
                 <h2>{isNew ? 'Lägg till vara' : 'Ändra vara'}</h2>
@@ -290,7 +299,8 @@ function ProductFormModal({
                     </Button>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 }
 
