@@ -224,6 +224,18 @@
     margin: 0 0 var(--spacing-sm) 0;
 }
 
+.customer-info__row {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0 var(--spacing-sm);
+}
+
+@media (min-width: 480px) {
+    .customer-info__row {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
 .customer-info__field {
     display: flex;
     flex-direction: column;
