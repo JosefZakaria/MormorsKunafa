@@ -5,7 +5,8 @@ import { Button } from '../../components/common/Button/Button';
 import { LanguageSelector } from '../../components/common/LanguageSelector/LanguageSelector';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { orderApi } from '../../services/api';
-import type { OrderType } from '@shared/types';
+import type { Location, OrderType } from '@shared/types';
+import { HOJA_LOCATION_ID, MOLLEVANGEN_LOCATION_ID } from '@shared/types';
 import { DEFAULT_DAY_HOURS } from '@shared/utils/openingHours';
 import { clearStoredLocation, needsPickupLocation } from '../../utils/selectedLocation';
 import './Landing.css';
@@ -64,6 +65,37 @@ const IconDelivery = () => (
 const DEFAULT_HERO_DESKTOP = '/images/kunafa-ashta.jpg';
 const DEFAULT_HERO_MOBILE = '/images/ny-kunafa-bild.jpg';
 
+const FALLBACK_PLACES: Location[] = [
+    {
+        id: HOJA_LOCATION_ID,
+        slug: 'hoja',
+        name: 'Höja',
+        address: 'Karolingatan 1, 212 34 Malmö',
+        fulfillsDelivery: true,
+        eatHereEnabled: true,
+        takeawayEnabled: true,
+        isPaused: false,
+    },
+    {
+        id: MOLLEVANGEN_LOCATION_ID,
+        slug: 'mollevangen',
+        name: 'Möllevången',
+        address: 'Bergsgatan 14, 211 34 Malmö',
+        fulfillsDelivery: false,
+        eatHereEnabled: true,
+        takeawayEnabled: true,
+        isPaused: false,
+    },
+];
+
+function mapsEmbedUrl(address: string): string {
+    return `https://maps.google.com/maps?q=${encodeURIComponent(address)}&output=embed`;
+}
+
+function mapsDirectionsUrl(address: string): string {
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
+}
+
 const LOCALE_MAP: Record<string, string> = { sv: 'sv-SE', en: 'en-GB', ar: 'ar' };
 
 export const Landing: React.FC = () => {
@@ -73,6 +105,7 @@ export const Landing: React.FC = () => {
     const [heroDesktop, setHeroDesktop] = useState(DEFAULT_HERO_DESKTOP);
     const [heroMobile, setHeroMobile] = useState(DEFAULT_HERO_MOBILE);
     const [pausedPopup, setPausedPopup] = useState<OrderType | 'all' | null>(null);
+    const [places, setPlaces] = useState<Location[]>(FALLBACK_PLACES);
 
     useEffect(() => {
         sessionStorage.removeItem('orderType');
@@ -92,6 +125,7 @@ export const Landing: React.FC = () => {
                 });
                 if (settings.heroImageDesktop) setHeroDesktop(settings.heroImageDesktop);
                 if (settings.heroImageMobile) setHeroMobile(settings.heroImageMobile);
+                if (settings.locations?.length) setPlaces(settings.locations);
             })
             .catch((err) => {
                 console.error('Failed to fetch public settings:', err);
@@ -128,6 +162,7 @@ export const Landing: React.FC = () => {
         return name.charAt(0).toUpperCase() + name.slice(1);
     });
     const hoursLabel = `${DEFAULT_DAY_HOURS.open.slice(0, 2)}–${DEFAULT_DAY_HOURS.close.slice(0, 2)}`;
+    const mappedPlaces = places.filter((place) => place.address.trim());
 
     return (
         <div className="landing">
@@ -296,10 +331,25 @@ export const Landing: React.FC = () => {
                                 <p className="findus__note">{t('landing.findus.note')}</p>
                             </div>
                             <div className="findus__card">
-                                <div className="findus__info">
-                                    <span className="findus__label">{t('findus.address_title')}</span>
-                                    <p className="findus__value">{t('landing.findus.address')}</p>
-                                </div>
+                                <h3 className="findus__card-title">{t('findus.address_title')}</h3>
+                                {places.map((place) => (
+                                    <div className="findus__place" key={place.id}>
+                                        <p className="findus__value">{place.name}</p>
+                                        {place.address.trim() ? (
+                                            <>
+                                                <p className="findus__place-address">{place.address}</p>
+                                                <a
+                                                    href={mapsDirectionsUrl(place.address)}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="findus__directions"
+                                                >
+                                                    {t('findus.directions_btn')}
+                                                </a>
+                                            </>
+                                        ) : null}
+                                    </div>
+                                ))}
                                 <div className="findus__info">
                                     <span className="findus__label">{t('landing.findus.phone_label')}</span>
                                     <a href="tel:0728682592" className="findus__value findus__value--link">{t('footer.phone')}</a>
@@ -318,15 +368,20 @@ export const Landing: React.FC = () => {
                                 </div>
                             </div>
                         </div>
-                        <div className="findus__map-wrap">
-                            <iframe
-                                src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d2250.558385447066!2d13.000932315316!3d55.595279680517!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x4653a1592751aac9%3A0x0!2sKarolingatan%201%2C%20212%2034%20Malm%C3%B6!5e0!3m2!1ssv!2sse"
-                                title={t('landing.findus.title')}
-                                className="findus__map"
-                                loading="lazy"
-                                allowFullScreen
-                                referrerPolicy="no-referrer-when-downgrade"
-                            />
+                        <div className="findus__maps">
+                            {mappedPlaces.map((place) => (
+                                <div className="findus__map-wrap" key={place.id}>
+                                    <span className="findus__map-label">{place.name}</span>
+                                    <iframe
+                                        src={mapsEmbedUrl(place.address)}
+                                        title={`${place.name} — ${place.address}`}
+                                        className="findus__map"
+                                        loading="lazy"
+                                        allowFullScreen
+                                        referrerPolicy="no-referrer-when-downgrade"
+                                    />
+                                </div>
+                            ))}
                         </div>
                     </div>
                 </Container>

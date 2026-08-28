@@ -491,6 +491,36 @@
 
 .findus__info { margin-bottom: var(--spacing-md); }
 
+.findus__place {
+    margin-bottom: var(--spacing-lg);
+}
+
+.findus__card-title + .findus__place {
+    margin-top: 0.5rem;
+}
+
+.findus__place + .findus__info {
+    padding-top: var(--spacing-md);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.findus__place-address {
+    margin: 0.15rem 0 0.35rem;
+    color: rgba(255, 255, 255, 0.75);
+    font-size: 0.95rem;
+}
+
+.findus__directions {
+    color: var(--color-secondary-gold);
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.findus__directions:hover {
+    text-decoration: underline;
+}
+
 .findus__label {
     display: block;
     font-size: 0.7rem;
@@ -541,24 +571,44 @@
     border-radius: var(--radius-full);
 }
 
+.findus__maps {
+    display: grid;
+    grid-auto-rows: minmax(200px, 1fr);
+    gap: var(--spacing-lg);
+    min-height: 420px;
+}
+
 .findus__map-wrap {
     border-radius: var(--radius-lg);
     overflow: hidden;
-    min-height: 420px;
+    min-height: 200px;
+    display: flex;
+    flex-direction: column;
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.findus__map-label {
+    display: block;
+    font-size: 0.75rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--color-secondary-gold);
+    padding: 0.65rem 0.85rem 0.35rem;
 }
 
 .findus__map {
     width: 100%;
-    height: 100%;
-    min-height: 420px;
+    flex: 1;
+    min-height: 180px;
     border: 0;
     display: block;
 }
 
 @media (max-width: 860px) {
     .findus__grid { grid-template-columns: 1fr; }
-    .findus__map-wrap { min-height: 320px; }
-    .findus__map { min-height: 320px; }
+    .findus__maps { grid-template-rows: none; min-height: 0; }
+    .findus__map-wrap { min-height: 240px; }
+    .findus__map { min-height: 220px; }
 }
 
 /* ---- Språkväljare ---- */
