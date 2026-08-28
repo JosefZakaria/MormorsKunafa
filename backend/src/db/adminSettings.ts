@@ -1,4 +1,6 @@
+import type { Location } from '@mormors-kunafa/shared/types';
 import type { Row } from './connection.js';
+import { listLocations } from './locations.js';
 
 const DEFAULT_HERO_DESKTOP = '/images/kunafa-ashta.jpg';
 const DEFAULT_HERO_MOBILE = '/images/ny-kunafa-bild.jpg';
@@ -9,6 +11,7 @@ export type AdminSettingsDto = {
   eatHereEnabled: boolean;
   takeawayEnabled: boolean;
   deliveryEnabled: boolean;
+  locations: Location[];
   heroImageDesktop: string;
   heroImageMobile: string;
 };
@@ -37,16 +40,31 @@ function heroUrl(value: unknown, fallback: string): string {
   return trimmed || fallback;
 }
 
-export function rowToAdminSettings(r: Row): AdminSettingsDto {
+export function rowToAdminSettings(r: Row, locations: Location[] = []): AdminSettingsDto {
+  const eatHereEnabled =
+    locations.length > 0
+      ? locations.some((location) => !location.isPaused && location.eatHereEnabled)
+      : flagEnabled(r.eat_here_enabled);
+  const takeawayEnabled =
+    locations.length > 0
+      ? locations.some((location) => !location.isPaused && location.takeawayEnabled)
+      : flagEnabled(r.takeaway_enabled);
+
   return {
     defaultPreparationTime: Number(r.default_preparation_time_minutes) || 30,
     isPaused: Boolean(r.is_paused),
-    eatHereEnabled: flagEnabled(r.eat_here_enabled),
-    takeawayEnabled: flagEnabled(r.takeaway_enabled),
+    eatHereEnabled,
+    takeawayEnabled,
     deliveryEnabled: flagEnabled(r.delivery_enabled),
+    locations,
     heroImageDesktop: heroUrl(r.hero_image_desktop_url, DEFAULT_HERO_DESKTOP),
     heroImageMobile: heroUrl(r.hero_image_mobile_url, DEFAULT_HERO_MOBILE),
   };
+}
+
+export async function adminSettingsFromRow(r: Row): Promise<AdminSettingsDto> {
+  const locations = await listLocations();
+  return rowToAdminSettings(r, locations);
 }
 
 export function applyAdminSettingsPatch(

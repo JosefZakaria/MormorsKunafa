@@ -1,9 +1,10 @@
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { supabase, type Row, logSupabaseError, nowIso } from '../db/connection.js';
-import { applyAdminSettingsPatch, rowToAdminSettings } from '../db/adminSettings.js';
-import { requireAdmin, requireOwner, signToken, verifyAdminToken } from '../middleware/auth.js';
+import { applyAdminSettingsPatch, adminSettingsFromRow } from '../db/adminSettings.js';
+import { requireAdmin, requireOwner, signToken, verifyAdminToken, getRequestAdmin } from '../middleware/auth.js';
 import { loadAdminScope, parseAdminRole } from '../services/locationScope.js';
+import { updateLocationFlags } from '../db/locations.js';
 import { isDeliveryFeeLineItem } from '../constants/deliveryFee.js';
 import { registerAdminMediaRoutes } from './adminMedia.js';
 import {
@@ -281,18 +282,38 @@ router.get('/settings', requireAdmin, async (_req: Request, res: Response) => {
       res.status(404).json({ error: 'Settings not found' });
       return;
     }
-    res.json(rowToAdminSettings(r));
+    res.json(await adminSettingsFromRow(r));
   } catch (e) {
     console.error('[GET /admin/settings]', e);
     res.status(500).json({ error: 'Failed to fetch settings' });
   }
 });
 
-router.patch('/settings', requireAdmin, requireOwner, async (req: Request, res: Response) => {
+router.patch('/settings', requireAdmin, async (req: Request, res: Response) => {
   try {
+    const admin = getRequestAdmin(req);
+    if (!admin) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    const scope = await loadAdminScope(admin.adminId);
     const body = (req.body ?? {}) as Record<string, unknown>;
+    let allowedBody = body;
+
+    if (scope.role !== 'owner') {
+      if (!scope.fulfillsDelivery) {
+        res.status(403).json({ error: 'Endast ägare har åtkomst.' });
+        return;
+      }
+      if (typeof body.deliveryEnabled !== 'boolean') {
+        res.status(403).json({ error: 'Från denna plats kan bara hemleverans ändras.' });
+        return;
+      }
+      allowedBody = { deliveryEnabled: body.deliveryEnabled };
+    }
+
     const patch: Record<string, unknown> = { updated_at: nowIso() };
-    applyAdminSettingsPatch(body, patch);
+    applyAdminSettingsPatch(allowedBody, patch);
 
     if (Object.keys(patch).length > 1) {
       const settings = await fetchAdminSettingsRow();
@@ -316,10 +337,53 @@ router.patch('/settings', requireAdmin, requireOwner, async (req: Request, res: 
       res.status(500).json({ error: 'Settings not found' });
       return;
     }
-    res.json(rowToAdminSettings(r));
+    res.json(await adminSettingsFromRow(r));
   } catch (e) {
     console.error('[PATCH /admin/settings]', e);
     res.status(500).json({ error: 'Failed to update settings' });
+  }
+});
+
+router.patch('/locations/:id', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const admin = getRequestAdmin(req);
+    if (!admin) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    const scope = await loadAdminScope(admin.adminId);
+    const locationId = String(req.params.id ?? '').trim();
+    if (!locationId) {
+      res.status(400).json({ error: 'Plats saknas.' });
+      return;
+    }
+    if (scope.role === 'location' && scope.locationId !== locationId) {
+      res.status(403).json({ error: 'Du kan bara pausa din egen plats.' });
+      return;
+    }
+
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const patch: { isPaused?: boolean; eatHereEnabled?: boolean; takeawayEnabled?: boolean } = {};
+    if (typeof body.isPaused === 'boolean') patch.isPaused = body.isPaused;
+    if (scope.role === 'owner') {
+      if (typeof body.eatHereEnabled === 'boolean') patch.eatHereEnabled = body.eatHereEnabled;
+      if (typeof body.takeawayEnabled === 'boolean') patch.takeawayEnabled = body.takeawayEnabled;
+    }
+
+    if (Object.keys(patch).length === 0) {
+      res.status(400).json({ error: 'Inga giltiga fält att uppdatera.' });
+      return;
+    }
+
+    const updated = await updateLocationFlags(locationId, patch);
+    if (!updated) {
+      res.status(404).json({ error: 'Platsen hittades inte.' });
+      return;
+    }
+    res.json(updated);
+  } catch (e) {
+    console.error('[PATCH /admin/locations/:id]', e);
+    res.status(500).json({ error: 'Failed to update location' });
   }
 });
 

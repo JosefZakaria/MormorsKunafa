@@ -72,21 +72,68 @@ export async function getLocationBySlug(slug: string): Promise<Location | null> 
 export async function resolveOrderLocationId(
   orderType: string,
   requestedId: string | undefined | null
-): Promise<{ locationId: string | null; error?: string }> {
+): Promise<{ locationId: string | null; location: Location | null; error?: string }> {
   if (orderType === 'delivery') {
-    return { locationId: null };
+    return { locationId: null, location: null };
   }
 
   const trimmed = String(requestedId ?? '').trim();
   if (!trimmed) {
-    return { locationId: null, error: 'Välj plats för Äta här och Ta med.' };
+    return { locationId: null, location: null, error: 'Välj plats för Äta här och Ta med.' };
   }
 
   const location = await getLocationById(trimmed);
   if (!location) {
-    return { locationId: null, error: 'Ogiltig plats.' };
+    return { locationId: null, location: null, error: 'Ogiltig plats.' };
   }
-  return { locationId: location.id };
+  return { locationId: location.id, location };
+}
+
+export function locationOrderTypeError(orderType: string, location: Location): string | null {
+  if (location.isPaused) {
+    return `Beställningar till ${location.name} är för tillfället pausade, försök igen senare.`;
+  }
+  if (orderType === 'eat-here' && !location.eatHereEnabled) {
+    return `Äta här är för tillfället pausat på ${location.name}. Försök igen senare.`;
+  }
+  if (orderType === 'takeaway' && !location.takeawayEnabled) {
+    return `Ta med är för tillfället pausat på ${location.name}. Försök igen senare.`;
+  }
+  return null;
+}
+
+export type LocationFlagsPatch = {
+  isPaused?: boolean;
+  eatHereEnabled?: boolean;
+  takeawayEnabled?: boolean;
+};
+
+export async function updateLocationFlags(
+  id: string,
+  patch: LocationFlagsPatch
+): Promise<Location | null> {
+  const dbPatch: Record<string, unknown> = {};
+  if (typeof patch.isPaused === 'boolean') dbPatch.is_paused = patch.isPaused;
+  if (typeof patch.eatHereEnabled === 'boolean') dbPatch.eat_here_enabled = patch.eatHereEnabled;
+  if (typeof patch.takeawayEnabled === 'boolean') dbPatch.takeaway_enabled = patch.takeawayEnabled;
+
+  if (Object.keys(dbPatch).length === 0) {
+    return getLocationById(id);
+  }
+
+  const { data, error } = await supabase
+    .from('locations')
+    .update(dbPatch)
+    .eq('id', id)
+    .select(LOCATION_COLUMNS)
+    .maybeSingle();
+
+  if (error) {
+    logSupabaseError('updateLocationFlags', error);
+    throw error;
+  }
+
+  return data ? rowToLocation(data as Row) : null;
 }
 
 export function pickupPlaceLabel(location: Location | null | undefined): string | null {

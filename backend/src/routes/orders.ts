@@ -10,7 +10,7 @@ import { sendSms } from '../services/SmsService.js';
 import { getStripe } from '../services/stripeClient.js';
 import { broadcastOrderCreated, type OrderCreatedEvent } from '../services/realtimeEvents.js';
 import { sendOrderCreatedPush } from '../services/pushNotifications.js';
-import { resolveOrderLocationId, inStorePickupSmsSuffix } from '../db/locations.js';
+import { resolveOrderLocationId, locationOrderTypeError, inStorePickupSmsSuffix } from '../db/locations.js';
 import type { OrderType } from '@mormors-kunafa/shared/types';
 import { parseOrderScheduledAt, formatStockholmDateTime } from '../utils/stockholmWallTime.js';
 import { validateScheduledOrderTime } from '../shared/utils/openingHours.js';
@@ -32,7 +32,7 @@ import { sanitizeProductName } from '../utils/sanitizeProductName.js';
 import {
   ADMIN_SETTINGS_PUBLIC_SELECT,
   disabledOrderTypeError,
-  rowToAdminSettings,
+  adminSettingsFromRow,
 } from '../db/adminSettings.js';
 import swishPaymentRouter from './swishPayment.js';
 
@@ -165,10 +165,23 @@ router.post('/', async (req: Request, res: Response) => {
       return;
     }
 
-    if (settings) {
-      const typePausedError = disabledOrderTypeError(orderType, settings);
-      if (typePausedError) {
-        res.status(403).json({ error: typePausedError });
+    const resolvedLocation = await resolveOrderLocationId(orderType, body.locationId);
+    if (resolvedLocation.error) {
+      res.status(400).json({ error: resolvedLocation.error });
+      return;
+    }
+    const locationId = resolvedLocation.locationId;
+
+    if (isDelivery) {
+      const deliveryPausedError = settings ? disabledOrderTypeError('delivery', settings) : null;
+      if (deliveryPausedError) {
+        res.status(403).json({ error: deliveryPausedError });
+        return;
+      }
+    } else if (resolvedLocation.location) {
+      const locationPausedError = locationOrderTypeError(orderType, resolvedLocation.location);
+      if (locationPausedError) {
+        res.status(403).json({ error: locationPausedError });
         return;
       }
     }
@@ -206,13 +219,6 @@ router.post('/', async (req: Request, res: Response) => {
       res.status(400).json({ error: 'Telefonnummer krävs för beställning.' });
       return;
     }
-
-    const resolvedLocation = await resolveOrderLocationId(orderType, body.locationId);
-    if (resolvedLocation.error) {
-      res.status(400).json({ error: resolvedLocation.error });
-      return;
-    }
-    const locationId = resolvedLocation.locationId;
 
     const orderId = generateId();
     const orderInsert = {
@@ -929,7 +935,7 @@ router.get('/settings', async (_req: Request, res: Response) => {
       return;
     }
 
-    res.json(rowToAdminSettings(data as Row));
+    res.json(await adminSettingsFromRow(data as Row));
   } catch (e) {
     console.error('[GET /api/orders/settings]', e);
     res.status(500).json({ error: 'Failed to fetch settings' });

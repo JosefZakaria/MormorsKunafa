@@ -1,7 +1,7 @@
 import type { Request, Response, Router } from 'express';
 import multer from 'multer';
 import { generateId, logSupabaseError, nowIso, supabase, type Row } from '../db/connection.js';
-import { rowToAdminSettings } from '../db/adminSettings.js';
+import { adminSettingsFromRow } from '../db/adminSettings.js';
 import { requireAdmin, requireOwner } from '../middleware/auth.js';
 import {
   SITE_MEDIA_MAX_BYTES,
@@ -125,7 +125,7 @@ async function handleUpload(req: Request, res: Response): Promise<void> {
     if (kindRaw === 'hero-desktop' || kindRaw === 'hero-mobile') {
       const which = kindRaw === 'hero-desktop' ? 'desktop' : 'mobile';
       const settings = await saveHeroUrl(which, url);
-      res.status(200).json({ url, settings: rowToAdminSettings(settings) });
+      res.status(200).json({ url, settings: await adminSettingsFromRow(settings) });
       return;
     }
 
