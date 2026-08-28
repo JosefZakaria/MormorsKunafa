@@ -102,3 +102,49 @@
     align-items: flex-end;
     text-align: right;
 }
+
+@media (max-width: 767px) {
+    .select-location-page {
+        padding: 1rem 0 1.5rem;
+        min-height: 0;
+        justify-content: flex-start;
+    }
+
+    .select-location-card {
+        padding: 1.25rem 1rem;
+        border-radius: 10px;
+        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+    }
+
+    .select-location-title {
+        font-size: 1.75rem;
+        line-height: 1.15;
+        margin-bottom: 0.25rem;
+    }
+
+    .select-location-subtitle {
+        font-size: 0.95rem;
+        margin: 0 0 1rem;
+    }
+
+    .select-location-options {
+        gap: 0.6rem;
+    }
+
+    .select-location-option {
+        padding: 0.75rem 0.9rem;
+        border-radius: 8px;
+    }
+
+    .select-location-option-name {
+        font-size: 1.15rem;
+    }
+
+    .select-location-option-address {
+        font-size: 0.85rem;
+    }
+
+    .select-location-option-paused {
+        font-size: 0.8rem;
+    }
+}
