@@ -10,7 +10,7 @@ import { sendSms } from '../services/SmsService.js';
 import { getStripe } from '../services/stripeClient.js';
 import { broadcastOrderCreated, type OrderCreatedEvent } from '../services/realtimeEvents.js';
 import { sendOrderCreatedPush } from '../services/pushNotifications.js';
-import { resolveOrderLocationId } from '../db/locations.js';
+import { resolveOrderLocationId, inStorePickupSmsSuffix } from '../db/locations.js';
 import type { OrderType } from '@mormors-kunafa/shared/types';
 import { parseOrderScheduledAt, formatStockholmDateTime } from '../utils/stockholmWallTime.js';
 import { validateScheduledOrderTime } from '../shared/utils/openingHours.js';
@@ -350,7 +350,8 @@ router.post('/', async (req: Request, res: Response) => {
     if (phoneOut && !isOnlinePayment(paymentMethod) && !isDelivery) {
       const schedStr = result.order.scheduled_at ? formatStockholmDateTime(result.order.scheduled_at as string) : '';
       const schedSuffix = schedStr ? ` Planerad upphämtning: ${schedStr}.` : '';
-      void sendSms(phoneOut, `Tack för din beställning från Mormors Kunafa${smsCustomerName ? ', ' + smsCustomerName : ''}! Vi tar snart emot din beställning.${schedSuffix}`).catch((err) =>
+      const placeSuffix = await inStorePickupSmsSuffix(result.order);
+      void sendSms(phoneOut, `Tack för din beställning från Mormors Kunafa${smsCustomerName ? ', ' + smsCustomerName : ''}! Vi tar snart emot din beställning.${placeSuffix}${schedSuffix}`).catch((err) =>
         console.error('[order confirmation sms]', err)
       );
     }
@@ -564,7 +565,8 @@ router.patch('/admin/:id/accept', requireAdmin, async (req: Request, res: Respon
         hour: '2-digit',
         minute: '2-digit',
       });
-      void sendSms(phoneOut, `Hej${customerName ? ', ' + customerName : ''}! Din order är mottagen och beräknas vara klar kl ${readyTimeStr}.`).catch((err) =>
+      const placeSuffix = await inStorePickupSmsSuffix(updated.order);
+      void sendSms(phoneOut, `Hej${customerName ? ', ' + customerName : ''}! Din order är mottagen och beräknas vara klar kl ${readyTimeStr}.${placeSuffix}`).catch((err) =>
         console.error('[order accepted sms]', err)
       );
     }

@@ -1,9 +1,6 @@
 import type { Location, LocationSlug } from '@mormors-kunafa/shared/types';
 import { supabase, type Row, logSupabaseError } from './connection.js';
 
-/** Must match `HOJA_LOCATION_ID` in shared/types and the SQL seed. */
-const HOJA_LOCATION_ID = '2f1a9c4e-6b7d-4e8f-a901-b2c3d4e5f601';
-
 export const LOCATION_COLUMNS =
   'id, slug, name, address, fulfills_delivery, eat_here_enabled, takeaway_enabled, is_paused';
 
@@ -70,7 +67,7 @@ export async function getLocationBySlug(slug: string): Promise<Location | null> 
 
 /**
  * Delivery has no pickup location.
- * Eat-here / takeaway use the requested id, or Höja when the client omits it.
+ * Eat-here / takeaway require a valid location id.
  */
 export async function resolveOrderLocationId(
   orderType: string,
@@ -81,18 +78,28 @@ export async function resolveOrderLocationId(
   }
 
   const trimmed = String(requestedId ?? '').trim();
-  if (trimmed) {
-    const location = await getLocationById(trimmed);
-    if (!location) {
-      return { locationId: null, error: 'Ogiltig plats.' };
-    }
-    return { locationId: location.id };
+  if (!trimmed) {
+    return { locationId: null, error: 'Välj plats för Äta här och Ta med.' };
   }
 
-  const hoja =
-    (await getLocationById(HOJA_LOCATION_ID)) ?? (await getLocationBySlug('hoja'));
-  if (!hoja) {
-    return { locationId: null, error: 'Kunde inte hitta standardplatsen Höja.' };
+  const location = await getLocationById(trimmed);
+  if (!location) {
+    return { locationId: null, error: 'Ogiltig plats.' };
   }
-  return { locationId: hoja.id };
+  return { locationId: location.id };
+}
+
+export function pickupPlaceLabel(location: Location | null | undefined): string | null {
+  if (!location) return null;
+  const address = location.address.trim();
+  return address ? `${location.name}, ${address}` : location.name;
+}
+
+export async function inStorePickupSmsSuffix(order: Row): Promise<string> {
+  if (String(order.order_type ?? '') === 'delivery') return '';
+  const id = order.location_id != null ? String(order.location_id) : '';
+  if (!id) return '';
+  const location = await getLocationById(id);
+  const label = pickupPlaceLabel(location);
+  return label ? ` Plats: ${label}.` : '';
 }
