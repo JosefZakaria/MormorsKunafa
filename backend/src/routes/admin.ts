@@ -2,7 +2,8 @@ import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { supabase, type Row, logSupabaseError, nowIso } from '../db/connection.js';
 import { applyAdminSettingsPatch, rowToAdminSettings } from '../db/adminSettings.js';
-import { requireAdmin, signToken, verifyAdminToken } from '../middleware/auth.js';
+import { requireAdmin, requireOwner, signToken, verifyAdminToken } from '../middleware/auth.js';
+import { loadAdminScope, parseAdminRole } from '../services/locationScope.js';
 import { isDeliveryFeeLineItem } from '../constants/deliveryFee.js';
 import { registerAdminMediaRoutes } from './adminMedia.js';
 import {
@@ -87,7 +88,7 @@ router.post('/login', async (req: Request, res: Response) => {
 
     const { data: user, error } = await supabase
       .from('admin_users')
-      .select('id, email, password_hash, display_name')
+      .select('id, email, password_hash, display_name, role, location_id')
       .eq('email', email)
       .maybeSingle();
 
@@ -117,9 +118,15 @@ router.post('/login', async (req: Request, res: Response) => {
       logSupabaseError('POST /admin/login last_login_at', loginUpdateError);
     }
 
+    const role = parseAdminRole((user as Row).role);
+    const locationId =
+      (user as Row).location_id != null ? String((user as Row).location_id) : null;
+
     const token = signToken({
       adminId: String((user as Row).id),
       email: String((user as Row).email),
+      role,
+      locationId,
     });
     res.json({
       token,
@@ -127,6 +134,8 @@ router.post('/login', async (req: Request, res: Response) => {
         id: (user as Row).id,
         email: (user as Row).email,
         name: String((user as Row).display_name ?? (user as Row).email),
+        role,
+        locationId,
       },
     });
   } catch (e) {
@@ -147,8 +156,15 @@ router.get('/events', (req: Request, res: Response) => {
   res.setHeader('Connection', 'keep-alive');
   res.flushHeaders();
 
-  const cleanup = registerRealtimeClient(admin.adminId, res);
-  req.on('close', cleanup);
+  void loadAdminScope(admin.adminId)
+    .then((scope) => {
+      const cleanup = registerRealtimeClient(scope, res);
+      req.on('close', cleanup);
+    })
+    .catch((e) => {
+      console.error('[GET /admin/events] scope', e);
+      res.end();
+    });
 });
 
 router.get('/notifications/health', requireAdmin, (_req: Request, res: Response) => {
@@ -272,7 +288,7 @@ router.get('/settings', requireAdmin, async (_req: Request, res: Response) => {
   }
 });
 
-router.patch('/settings', requireAdmin, async (req: Request, res: Response) => {
+router.patch('/settings', requireAdmin, requireOwner, async (req: Request, res: Response) => {
   try {
     const body = (req.body ?? {}) as Record<string, unknown>;
     const patch: Record<string, unknown> = { updated_at: nowIso() };
@@ -315,7 +331,7 @@ router.patch('/notifications/:id/read', requireAdmin, async (_req: Request, res:
   res.status(204).send();
 });
 
-router.post('/statistics', requireAdmin, async (req: Request, res: Response) => {
+router.post('/statistics', requireAdmin, requireOwner, async (req: Request, res: Response) => {
   try {
     const { password, startDate, endDate } = req.body as {
       password?: string;

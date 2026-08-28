@@ -2,7 +2,7 @@ import type { Request, Response, Router } from 'express';
 import multer from 'multer';
 import { generateId, logSupabaseError, nowIso, supabase, type Row } from '../db/connection.js';
 import { rowToAdminSettings } from '../db/adminSettings.js';
-import { requireAdmin } from '../middleware/auth.js';
+import { requireAdmin, requireOwner } from '../middleware/auth.js';
 import {
   SITE_MEDIA_MAX_BYTES,
   contentTypeForKind,
@@ -71,7 +71,7 @@ async function saveHeroUrl(which: 'desktop' | 'mobile', url: string): Promise<Ro
 }
 
 export function registerAdminMediaRoutes(router: Router): void {
-  router.post('/uploads', requireAdmin, (req, res, next) => {
+  router.post('/uploads', requireAdmin, requireOwner, (req, res, next) => {
     runMulter(req, res, () => {
       void handleUpload(req, res).catch(next);
     });

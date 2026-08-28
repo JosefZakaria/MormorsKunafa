@@ -1,5 +1,7 @@
 import type { Response } from 'express';
 import type { OrderType } from '@mormors-kunafa/shared/types';
+import type { AdminScope } from './locationScope.js';
+import { orderVisibleToScope } from './locationScope.js';
 
 export type OrderCreatedEvent = {
   event_id: string;
@@ -14,6 +16,7 @@ export type OrderCreatedEvent = {
 type Client = {
   id: string;
   adminId: string;
+  scope: AdminScope;
   res: Response;
 };
 
@@ -24,9 +27,9 @@ function sseWrite(res: Response, event: string, payload: unknown): void {
   res.write(`data: ${JSON.stringify(payload)}\n\n`);
 }
 
-export function registerRealtimeClient(adminId: string, res: Response): () => void {
+export function registerRealtimeClient(scope: AdminScope, res: Response): () => void {
   const clientId = crypto.randomUUID();
-  clients.set(clientId, { id: clientId, adminId, res });
+  clients.set(clientId, { id: clientId, adminId: scope.adminId, scope, res });
 
   sseWrite(res, 'ready', {
     ok: true,
@@ -49,6 +52,14 @@ export function registerRealtimeClient(adminId: string, res: Response): () => vo
 
 export function broadcastOrderCreated(event: OrderCreatedEvent): void {
   for (const client of clients.values()) {
+    if (
+      !orderVisibleToScope(client.scope, {
+        orderType: event.order_type,
+        locationId: event.location_id,
+      })
+    ) {
+      continue;
+    }
     sseWrite(client.res, 'ORDER_CREATED', event);
   }
 }

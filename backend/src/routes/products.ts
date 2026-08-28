@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { resolveProductImage } from '../utils/productImage.js';
 import { generateId, supabase, type Row, logSupabaseError, nowIso } from '../db/connection.js';
-import { readAdminFromRequest, requireAdmin } from '../middleware/auth.js';
+import { readAdminFromRequest, requireAdmin, requireOwner } from '../middleware/auth.js';
 import { sanitizeProductName } from '../utils/sanitizeProductName.js';
 import { parsePriceOre, parseVariantPricesInput, variantPricesForProduct } from '../utils/productPrices.js';
 
@@ -154,7 +154,7 @@ router.get('/:id', async (req: Request, res: Response) => {
   }
 });
 
-router.patch('/:id/stock', requireAdmin, async (req: Request, res: Response) => {
+router.patch('/:id/stock', requireAdmin, requireOwner, async (req: Request, res: Response) => {
   try {
     const { inStock } = req.body as { inStock?: boolean };
     if (typeof inStock !== 'boolean') {
@@ -190,7 +190,7 @@ router.patch('/:id/stock', requireAdmin, async (req: Request, res: Response) => 
   }
 });
 
-router.patch('/reorder', requireAdmin, async (req: Request, res: Response) => {
+router.patch('/reorder', requireAdmin, requireOwner, async (req: Request, res: Response) => {
   try {
     const orderedIds = (req.body as { orderedIds?: unknown }).orderedIds;
     if (!Array.isArray(orderedIds) || orderedIds.length === 0) {
@@ -255,7 +255,7 @@ router.patch('/reorder', requireAdmin, async (req: Request, res: Response) => {
   }
 });
 
-router.post('/', requireAdmin, async (req: Request, res: Response) => {
+router.post('/', requireAdmin, requireOwner, async (req: Request, res: Response) => {
   try {
     const body = (req.body ?? {}) as Record<string, unknown>;
     const name = sanitizeProductName(String(body.name ?? '').trim());
@@ -320,7 +320,7 @@ router.post('/', requireAdmin, async (req: Request, res: Response) => {
   }
 });
 
-router.patch('/:id', requireAdmin, async (req: Request, res: Response) => {
+router.patch('/:id', requireAdmin, requireOwner, async (req: Request, res: Response) => {
   try {
     const body = (req.body ?? {}) as Record<string, unknown>;
     const patch: Record<string, unknown> = { updated_at: nowIso() };
@@ -391,7 +391,7 @@ router.patch('/:id', requireAdmin, async (req: Request, res: Response) => {
   }
 });
 
-router.delete('/:id', requireAdmin, async (req: Request, res: Response) => {
+router.delete('/:id', requireAdmin, requireOwner, async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id ?? '').trim();
     if (!id) {
