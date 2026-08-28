@@ -616,16 +616,23 @@ function OrderTypeToggleRow({
 function LocationPauseBlock({
     location,
     showTypeToggles,
+    showDeliveryToggle,
+    deliveryEnabled,
     onPauseToggle,
     onToggleEatHere,
     onToggleTakeaway,
+    onToggleDelivery,
 }: {
     location: Location;
     showTypeToggles: boolean;
+    showDeliveryToggle?: boolean;
+    deliveryEnabled?: boolean;
     onPauseToggle: () => void;
     onToggleEatHere: () => void;
     onToggleTakeaway: () => void;
+    onToggleDelivery?: () => void;
 }) {
+    const showToggles = showTypeToggles || showDeliveryToggle;
     return (
         <div className="location-pause-block">
             <h4>{location.name}</h4>
@@ -643,18 +650,29 @@ function LocationPauseBlock({
                     ? `Äta här och Ta med är stoppade på ${location.name}.`
                     : `Nya beställningar tas emot på ${location.name}.`}
             </p>
-            {showTypeToggles && (
+            {showToggles && (
                 <div className="order-type-toggle-list">
-                    <OrderTypeToggleRow
-                        label="Äta här"
-                        enabled={location.eatHereEnabled}
-                        onToggle={onToggleEatHere}
-                    />
-                    <OrderTypeToggleRow
-                        label="Ta med"
-                        enabled={location.takeawayEnabled}
-                        onToggle={onToggleTakeaway}
-                    />
+                    {showTypeToggles && (
+                        <>
+                            <OrderTypeToggleRow
+                                label="Äta här"
+                                enabled={location.eatHereEnabled}
+                                onToggle={onToggleEatHere}
+                            />
+                            <OrderTypeToggleRow
+                                label="Ta med"
+                                enabled={location.takeawayEnabled}
+                                onToggle={onToggleTakeaway}
+                            />
+                        </>
+                    )}
+                    {showDeliveryToggle && onToggleDelivery && (
+                        <OrderTypeToggleRow
+                            label="Hemleverans"
+                            enabled={deliveryEnabled !== false}
+                            onToggle={onToggleDelivery}
+                        />
+                    )}
                 </div>
             )}
         </div>
@@ -1978,20 +1996,14 @@ export const AdminDashboard: React.FC = () => {
                                         key={location.id}
                                         location={location}
                                         showTypeToggles={isOwner}
+                                        showDeliveryToggle={canManageDelivery && location.fulfillsDelivery}
+                                        deliveryEnabled={settings.deliveryEnabled !== false}
                                         onPauseToggle={() => handleUpdateLocation(location.id, { isPaused: !location.isPaused })}
                                         onToggleEatHere={() => handleUpdateLocation(location.id, { eatHereEnabled: !location.eatHereEnabled })}
                                         onToggleTakeaway={() => handleUpdateLocation(location.id, { takeawayEnabled: !location.takeawayEnabled })}
+                                        onToggleDelivery={() => handleUpdateSettings({ deliveryEnabled: settings.deliveryEnabled === false })}
                                     />
                                 ))}
-                                {canManageDelivery && (
-                                    <div className="order-type-toggle-list location-pause-delivery">
-                                        <OrderTypeToggleRow
-                                            label="Hemleverans"
-                                            enabled={settings.deliveryEnabled !== false}
-                                            onToggle={() => handleUpdateSettings({ deliveryEnabled: settings.deliveryEnabled === false })}
-                                        />
-                                    </div>
-                                )}
                             </div>
                             {isOwner && (
                             <div className="rush-card">
