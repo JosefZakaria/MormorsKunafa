@@ -20,6 +20,25 @@ export type PaymentMethod = 'card' | 'swish' | 'cash' | 'app';
 export type CheckoutPaymentChoice = 'card' | 'swish';
 export type RefundStatus = 'none' | 'pending' | 'refunded' | 'failed';
 
+export type LocationSlug = 'hoja' | 'mollevangen';
+export type AdminRole = 'owner' | 'location';
+
+/** Höja — original bakery, fulfills home delivery. Matches DB seed. */
+export const HOJA_LOCATION_ID = '2f1a9c4e-6b7d-4e8f-a901-b2c3d4e5f601';
+/** Möllevången. Matches DB seed. */
+export const MOLLEVANGEN_LOCATION_ID = '2f1a9c4e-6b7d-4e8f-a901-b2c3d4e5f602';
+
+export interface Location {
+  id: string;
+  slug: LocationSlug;
+  name: string;
+  address: string;
+  fulfillsDelivery: boolean;
+  eatHereEnabled: boolean;
+  takeawayEnabled: boolean;
+  isPaused: boolean;
+}
+
 // Product Interface
 export interface Product {
   id: string;
@@ -87,6 +106,8 @@ export interface Order {
   internalNotes?: string;
   paymentMethod: PaymentMethod;
   paymentStatus: 'pending' | 'paid';
+  /** Set for eat-here / takeaway. Null for delivery. */
+  locationId?: string | null;
 }
 
 // Admin User Interface (F.Admin.1)
@@ -94,6 +115,9 @@ export interface AdminUser {
   id: string;
   email: string;
   name: string;
+  role: AdminRole;
+  /** Set when role is `location`. Null for owners. */
+  locationId?: string | null;
   createdAt: string;
   lastLoginAt?: string;
 }
