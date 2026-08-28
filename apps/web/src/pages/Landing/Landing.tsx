@@ -7,6 +7,7 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { orderApi } from '../../services/api';
 import type { OrderType } from '@shared/types';
 import { DEFAULT_DAY_HOURS } from '@shared/utils/openingHours';
+import { clearStoredLocation, needsPickupLocation } from '../../utils/selectedLocation';
 import './Landing.css';
 
 type OrderTypeFlags = {
@@ -75,6 +76,7 @@ export const Landing: React.FC = () => {
 
     useEffect(() => {
         sessionStorage.removeItem('orderType');
+        clearStoredLocation();
         orderApi.getPublicSettings()
             .then((settings) => {
                 if (!settings) return;
@@ -102,6 +104,11 @@ export const Landing: React.FC = () => {
             return;
         }
         sessionStorage.setItem('orderType', type);
+        clearStoredLocation();
+        if (needsPickupLocation(type)) {
+            navigate('/select-location');
+            return;
+        }
         navigate('/menu');
     };
 

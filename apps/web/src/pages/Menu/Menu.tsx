@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Container } from '../../components/common/Container/Container';
 import { Button } from '../../components/common/Button/Button';
 import { useLanguage } from '../../contexts/LanguageContext';
@@ -26,6 +27,7 @@ import {
     normalizeLineBreaks,
     prepareDescriptionHtml,
 } from '../../utils/productDescriptionHtml';
+import { getStoredLocationId, needsPickupLocation } from '../../utils/selectedLocation';
 
 const SHORT_DESC_LENGTH = 100;
 
@@ -113,6 +115,7 @@ const getMockProducts = (t: (key: string) => string): Product[] => {
 };
 
 export const Menu: React.FC = () => {
+    const navigate = useNavigate();
     const { t, language } = useLanguage();
     const { addItem } = useCart();
     const [products, setProducts] = useState<Product[]>([]);
@@ -136,6 +139,13 @@ export const Menu: React.FC = () => {
         }
     }, [selectedProduct]);
     tRef.current = t;
+
+    useEffect(() => {
+        const orderType = sessionStorage.getItem('orderType');
+        if (needsPickupLocation(orderType) && !getStoredLocationId()) {
+            navigate('/select-location', { replace: true });
+        }
+    }, [navigate]);
 
     // Fetch products once on mount so a refetch (e.g. from t changing) can't overwrite real data
     useEffect(() => {

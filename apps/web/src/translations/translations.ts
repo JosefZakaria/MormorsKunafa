@@ -189,8 +189,14 @@ export const translations = {
         "delivery.info_other_ar": "مناطق أخرى: 1-2 أيام عمل",
 
         // Select Location
-        "select_location.title": "Välj stad",
-        "select_location.continue": "Fortsätt"
+        "select_location.title": "Välj Plats",
+        "select_location.subtitle": "Var vill du hämta eller äta?",
+        "select_location.loading": "Laddar platser...",
+        "select_location.load_error": "Kunde inte hämta platser. Försök igen.",
+        "select_location.continue": "Fortsätt",
+        "cart.selected_place": "Plats: {place}",
+        "cart.change_place": "Byt plats",
+        "cart.place_required": "Välj plats för Äta här och Ta med."
     },
     en: {
         // Header
@@ -393,8 +399,14 @@ export const translations = {
         "delivery.info_other_ar": "مناطق أخرى: 1-2 أيام عمل",
 
         // Select Location
-        "select_location.title": "Select City",
-        "select_location.continue": "Continue"
+        "select_location.title": "Choose location",
+        "select_location.subtitle": "Where do you want to pick up or eat?",
+        "select_location.loading": "Loading locations...",
+        "select_location.load_error": "Could not load locations. Please try again.",
+        "select_location.continue": "Continue",
+        "cart.selected_place": "Location: {place}",
+        "cart.change_place": "Change location",
+        "cart.place_required": "Choose a location for Eat here and Takeaway."
     },
     ar: {
         // Header
@@ -597,7 +609,13 @@ export const translations = {
         "delivery.info_other_ar": "Övriga orter: 1-2 arbetsdagar",
 
         // Select Location
-        "select_location.title": "اختر المدينة",
-        "select_location.continue": "استمر"
+        "select_location.title": "اختر المكان",
+        "select_location.subtitle": "أين تريد الاستلام أو تناول الطعام؟",
+        "select_location.loading": "جاري تحميل الأماكن...",
+        "select_location.load_error": "تعذر تحميل الأماكن. حاول مرة أخرى.",
+        "select_location.continue": "استمر",
+        "cart.selected_place": "المكان: {place}",
+        "cart.change_place": "تغيير المكان",
+        "cart.place_required": "اختر مكانًا لتناول الطعام هنا أو للطلبات الخارجية."
     }
 };

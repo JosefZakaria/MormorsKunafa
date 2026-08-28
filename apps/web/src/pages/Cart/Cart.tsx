@@ -6,8 +6,8 @@ import { Button } from '../../components/common/Button/Button';
 import { AllergenNotice } from '../../components/common/AllergenNotice/AllergenNotice';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useCart } from '../../contexts/CartContext';
-import { orderApi } from '../../services/api';
-import type { CheckoutPaymentChoice, CustomerInfo, OrderType } from '@shared/types';
+import { orderApi, locationApi } from '../../services/api';
+import type { CheckoutPaymentChoice, CustomerInfo, Location, OrderType } from '@shared/types';
 import { DELIVERY_FEE_SEK } from '@shared/constants/delivery';
 import {
     dateToStockholmInputValue,
@@ -21,6 +21,11 @@ import {
     isStoreClosedNow,
 } from '@shared/utils/openingHours';
 import './Cart.css';
+import {
+    clearStoredLocation,
+    getStoredLocationId,
+    needsPickupLocation,
+} from '../../utils/selectedLocation';
 
 /** Set to true when Swish checkout is ready for customers. */
 const SWISH_CHECKOUT_ENABLED = false;
@@ -93,10 +98,23 @@ export const Cart: React.FC = () => {
     const [deliveryCity, setDeliveryCity] = useState('');
     const [customerInfoError, setCustomerInfoError] = useState<string | null>(null);
     const [paymentChoice, setPaymentChoice] = useState<CheckoutPaymentChoice>('card');
+    const [locations, setLocations] = useState<Location[]>([]);
+    const [locationId, setLocationId] = useState(() => getStoredLocationId());
+    const [placeError, setPlaceError] = useState<string | null>(null);
 
     useEffect(() => {
         localStorage.removeItem('deliveryInfo');
     }, []);
+
+    useEffect(() => {
+        locationApi.getAll().then(setLocations).catch(() => undefined);
+    }, []);
+
+    useEffect(() => {
+        if (needsPickupLocation(orderType) && !getStoredLocationId()) {
+            navigate('/select-location?from=cart', { replace: true });
+        }
+    }, [navigate, orderType]);
 
     const needsInlineCustomerInfo = orderType === 'eat-here' || orderType === 'takeaway' || orderType === 'delivery';
 
@@ -308,6 +326,12 @@ export const Cart: React.FC = () => {
     const isDeliveryOrder = orderType === 'delivery';
     const deliveryFeeKr = isDeliveryOrder ? DELIVERY_FEE_SEK : 0;
     const totalKr = subtotalKr + deliveryFeeKr;
+    const selectedPlace = locations.find((location) => location.id === locationId);
+    const selectedPlaceLabel = selectedPlace
+        ? (selectedPlace.address.trim()
+            ? `${selectedPlace.name}, ${selectedPlace.address}`
+            : selectedPlace.name)
+        : '';
 
     const handleOrderTypeChange = (value: string) => {
         setOrderTypeError(null);
@@ -323,6 +347,17 @@ export const Cart: React.FC = () => {
         }
         sessionStorage.setItem('orderType', nextType);
         setOrderType(nextType);
+        if (nextType === 'delivery') {
+            clearStoredLocation();
+            setLocationId('');
+            setPlaceError(null);
+            return;
+        }
+        const storedPlace = getStoredLocationId();
+        setLocationId(storedPlace);
+        if (!storedPlace) {
+            navigate('/select-location?from=cart');
+        }
     };
 
     const handleConfirmClosedWarning = () => {
@@ -346,6 +381,12 @@ export const Cart: React.FC = () => {
         }
         if (!isOrderTypeEnabled(orderType, orderTypeFlags)) {
             setPausedPopup(orderType);
+            return;
+        }
+
+        if (needsPickupLocation(orderType) && !locationId) {
+            setPlaceError(t('cart.place_required'));
+            navigate('/select-location?from=cart');
             return;
         }
 
@@ -442,6 +483,7 @@ export const Cart: React.FC = () => {
                 deliveryInfo: deliveryInfo,
                 ...(scheduledTime ? { scheduledTime } : {}),
                 paymentMethod: paymentChoice,
+                ...(needsPickupLocation(orderType) ? { locationId } : {}),
             });
 
             clearCart();
@@ -579,6 +621,26 @@ export const Cart: React.FC = () => {
                                     <p className="order-type-error">{orderTypeError}</p>
                                 )}
                             </div>
+
+                            {needsPickupLocation(orderType) && (
+                                <div className="cart-place-banner">
+                                    <p className="cart-place-banner__text">
+                                        {selectedPlaceLabel
+                                            ? t('cart.selected_place').replace('{place}', selectedPlaceLabel)
+                                            : t('cart.place_required')}
+                                    </p>
+                                    <button
+                                        type="button"
+                                        className="cart-place-banner__change"
+                                        onClick={() => navigate('/select-location?from=cart')}
+                                    >
+                                        {t('cart.change_place')}
+                                    </button>
+                                </div>
+                            )}
+                            {placeError && (
+                                <p className="order-type-error">{placeError}</p>
+                            )}
 
                             {needsInlineCustomerInfo && (
                                 <div className="customer-info">
