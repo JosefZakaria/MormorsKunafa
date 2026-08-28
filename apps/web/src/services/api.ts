@@ -2,6 +2,7 @@ import { API_CONFIG, apiRequest, authenticatedRequest } from '@shared/api';
 import type {
   Product,
   Order,
+  Location,
   CreateOrderRequest,
   UpdateOrderStatusRequest,
   UpdateOrderTimeRequest,
@@ -100,6 +101,12 @@ export const productApi = {
       method: 'DELETE',
       token,
     });
+  },
+};
+
+export const locationApi = {
+  getAll: async (): Promise<Location[]> => {
+    return apiRequest<Location[]>('/locations');
   },
 };
 

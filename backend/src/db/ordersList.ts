@@ -84,6 +84,7 @@ export function orderRowToOrder(r: Row, items: Row[]): Record<string, unknown> {
     cancelledAt: dbTimestampToIso(r.cancelled_at),
     refundStatus: r.refund_status ?? 'none',
     internalNotes: r.internal_notes ?? undefined,
+    locationId: r.location_id != null ? String(r.location_id) : null,
     items: items.map((i) => ({
       productId: i.product_id ?? '',
       productName: sanitizeProductName(String(i.product_name_snapshot ?? '')),

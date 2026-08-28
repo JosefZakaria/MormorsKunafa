@@ -9,6 +9,8 @@ import { sendSms } from '../services/SmsService.js';
 import { getStripe } from '../services/stripeClient.js';
 import { broadcastOrderCreated, type OrderCreatedEvent } from '../services/realtimeEvents.js';
 import { sendOrderCreatedPush } from '../services/pushNotifications.js';
+import { resolveOrderLocationId } from '../db/locations.js';
+import type { OrderType } from '@mormors-kunafa/shared/types';
 import { parseOrderScheduledAt, formatStockholmDateTime } from '../utils/stockholmWallTime.js';
 import { validateScheduledOrderTime } from '../shared/utils/openingHours.js';
 import {
@@ -39,13 +41,25 @@ router.use('/swish-payment', swishPaymentRouter);
 
 const ACTIVE_STATUSES = ['mottagen', 'påbörjad'] as const;
 
-function dispatchOrderCreatedEvent(orderId: string, orderNumber: string): void {
+function asOrderType(value: string): OrderType {
+  if (value === 'eat-here' || value === 'takeaway' || value === 'delivery') return value;
+  return 'takeaway';
+}
+
+function dispatchOrderCreatedEvent(
+  orderId: string,
+  orderNumber: string,
+  orderType: string,
+  locationId: string | null
+): void {
   const event: OrderCreatedEvent = {
     event_id: generateId(),
     event_type: 'ORDER_CREATED',
     order_id: orderId,
     order_number: orderNumber,
     created_at: nowIso(),
+    order_type: asOrderType(orderType),
+    location_id: locationId,
   };
 
   broadcastOrderCreated(event);
@@ -83,6 +97,7 @@ router.post('/', async (req: Request, res: Response) => {
       deliveryInfo?: Record<string, string>;
       scheduledTime?: string;
       paymentMethod: string;
+      locationId?: string;
     };
     if (!body.items?.length) {
       res.status(400).json({ error: 'items required' });
@@ -170,6 +185,13 @@ router.post('/', async (req: Request, res: Response) => {
       return;
     }
 
+    const resolvedLocation = await resolveOrderLocationId(orderType, body.locationId);
+    if (resolvedLocation.error) {
+      res.status(400).json({ error: resolvedLocation.error });
+      return;
+    }
+    const locationId = resolvedLocation.locationId;
+
     const orderId = generateId();
     const orderInsert = {
       id: orderId,
@@ -186,6 +208,7 @@ router.post('/', async (req: Request, res: Response) => {
       customer_email: customerEmail,
       customer_phone: customerPhone,
       delivery_info_json: body.deliveryInfo ?? null,
+      location_id: locationId,
     };
 
     const { error: orderInsertError } = await supabase.from('orders').insert(orderInsert);
@@ -310,7 +333,12 @@ router.post('/', async (req: Request, res: Response) => {
       );
     }
 
-    dispatchOrderCreatedEvent(orderId, String(result.order.order_number ?? orderNumber));
+    dispatchOrderCreatedEvent(
+      orderId,
+      String(result.order.order_number ?? orderNumber),
+      String(result.order.order_type ?? orderType),
+      result.order.location_id != null ? String(result.order.location_id) : locationId
+    );
 
     res.status(201).json(orderRowToOrder(result.order, result.items));
   } catch (e) {

@@ -156,6 +156,8 @@ export interface CreateOrderRequest {
   /** Naive `YYYY-MM-DDTHH:mm:ss` (Europe/Stockholm) or ISO with Z/offset */
   scheduledTime?: string;
   paymentMethod: PaymentMethod;
+  /** Required later for eat-here / takeaway. Omitted in-store orders default to Höja. */
+  locationId?: string;
 }
 
 // Update Order Status Request
@@ -215,4 +217,6 @@ export interface OrderCreatedRealtimeEvent {
   order_id: string;
   order_number: string;
   created_at: string;
+  order_type: OrderType;
+  location_id: string | null;
 }

@@ -1,4 +1,5 @@
 import type { Response } from 'express';
+import type { OrderType } from '@mormors-kunafa/shared/types';
 
 export type OrderCreatedEvent = {
   event_id: string;
@@ -6,6 +7,8 @@ export type OrderCreatedEvent = {
   order_id: string;
   order_number: string;
   created_at: string;
+  order_type: OrderType;
+  location_id: string | null;
 };
 
 type Client = {
