@@ -324,6 +324,20 @@ export const adminApi = {
     });
   },
 
+  updateLocation: async (
+    id: string,
+    patch: Partial<Pick<Location, 'isPaused' | 'eatHereEnabled' | 'takeawayEnabled'>>
+  ): Promise<Location> => {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    return authenticatedRequest<Location>(`/admin/locations/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+      token,
+    });
+  },
+
   uploadImage: async (
     kind: 'product' | 'hero-desktop' | 'hero-mobile',
     file: File,

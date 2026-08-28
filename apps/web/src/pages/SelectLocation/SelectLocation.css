@@ -68,6 +68,25 @@
     outline: none;
 }
 
+.select-location-option:disabled,
+.select-location-option--paused {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.select-location-option:disabled:hover,
+.select-location-option--paused:hover,
+.select-location-option:disabled:focus-visible,
+.select-location-option--paused:focus-visible {
+    border-color: var(--color-gray-300, #d4d4d4);
+}
+
+.select-location-option-paused {
+    font-size: 0.85rem;
+    color: #b91c1c;
+    font-weight: 600;
+}
+
 .select-location-option-name {
     font-family: var(--font-family-display);
     font-size: 1.35rem;

@@ -194,6 +194,7 @@ export const translations = {
         "select_location.loading": "Laddar platser...",
         "select_location.load_error": "Kunde inte hämta platser. Försök igen.",
         "select_location.continue": "Fortsätt",
+        "select_location.paused": "Pausat just nu",
         "cart.selected_place": "Plats: {place}",
         "cart.change_place": "Byt plats",
         "cart.place_required": "Välj plats för Äta här och Ta med."
@@ -404,6 +405,7 @@ export const translations = {
         "select_location.loading": "Loading locations...",
         "select_location.load_error": "Could not load locations. Please try again.",
         "select_location.continue": "Continue",
+        "select_location.paused": "Paused for now",
         "cart.selected_place": "Location: {place}",
         "cart.change_place": "Change location",
         "cart.place_required": "Choose a location for Eat here and Takeaway."
@@ -614,6 +616,7 @@ export const translations = {
         "select_location.loading": "جاري تحميل الأماكن...",
         "select_location.load_error": "تعذر تحميل الأماكن. حاول مرة أخرى.",
         "select_location.continue": "استمر",
+        "select_location.paused": "متوقف حالياً",
         "cart.selected_place": "المكان: {place}",
         "cart.change_place": "تغيير المكان",
         "cart.place_required": "اختر مكانًا لتناول الطعام هنا أو للطلبات الخارجية."

@@ -82,8 +82,12 @@ export const Landing: React.FC = () => {
                 if (!settings) return;
                 setFlags({
                     isPaused: Boolean(settings.isPaused),
-                    eatHereEnabled: settings.eatHereEnabled !== false,
-                    takeawayEnabled: settings.takeawayEnabled !== false,
+                    eatHereEnabled: settings.locations?.length
+                        ? settings.locations.some((location) => !location.isPaused && location.eatHereEnabled)
+                        : settings.eatHereEnabled !== false,
+                    takeawayEnabled: settings.locations?.length
+                        ? settings.locations.some((location) => !location.isPaused && location.takeawayEnabled)
+                        : settings.takeawayEnabled !== false,
                     deliveryEnabled: settings.deliveryEnabled !== false,
                 });
                 if (settings.heroImageDesktop) setHeroDesktop(settings.heroImageDesktop);

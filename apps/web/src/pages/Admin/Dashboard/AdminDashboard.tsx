@@ -613,6 +613,54 @@ function OrderTypeToggleRow({
     );
 }
 
+function LocationPauseBlock({
+    location,
+    showTypeToggles,
+    onPauseToggle,
+    onToggleEatHere,
+    onToggleTakeaway,
+}: {
+    location: Location;
+    showTypeToggles: boolean;
+    onPauseToggle: () => void;
+    onToggleEatHere: () => void;
+    onToggleTakeaway: () => void;
+}) {
+    return (
+        <div className="location-pause-block">
+            <h4>{location.name}</h4>
+            <div className="order-availability-pause">
+                <Button
+                    variant={location.isPaused ? 'primary' : 'ghost'}
+                    className={location.isPaused ? 'btn-resume' : 'btn-pause'}
+                    onClick={onPauseToggle}
+                >
+                    {location.isPaused ? `Återuppta ${location.name}` : `Pausa ${location.name}`}
+                </Button>
+            </div>
+            <p className="order-availability-hint">
+                {location.isPaused
+                    ? `Äta här och Ta med är stoppade på ${location.name}.`
+                    : `Nya beställningar tas emot på ${location.name}.`}
+            </p>
+            {showTypeToggles && (
+                <div className="order-type-toggle-list">
+                    <OrderTypeToggleRow
+                        label="Äta här"
+                        enabled={location.eatHereEnabled}
+                        onToggle={onToggleEatHere}
+                    />
+                    <OrderTypeToggleRow
+                        label="Ta med"
+                        enabled={location.takeawayEnabled}
+                        onToggle={onToggleTakeaway}
+                    />
+                </div>
+            )}
+        </div>
+    );
+}
+
 function StockRow({
     product,
     onToggle,
@@ -934,7 +982,10 @@ export const AdminDashboard: React.FC = () => {
     // --- Fetch products + settings on mount ---
     useEffect(() => {
         productApi.getAllAdmin().then(setProducts).finally(() => setLoadingProducts(false));
-        adminApi.getSettings().then(setSettings);
+        adminApi.getSettings().then((next) => {
+            setSettings(next);
+            if (next.locations?.length) setLocations(next.locations);
+        });
         locationApi.getAll().then(setLocations).catch(() => undefined);
     }, []);
 
@@ -942,7 +993,7 @@ export const AdminDashboard: React.FC = () => {
 
     useEffect(() => {
         if (isOwner) return;
-        if (activeTab === 'stock' || activeTab === 'menu' || activeTab === 'rush' || activeTab === 'stats') {
+        if (activeTab === 'stock' || activeTab === 'menu' || activeTab === 'stats') {
             setActiveTab('pending');
             setStatsData(null);
             setShowStatsModal(false);
@@ -1170,6 +1221,30 @@ export const AdminDashboard: React.FC = () => {
         try {
             const updated = await adminApi.updateSettings(patch);
             setSettings(updated);
+            if (updated.locations?.length) setLocations(updated.locations);
+        } catch {
+            setError('Kunde inte spara inställningar.');
+        }
+    };
+
+    const handleUpdateLocation = async (
+        id: string,
+        patch: Partial<Pick<Location, 'isPaused' | 'eatHereEnabled' | 'takeawayEnabled'>>
+    ) => {
+        try {
+            const updated = await adminApi.updateLocation(id, patch);
+            const nextLocations = locations.map((location) => (location.id === updated.id ? updated : location));
+            setLocations(nextLocations);
+            if (settings) {
+                setSettings({
+                    ...settings,
+                    locations: (settings.locations ?? nextLocations).map((location) =>
+                        location.id === updated.id ? updated : location
+                    ),
+                    eatHereEnabled: nextLocations.some((location) => !location.isPaused && location.eatHereEnabled),
+                    takeawayEnabled: nextLocations.some((location) => !location.isPaused && location.takeawayEnabled),
+                });
+            }
         } catch {
             setError('Kunde inte spara inställningar.');
         }
@@ -1225,6 +1300,16 @@ export const AdminDashboard: React.FC = () => {
     };
 
     const isPaused = settings?.isPaused ?? false;
+    const myLocation = admin?.role === 'location'
+        ? locations.find((location) => location.id === admin.locationId)
+        : undefined;
+    const headerPaused = isOwner ? isPaused : Boolean(myLocation?.isPaused);
+    const canManageDelivery = isOwner || myLocation?.fulfillsDelivery === true;
+    const pauseLocations = isOwner
+        ? locations
+        : myLocation
+            ? [myLocation]
+            : [];
     const visiblePending = isOwner ? pendingOrders.filter((order) => orderMatchesPlaceFilter(order, placeFilter)) : pendingOrders;
     const visiblePreOrders = isOwner ? preOrders.filter((order) => orderMatchesPlaceFilter(order, placeFilter)) : preOrders;
     const visibleActive = isOwner ? activeOrders.filter((order) => orderMatchesPlaceFilter(order, placeFilter)) : activeOrders;
@@ -1243,8 +1328,8 @@ export const AdminDashboard: React.FC = () => {
                                 {locations.find((location) => location.id === admin.locationId)?.name ?? 'Plats'}
                             </span>
                         )}
-                        <span className={`status-badge ${isPaused ? 'status-paused' : 'status-active'}`}>
-                            {isPaused ? '🔴 STOPPAD' : '🟢 ONLINE'}
+                        <span className={`status-badge ${headerPaused ? 'status-paused' : 'status-active'}`}>
+                            {headerPaused ? '🔴 STOPPAD' : '🟢 ONLINE'}
                         </span>
 
                         {/* Ljudlarm-indikator i headern */}
@@ -1344,13 +1429,15 @@ export const AdminDashboard: React.FC = () => {
                     <button className={`admin-tab ${activeTab === 'menu' ? 'active' : ''}`} onClick={() => { setActiveTab('menu'); setStatsData(null); }}>
                         Meny
                     </button>
+                        </>
+                    )}
                     <button className={`admin-tab ${activeTab === 'rush' ? 'active' : ''}`} onClick={() => { setActiveTab('rush'); setStatsData(null); }}>
                         Inställningar
                     </button>
+                    {isOwner && (
                     <button className={`admin-tab ${activeTab === 'stats' ? 'active' : ''}`} onClick={handleStatsTabClick}>
                         Statistik
                     </button>
-                        </>
                     )}
                 </div>
 
@@ -1861,39 +1948,52 @@ export const AdminDashboard: React.FC = () => {
                         <div className="rush-settings">
                             <div className="rush-card order-availability-card">
                                 <h3>Beställningar</h3>
-                                <p>Pausa allt, eller stäng av enskilda leveranssätt.</p>
-                                <div className="order-availability-pause">
-                                    <Button
-                                        variant={isPaused ? 'primary' : 'ghost'}
-                                        className={isPaused ? 'btn-resume' : 'btn-pause'}
-                                        onClick={() => handleUpdateSettings({ isPaused: !isPaused })}
-                                    >
-                                        {isPaused ? 'Återuppta Beställningar' : 'Pausa Beställningar'}
-                                    </Button>
-                                </div>
-                                <p className="order-availability-hint">
-                                    {isPaused
-                                        ? 'Alla nya beställningar är stoppade.'
-                                        : 'Nya beställningar tas emot som vanligt.'}
+                                <p>
+                                    {isOwner
+                                        ? 'Pausa per plats, stäng av Äta här/Ta med, eller nödstoppa allt.'
+                                        : canManageDelivery
+                                            ? 'Pausa den här platsen, eller stäng av hemleverans.'
+                                            : 'Pausa Äta här och Ta med på den här platsen.'}
                                 </p>
-                                <div className="order-type-toggle-list">
-                                    <OrderTypeToggleRow
-                                        label="Äta här"
-                                        enabled={settings.eatHereEnabled !== false}
-                                        onToggle={() => handleUpdateSettings({ eatHereEnabled: settings.eatHereEnabled === false })}
+                                {isOwner && (
+                                    <>
+                                        <div className="order-availability-pause">
+                                            <Button
+                                                variant={isPaused ? 'primary' : 'ghost'}
+                                                className={isPaused ? 'btn-resume' : 'btn-pause'}
+                                                onClick={() => handleUpdateSettings({ isPaused: !isPaused })}
+                                            >
+                                                {isPaused ? 'Återuppta allt' : 'Nödstoppa alla beställningar'}
+                                            </Button>
+                                        </div>
+                                        <p className="order-availability-hint">
+                                            {isPaused
+                                                ? 'Alla nya beställningar är stoppade, inklusive hemleverans.'
+                                                : 'Nödstopp påverkar alla platser och hemleverans.'}
+                                        </p>
+                                    </>
+                                )}
+                                {pauseLocations.map((location) => (
+                                    <LocationPauseBlock
+                                        key={location.id}
+                                        location={location}
+                                        showTypeToggles={isOwner}
+                                        onPauseToggle={() => handleUpdateLocation(location.id, { isPaused: !location.isPaused })}
+                                        onToggleEatHere={() => handleUpdateLocation(location.id, { eatHereEnabled: !location.eatHereEnabled })}
+                                        onToggleTakeaway={() => handleUpdateLocation(location.id, { takeawayEnabled: !location.takeawayEnabled })}
                                     />
-                                    <OrderTypeToggleRow
-                                        label="Ta med"
-                                        enabled={settings.takeawayEnabled !== false}
-                                        onToggle={() => handleUpdateSettings({ takeawayEnabled: settings.takeawayEnabled === false })}
-                                    />
-                                    <OrderTypeToggleRow
-                                        label="Hemleverans"
-                                        enabled={settings.deliveryEnabled !== false}
-                                        onToggle={() => handleUpdateSettings({ deliveryEnabled: settings.deliveryEnabled === false })}
-                                    />
-                                </div>
+                                ))}
+                                {canManageDelivery && (
+                                    <div className="order-type-toggle-list location-pause-delivery">
+                                        <OrderTypeToggleRow
+                                            label="Hemleverans"
+                                            enabled={settings.deliveryEnabled !== false}
+                                            onToggle={() => handleUpdateSettings({ deliveryEnabled: settings.deliveryEnabled === false })}
+                                        />
+                                    </div>
+                                )}
                             </div>
+                            {isOwner && (
                             <div className="rush-card">
                                 <h3>Standard tillagningstid</h3>
                                 <p>Används för alla nya beställningar.</p>
@@ -1906,6 +2006,7 @@ export const AdminDashboard: React.FC = () => {
                                     <Button variant="ghost" onClick={() => handleUpdateSettings({ defaultPreparationTime: settings.defaultPreparationTime + 5 })}>+ 5 min</Button>
                                 </div>
                             </div>
+                            )}
                             <PrinterSettings />
 
                             {/* --- Ljudinställningar för inkommande ordrar --- */}

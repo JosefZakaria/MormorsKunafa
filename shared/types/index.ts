@@ -125,10 +125,16 @@ export interface AdminUser {
 // Admin Settings (also returned by public GET /orders/settings)
 export interface AdminSettings {
   defaultPreparationTime: number; // minutes (F.Admin.3)
-  isPaused: boolean; // pause all new orders
+  /** Global emergency stop — blocks every new order, including delivery. */
+  isPaused: boolean;
+  /** Derived: at least one location currently accepts eat-here. */
   eatHereEnabled: boolean;
+  /** Derived: at least one location currently accepts takeaway. */
   takeawayEnabled: boolean;
+  /** Global home-delivery flag. */
   deliveryEnabled: boolean;
+  /** Per-location pause and in-store type flags. */
+  locations: Location[];
   /** Landing hero image for desktop / wide viewports. */
   heroImageDesktop: string;
   /** Landing hero image for mobile / narrow viewports. */

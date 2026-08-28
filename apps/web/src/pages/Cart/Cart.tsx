@@ -26,6 +26,7 @@ import {
     getStoredLocationId,
     needsPickupLocation,
 } from '../../utils/selectedLocation';
+import { anyLocationAcceptsOrderType, locationAcceptsOrderType } from '../../utils/orderTypeAvailability';
 
 /** Set to true when Swish checkout is ready for customers. */
 const SWISH_CHECKOUT_ENABLED = false;
@@ -50,12 +51,23 @@ const ORDER_TYPE_LABEL_KEY: Record<OrderType, string> = {
     delivery: 'landing.delivery',
 };
 
-function isOrderTypeEnabled(type: OrderType | '', flags: OrderTypeFlags): boolean {
+function isOrderTypeEnabled(
+    type: OrderType | '',
+    flags: OrderTypeFlags,
+    locations: Location[],
+    locationId: string
+): boolean {
     if (!type) return false;
     if (flags.isPaused) return false;
-    if (type === 'eat-here') return flags.eatHereEnabled;
-    if (type === 'takeaway') return flags.takeawayEnabled;
-    return flags.deliveryEnabled;
+    if (type === 'delivery') return flags.deliveryEnabled;
+    const selected = locations.find((location) => location.id === locationId);
+    if (selected) return locationAcceptsOrderType(selected, type);
+    if (locations.length === 0) {
+        if (type === 'eat-here') return flags.eatHereEnabled;
+        if (type === 'takeaway') return flags.takeawayEnabled;
+        return flags.deliveryEnabled;
+    }
+    return anyLocationAcceptsOrderType(locations, type);
 }
 
 function roundClockToNext5Min(clock: string): string {
@@ -162,15 +174,22 @@ export const Cart: React.FC = () => {
                         deliveryEnabled: settings.deliveryEnabled !== false,
                     };
                     setOrderTypeFlags(flags);
+                    const nextLocations = settings.locations ?? [];
+                    if (nextLocations.length) setLocations(nextLocations);
+                    const storedPlace = getStoredLocationId();
 
                     if (flags.isPaused) {
                         setPausedPopup('all');
                     } else {
                         const storedType = (searchParams.get('type') || sessionStorage.getItem('orderType') || '') as OrderType | '';
-                        if (storedType && !isOrderTypeEnabled(storedType, flags)) {
-                            sessionStorage.removeItem('orderType');
-                            setOrderType('');
-                            setPausedPopup(storedType);
+                        if (storedType && !isOrderTypeEnabled(storedType, flags, nextLocations, storedPlace)) {
+                            if (needsPickupLocation(storedType) && anyLocationAcceptsOrderType(nextLocations, storedType)) {
+                                setPausedPopup(storedType);
+                            } else {
+                                sessionStorage.removeItem('orderType');
+                                setOrderType('');
+                                setPausedPopup(storedType);
+                            }
                         }
                     }
 
@@ -341,7 +360,15 @@ export const Cart: React.FC = () => {
             setPausedPopup('all');
             return;
         }
-        if (!isOrderTypeEnabled(nextType, orderTypeFlags)) {
+        if (!isOrderTypeEnabled(nextType, orderTypeFlags, locations, locationId)) {
+            if (needsPickupLocation(nextType) && anyLocationAcceptsOrderType(locations, nextType)) {
+                sessionStorage.setItem('orderType', nextType);
+                setOrderType(nextType);
+                clearStoredLocation();
+                setLocationId('');
+                navigate('/select-location?from=cart');
+                return;
+            }
             setPausedPopup(nextType);
             return;
         }
@@ -379,7 +406,12 @@ export const Cart: React.FC = () => {
             setPausedPopup('all');
             return;
         }
-        if (!isOrderTypeEnabled(orderType, orderTypeFlags)) {
+        if (!isOrderTypeEnabled(orderType, orderTypeFlags, locations, locationId)) {
+            if (needsPickupLocation(orderType) && anyLocationAcceptsOrderType(locations, orderType)) {
+                setPausedPopup(orderType);
+                navigate('/select-location?from=cart');
+                return;
+            }
             setPausedPopup(orderType);
             return;
         }
@@ -608,13 +640,13 @@ export const Cart: React.FC = () => {
                                 >
                                     <option value="" disabled>Välj leveranssätt...</option>
                                     <option value="eat-here">
-                                        Äta här{orderTypeFlags.isPaused || orderTypeFlags.eatHereEnabled ? '' : t('cart.order_type_paused_suffix')}
+                                        Äta här{orderTypeFlags.isPaused || isOrderTypeEnabled('eat-here', orderTypeFlags, locations, locationId) ? '' : t('cart.order_type_paused_suffix')}
                                     </option>
                                     <option value="takeaway">
-                                        Ta med{orderTypeFlags.isPaused || orderTypeFlags.takeawayEnabled ? '' : t('cart.order_type_paused_suffix')}
+                                        Ta med{orderTypeFlags.isPaused || isOrderTypeEnabled('takeaway', orderTypeFlags, locations, locationId) ? '' : t('cart.order_type_paused_suffix')}
                                     </option>
                                     <option value="delivery">
-                                        Hemkörning{orderTypeFlags.isPaused || orderTypeFlags.deliveryEnabled ? '' : t('cart.order_type_paused_suffix')}
+                                        Hemkörning{orderTypeFlags.isPaused || isOrderTypeEnabled('delivery', orderTypeFlags, locations, locationId) ? '' : t('cart.order_type_paused_suffix')}
                                     </option>
                                 </select>
                                 {orderTypeError && (

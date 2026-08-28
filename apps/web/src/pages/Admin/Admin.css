@@ -422,6 +422,24 @@ input:checked+.slider:before {
     min-width: 2.25rem;
 }
 
+.location-pause-block {
+    text-align: center;
+    padding: 1rem 0 0.25rem;
+    border-top: 1px solid #eee;
+    margin-top: 0.75rem;
+}
+
+.location-pause-block h4 {
+    margin: 0;
+    font-size: 1.15rem;
+}
+
+.location-pause-delivery {
+    margin-top: 1rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid #eee;
+}
+
 /* Rush Hour Tab */
 .rush-card {
     background: var(--color-white);

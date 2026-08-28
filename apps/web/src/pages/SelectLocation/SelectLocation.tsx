@@ -5,6 +5,7 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { locationApi } from '../../services/api';
 import type { Location, OrderType } from '@shared/types';
 import { needsPickupLocation, setStoredLocation } from '../../utils/selectedLocation';
+import { locationAcceptsOrderType } from '../../utils/orderTypeAvailability';
 import './SelectLocation.css';
 
 export const SelectLocation: React.FC = () => {
@@ -46,6 +47,9 @@ export const SelectLocation: React.FC = () => {
     }, [t]);
 
     const handleSelect = (location: Location) => {
+        if (needsPickupLocation(orderType) && !locationAcceptsOrderType(location, orderType)) {
+            return;
+        }
         setStoredLocation(location.id, location.slug);
         navigate(returnToCart ? '/cart' : '/menu');
     };
@@ -62,19 +66,27 @@ export const SelectLocation: React.FC = () => {
 
                     {!loading && !error && (
                         <div className="select-location-options">
-                            {locations.map((location) => (
-                                <button
-                                    key={location.id}
-                                    type="button"
-                                    className="select-location-option"
-                                    onClick={() => handleSelect(location)}
-                                >
-                                    <span className="select-location-option-name">{location.name}</span>
-                                    {location.address.trim() ? (
-                                        <span className="select-location-option-address">{location.address}</span>
-                                    ) : null}
-                                </button>
-                            ))}
+                            {locations.map((location) => {
+                                const available = !needsPickupLocation(orderType) || locationAcceptsOrderType(location, orderType);
+                                return (
+                                    <button
+                                        key={location.id}
+                                        type="button"
+                                        className={`select-location-option${available ? '' : ' select-location-option--paused'}`}
+                                        disabled={!available}
+                                        aria-disabled={!available}
+                                        onClick={() => handleSelect(location)}
+                                    >
+                                        <span className="select-location-option-name">{location.name}</span>
+                                        {location.address.trim() ? (
+                                            <span className="select-location-option-address">{location.address}</span>
+                                        ) : null}
+                                        {!available && (
+                                            <span className="select-location-option-paused">{t('select_location.paused')}</span>
+                                        )}
+                                    </button>
+                                );
+                            })}
                         </div>
                     )}
                 </div>
