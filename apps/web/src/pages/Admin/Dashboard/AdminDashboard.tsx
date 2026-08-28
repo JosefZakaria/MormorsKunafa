@@ -3,7 +3,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { Container } from '../../../components/common/Container/Container';
 import { Button } from '../../../components/common/Button/Button';
-import { orderApi, productApi, adminApi } from '../../../services/api';
+import { orderApi, productApi, adminApi, locationApi } from '../../../services/api';
 import { printKitchenTicket, printReceipt, testConnection, isPrinterConfigured, getPrinterConfig, setPrinterConfig } from '../../../services/printer';
 import type {
     DeliveryInfo,
@@ -11,7 +11,9 @@ import type {
     Product,
     AdminSettings,
     OrderCreatedRealtimeEvent,
+    Location,
 } from '@shared/types';
+import { HOJA_LOCATION_ID, MOLLEVANGEN_LOCATION_ID } from '@shared/types';
 import { parseApiTimestamp } from '@shared/utils/parseApiTimestamp';
 import { isKitchenTicketPrintDue } from '@shared/utils/scheduledTime';
 import '../Admin.css';
@@ -102,6 +104,24 @@ function OrderTypeLabel({ type }: { type: string }) {
         'delivery': 'Hemleverans',
     };
     return <span>{labels[type] ?? type}</span>;
+}
+
+type PlaceFilter = 'all' | 'hoja' | 'mollevangen' | 'delivery';
+
+function placeName(order: Order, locations: Location[]): string {
+    if (order.orderType === 'delivery') return 'Hemleverans';
+    return locations.find((location) => location.id === order.locationId)?.name ?? 'Plats';
+}
+
+function PlaceBadge({ order, locations }: { order: Order; locations: Location[] }) {
+    return <span className="place-badge">{placeName(order, locations)}</span>;
+}
+
+function orderMatchesPlaceFilter(order: Order, filter: PlaceFilter): boolean {
+    if (filter === 'all') return true;
+    if (filter === 'delivery') return order.orderType === 'delivery';
+    if (filter === 'hoja') return order.orderType !== 'delivery' && order.locationId === HOJA_LOCATION_ID;
+    return order.orderType !== 'delivery' && order.locationId === MOLLEVANGEN_LOCATION_ID;
 }
 
 // --- Per-order timer component ---
@@ -252,8 +272,9 @@ function daysUntil(iso: string | undefined): number | null {
     return Math.round((targetUtc - todayUtc) / (1000 * 60 * 60 * 24));
 }
 
-function PreOrderCard({ order, onEditNotes, onCancel }: {
+function PreOrderCard({ order, locations, onEditNotes, onCancel }: {
     order: Order;
+    locations: Location[];
     onEditNotes: (order: Order) => void;
     onCancel: (order: Order) => void;
 }) {
@@ -272,6 +293,8 @@ function PreOrderCard({ order, onEditNotes, onCancel }: {
                     {order.orderNumber}
                     &nbsp;·&nbsp;
                     <OrderTypeLabel type={order.orderType} />
+                    &nbsp;·&nbsp;
+                    <PlaceBadge order={order} locations={locations} />
                 </h3>
                 <div className="preorder-date-banner">
                     <span className="preorder-date-relative">{relativeLabel}</span>
@@ -308,8 +331,9 @@ function PreOrderCard({ order, onEditNotes, onCancel }: {
     );
 }
 
-function PendingOrderCard({ order, defaultPrepTime, onAccept }: {
+function PendingOrderCard({ order, locations, defaultPrepTime, onAccept }: {
     order: Order;
+    locations: Location[];
     defaultPrepTime: number;
     onAccept: (orderId: string, extraMinutes: number) => void;
 }) {
@@ -323,6 +347,8 @@ function PendingOrderCard({ order, defaultPrepTime, onAccept }: {
                     {order.orderNumber}
                     &nbsp;·&nbsp;
                     <OrderTypeLabel type={order.orderType} />
+                    &nbsp;·&nbsp;
+                    <PlaceBadge order={order} locations={locations} />
                 </h3>
                 <span className="status-badge status-ny">Ny</span>
                 <ul style={{ margin: '0.5rem 0', paddingLeft: '1.2rem' }}>
@@ -627,6 +653,8 @@ export const AdminDashboard: React.FC = () => {
     const [historyOrders, setHistoryOrders] = useState<Order[]>([]);
     const [products, setProducts] = useState<Product[]>([]);
     const [settings, setSettings] = useState<AdminSettings | null>(null);
+    const [locations, setLocations] = useState<Location[]>([]);
+    const [placeFilter, setPlaceFilter] = useState<PlaceFilter>('all');
 
     // Statistics state
     const [showStatsModal, setShowStatsModal] = useState(false);
@@ -907,7 +935,19 @@ export const AdminDashboard: React.FC = () => {
     useEffect(() => {
         productApi.getAllAdmin().then(setProducts).finally(() => setLoadingProducts(false));
         adminApi.getSettings().then(setSettings);
+        locationApi.getAll().then(setLocations).catch(() => undefined);
     }, []);
+
+    const isOwner = admin?.role !== 'location';
+
+    useEffect(() => {
+        if (isOwner) return;
+        if (activeTab === 'stock' || activeTab === 'menu' || activeTab === 'rush' || activeTab === 'stats') {
+            setActiveTab('pending');
+            setStatsData(null);
+            setShowStatsModal(false);
+        }
+    }, [isOwner, activeTab]);
 
     useEffect(() => {
         if (activeTab === 'menu') {
@@ -1185,6 +1225,12 @@ export const AdminDashboard: React.FC = () => {
     };
 
     const isPaused = settings?.isPaused ?? false;
+    const visiblePending = isOwner ? pendingOrders.filter((order) => orderMatchesPlaceFilter(order, placeFilter)) : pendingOrders;
+    const visiblePreOrders = isOwner ? preOrders.filter((order) => orderMatchesPlaceFilter(order, placeFilter)) : preOrders;
+    const visibleActive = isOwner ? activeOrders.filter((order) => orderMatchesPlaceFilter(order, placeFilter)) : activeOrders;
+    const visibleHistory = isOwner ? historyOrders.filter((order) => orderMatchesPlaceFilter(order, placeFilter)) : historyOrders;
+    const hojaName = locations.find((location) => location.slug === 'hoja')?.name ?? 'Höja';
+    const molleName = locations.find((location) => location.slug === 'mollevangen')?.name ?? 'Möllevången';
     return (
         <div className="admin-dashboard">
             <Container>
@@ -1192,6 +1238,11 @@ export const AdminDashboard: React.FC = () => {
                     <div className="admin-header-left">
                         <h1>Admin Dashboard</h1>
                         {admin && <span className="admin-name">👤 {admin.name}</span>}
+                        {admin?.role === 'location' && (
+                            <span className="place-badge">
+                                {locations.find((location) => location.id === admin.locationId)?.name ?? 'Plats'}
+                            </span>
+                        )}
                         <span className={`status-badge ${isPaused ? 'status-paused' : 'status-active'}`}>
                             {isPaused ? '🔴 STOPPAD' : '🟢 ONLINE'}
                         </span>
@@ -1274,17 +1325,19 @@ export const AdminDashboard: React.FC = () => {
 
                 <div className="admin-tabs">
                     <button className={`admin-tab ${activeTab === 'preorders' ? 'active' : ''}`} onClick={() => { setActiveTab('preorders'); setStatsData(null); }}>
-                        Förbeställningar {preOrders.length > 0 && <span className="tab-badge">{preOrders.length}</span>}
+                        Förbeställningar {visiblePreOrders.length > 0 && <span className="tab-badge">{visiblePreOrders.length}</span>}
                     </button>
                     <button className={`admin-tab ${activeTab === 'pending' ? 'active' : ''}`} onClick={() => { setActiveTab('pending'); setStatsData(null); }}>
-                        Inkommande {pendingOrders.length > 0 && <span className="tab-badge">{pendingOrders.length}</span>}
+                        Inkommande {visiblePending.length > 0 && <span className="tab-badge">{visiblePending.length}</span>}
                     </button>
                     <button className={`admin-tab ${activeTab === 'active' ? 'active' : ''}`} onClick={() => { setActiveTab('active'); setStatsData(null); }}>
-                        Aktiva Ordrar ({activeOrders.length})
+                        Aktiva Ordrar ({visibleActive.length})
                     </button>
                     <button className={`admin-tab ${activeTab === 'history' ? 'active' : ''}`} onClick={() => { setActiveTab('history'); setStatsData(null); }}>
                         Orderhistorik
                     </button>
+                    {isOwner && (
+                        <>
                     <button className={`admin-tab ${activeTab === 'stock' ? 'active' : ''}`} onClick={() => { setActiveTab('stock'); setStatsData(null); }}>
                         Lager
                     </button>
@@ -1297,7 +1350,29 @@ export const AdminDashboard: React.FC = () => {
                     <button className={`admin-tab ${activeTab === 'stats' ? 'active' : ''}`} onClick={handleStatsTabClick}>
                         Statistik
                     </button>
+                        </>
+                    )}
                 </div>
+
+                {isOwner && (activeTab === 'pending' || activeTab === 'preorders' || activeTab === 'active' || activeTab === 'history') && (
+                    <div className="place-filter" role="group" aria-label="Filtrera plats">
+                        {([
+                            { id: 'all' as const, label: 'Alla' },
+                            { id: 'hoja' as const, label: hojaName },
+                            { id: 'mollevangen' as const, label: molleName },
+                            { id: 'delivery' as const, label: 'Hemleverans' },
+                        ]).map((chip) => (
+                            <button
+                                key={chip.id}
+                                type="button"
+                                className={`place-filter-chip ${placeFilter === chip.id ? 'active' : ''}`}
+                                onClick={() => setPlaceFilter(chip.id)}
+                            >
+                                {chip.label}
+                            </button>
+                        ))}
+                    </div>
+                )}
 
                 {/* ── STATISTIK LÖSENORDS-POPUP ── */}
                 {showStatsModal && (
@@ -1370,13 +1445,14 @@ export const AdminDashboard: React.FC = () => {
                         <div className="orders-list">
                             {loadingOrders ? (
                                 <p>Laddar ordrar...</p>
-                            ) : pendingOrders.length === 0 ? (
+                            ) : visiblePending.length === 0 ? (
                                 <p>Inga inkommande ordrar just nu.</p>
                             ) : (
-                                pendingOrders.map(order => (
+                                visiblePending.map(order => (
                                     <PendingOrderCard
                                         key={order.id}
                                         order={order}
+                                        locations={locations}
                                         defaultPrepTime={settings?.defaultPreparationTime ?? 30}
                                         onAccept={handleAcceptOrder}
                                     />
@@ -1390,12 +1466,12 @@ export const AdminDashboard: React.FC = () => {
                         <div className="orders-list">
                             {loadingOrders ? (
                                 <p>Laddar förbeställningar...</p>
-                            ) : preOrders.length === 0 ? (
+                            ) : visiblePreOrders.length === 0 ? (
                                 <p>Inga förbeställningar just nu.</p>
                             ) : (
                                 (() => {
                                     const groups = new Map<string, Order[]>();
-                                    for (const order of preOrders) {
+                                    for (const order of visiblePreOrders) {
                                         const key = order.scheduledTime
                                             ? new Date(order.scheduledTime).toLocaleDateString('sv-SE', { timeZone: 'Europe/Stockholm' })
                                             : 'okänt';
@@ -1421,6 +1497,7 @@ export const AdminDashboard: React.FC = () => {
                                                     <PreOrderCard
                                                         key={o.id}
                                                         order={o}
+                                                        locations={locations}
                                                         onEditNotes={openNotesModal}
                                                         onCancel={(order) => openCancelModal(order.id)}
                                                     />
@@ -1438,16 +1515,18 @@ export const AdminDashboard: React.FC = () => {
                         <div className="orders-list">
                             {loadingOrders ? (
                                 <p>Laddar ordrar...</p>
-                            ) : activeOrders.length === 0 ? (
+                            ) : visibleActive.length === 0 ? (
                                 <p>Inga aktiva ordrar just nu.</p>
                             ) : (
-                                activeOrders.map(order => (
+                                visibleActive.map(order => (
                                     <div key={order.id} className="admin-order-card">
                                         <div className="order-details">
                                             <h3>
                                                 {order.orderNumber}
                                                 &nbsp;·&nbsp;
                                                 <OrderTypeLabel type={order.orderType} />
+                                                &nbsp;·&nbsp;
+                                                <PlaceBadge order={order} locations={locations} />
                                             </h3>
                                             <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
                                                 <OrderTimer estimatedReadyTime={order.estimatedReadyTime} />
@@ -1516,7 +1595,7 @@ export const AdminDashboard: React.FC = () => {
                                         Rensa filter
                                     </button>
                                 )}
-                                {historyOrders.length > 0 && (
+                                {historyOrders.length > 0 && isOwner && (
                                     <button
                                         className="history-delete-all"
                                         onClick={openDeleteAllModal}
@@ -1527,13 +1606,15 @@ export const AdminDashboard: React.FC = () => {
                             </div>
                             {loadingHistory ? (
                                 <p>Laddar historik...</p>
-                            ) : historyOrders.length === 0 ? (
+                            ) : visibleHistory.length === 0 ? (
                                 <p>Ingen orderhistorik ännu.</p>
                             ) : (
-                                historyOrders.map(order => (
+                                visibleHistory.map(order => (
                                     <div key={order.id} className={`admin-order-card ${order.status === 'avbruten' ? 'history-card-cancelled' : 'history-card-done'}`}>
                                         <div className="order-details">
-                                            <h3>{order.orderNumber} · <OrderTypeLabel type={order.orderType} /></h3>
+                                            <h3>
+                                                {order.orderNumber} · <OrderTypeLabel type={order.orderType} /> · <PlaceBadge order={order} locations={locations} />
+                                            </h3>
                                             <span className={`status-badge ${order.status === 'avbruten' ? 'status-avbruten' : 'status-klar'}`}>
                                                 {order.status === 'avbruten' ? 'Avbruten' : 'Klar'}
                                             </span>
@@ -1903,8 +1984,10 @@ export const AdminDashboard: React.FC = () => {
                             <div className="alarm-order-header">
                                 <span className="alarm-order-number">{activeAlarmOrder.orderNumber}</span>
                                 <span className="alarm-order-type">
-                                    {activeAlarmOrder.orderType === 'eat-here' ? 'Äta här' : 
+                                    {activeAlarmOrder.orderType === 'eat-here' ? 'Äta här' :
                                      activeAlarmOrder.orderType === 'takeaway' ? 'Ta med' : 'Leverans'}
+                                    {' · '}
+                                    {placeName(activeAlarmOrder, locations)}
                                 </span>
                             </div>
                             <ul className="alarm-order-items">

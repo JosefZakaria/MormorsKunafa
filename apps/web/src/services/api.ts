@@ -8,6 +8,7 @@ import type {
   UpdateOrderTimeRequest,
   UpdateOrderNotesRequest,
   AdminSettings,
+  AdminRole,
   PushSubscriptionRecord,
 } from '@shared/types';
 
@@ -292,8 +293,14 @@ export const orderApi = {
 
 // Admin API
 export const adminApi = {
-  login: async (email: string, password: string): Promise<{ token: string; admin: { id: string; email: string; name: string } }> => {
-    return apiRequest<{ token: string; admin: { id: string; email: string; name: string } }>('/admin/login', {
+  login: async (email: string, password: string): Promise<{
+    token: string;
+    admin: { id: string; email: string; name: string; role: AdminRole; locationId: string | null };
+  }> => {
+    return apiRequest<{
+      token: string;
+      admin: { id: string; email: string; name: string; role: AdminRole; locationId: string | null };
+    }>('/admin/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
