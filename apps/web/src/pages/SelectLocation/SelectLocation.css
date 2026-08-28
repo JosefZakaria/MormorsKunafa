@@ -21,43 +21,84 @@
     font-size: 2.5rem;
     color: var(--color-primary);
     text-align: center;
-    margin-bottom: 2rem;
+    margin-bottom: 0.5rem;
 }
 
-.select-location-form {
+.select-location-subtitle {
+    text-align: center;
+    color: var(--color-gray-600, #666);
+    margin: 0 0 1.75rem;
+    line-height: 1.5;
+}
+
+.select-location-status,
+.select-location-error {
+    text-align: center;
+    margin: 0;
+}
+
+.select-location-error {
+    color: #b91c1c;
+}
+
+.select-location-options {
     display: flex;
     flex-direction: column;
-    gap: 1.5rem;
+    gap: 0.85rem;
 }
 
-.select-location-btn {
-    font-family: var(--font-family-display) !important;
-    font-size: 1.25rem !important;
-    letter-spacing: 0.05em;
-}
-
-/* Reusing form styles from delivery or defining them here if needed */
-.location-select {
-    font-family: var(--font-family-display);
-    font-size: 1.1rem;
-    padding: 0.875rem 1rem;
-    border: 1px solid var(--color-gray-300);
-    border-radius: 8px;
+.select-location-option {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
     width: 100%;
-    color: var(--color-gray-900);
-    background-color: white;
+    padding: 1rem 1.15rem;
+    border: 1px solid var(--color-gray-300, #d4d4d4);
+    border-radius: 10px;
+    background: white;
     cursor: pointer;
-
-    appearance: none;
-    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
-    background-position: right 0.5rem center;
-    background-repeat: no-repeat;
-    background-size: 1.5em 1.5em;
-    padding-right: 2.5rem;
+    text-align: left;
+    font-family: inherit;
 }
 
-[dir="rtl"] .location-select {
-    background-position: left 0.5rem center;
-    padding-right: 1rem;
-    padding-left: 2.5rem;
+.select-location-option:hover,
+.select-location-option:focus-visible {
+    border-color: var(--color-primary-red, #c17e61);
+    outline: none;
+}
+
+.select-location-option:disabled,
+.select-location-option--paused {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.select-location-option:disabled:hover,
+.select-location-option--paused:hover,
+.select-location-option:disabled:focus-visible,
+.select-location-option--paused:focus-visible {
+    border-color: var(--color-gray-300, #d4d4d4);
+}
+
+.select-location-option-paused {
+    font-size: 0.85rem;
+    color: #b91c1c;
+    font-weight: 600;
+}
+
+.select-location-option-name {
+    font-family: var(--font-family-display);
+    font-size: 1.35rem;
+    color: var(--color-gray-900, #1a1a1a);
+}
+
+.select-location-option-address {
+    font-size: 0.95rem;
+    color: var(--color-gray-600, #666);
+}
+
+[dir="rtl"] .select-location-option {
+    align-items: flex-end;
+    text-align: right;
 }

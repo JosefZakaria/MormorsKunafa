@@ -1,8 +1,10 @@
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { supabase, type Row, logSupabaseError, nowIso } from '../db/connection.js';
-import { applyAdminSettingsPatch, rowToAdminSettings } from '../db/adminSettings.js';
-import { requireAdmin, signToken, verifyAdminToken } from '../middleware/auth.js';
+import { applyAdminSettingsPatch, adminSettingsFromRow } from '../db/adminSettings.js';
+import { requireAdmin, requireOwner, signToken, verifyAdminToken, getRequestAdmin } from '../middleware/auth.js';
+import { loadAdminScope, parseAdminRole } from '../services/locationScope.js';
+import { updateLocationFlags } from '../db/locations.js';
 import { isDeliveryFeeLineItem } from '../constants/deliveryFee.js';
 import { registerAdminMediaRoutes } from './adminMedia.js';
 import {
@@ -87,7 +89,7 @@ router.post('/login', async (req: Request, res: Response) => {
 
     const { data: user, error } = await supabase
       .from('admin_users')
-      .select('id, email, password_hash, display_name')
+      .select('id, email, password_hash, display_name, role, location_id')
       .eq('email', email)
       .maybeSingle();
 
@@ -117,9 +119,15 @@ router.post('/login', async (req: Request, res: Response) => {
       logSupabaseError('POST /admin/login last_login_at', loginUpdateError);
     }
 
+    const role = parseAdminRole((user as Row).role);
+    const locationId =
+      (user as Row).location_id != null ? String((user as Row).location_id) : null;
+
     const token = signToken({
       adminId: String((user as Row).id),
       email: String((user as Row).email),
+      role,
+      locationId,
     });
     res.json({
       token,
@@ -127,6 +135,8 @@ router.post('/login', async (req: Request, res: Response) => {
         id: (user as Row).id,
         email: (user as Row).email,
         name: String((user as Row).display_name ?? (user as Row).email),
+        role,
+        locationId,
       },
     });
   } catch (e) {
@@ -147,8 +157,15 @@ router.get('/events', (req: Request, res: Response) => {
   res.setHeader('Connection', 'keep-alive');
   res.flushHeaders();
 
-  const cleanup = registerRealtimeClient(admin.adminId, res);
-  req.on('close', cleanup);
+  void loadAdminScope(admin.adminId)
+    .then((scope) => {
+      const cleanup = registerRealtimeClient(scope, res);
+      req.on('close', cleanup);
+    })
+    .catch((e) => {
+      console.error('[GET /admin/events] scope', e);
+      res.end();
+    });
 });
 
 router.get('/notifications/health', requireAdmin, (_req: Request, res: Response) => {
@@ -265,7 +282,7 @@ router.get('/settings', requireAdmin, async (_req: Request, res: Response) => {
       res.status(404).json({ error: 'Settings not found' });
       return;
     }
-    res.json(rowToAdminSettings(r));
+    res.json(await adminSettingsFromRow(r));
   } catch (e) {
     console.error('[GET /admin/settings]', e);
     res.status(500).json({ error: 'Failed to fetch settings' });
@@ -274,9 +291,29 @@ router.get('/settings', requireAdmin, async (_req: Request, res: Response) => {
 
 router.patch('/settings', requireAdmin, async (req: Request, res: Response) => {
   try {
+    const admin = getRequestAdmin(req);
+    if (!admin) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    const scope = await loadAdminScope(admin.adminId);
     const body = (req.body ?? {}) as Record<string, unknown>;
+    let allowedBody = body;
+
+    if (scope.role !== 'owner') {
+      if (!scope.fulfillsDelivery) {
+        res.status(403).json({ error: 'Endast ägare har åtkomst.' });
+        return;
+      }
+      if (typeof body.deliveryEnabled !== 'boolean') {
+        res.status(403).json({ error: 'Från denna plats kan bara hemleverans ändras.' });
+        return;
+      }
+      allowedBody = { deliveryEnabled: body.deliveryEnabled };
+    }
+
     const patch: Record<string, unknown> = { updated_at: nowIso() };
-    applyAdminSettingsPatch(body, patch);
+    applyAdminSettingsPatch(allowedBody, patch);
 
     if (Object.keys(patch).length > 1) {
       const settings = await fetchAdminSettingsRow();
@@ -300,10 +337,53 @@ router.patch('/settings', requireAdmin, async (req: Request, res: Response) => {
       res.status(500).json({ error: 'Settings not found' });
       return;
     }
-    res.json(rowToAdminSettings(r));
+    res.json(await adminSettingsFromRow(r));
   } catch (e) {
     console.error('[PATCH /admin/settings]', e);
     res.status(500).json({ error: 'Failed to update settings' });
+  }
+});
+
+router.patch('/locations/:id', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const admin = getRequestAdmin(req);
+    if (!admin) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    const scope = await loadAdminScope(admin.adminId);
+    const locationId = String(req.params.id ?? '').trim();
+    if (!locationId) {
+      res.status(400).json({ error: 'Plats saknas.' });
+      return;
+    }
+    if (scope.role === 'location' && scope.locationId !== locationId) {
+      res.status(403).json({ error: 'Du kan bara pausa din egen plats.' });
+      return;
+    }
+
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const patch: { isPaused?: boolean; eatHereEnabled?: boolean; takeawayEnabled?: boolean } = {};
+    if (typeof body.isPaused === 'boolean') patch.isPaused = body.isPaused;
+    if (scope.role === 'owner') {
+      if (typeof body.eatHereEnabled === 'boolean') patch.eatHereEnabled = body.eatHereEnabled;
+      if (typeof body.takeawayEnabled === 'boolean') patch.takeawayEnabled = body.takeawayEnabled;
+    }
+
+    if (Object.keys(patch).length === 0) {
+      res.status(400).json({ error: 'Inga giltiga fält att uppdatera.' });
+      return;
+    }
+
+    const updated = await updateLocationFlags(locationId, patch);
+    if (!updated) {
+      res.status(404).json({ error: 'Platsen hittades inte.' });
+      return;
+    }
+    res.json(updated);
+  } catch (e) {
+    console.error('[PATCH /admin/locations/:id]', e);
+    res.status(500).json({ error: 'Failed to update location' });
   }
 });
 
@@ -315,7 +395,7 @@ router.patch('/notifications/:id/read', requireAdmin, async (_req: Request, res:
   res.status(204).send();
 });
 
-router.post('/statistics', requireAdmin, async (req: Request, res: Response) => {
+router.post('/statistics', requireAdmin, requireOwner, async (req: Request, res: Response) => {
   try {
     const { password, startDate, endDate } = req.body as {
       password?: string;

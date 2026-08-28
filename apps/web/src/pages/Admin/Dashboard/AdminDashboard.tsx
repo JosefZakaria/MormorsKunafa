@@ -3,7 +3,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { Container } from '../../../components/common/Container/Container';
 import { Button } from '../../../components/common/Button/Button';
-import { orderApi, productApi, adminApi } from '../../../services/api';
+import { orderApi, productApi, adminApi, locationApi } from '../../../services/api';
 import { printKitchenTicket, printReceipt, testConnection, isPrinterConfigured, getPrinterConfig, setPrinterConfig } from '../../../services/printer';
 import type {
     DeliveryInfo,
@@ -11,7 +11,9 @@ import type {
     Product,
     AdminSettings,
     OrderCreatedRealtimeEvent,
+    Location,
 } from '@shared/types';
+import { HOJA_LOCATION_ID, MOLLEVANGEN_LOCATION_ID } from '@shared/types';
 import { parseApiTimestamp } from '@shared/utils/parseApiTimestamp';
 import { isKitchenTicketPrintDue } from '@shared/utils/scheduledTime';
 import '../Admin.css';
@@ -102,6 +104,24 @@ function OrderTypeLabel({ type }: { type: string }) {
         'delivery': 'Hemleverans',
     };
     return <span>{labels[type] ?? type}</span>;
+}
+
+type PlaceFilter = 'all' | 'hoja' | 'mollevangen' | 'delivery';
+
+function placeName(order: Order, locations: Location[]): string {
+    if (order.orderType === 'delivery') return 'Hemleverans';
+    return locations.find((location) => location.id === order.locationId)?.name ?? 'Plats';
+}
+
+function PlaceBadge({ order, locations }: { order: Order; locations: Location[] }) {
+    return <span className="place-badge">{placeName(order, locations)}</span>;
+}
+
+function orderMatchesPlaceFilter(order: Order, filter: PlaceFilter): boolean {
+    if (filter === 'all') return true;
+    if (filter === 'delivery') return order.orderType === 'delivery';
+    if (filter === 'hoja') return order.orderType !== 'delivery' && order.locationId === HOJA_LOCATION_ID;
+    return order.orderType !== 'delivery' && order.locationId === MOLLEVANGEN_LOCATION_ID;
 }
 
 // --- Per-order timer component ---
@@ -252,8 +272,9 @@ function daysUntil(iso: string | undefined): number | null {
     return Math.round((targetUtc - todayUtc) / (1000 * 60 * 60 * 24));
 }
 
-function PreOrderCard({ order, onEditNotes, onCancel }: {
+function PreOrderCard({ order, locations, onEditNotes, onCancel }: {
     order: Order;
+    locations: Location[];
     onEditNotes: (order: Order) => void;
     onCancel: (order: Order) => void;
 }) {
@@ -272,6 +293,8 @@ function PreOrderCard({ order, onEditNotes, onCancel }: {
                     {order.orderNumber}
                     &nbsp;·&nbsp;
                     <OrderTypeLabel type={order.orderType} />
+                    &nbsp;·&nbsp;
+                    <PlaceBadge order={order} locations={locations} />
                 </h3>
                 <div className="preorder-date-banner">
                     <span className="preorder-date-relative">{relativeLabel}</span>
@@ -308,8 +331,9 @@ function PreOrderCard({ order, onEditNotes, onCancel }: {
     );
 }
 
-function PendingOrderCard({ order, defaultPrepTime, onAccept }: {
+function PendingOrderCard({ order, locations, defaultPrepTime, onAccept }: {
     order: Order;
+    locations: Location[];
     defaultPrepTime: number;
     onAccept: (orderId: string, extraMinutes: number) => void;
 }) {
@@ -323,6 +347,8 @@ function PendingOrderCard({ order, defaultPrepTime, onAccept }: {
                     {order.orderNumber}
                     &nbsp;·&nbsp;
                     <OrderTypeLabel type={order.orderType} />
+                    &nbsp;·&nbsp;
+                    <PlaceBadge order={order} locations={locations} />
                 </h3>
                 <span className="status-badge status-ny">Ny</span>
                 <ul style={{ margin: '0.5rem 0', paddingLeft: '1.2rem' }}>
@@ -587,6 +613,54 @@ function OrderTypeToggleRow({
     );
 }
 
+function LocationPauseBlock({
+    location,
+    showTypeToggles,
+    onPauseToggle,
+    onToggleEatHere,
+    onToggleTakeaway,
+}: {
+    location: Location;
+    showTypeToggles: boolean;
+    onPauseToggle: () => void;
+    onToggleEatHere: () => void;
+    onToggleTakeaway: () => void;
+}) {
+    return (
+        <div className="location-pause-block">
+            <h4>{location.name}</h4>
+            <div className="order-availability-pause">
+                <Button
+                    variant={location.isPaused ? 'primary' : 'ghost'}
+                    className={location.isPaused ? 'btn-resume' : 'btn-pause'}
+                    onClick={onPauseToggle}
+                >
+                    {location.isPaused ? `Återuppta ${location.name}` : `Pausa ${location.name}`}
+                </Button>
+            </div>
+            <p className="order-availability-hint">
+                {location.isPaused
+                    ? `Äta här och Ta med är stoppade på ${location.name}.`
+                    : `Nya beställningar tas emot på ${location.name}.`}
+            </p>
+            {showTypeToggles && (
+                <div className="order-type-toggle-list">
+                    <OrderTypeToggleRow
+                        label="Äta här"
+                        enabled={location.eatHereEnabled}
+                        onToggle={onToggleEatHere}
+                    />
+                    <OrderTypeToggleRow
+                        label="Ta med"
+                        enabled={location.takeawayEnabled}
+                        onToggle={onToggleTakeaway}
+                    />
+                </div>
+            )}
+        </div>
+    );
+}
+
 function StockRow({
     product,
     onToggle,
@@ -627,6 +701,8 @@ export const AdminDashboard: React.FC = () => {
     const [historyOrders, setHistoryOrders] = useState<Order[]>([]);
     const [products, setProducts] = useState<Product[]>([]);
     const [settings, setSettings] = useState<AdminSettings | null>(null);
+    const [locations, setLocations] = useState<Location[]>([]);
+    const [placeFilter, setPlaceFilter] = useState<PlaceFilter>('all');
 
     // Statistics state
     const [showStatsModal, setShowStatsModal] = useState(false);
@@ -906,8 +982,23 @@ export const AdminDashboard: React.FC = () => {
     // --- Fetch products + settings on mount ---
     useEffect(() => {
         productApi.getAllAdmin().then(setProducts).finally(() => setLoadingProducts(false));
-        adminApi.getSettings().then(setSettings);
+        adminApi.getSettings().then((next) => {
+            setSettings(next);
+            if (next.locations?.length) setLocations(next.locations);
+        });
+        locationApi.getAll().then(setLocations).catch(() => undefined);
     }, []);
+
+    const isOwner = admin?.role !== 'location';
+
+    useEffect(() => {
+        if (isOwner) return;
+        if (activeTab === 'stock' || activeTab === 'menu' || activeTab === 'stats') {
+            setActiveTab('pending');
+            setStatsData(null);
+            setShowStatsModal(false);
+        }
+    }, [isOwner, activeTab]);
 
     useEffect(() => {
         if (activeTab === 'menu') {
@@ -1130,6 +1221,30 @@ export const AdminDashboard: React.FC = () => {
         try {
             const updated = await adminApi.updateSettings(patch);
             setSettings(updated);
+            if (updated.locations?.length) setLocations(updated.locations);
+        } catch {
+            setError('Kunde inte spara inställningar.');
+        }
+    };
+
+    const handleUpdateLocation = async (
+        id: string,
+        patch: Partial<Pick<Location, 'isPaused' | 'eatHereEnabled' | 'takeawayEnabled'>>
+    ) => {
+        try {
+            const updated = await adminApi.updateLocation(id, patch);
+            const nextLocations = locations.map((location) => (location.id === updated.id ? updated : location));
+            setLocations(nextLocations);
+            if (settings) {
+                setSettings({
+                    ...settings,
+                    locations: (settings.locations ?? nextLocations).map((location) =>
+                        location.id === updated.id ? updated : location
+                    ),
+                    eatHereEnabled: nextLocations.some((location) => !location.isPaused && location.eatHereEnabled),
+                    takeawayEnabled: nextLocations.some((location) => !location.isPaused && location.takeawayEnabled),
+                });
+            }
         } catch {
             setError('Kunde inte spara inställningar.');
         }
@@ -1185,6 +1300,22 @@ export const AdminDashboard: React.FC = () => {
     };
 
     const isPaused = settings?.isPaused ?? false;
+    const myLocation = admin?.role === 'location'
+        ? locations.find((location) => location.id === admin.locationId)
+        : undefined;
+    const headerPaused = isOwner ? isPaused : Boolean(myLocation?.isPaused);
+    const canManageDelivery = isOwner || myLocation?.fulfillsDelivery === true;
+    const pauseLocations = isOwner
+        ? locations
+        : myLocation
+            ? [myLocation]
+            : [];
+    const visiblePending = isOwner ? pendingOrders.filter((order) => orderMatchesPlaceFilter(order, placeFilter)) : pendingOrders;
+    const visiblePreOrders = isOwner ? preOrders.filter((order) => orderMatchesPlaceFilter(order, placeFilter)) : preOrders;
+    const visibleActive = isOwner ? activeOrders.filter((order) => orderMatchesPlaceFilter(order, placeFilter)) : activeOrders;
+    const visibleHistory = isOwner ? historyOrders.filter((order) => orderMatchesPlaceFilter(order, placeFilter)) : historyOrders;
+    const hojaName = locations.find((location) => location.slug === 'hoja')?.name ?? 'Höja';
+    const molleName = locations.find((location) => location.slug === 'mollevangen')?.name ?? 'Möllevången';
     return (
         <div className="admin-dashboard">
             <Container>
@@ -1192,8 +1323,13 @@ export const AdminDashboard: React.FC = () => {
                     <div className="admin-header-left">
                         <h1>Admin Dashboard</h1>
                         {admin && <span className="admin-name">👤 {admin.name}</span>}
-                        <span className={`status-badge ${isPaused ? 'status-paused' : 'status-active'}`}>
-                            {isPaused ? '🔴 STOPPAD' : '🟢 ONLINE'}
+                        {admin?.role === 'location' && (
+                            <span className="place-badge">
+                                {locations.find((location) => location.id === admin.locationId)?.name ?? 'Plats'}
+                            </span>
+                        )}
+                        <span className={`status-badge ${headerPaused ? 'status-paused' : 'status-active'}`}>
+                            {headerPaused ? '🔴 STOPPAD' : '🟢 ONLINE'}
                         </span>
 
                         {/* Ljudlarm-indikator i headern */}
@@ -1274,30 +1410,56 @@ export const AdminDashboard: React.FC = () => {
 
                 <div className="admin-tabs">
                     <button className={`admin-tab ${activeTab === 'preorders' ? 'active' : ''}`} onClick={() => { setActiveTab('preorders'); setStatsData(null); }}>
-                        Förbeställningar {preOrders.length > 0 && <span className="tab-badge">{preOrders.length}</span>}
+                        Förbeställningar {visiblePreOrders.length > 0 && <span className="tab-badge">{visiblePreOrders.length}</span>}
                     </button>
                     <button className={`admin-tab ${activeTab === 'pending' ? 'active' : ''}`} onClick={() => { setActiveTab('pending'); setStatsData(null); }}>
-                        Inkommande {pendingOrders.length > 0 && <span className="tab-badge">{pendingOrders.length}</span>}
+                        Inkommande {visiblePending.length > 0 && <span className="tab-badge">{visiblePending.length}</span>}
                     </button>
                     <button className={`admin-tab ${activeTab === 'active' ? 'active' : ''}`} onClick={() => { setActiveTab('active'); setStatsData(null); }}>
-                        Aktiva Ordrar ({activeOrders.length})
+                        Aktiva Ordrar ({visibleActive.length})
                     </button>
                     <button className={`admin-tab ${activeTab === 'history' ? 'active' : ''}`} onClick={() => { setActiveTab('history'); setStatsData(null); }}>
                         Orderhistorik
                     </button>
+                    {isOwner && (
+                        <>
                     <button className={`admin-tab ${activeTab === 'stock' ? 'active' : ''}`} onClick={() => { setActiveTab('stock'); setStatsData(null); }}>
                         Lager
                     </button>
                     <button className={`admin-tab ${activeTab === 'menu' ? 'active' : ''}`} onClick={() => { setActiveTab('menu'); setStatsData(null); }}>
                         Meny
                     </button>
+                        </>
+                    )}
                     <button className={`admin-tab ${activeTab === 'rush' ? 'active' : ''}`} onClick={() => { setActiveTab('rush'); setStatsData(null); }}>
                         Inställningar
                     </button>
+                    {isOwner && (
                     <button className={`admin-tab ${activeTab === 'stats' ? 'active' : ''}`} onClick={handleStatsTabClick}>
                         Statistik
                     </button>
+                    )}
                 </div>
+
+                {isOwner && (activeTab === 'pending' || activeTab === 'preorders' || activeTab === 'active' || activeTab === 'history') && (
+                    <div className="place-filter" role="group" aria-label="Filtrera plats">
+                        {([
+                            { id: 'all' as const, label: 'Alla' },
+                            { id: 'hoja' as const, label: hojaName },
+                            { id: 'mollevangen' as const, label: molleName },
+                            { id: 'delivery' as const, label: 'Hemleverans' },
+                        ]).map((chip) => (
+                            <button
+                                key={chip.id}
+                                type="button"
+                                className={`place-filter-chip ${placeFilter === chip.id ? 'active' : ''}`}
+                                onClick={() => setPlaceFilter(chip.id)}
+                            >
+                                {chip.label}
+                            </button>
+                        ))}
+                    </div>
+                )}
 
                 {/* ── STATISTIK LÖSENORDS-POPUP ── */}
                 {showStatsModal && (
@@ -1370,13 +1532,14 @@ export const AdminDashboard: React.FC = () => {
                         <div className="orders-list">
                             {loadingOrders ? (
                                 <p>Laddar ordrar...</p>
-                            ) : pendingOrders.length === 0 ? (
+                            ) : visiblePending.length === 0 ? (
                                 <p>Inga inkommande ordrar just nu.</p>
                             ) : (
-                                pendingOrders.map(order => (
+                                visiblePending.map(order => (
                                     <PendingOrderCard
                                         key={order.id}
                                         order={order}
+                                        locations={locations}
                                         defaultPrepTime={settings?.defaultPreparationTime ?? 30}
                                         onAccept={handleAcceptOrder}
                                     />
@@ -1390,12 +1553,12 @@ export const AdminDashboard: React.FC = () => {
                         <div className="orders-list">
                             {loadingOrders ? (
                                 <p>Laddar förbeställningar...</p>
-                            ) : preOrders.length === 0 ? (
+                            ) : visiblePreOrders.length === 0 ? (
                                 <p>Inga förbeställningar just nu.</p>
                             ) : (
                                 (() => {
                                     const groups = new Map<string, Order[]>();
-                                    for (const order of preOrders) {
+                                    for (const order of visiblePreOrders) {
                                         const key = order.scheduledTime
                                             ? new Date(order.scheduledTime).toLocaleDateString('sv-SE', { timeZone: 'Europe/Stockholm' })
                                             : 'okänt';
@@ -1421,6 +1584,7 @@ export const AdminDashboard: React.FC = () => {
                                                     <PreOrderCard
                                                         key={o.id}
                                                         order={o}
+                                                        locations={locations}
                                                         onEditNotes={openNotesModal}
                                                         onCancel={(order) => openCancelModal(order.id)}
                                                     />
@@ -1438,16 +1602,18 @@ export const AdminDashboard: React.FC = () => {
                         <div className="orders-list">
                             {loadingOrders ? (
                                 <p>Laddar ordrar...</p>
-                            ) : activeOrders.length === 0 ? (
+                            ) : visibleActive.length === 0 ? (
                                 <p>Inga aktiva ordrar just nu.</p>
                             ) : (
-                                activeOrders.map(order => (
+                                visibleActive.map(order => (
                                     <div key={order.id} className="admin-order-card">
                                         <div className="order-details">
                                             <h3>
                                                 {order.orderNumber}
                                                 &nbsp;·&nbsp;
                                                 <OrderTypeLabel type={order.orderType} />
+                                                &nbsp;·&nbsp;
+                                                <PlaceBadge order={order} locations={locations} />
                                             </h3>
                                             <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
                                                 <OrderTimer estimatedReadyTime={order.estimatedReadyTime} />
@@ -1516,7 +1682,7 @@ export const AdminDashboard: React.FC = () => {
                                         Rensa filter
                                     </button>
                                 )}
-                                {historyOrders.length > 0 && (
+                                {historyOrders.length > 0 && isOwner && (
                                     <button
                                         className="history-delete-all"
                                         onClick={openDeleteAllModal}
@@ -1527,13 +1693,15 @@ export const AdminDashboard: React.FC = () => {
                             </div>
                             {loadingHistory ? (
                                 <p>Laddar historik...</p>
-                            ) : historyOrders.length === 0 ? (
+                            ) : visibleHistory.length === 0 ? (
                                 <p>Ingen orderhistorik ännu.</p>
                             ) : (
-                                historyOrders.map(order => (
+                                visibleHistory.map(order => (
                                     <div key={order.id} className={`admin-order-card ${order.status === 'avbruten' ? 'history-card-cancelled' : 'history-card-done'}`}>
                                         <div className="order-details">
-                                            <h3>{order.orderNumber} · <OrderTypeLabel type={order.orderType} /></h3>
+                                            <h3>
+                                                {order.orderNumber} · <OrderTypeLabel type={order.orderType} /> · <PlaceBadge order={order} locations={locations} />
+                                            </h3>
                                             <span className={`status-badge ${order.status === 'avbruten' ? 'status-avbruten' : 'status-klar'}`}>
                                                 {order.status === 'avbruten' ? 'Avbruten' : 'Klar'}
                                             </span>
@@ -1780,39 +1948,52 @@ export const AdminDashboard: React.FC = () => {
                         <div className="rush-settings">
                             <div className="rush-card order-availability-card">
                                 <h3>Beställningar</h3>
-                                <p>Pausa allt, eller stäng av enskilda leveranssätt.</p>
-                                <div className="order-availability-pause">
-                                    <Button
-                                        variant={isPaused ? 'primary' : 'ghost'}
-                                        className={isPaused ? 'btn-resume' : 'btn-pause'}
-                                        onClick={() => handleUpdateSettings({ isPaused: !isPaused })}
-                                    >
-                                        {isPaused ? 'Återuppta Beställningar' : 'Pausa Beställningar'}
-                                    </Button>
-                                </div>
-                                <p className="order-availability-hint">
-                                    {isPaused
-                                        ? 'Alla nya beställningar är stoppade.'
-                                        : 'Nya beställningar tas emot som vanligt.'}
+                                <p>
+                                    {isOwner
+                                        ? 'Pausa per plats, stäng av Äta här/Ta med, eller nödstoppa allt.'
+                                        : canManageDelivery
+                                            ? 'Pausa den här platsen, eller stäng av hemleverans.'
+                                            : 'Pausa Äta här och Ta med på den här platsen.'}
                                 </p>
-                                <div className="order-type-toggle-list">
-                                    <OrderTypeToggleRow
-                                        label="Äta här"
-                                        enabled={settings.eatHereEnabled !== false}
-                                        onToggle={() => handleUpdateSettings({ eatHereEnabled: settings.eatHereEnabled === false })}
+                                {isOwner && (
+                                    <>
+                                        <div className="order-availability-pause">
+                                            <Button
+                                                variant={isPaused ? 'primary' : 'ghost'}
+                                                className={isPaused ? 'btn-resume' : 'btn-pause'}
+                                                onClick={() => handleUpdateSettings({ isPaused: !isPaused })}
+                                            >
+                                                {isPaused ? 'Återuppta allt' : 'Nödstoppa alla beställningar'}
+                                            </Button>
+                                        </div>
+                                        <p className="order-availability-hint">
+                                            {isPaused
+                                                ? 'Alla nya beställningar är stoppade, inklusive hemleverans.'
+                                                : 'Nödstopp påverkar alla platser och hemleverans.'}
+                                        </p>
+                                    </>
+                                )}
+                                {pauseLocations.map((location) => (
+                                    <LocationPauseBlock
+                                        key={location.id}
+                                        location={location}
+                                        showTypeToggles={isOwner}
+                                        onPauseToggle={() => handleUpdateLocation(location.id, { isPaused: !location.isPaused })}
+                                        onToggleEatHere={() => handleUpdateLocation(location.id, { eatHereEnabled: !location.eatHereEnabled })}
+                                        onToggleTakeaway={() => handleUpdateLocation(location.id, { takeawayEnabled: !location.takeawayEnabled })}
                                     />
-                                    <OrderTypeToggleRow
-                                        label="Ta med"
-                                        enabled={settings.takeawayEnabled !== false}
-                                        onToggle={() => handleUpdateSettings({ takeawayEnabled: settings.takeawayEnabled === false })}
-                                    />
-                                    <OrderTypeToggleRow
-                                        label="Hemleverans"
-                                        enabled={settings.deliveryEnabled !== false}
-                                        onToggle={() => handleUpdateSettings({ deliveryEnabled: settings.deliveryEnabled === false })}
-                                    />
-                                </div>
+                                ))}
+                                {canManageDelivery && (
+                                    <div className="order-type-toggle-list location-pause-delivery">
+                                        <OrderTypeToggleRow
+                                            label="Hemleverans"
+                                            enabled={settings.deliveryEnabled !== false}
+                                            onToggle={() => handleUpdateSettings({ deliveryEnabled: settings.deliveryEnabled === false })}
+                                        />
+                                    </div>
+                                )}
                             </div>
+                            {isOwner && (
                             <div className="rush-card">
                                 <h3>Standard tillagningstid</h3>
                                 <p>Används för alla nya beställningar.</p>
@@ -1825,6 +2006,7 @@ export const AdminDashboard: React.FC = () => {
                                     <Button variant="ghost" onClick={() => handleUpdateSettings({ defaultPreparationTime: settings.defaultPreparationTime + 5 })}>+ 5 min</Button>
                                 </div>
                             </div>
+                            )}
                             <PrinterSettings />
 
                             {/* --- Ljudinställningar för inkommande ordrar --- */}
@@ -1903,8 +2085,10 @@ export const AdminDashboard: React.FC = () => {
                             <div className="alarm-order-header">
                                 <span className="alarm-order-number">{activeAlarmOrder.orderNumber}</span>
                                 <span className="alarm-order-type">
-                                    {activeAlarmOrder.orderType === 'eat-here' ? 'Äta här' : 
+                                    {activeAlarmOrder.orderType === 'eat-here' ? 'Äta här' :
                                      activeAlarmOrder.orderType === 'takeaway' ? 'Ta med' : 'Leverans'}
+                                    {' · '}
+                                    {placeName(activeAlarmOrder, locations)}
                                 </span>
                             </div>
                             <ul className="alarm-order-items">

@@ -20,6 +20,25 @@ export type PaymentMethod = 'card' | 'swish' | 'cash' | 'app';
 export type CheckoutPaymentChoice = 'card' | 'swish';
 export type RefundStatus = 'none' | 'pending' | 'refunded' | 'failed';
 
+export type LocationSlug = 'hoja' | 'mollevangen';
+export type AdminRole = 'owner' | 'location';
+
+/** Höja — original bakery, fulfills home delivery. Matches DB seed. */
+export const HOJA_LOCATION_ID = '2f1a9c4e-6b7d-4e8f-a901-b2c3d4e5f601';
+/** Möllevången. Matches DB seed. */
+export const MOLLEVANGEN_LOCATION_ID = '2f1a9c4e-6b7d-4e8f-a901-b2c3d4e5f602';
+
+export interface Location {
+  id: string;
+  slug: LocationSlug;
+  name: string;
+  address: string;
+  fulfillsDelivery: boolean;
+  eatHereEnabled: boolean;
+  takeawayEnabled: boolean;
+  isPaused: boolean;
+}
+
 // Product Interface
 export interface Product {
   id: string;
@@ -87,6 +106,8 @@ export interface Order {
   internalNotes?: string;
   paymentMethod: PaymentMethod;
   paymentStatus: 'pending' | 'paid';
+  /** Set for eat-here / takeaway. Null for delivery. */
+  locationId?: string | null;
 }
 
 // Admin User Interface (F.Admin.1)
@@ -94,6 +115,9 @@ export interface AdminUser {
   id: string;
   email: string;
   name: string;
+  role: AdminRole;
+  /** Set when role is `location`. Null for owners. */
+  locationId?: string | null;
   createdAt: string;
   lastLoginAt?: string;
 }
@@ -101,10 +125,16 @@ export interface AdminUser {
 // Admin Settings (also returned by public GET /orders/settings)
 export interface AdminSettings {
   defaultPreparationTime: number; // minutes (F.Admin.3)
-  isPaused: boolean; // pause all new orders
+  /** Global emergency stop — blocks every new order, including delivery. */
+  isPaused: boolean;
+  /** Derived: at least one location currently accepts eat-here. */
   eatHereEnabled: boolean;
+  /** Derived: at least one location currently accepts takeaway. */
   takeawayEnabled: boolean;
+  /** Global home-delivery flag. */
   deliveryEnabled: boolean;
+  /** Per-location pause and in-store type flags. */
+  locations: Location[];
   /** Landing hero image for desktop / wide viewports. */
   heroImageDesktop: string;
   /** Landing hero image for mobile / narrow viewports. */
@@ -132,6 +162,8 @@ export interface CreateOrderRequest {
   /** Naive `YYYY-MM-DDTHH:mm:ss` (Europe/Stockholm) or ISO with Z/offset */
   scheduledTime?: string;
   paymentMethod: PaymentMethod;
+  /** Required for eat-here / takeaway. Ignored for delivery. */
+  locationId?: string;
 }
 
 // Update Order Status Request
@@ -191,4 +223,6 @@ export interface OrderCreatedRealtimeEvent {
   order_id: string;
   order_number: string;
   created_at: string;
+  order_type: OrderType;
+  location_id: string | null;
 }

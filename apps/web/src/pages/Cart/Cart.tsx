@@ -6,8 +6,8 @@ import { Button } from '../../components/common/Button/Button';
 import { AllergenNotice } from '../../components/common/AllergenNotice/AllergenNotice';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useCart } from '../../contexts/CartContext';
-import { orderApi } from '../../services/api';
-import type { CheckoutPaymentChoice, CustomerInfo, OrderType } from '@shared/types';
+import { orderApi, locationApi } from '../../services/api';
+import type { CheckoutPaymentChoice, CustomerInfo, Location, OrderType } from '@shared/types';
 import { DELIVERY_FEE_SEK } from '@shared/constants/delivery';
 import {
     dateToStockholmInputValue,
@@ -21,6 +21,12 @@ import {
     isStoreClosedNow,
 } from '@shared/utils/openingHours';
 import './Cart.css';
+import {
+    clearStoredLocation,
+    getStoredLocationId,
+    needsPickupLocation,
+} from '../../utils/selectedLocation';
+import { anyLocationAcceptsOrderType, locationAcceptsOrderType } from '../../utils/orderTypeAvailability';
 
 /** Set to true when Swish checkout is ready for customers. */
 const SWISH_CHECKOUT_ENABLED = false;
@@ -45,12 +51,23 @@ const ORDER_TYPE_LABEL_KEY: Record<OrderType, string> = {
     delivery: 'landing.delivery',
 };
 
-function isOrderTypeEnabled(type: OrderType | '', flags: OrderTypeFlags): boolean {
+function isOrderTypeEnabled(
+    type: OrderType | '',
+    flags: OrderTypeFlags,
+    locations: Location[],
+    locationId: string
+): boolean {
     if (!type) return false;
     if (flags.isPaused) return false;
-    if (type === 'eat-here') return flags.eatHereEnabled;
-    if (type === 'takeaway') return flags.takeawayEnabled;
-    return flags.deliveryEnabled;
+    if (type === 'delivery') return flags.deliveryEnabled;
+    const selected = locations.find((location) => location.id === locationId);
+    if (selected) return locationAcceptsOrderType(selected, type);
+    if (locations.length === 0) {
+        if (type === 'eat-here') return flags.eatHereEnabled;
+        if (type === 'takeaway') return flags.takeawayEnabled;
+        return flags.deliveryEnabled;
+    }
+    return anyLocationAcceptsOrderType(locations, type);
 }
 
 function roundClockToNext5Min(clock: string): string {
@@ -93,10 +110,23 @@ export const Cart: React.FC = () => {
     const [deliveryCity, setDeliveryCity] = useState('');
     const [customerInfoError, setCustomerInfoError] = useState<string | null>(null);
     const [paymentChoice, setPaymentChoice] = useState<CheckoutPaymentChoice>('card');
+    const [locations, setLocations] = useState<Location[]>([]);
+    const [locationId, setLocationId] = useState(() => getStoredLocationId());
+    const [placeError, setPlaceError] = useState<string | null>(null);
 
     useEffect(() => {
         localStorage.removeItem('deliveryInfo');
     }, []);
+
+    useEffect(() => {
+        locationApi.getAll().then(setLocations).catch(() => undefined);
+    }, []);
+
+    useEffect(() => {
+        if (needsPickupLocation(orderType) && !getStoredLocationId()) {
+            navigate('/select-location?from=cart', { replace: true });
+        }
+    }, [navigate, orderType]);
 
     const needsInlineCustomerInfo = orderType === 'eat-here' || orderType === 'takeaway' || orderType === 'delivery';
 
@@ -144,15 +174,22 @@ export const Cart: React.FC = () => {
                         deliveryEnabled: settings.deliveryEnabled !== false,
                     };
                     setOrderTypeFlags(flags);
+                    const nextLocations = settings.locations ?? [];
+                    if (nextLocations.length) setLocations(nextLocations);
+                    const storedPlace = getStoredLocationId();
 
                     if (flags.isPaused) {
                         setPausedPopup('all');
                     } else {
                         const storedType = (searchParams.get('type') || sessionStorage.getItem('orderType') || '') as OrderType | '';
-                        if (storedType && !isOrderTypeEnabled(storedType, flags)) {
-                            sessionStorage.removeItem('orderType');
-                            setOrderType('');
-                            setPausedPopup(storedType);
+                        if (storedType && !isOrderTypeEnabled(storedType, flags, nextLocations, storedPlace)) {
+                            if (needsPickupLocation(storedType) && anyLocationAcceptsOrderType(nextLocations, storedType)) {
+                                setPausedPopup(storedType);
+                            } else {
+                                sessionStorage.removeItem('orderType');
+                                setOrderType('');
+                                setPausedPopup(storedType);
+                            }
                         }
                     }
 
@@ -308,6 +345,12 @@ export const Cart: React.FC = () => {
     const isDeliveryOrder = orderType === 'delivery';
     const deliveryFeeKr = isDeliveryOrder ? DELIVERY_FEE_SEK : 0;
     const totalKr = subtotalKr + deliveryFeeKr;
+    const selectedPlace = locations.find((location) => location.id === locationId);
+    const selectedPlaceLabel = selectedPlace
+        ? (selectedPlace.address.trim()
+            ? `${selectedPlace.name}, ${selectedPlace.address}`
+            : selectedPlace.name)
+        : '';
 
     const handleOrderTypeChange = (value: string) => {
         setOrderTypeError(null);
@@ -317,12 +360,31 @@ export const Cart: React.FC = () => {
             setPausedPopup('all');
             return;
         }
-        if (!isOrderTypeEnabled(nextType, orderTypeFlags)) {
+        if (!isOrderTypeEnabled(nextType, orderTypeFlags, locations, locationId)) {
+            if (needsPickupLocation(nextType) && anyLocationAcceptsOrderType(locations, nextType)) {
+                sessionStorage.setItem('orderType', nextType);
+                setOrderType(nextType);
+                clearStoredLocation();
+                setLocationId('');
+                navigate('/select-location?from=cart');
+                return;
+            }
             setPausedPopup(nextType);
             return;
         }
         sessionStorage.setItem('orderType', nextType);
         setOrderType(nextType);
+        if (nextType === 'delivery') {
+            clearStoredLocation();
+            setLocationId('');
+            setPlaceError(null);
+            return;
+        }
+        const storedPlace = getStoredLocationId();
+        setLocationId(storedPlace);
+        if (!storedPlace) {
+            navigate('/select-location?from=cart');
+        }
     };
 
     const handleConfirmClosedWarning = () => {
@@ -344,8 +406,19 @@ export const Cart: React.FC = () => {
             setPausedPopup('all');
             return;
         }
-        if (!isOrderTypeEnabled(orderType, orderTypeFlags)) {
+        if (!isOrderTypeEnabled(orderType, orderTypeFlags, locations, locationId)) {
+            if (needsPickupLocation(orderType) && anyLocationAcceptsOrderType(locations, orderType)) {
+                setPausedPopup(orderType);
+                navigate('/select-location?from=cart');
+                return;
+            }
             setPausedPopup(orderType);
+            return;
+        }
+
+        if (needsPickupLocation(orderType) && !locationId) {
+            setPlaceError(t('cart.place_required'));
+            navigate('/select-location?from=cart');
             return;
         }
 
@@ -442,6 +515,7 @@ export const Cart: React.FC = () => {
                 deliveryInfo: deliveryInfo,
                 ...(scheduledTime ? { scheduledTime } : {}),
                 paymentMethod: paymentChoice,
+                ...(needsPickupLocation(orderType) ? { locationId } : {}),
             });
 
             clearCart();
@@ -566,19 +640,39 @@ export const Cart: React.FC = () => {
                                 >
                                     <option value="" disabled>Välj leveranssätt...</option>
                                     <option value="eat-here">
-                                        Äta här{orderTypeFlags.isPaused || orderTypeFlags.eatHereEnabled ? '' : t('cart.order_type_paused_suffix')}
+                                        Äta här{orderTypeFlags.isPaused || isOrderTypeEnabled('eat-here', orderTypeFlags, locations, locationId) ? '' : t('cart.order_type_paused_suffix')}
                                     </option>
                                     <option value="takeaway">
-                                        Ta med{orderTypeFlags.isPaused || orderTypeFlags.takeawayEnabled ? '' : t('cart.order_type_paused_suffix')}
+                                        Ta med{orderTypeFlags.isPaused || isOrderTypeEnabled('takeaway', orderTypeFlags, locations, locationId) ? '' : t('cart.order_type_paused_suffix')}
                                     </option>
                                     <option value="delivery">
-                                        Hemkörning{orderTypeFlags.isPaused || orderTypeFlags.deliveryEnabled ? '' : t('cart.order_type_paused_suffix')}
+                                        Hemkörning{orderTypeFlags.isPaused || isOrderTypeEnabled('delivery', orderTypeFlags, locations, locationId) ? '' : t('cart.order_type_paused_suffix')}
                                     </option>
                                 </select>
                                 {orderTypeError && (
                                     <p className="order-type-error">{orderTypeError}</p>
                                 )}
                             </div>
+
+                            {needsPickupLocation(orderType) && (
+                                <div className="cart-place-banner">
+                                    <p className="cart-place-banner__text">
+                                        {selectedPlaceLabel
+                                            ? t('cart.selected_place').replace('{place}', selectedPlaceLabel)
+                                            : t('cart.place_required')}
+                                    </p>
+                                    <button
+                                        type="button"
+                                        className="cart-place-banner__change"
+                                        onClick={() => navigate('/select-location?from=cart')}
+                                    >
+                                        {t('cart.change_place')}
+                                    </button>
+                                </div>
+                            )}
+                            {placeError && (
+                                <p className="order-type-error">{placeError}</p>
+                            )}
 
                             {needsInlineCustomerInfo && (
                                 <div className="customer-info">

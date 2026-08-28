@@ -2,13 +2,16 @@ import { Router, Request, Response } from 'express';
 import { supabase, generateId, type Row, logSupabaseError, nowIso } from '../db/connection.js';
 import { getOrderById, getNextOrderNumber, updateOrder } from '../db/orderRepository.js';
 import { orderRowToOrder, rowsToOrders } from '../db/ordersList.js';
-import { requireAdmin } from '../middleware/auth.js';
+import { requireAdmin, requireOwner, getRequestAdmin } from '../middleware/auth.js';
+import { loadAdminScope, orderRowVisibleToScope } from '../services/locationScope.js';
 import { PrinterService } from '../services/PrinterService.js';
 import { sendOrderConfirmationEmail } from '../services/OrderConfirmationEmail.js';
 import { sendSms } from '../services/SmsService.js';
 import { getStripe } from '../services/stripeClient.js';
 import { broadcastOrderCreated, type OrderCreatedEvent } from '../services/realtimeEvents.js';
 import { sendOrderCreatedPush } from '../services/pushNotifications.js';
+import { resolveOrderLocationId, locationOrderTypeError, inStorePickupSmsSuffix } from '../db/locations.js';
+import type { OrderType } from '@mormors-kunafa/shared/types';
 import { parseOrderScheduledAt, formatStockholmDateTime } from '../utils/stockholmWallTime.js';
 import { validateScheduledOrderTime } from '../shared/utils/openingHours.js';
 import {
@@ -29,7 +32,7 @@ import { sanitizeProductName } from '../utils/sanitizeProductName.js';
 import {
   ADMIN_SETTINGS_PUBLIC_SELECT,
   disabledOrderTypeError,
-  rowToAdminSettings,
+  adminSettingsFromRow,
 } from '../db/adminSettings.js';
 import swishPaymentRouter from './swishPayment.js';
 
@@ -39,13 +42,25 @@ router.use('/swish-payment', swishPaymentRouter);
 
 const ACTIVE_STATUSES = ['mottagen', 'påbörjad'] as const;
 
-function dispatchOrderCreatedEvent(orderId: string, orderNumber: string): void {
+function asOrderType(value: string): OrderType {
+  if (value === 'eat-here' || value === 'takeaway' || value === 'delivery') return value;
+  return 'takeaway';
+}
+
+function dispatchOrderCreatedEvent(
+  orderId: string,
+  orderNumber: string,
+  orderType: string,
+  locationId: string | null
+): void {
   const event: OrderCreatedEvent = {
     event_id: generateId(),
     event_type: 'ORDER_CREATED',
     order_id: orderId,
     order_number: orderNumber,
     created_at: nowIso(),
+    order_type: asOrderType(orderType),
+    location_id: locationId,
   };
 
   broadcastOrderCreated(event);
@@ -73,6 +88,27 @@ function todayInStockholm(): string {
   return new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Stockholm' });
 }
 
+async function ordersVisibleToRequest(req: Request, rows: Row[]): Promise<Row[]> {
+  const admin = getRequestAdmin(req);
+  if (!admin) return [];
+  const scope = await loadAdminScope(admin.adminId);
+  return rows.filter((row) => orderRowVisibleToScope(scope, row));
+}
+
+async function assertOrderVisible(req: Request, res: Response, order: Row): Promise<boolean> {
+  const admin = getRequestAdmin(req);
+  if (!admin) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return false;
+  }
+  const scope = await loadAdminScope(admin.adminId);
+  if (!orderRowVisibleToScope(scope, order)) {
+    res.status(403).json({ error: 'Ordern tillhör en annan plats.' });
+    return false;
+  }
+  return true;
+}
+
 // Create order (public)
 router.post('/', async (req: Request, res: Response) => {
   try {
@@ -83,6 +119,7 @@ router.post('/', async (req: Request, res: Response) => {
       deliveryInfo?: Record<string, string>;
       scheduledTime?: string;
       paymentMethod: string;
+      locationId?: string;
     };
     if (!body.items?.length) {
       res.status(400).json({ error: 'items required' });
@@ -128,10 +165,23 @@ router.post('/', async (req: Request, res: Response) => {
       return;
     }
 
-    if (settings) {
-      const typePausedError = disabledOrderTypeError(orderType, settings);
-      if (typePausedError) {
-        res.status(403).json({ error: typePausedError });
+    const resolvedLocation = await resolveOrderLocationId(orderType, body.locationId);
+    if (resolvedLocation.error) {
+      res.status(400).json({ error: resolvedLocation.error });
+      return;
+    }
+    const locationId = resolvedLocation.locationId;
+
+    if (isDelivery) {
+      const deliveryPausedError = settings ? disabledOrderTypeError('delivery', settings) : null;
+      if (deliveryPausedError) {
+        res.status(403).json({ error: deliveryPausedError });
+        return;
+      }
+    } else if (resolvedLocation.location) {
+      const locationPausedError = locationOrderTypeError(orderType, resolvedLocation.location);
+      if (locationPausedError) {
+        res.status(403).json({ error: locationPausedError });
         return;
       }
     }
@@ -186,6 +236,7 @@ router.post('/', async (req: Request, res: Response) => {
       customer_email: customerEmail,
       customer_phone: customerPhone,
       delivery_info_json: body.deliveryInfo ?? null,
+      location_id: locationId,
     };
 
     const { error: orderInsertError } = await supabase.from('orders').insert(orderInsert);
@@ -305,12 +356,18 @@ router.post('/', async (req: Request, res: Response) => {
     if (phoneOut && !isOnlinePayment(paymentMethod) && !isDelivery) {
       const schedStr = result.order.scheduled_at ? formatStockholmDateTime(result.order.scheduled_at as string) : '';
       const schedSuffix = schedStr ? ` Planerad upphämtning: ${schedStr}.` : '';
-      void sendSms(phoneOut, `Tack för din beställning från Mormors Kunafa${smsCustomerName ? ', ' + smsCustomerName : ''}! Vi tar snart emot din beställning.${schedSuffix}`).catch((err) =>
+      const placeSuffix = await inStorePickupSmsSuffix(result.order);
+      void sendSms(phoneOut, `Tack för din beställning från Mormors Kunafa${smsCustomerName ? ', ' + smsCustomerName : ''}! Vi tar snart emot din beställning.${placeSuffix}${schedSuffix}`).catch((err) =>
         console.error('[order confirmation sms]', err)
       );
     }
 
-    dispatchOrderCreatedEvent(orderId, String(result.order.order_number ?? orderNumber));
+    dispatchOrderCreatedEvent(
+      orderId,
+      String(result.order.order_number ?? orderNumber),
+      String(result.order.order_type ?? orderType),
+      result.order.location_id != null ? String(result.order.location_id) : locationId
+    );
 
     res.status(201).json(orderRowToOrder(result.order, result.items));
   } catch (e) {
@@ -440,7 +497,7 @@ router.post('/stripe-confirm', async (req: Request, res: Response) => {
 
 // Admin: pending orders (status 'ny', waiting for acceptance).
 // Excludes pre-orders scheduled for a future date (in Europe/Stockholm time).
-router.get('/admin/pending', requireAdmin, async (_req: Request, res: Response) => {
+router.get('/admin/pending', requireAdmin, async (req: Request, res: Response) => {
   try {
     const { data, error } = await supabase
       .from('orders')
@@ -460,7 +517,7 @@ router.get('/admin/pending', requireAdmin, async (_req: Request, res: Response) 
       const schedDate = toStockholmDateString((r as Row).scheduled_at as Date | string | null);
       return schedDate == null || schedDate <= today;
     });
-    res.json(await rowsToOrders(sameDay as Row[]));
+    res.json(await rowsToOrders(await ordersVisibleToRequest(req, sameDay as Row[])));
   } catch (e) {
     console.error('[GET /admin/pending]', e);
     res.status(500).json({ error: 'Failed to fetch pending orders' });
@@ -477,6 +534,7 @@ router.patch('/admin/:id/accept', requireAdmin, async (req: Request, res: Respon
       res.status(404).json({ error: 'Order not found' });
       return;
     }
+    if (!(await assertOrderVisible(req, res, result.order))) return;
     if (result.order.status !== 'ny') {
       res.status(400).json({ error: 'Order is not in pending state' });
       return;
@@ -513,7 +571,8 @@ router.patch('/admin/:id/accept', requireAdmin, async (req: Request, res: Respon
         hour: '2-digit',
         minute: '2-digit',
       });
-      void sendSms(phoneOut, `Hej${customerName ? ', ' + customerName : ''}! Din order är mottagen och beräknas vara klar kl ${readyTimeStr}.`).catch((err) =>
+      const placeSuffix = await inStorePickupSmsSuffix(updated.order);
+      void sendSms(phoneOut, `Hej${customerName ? ', ' + customerName : ''}! Din order är mottagen och beräknas vara klar kl ${readyTimeStr}.${placeSuffix}`).catch((err) =>
         console.error('[order accepted sms]', err)
       );
     }
@@ -528,7 +587,7 @@ router.patch('/admin/:id/accept', requireAdmin, async (req: Request, res: Respon
 });
 
 // Admin: active orders
-router.get('/admin/active', requireAdmin, async (_req: Request, res: Response) => {
+router.get('/admin/active', requireAdmin, async (req: Request, res: Response) => {
   try {
     const { data, error } = await supabase
       .from('orders')
@@ -542,7 +601,7 @@ router.get('/admin/active', requireAdmin, async (_req: Request, res: Response) =
       res.status(500).json({ error: 'Failed to fetch active orders', details: error.message });
       return;
     }
-    res.json(await rowsToOrders((data ?? []) as Row[]));
+    res.json(await rowsToOrders(await ordersVisibleToRequest(req, (data ?? []) as Row[])));
   } catch (e) {
     console.error('[GET /admin/active]', e);
     res.status(500).json({ error: 'Failed to fetch active orders' });
@@ -551,7 +610,7 @@ router.get('/admin/active', requireAdmin, async (_req: Request, res: Response) =
 
 // Admin: pre-orders (scheduled for a future date in Europe/Stockholm time).
 // Includes both unaccepted ('ny') and accepted ('mottagen', 'påbörjad') pre-orders.
-router.get('/admin/pre-orders', requireAdmin, async (_req: Request, res: Response) => {
+router.get('/admin/pre-orders', requireAdmin, async (req: Request, res: Response) => {
   try {
     const { data, error } = await supabase
       .from('orders')
@@ -572,7 +631,7 @@ router.get('/admin/pre-orders', requireAdmin, async (_req: Request, res: Respons
       const schedDate = toStockholmDateString((r as Row).scheduled_at as Date | string | null);
       return schedDate != null && schedDate > today;
     });
-    res.json(await rowsToOrders(futureOnly as Row[]));
+    res.json(await rowsToOrders(await ordersVisibleToRequest(req, futureOnly as Row[])));
   } catch (e) {
     console.error('[GET /admin/pre-orders]', e);
     res.status(500).json({ error: 'Failed to fetch pre-orders' });
@@ -608,7 +667,7 @@ router.get('/admin/history', requireAdmin, async (req: Request, res: Response) =
       res.status(500).json({ error: 'Failed to fetch history', details: error.message });
       return;
     }
-    res.json(await rowsToOrders((data ?? []) as Row[]));
+    res.json(await rowsToOrders(await ordersVisibleToRequest(req, (data ?? []) as Row[])));
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Failed to fetch history' });
@@ -617,7 +676,7 @@ router.get('/admin/history', requireAdmin, async (req: Request, res: Response) =
 
 // Admin: delete all history (completed/cancelled orders only) — must be before :id route.
 // Uses POST so a password can be supplied in the body.
-router.post('/admin/history/all/delete', requireAdmin, async (req: Request, res: Response) => {
+router.post('/admin/history/all/delete', requireAdmin, requireOwner, async (req: Request, res: Response) => {
   try {
     const { password } = req.body as { password?: string };
     const deletePassword = process.env.DELETE_PASSWORD;
@@ -652,6 +711,13 @@ router.post('/admin/:id/delete', requireAdmin, async (req: Request, res: Respons
       return;
     }
 
+    const existing = await getOrderById(req.params.id);
+    if (!existing) {
+      res.status(404).json({ error: 'Order not found' });
+      return;
+    }
+    if (!(await assertOrderVisible(req, res, existing.order))) return;
+
     const { error } = await supabase.from('orders').delete().eq('id', req.params.id);
     if (error) {
       logSupabaseError('DELETE /admin/:id', error);
@@ -680,9 +746,14 @@ router.post('/admin/:id/cancel', requireAdmin, async (req: Request, res: Respons
     }
 
     const existing = await getOrderById(req.params.id);
+    if (!existing) {
+      res.status(404).json({ error: 'Order not found' });
+      return;
+    }
+    if (!(await assertOrderVisible(req, res, existing.order))) return;
     await updateOrder(req.params.id, {
       status: 'avbruten',
-      cancelled_at: existing?.order.cancelled_at
+      cancelled_at: existing.order.cancelled_at
         ? String(existing.order.cancelled_at)
         : nowIso(),
       cancellation_reason: cancellationReason.trim(),
@@ -718,6 +789,11 @@ router.patch('/admin/:id/status', requireAdmin, async (req: Request, res: Respon
     }
 
     const existing = await getOrderById(req.params.id);
+    if (!existing) {
+      res.status(404).json({ error: 'Order not found' });
+      return;
+    }
+    if (!(await assertOrderVisible(req, res, existing.order))) return;
     const patch: Record<string, unknown> = { status };
     if (estimatedReadyTime) {
       patch.estimated_ready_at = new Date(estimatedReadyTime).toISOString();
@@ -766,6 +842,12 @@ router.patch('/admin/:id/time', requireAdmin, async (req: Request, res: Response
       res.status(400).json({ error: 'estimatedReadyTime or preparationTime required' });
       return;
     }
+    const existing = await getOrderById(req.params.id);
+    if (!existing) {
+      res.status(404).json({ error: 'Order not found' });
+      return;
+    }
+    if (!(await assertOrderVisible(req, res, existing.order))) return;
     await updateOrder(req.params.id, patch);
 
     const result = await getOrderById(req.params.id);
@@ -785,6 +867,12 @@ router.patch('/admin/:id/notes', requireAdmin, async (req: Request, res: Respons
   try {
     const { internalNotes } = req.body as { internalNotes?: string };
     const trimmed = typeof internalNotes === 'string' ? internalNotes.trim() : '';
+    const existing = await getOrderById(req.params.id);
+    if (!existing) {
+      res.status(404).json({ error: 'Order not found' });
+      return;
+    }
+    if (!(await assertOrderVisible(req, res, existing.order))) return;
     await updateOrder(req.params.id, {
       internal_notes: trimmed.length > 0 ? trimmed : null,
     });
@@ -809,6 +897,7 @@ router.post('/admin/:id/print', requireAdmin, async (req: Request, res: Response
       res.status(404).json({ error: 'Order not found' });
       return;
     }
+    if (!(await assertOrderVisible(req, res, result.order))) return;
     const orderData = orderRowToOrder(result.order, result.items);
 
     const printerIp = process.env.PRINTER_IP || '192.168.1.100';
@@ -846,7 +935,7 @@ router.get('/settings', async (_req: Request, res: Response) => {
       return;
     }
 
-    res.json(rowToAdminSettings(data as Row));
+    res.json(await adminSettingsFromRow(data as Row));
   } catch (e) {
     console.error('[GET /api/orders/settings]', e);
     res.status(500).json({ error: 'Failed to fetch settings' });

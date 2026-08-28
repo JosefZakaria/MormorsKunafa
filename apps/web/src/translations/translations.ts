@@ -76,12 +76,14 @@ export const translations = {
         "landing.findus.hours_all": "Öppet alla dagar · 11:00–22:00",
         "landing.findus.note": "Helgdagar kan slå om tiderna, ring gärna först.",
         "landing.findus.address": "Karolingatan 1, 212 34 Malmö",
+        "landing.findus.address_hoja": "Karolingatan 1, 212 34 Malmö",
+        "landing.findus.address_mollevangen": "Bergsgatan 14, 211 34 Malmö",
         "landing.findus.phone_label": "Telefon",
         "landing.findus.reviews_link": "Läs våra Google-recensioner",
         "landing.findus.order_btn": "Beställ nu",
         "landing.findus.call_btn": "Ring oss",
         "landing.cta.title": "Brygga kaffet. Vi fixar efterrätten.",
-        "landing.cta.subtitle": "Beställ din box idag. Hämta på Karolingatan eller få den hemkörd i Malmö.",
+        "landing.cta.subtitle": "Beställ din box idag. Hämta på Höja eller Möllevången, eller få den hemkörd i Malmö.",
         "landing.cta.order": "Se hela menyn & beställ",
         "landing.cta.call": "Ring 072-868 25 92",
 
@@ -189,8 +191,15 @@ export const translations = {
         "delivery.info_other_ar": "مناطق أخرى: 1-2 أيام عمل",
 
         // Select Location
-        "select_location.title": "Välj stad",
-        "select_location.continue": "Fortsätt"
+        "select_location.title": "Välj Plats",
+        "select_location.subtitle": "Var vill du hämta eller äta?",
+        "select_location.loading": "Laddar platser...",
+        "select_location.load_error": "Kunde inte hämta platser. Försök igen.",
+        "select_location.continue": "Fortsätt",
+        "select_location.paused": "Pausat just nu",
+        "cart.selected_place": "Plats: {place}",
+        "cart.change_place": "Byt plats",
+        "cart.place_required": "Välj plats för Äta här och Ta med."
     },
     en: {
         // Header
@@ -267,12 +276,14 @@ export const translations = {
         "landing.findus.hours_all": "Open every day · 11:00–22:00",
         "landing.findus.note": "Hours may vary on public holidays — please call ahead.",
         "landing.findus.address": "Karolingatan 1, 212 34 Malmö",
+        "landing.findus.address_hoja": "Karolingatan 1, 212 34 Malmö",
+        "landing.findus.address_mollevangen": "Bergsgatan 14, 211 34 Malmö",
         "landing.findus.phone_label": "Phone",
         "landing.findus.reviews_link": "Read our Google reviews",
         "landing.findus.order_btn": "Order now",
         "landing.findus.call_btn": "Call us",
         "landing.cta.title": "Brew the coffee. We'll handle dessert.",
-        "landing.cta.subtitle": "Order your box today. Pick up on Karolingatan or have it delivered in Malmö.",
+        "landing.cta.subtitle": "Order your box today. Pick up at Höja or Möllevången, or have it delivered in Malmö.",
         "landing.cta.order": "See the full menu & order",
         "landing.cta.call": "Call 072-868 25 92",
 
@@ -393,8 +404,15 @@ export const translations = {
         "delivery.info_other_ar": "مناطق أخرى: 1-2 أيام عمل",
 
         // Select Location
-        "select_location.title": "Select City",
-        "select_location.continue": "Continue"
+        "select_location.title": "Choose location",
+        "select_location.subtitle": "Where do you want to pick up or eat?",
+        "select_location.loading": "Loading locations...",
+        "select_location.load_error": "Could not load locations. Please try again.",
+        "select_location.continue": "Continue",
+        "select_location.paused": "Paused for now",
+        "cart.selected_place": "Location: {place}",
+        "cart.change_place": "Change location",
+        "cart.place_required": "Choose a location for Eat here and Takeaway."
     },
     ar: {
         // Header
@@ -471,12 +489,14 @@ export const translations = {
         "landing.findus.hours_all": "مفتوح كل يوم · 11:00–22:00",
         "landing.findus.note": "قد تختلف الأوقات في العطلات — يرجى الاتصال مسبقاً.",
         "landing.findus.address": "Karolingatan 1, 212 34 Malmö",
+        "landing.findus.address_hoja": "Karolingatan 1, 212 34 Malmö",
+        "landing.findus.address_mollevangen": "Bergsgatan 14, 211 34 Malmö",
         "landing.findus.phone_label": "هاتف",
         "landing.findus.reviews_link": "اقرأ تقييماتنا على غوغل",
         "landing.findus.order_btn": "اطلب الآن",
         "landing.findus.call_btn": "اتصل بنا",
         "landing.cta.title": "جهّز القهوة. نحن نتولى الحلوى.",
-        "landing.cta.subtitle": "اطلب علبتك اليوم. استلمها من كارولينغاتان أو احصل عليها بالتوصيل في مالمو.",
+        "landing.cta.subtitle": "اطلب علبتك اليوم. استلمها من Höja أو Möllevången، أو احصل عليها بالتوصيل في مالمو.",
         "landing.cta.order": "شاهد القائمة الكاملة واطلب",
         "landing.cta.call": "اتصل 072-868 25 92",
 
@@ -597,7 +617,14 @@ export const translations = {
         "delivery.info_other_ar": "Övriga orter: 1-2 arbetsdagar",
 
         // Select Location
-        "select_location.title": "اختر المدينة",
-        "select_location.continue": "استمر"
+        "select_location.title": "اختر المكان",
+        "select_location.subtitle": "أين تريد الاستلام أو تناول الطعام؟",
+        "select_location.loading": "جاري تحميل الأماكن...",
+        "select_location.load_error": "تعذر تحميل الأماكن. حاول مرة أخرى.",
+        "select_location.continue": "استمر",
+        "select_location.paused": "متوقف حالياً",
+        "cart.selected_place": "المكان: {place}",
+        "cart.change_place": "تغيير المكان",
+        "cart.place_required": "اختر مكانًا لتناول الطعام هنا أو للطلبات الخارجية."
     }
 };

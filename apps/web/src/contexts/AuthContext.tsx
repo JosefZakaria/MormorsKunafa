@@ -1,10 +1,26 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
+import type { AdminRole } from '@shared/types';
 import { adminApi } from '../services/api';
 
 interface AdminInfo {
     id: string;
     email: string;
     name: string;
+    role: AdminRole;
+    locationId?: string | null;
+}
+
+function normalizeAdmin(raw: unknown): AdminInfo | null {
+    if (!raw || typeof raw !== 'object') return null;
+    const value = raw as Partial<AdminInfo>;
+    if (!value.id || !value.email) return null;
+    return {
+        id: String(value.id),
+        email: String(value.email),
+        name: String(value.name ?? value.email),
+        role: value.role === 'location' ? 'location' : 'owner',
+        locationId: value.locationId ?? null,
+    };
 }
 
 interface AuthContextType {
@@ -22,17 +38,23 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     });
 
     const [admin, setAdmin] = useState<AdminInfo | null>(() => {
-        const stored = localStorage.getItem('adminInfo');
-        return stored ? JSON.parse(stored) : null;
+        try {
+            const stored = localStorage.getItem('adminInfo');
+            return stored ? normalizeAdmin(JSON.parse(stored)) : null;
+        } catch {
+            return null;
+        }
     });
 
     const login = async (email: string, password: string): Promise<{ ok: boolean; error?: string }> => {
         try {
             const result = await adminApi.login(email, password);
+            const admin = normalizeAdmin(result.admin);
+            if (!admin) return { ok: false, error: 'Inloggning misslyckades' };
             localStorage.setItem('authToken', result.token);
-            localStorage.setItem('adminInfo', JSON.stringify(result.admin));
+            localStorage.setItem('adminInfo', JSON.stringify(admin));
             setIsAuthenticated(true);
-            setAdmin(result.admin);
+            setAdmin(admin);
             return { ok: true };
         } catch (err: any) {
             const message = err?.data?.error || err?.message || 'Inloggning misslyckades';

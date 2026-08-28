@@ -1,6 +1,7 @@
 import { Resend } from 'resend';
 import type { Row } from '../db/connection.js';
 import { formatStockholmDateTime } from '../utils/stockholmWallTime.js';
+import { getLocationById, pickupPlaceLabel } from '../db/locations.js';
 
 /** Same asset as `apps/web/public/images/logo.png` (must resolve to an absolute public URL in email). */
 const ORDER_EMAIL_LOGO_PUBLIC_PATH = '/images/logo.png';
@@ -110,6 +111,16 @@ export async function sendOrderConfirmationEmail(ctx: OrderConfirmationRowContex
   const isDelivery = String(ctx.order.order_type ?? '') === 'delivery';
   const scheduleTypeLabel = isDelivery ? 'Planerad leveranstid' : 'Planerad upphämtning';
 
+  let pickupHtml = '';
+  if (!isDelivery) {
+    const locationId = ctx.order.location_id != null ? String(ctx.order.location_id) : '';
+    const location = locationId ? await getLocationById(locationId) : null;
+    const pickup = pickupPlaceLabel(location);
+    if (pickup) {
+      pickupHtml = `<p style="margin:4px 0 8px;line-height:1.5"><strong>Plats:</strong> ${escapeHtml(pickup)}</p>`;
+    }
+  }
+
   const rowsHtml = ctx.items.map((item) => {
     const qty = Number(item.quantity) || 0;
     const unitOre = Number(item.price_ore) || 0;
@@ -151,6 +162,7 @@ export async function sendOrderConfirmationEmail(ctx: OrderConfirmationRowContex
       <p style="margin:0 0 10px;line-height:1.55">Tack för att du har beställt hos Mormors Kunafa, vi är glada att kunna laga lite gott åt dig.</p>
       <p style="margin:12px 0;color:#555;font-size:15px;line-height:1.5">Vi har tagit emot din beställning <strong>${escapeHtml(orderNumber)}</strong>.</p>
       <p style="margin:4px 0 8px;line-height:1.5"><strong>Typ:</strong> ${escapeHtml(orderType)}</p>
+      ${pickupHtml}
       ${receiptDateSv ? `<p style="margin:4px 0 8px;line-height:1.5"><strong>Kvittodatum:</strong> ${escapeHtml(receiptDateSv)} (svensk tid)</p>` : ''}
 
       ${scheduledAtSv ? `

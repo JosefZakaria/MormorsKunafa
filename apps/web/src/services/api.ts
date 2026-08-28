@@ -2,11 +2,13 @@ import { API_CONFIG, apiRequest, authenticatedRequest } from '@shared/api';
 import type {
   Product,
   Order,
+  Location,
   CreateOrderRequest,
   UpdateOrderStatusRequest,
   UpdateOrderTimeRequest,
   UpdateOrderNotesRequest,
   AdminSettings,
+  AdminRole,
   PushSubscriptionRecord,
 } from '@shared/types';
 
@@ -100,6 +102,12 @@ export const productApi = {
       method: 'DELETE',
       token,
     });
+  },
+};
+
+export const locationApi = {
+  getAll: async (): Promise<Location[]> => {
+    return apiRequest<Location[]>('/locations');
   },
 };
 
@@ -285,8 +293,14 @@ export const orderApi = {
 
 // Admin API
 export const adminApi = {
-  login: async (email: string, password: string): Promise<{ token: string; admin: { id: string; email: string; name: string } }> => {
-    return apiRequest<{ token: string; admin: { id: string; email: string; name: string } }>('/admin/login', {
+  login: async (email: string, password: string): Promise<{
+    token: string;
+    admin: { id: string; email: string; name: string; role: AdminRole; locationId: string | null };
+  }> => {
+    return apiRequest<{
+      token: string;
+      admin: { id: string; email: string; name: string; role: AdminRole; locationId: string | null };
+    }>('/admin/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
@@ -306,6 +320,20 @@ export const adminApi = {
     return authenticatedRequest<AdminSettings>('/admin/settings', {
       method: 'PATCH',
       body: JSON.stringify(settings),
+      token,
+    });
+  },
+
+  updateLocation: async (
+    id: string,
+    patch: Partial<Pick<Location, 'isPaused' | 'eatHereEnabled' | 'takeawayEnabled'>>
+  ): Promise<Location> => {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    return authenticatedRequest<Location>(`/admin/locations/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
       token,
     });
   },

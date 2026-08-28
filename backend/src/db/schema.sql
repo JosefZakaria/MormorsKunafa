@@ -4,16 +4,38 @@
 SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
 
+-- Locations (Höja / Möllevången). Stable ids match the Supabase migration.
+CREATE TABLE IF NOT EXISTS `locations` (
+  `id` varchar(36) NOT NULL,
+  `slug` varchar(64) NOT NULL,
+  `name` varchar(255) NOT NULL,
+  `address` varchar(512) NOT NULL DEFAULT '',
+  `fulfills_delivery` tinyint(1) NOT NULL DEFAULT 0,
+  `eat_here_enabled` tinyint(1) NOT NULL DEFAULT 1,
+  `takeaway_enabled` tinyint(1) NOT NULL DEFAULT 1,
+  `is_paused` tinyint(1) NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `slug` (`slug`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO `locations` (`id`, `slug`, `name`, `address`, `fulfills_delivery`, `eat_here_enabled`, `takeaway_enabled`, `is_paused`) VALUES
+  ('2f1a9c4e-6b7d-4e8f-a901-b2c3d4e5f601', 'hoja', 'Höja', 'Karolingatan 1, 212 34 Malmö', 1, 1, 1, 0),
+  ('2f1a9c4e-6b7d-4e8f-a901-b2c3d4e5f602', 'mollevangen', 'Möllevången', '', 0, 1, 1, 0);
+
 -- Admin users (separate from WordPress)
 CREATE TABLE IF NOT EXISTS `admin_users` (
   `id` varchar(36) NOT NULL,
   `email` varchar(255) NOT NULL,
   `password_hash` varchar(255) NOT NULL,
   `display_name` varchar(255) NOT NULL DEFAULT '',
+  `role` varchar(20) NOT NULL DEFAULT 'owner',
+  `location_id` varchar(36) DEFAULT NULL,
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `last_login_at` datetime DEFAULT NULL,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `email` (`email`)
+  UNIQUE KEY `email` (`email`),
+  KEY `location_id` (`location_id`),
+  CONSTRAINT `admin_users_location_fk` FOREIGN KEY (`location_id`) REFERENCES `locations` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Admin settings (default prep time, etc.)
@@ -62,6 +84,7 @@ CREATE TABLE IF NOT EXISTS `orders` (
   `customer_email` varchar(255) DEFAULT NULL,
   `customer_phone` varchar(64) NOT NULL,
   `delivery_info_json` json DEFAULT NULL,
+  `location_id` varchar(36) DEFAULT NULL,
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `started_at` datetime DEFAULT NULL,
@@ -75,7 +98,9 @@ CREATE TABLE IF NOT EXISTS `orders` (
   KEY `status` (`status`),
   KEY `created_at` (`created_at`),
   KEY `scheduled_at` (`scheduled_at`),
-  KEY `cancelled_at` (`cancelled_at`)
+  KEY `cancelled_at` (`cancelled_at`),
+  KEY `location_id` (`location_id`),
+  CONSTRAINT `orders_location_fk` FOREIGN KEY (`location_id`) REFERENCES `locations` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Order line items (price at time of order in öre)
