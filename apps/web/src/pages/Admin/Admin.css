@@ -434,12 +434,6 @@ input:checked+.slider:before {
     font-size: 1.15rem;
 }
 
-.location-pause-delivery {
-    margin-top: 1rem;
-    padding-top: 0.75rem;
-    border-top: 1px solid #eee;
-}
-
 /* Rush Hour Tab */
 .rush-card {
     background: var(--color-white);
