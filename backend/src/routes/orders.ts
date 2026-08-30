@@ -11,6 +11,7 @@ import { getStripe } from '../services/stripeClient.js';
 import { broadcastOrderCreated, type OrderCreatedEvent } from '../services/realtimeEvents.js';
 import { sendOrderCreatedPush } from '../services/pushNotifications.js';
 import { resolveOrderLocationId, locationOrderTypeError, inStorePickupSmsSuffix } from '../db/locations.js';
+import { outOfStockProductNames, stockLocationIdForOrder } from '../db/productLocationStock.js';
 import type { OrderType } from '@mormors-kunafa/shared/types';
 import { parseOrderScheduledAt, formatStockholmDateTime } from '../utils/stockholmWallTime.js';
 import { validateScheduledOrderTime } from '../shared/utils/openingHours.js';
@@ -218,6 +219,28 @@ router.post('/', async (req: Request, res: Response) => {
     if (!customerPhone) {
       res.status(400).json({ error: 'Telefonnummer krävs för beställning.' });
       return;
+    }
+
+    const stockLocationId = stockLocationIdForOrder(orderType, locationId);
+    if (stockLocationId) {
+      try {
+        const stockProductIds = [
+          ...new Set(
+            productItems
+              .map((it) => resolveProductIdFromLineId(it.productId))
+              .filter((id): id is string => Boolean(id))
+          ),
+        ];
+        const unavailable = await outOfStockProductNames(stockProductIds, stockLocationId);
+        if (unavailable.length > 0) {
+          res.status(403).json({
+            error: `${unavailable.join(', ')} är slut i lager på den valda platsen.`,
+          });
+          return;
+        }
+      } catch (e) {
+        console.error('[POST /api/orders] stock check', e);
+      }
     }
 
     const orderId = generateId();
