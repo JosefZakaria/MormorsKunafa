@@ -31,7 +31,7 @@ VALUES
     '2f1a9c4e-6b7d-4e8f-a901-b2c3d4e5f602',
     'mollevangen',
     'Möllevången',
-    '',
+    'Bergsgatan 14, 211 34 Malmö',
     false,
     true,
     true,
