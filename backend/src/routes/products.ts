@@ -1,7 +1,17 @@
 import { Router, Request, Response } from 'express';
 import { resolveProductImage } from '../utils/productImage.js';
 import { generateId, supabase, type Row, logSupabaseError, nowIso } from '../db/connection.js';
-import { readAdminFromRequest, requireAdmin, requireOwner } from '../middleware/auth.js';
+import { getRequestAdmin, readAdminFromRequest, requireAdmin, requireOwner } from '../middleware/auth.js';
+import { loadAdminScope } from '../services/locationScope.js';
+import { getLocationById, listLocations } from '../db/locations.js';
+import {
+  inStockAtLocation,
+  loadStockMap,
+  seedProductLocationStock,
+  setProductLocationStock,
+  stockByLocationForProduct,
+  syncProductStockStatus,
+} from '../db/productLocationStock.js';
 import { sanitizeProductName } from '../utils/sanitizeProductName.js';
 import { parsePriceOre, parseVariantPricesInput, variantPricesForProduct } from '../utils/productPrices.js';
 
@@ -17,6 +27,7 @@ export function rowToProduct(r: Row): {
   description: string;
   image: string;
   inStock: boolean;
+  stockByLocation?: Record<string, boolean>;
   hidden: boolean;
   sortOrder: number;
   variantPrices?: Record<string, number>;
@@ -44,6 +55,37 @@ export function rowToProduct(r: Row): {
     updatedAt:
       updatedAt instanceof Date ? updatedAt.toISOString() : String(updatedAt ?? ''),
   };
+}
+
+async function productsWithLocationStock(
+  rows: Row[],
+  locationId?: string | null
+) {
+  const products = rows.map((r) => rowToProduct(r));
+  if (products.length === 0) return products;
+
+  let stockMap;
+  let locationIds: string[] = [];
+  try {
+    const [map, locations] = await Promise.all([loadStockMap(), listLocations()]);
+    stockMap = map;
+    locationIds = locations.map((location) => location.id);
+  } catch {
+    return products;
+  }
+
+  return products.map((product) => {
+    const stockByLocation = stockByLocationForProduct(
+      product.id,
+      locationIds,
+      stockMap,
+      product.inStock
+    );
+    const inStock = locationId
+      ? inStockAtLocation(product.id, locationId, stockMap, product.inStock)
+      : Object.values(stockByLocation).some(Boolean);
+    return { ...product, inStock, stockByLocation };
+  });
 }
 
 function slugify(name: string): string {
@@ -116,7 +158,8 @@ router.get('/', async (req: Request, res: Response) => {
       });
     }
 
-    return res.status(200).json((data ?? []).map((r) => rowToProduct(r as Row)));
+    const locationId = String(req.query.locationId ?? '').trim() || null;
+    return res.status(200).json(await productsWithLocationStock((data ?? []) as Row[], locationId));
   } catch (e) {
     console.error('[GET /api/products] unexpected error:', e);
     return res.status(500).json({ error: 'Failed to fetch products' });
@@ -147,28 +190,48 @@ router.get('/:id', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Product not found' });
     }
 
-    return res.status(200).json(rowToProduct(data as Row));
+    const [product] = await productsWithLocationStock([data as Row]);
+    return res.status(200).json(product);
   } catch (e) {
     console.error('[GET /api/products/:id] unexpected error:', e);
     return res.status(500).json({ error: 'Failed to fetch product' });
   }
 });
 
-router.patch('/:id/stock', requireAdmin, requireOwner, async (req: Request, res: Response) => {
+router.patch('/:id/stock', requireAdmin, async (req: Request, res: Response) => {
   try {
-    const { inStock } = req.body as { inStock?: boolean };
+    const admin = getRequestAdmin(req);
+    if (!admin) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    const scope = await loadAdminScope(admin.adminId);
+    const { inStock, locationId: requestedLocationId } = req.body as {
+      inStock?: boolean;
+      locationId?: string;
+    };
     if (typeof inStock !== 'boolean') {
       return res.status(400).json({ error: 'inStock must be boolean' });
     }
 
+    let locationId = String(requestedLocationId ?? '').trim();
+    if (scope.role === 'location') {
+      if (!scope.locationId) {
+        return res.status(403).json({ error: 'Plats saknas på kontot.' });
+      }
+      locationId = scope.locationId;
+    }
+    if (!locationId) {
+      return res.status(400).json({ error: 'locationId krävs.' });
+    }
+    const location = await getLocationById(locationId);
+    if (!location) {
+      return res.status(400).json({ error: 'Ogiltig plats.' });
+    }
+
     const { data, error } = await supabase
       .from('products')
-      .update({
-        stock_status: inStock ? 'instock' : 'outofstock',
-        updated_at: nowIso(),
-      })
-      .eq('id', req.params.id)
       .select(PRODUCT_COLUMNS)
+      .eq('id', req.params.id)
       .maybeSingle();
 
     if (error) {
@@ -183,7 +246,22 @@ router.patch('/:id/stock', requireAdmin, requireOwner, async (req: Request, res:
       return res.status(404).json({ error: 'Product not found' });
     }
 
-    return res.status(200).json(rowToProduct(data as Row));
+    await setProductLocationStock(String((data as Row).id), locationId, inStock);
+    await syncProductStockStatus(String((data as Row).id));
+
+    const { data: refreshed, error: refreshError } = await supabase
+      .from('products')
+      .select(PRODUCT_COLUMNS)
+      .eq('id', req.params.id)
+      .maybeSingle();
+
+    if (refreshError) {
+      logSupabaseError('PATCH /api/products/:id/stock refresh', refreshError);
+      return res.status(500).json({ error: 'Failed to update stock', details: refreshError.message });
+    }
+
+    const [product] = await productsWithLocationStock([(refreshed ?? data) as Row]);
+    return res.status(200).json(product);
   } catch (e) {
     console.error('[PATCH /api/products/:id/stock] unexpected error:', e);
     return res.status(500).json({ error: 'Failed to update stock' });
@@ -313,7 +391,9 @@ router.post('/', requireAdmin, requireOwner, async (req: Request, res: Response)
     if (!data) {
       return res.status(500).json({ error: 'Failed to create product' });
     }
-    return res.status(201).json(rowToProduct(data as Row));
+    await seedProductLocationStock(String((data as Row).id), inStock);
+    const [product] = await productsWithLocationStock([data as Row]);
+    return res.status(201).json(product);
   } catch (e) {
     console.error('[POST /api/products] unexpected error:', e);
     return res.status(500).json({ error: 'Failed to create product' });

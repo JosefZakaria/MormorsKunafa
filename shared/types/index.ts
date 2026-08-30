@@ -47,6 +47,8 @@ export interface Product {
   description: string;
   image: string;
   inStock: boolean;
+  /** Stock per bakery location id. Missing keys fall back to `inStock`. */
+  stockByLocation?: Record<string, boolean>;
   /** When true, the product stays in admin but is omitted from the customer menu. */
   hidden: boolean;
   /** Display order on the public menu (lower first). */

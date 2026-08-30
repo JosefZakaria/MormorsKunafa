@@ -284,6 +284,12 @@
     max-width: 700px;
 }
 
+.stock-list-hint {
+    margin: 0 0 0.35rem;
+    color: var(--color-gray-600, #666);
+    font-size: 0.95rem;
+}
+
 .admin-stock-card {
     background: var(--color-white);
     padding: var(--spacing-md);
@@ -293,6 +299,47 @@
     gap: var(--spacing-md);
     box-shadow: var(--shadow-sm);
     transition: background 0.15s ease, opacity 0.15s ease;
+}
+
+.stock-location-toggles {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.55rem;
+}
+
+.stock-location-toggle {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+.stock-location-label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--color-gray-700, #444);
+    min-width: 7.5rem;
+    text-align: right;
+}
+
+@media (max-width: 700px) {
+    .admin-stock-card {
+        flex-wrap: wrap;
+    }
+
+    .stock-location-toggles {
+        width: 100%;
+        align-items: stretch;
+    }
+
+    .stock-location-toggle {
+        justify-content: space-between;
+    }
+
+    .stock-location-label {
+        text-align: left;
+        min-width: 0;
+    }
 }
 
 .admin-stock-card.stock-card-out {

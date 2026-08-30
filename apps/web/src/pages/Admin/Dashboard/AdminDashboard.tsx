@@ -679,30 +679,50 @@ function LocationPauseBlock({
     );
 }
 
+function locationInStock(product: Product, locationId: string): boolean {
+    if (product.stockByLocation && locationId in product.stockByLocation) {
+        return product.stockByLocation[locationId];
+    }
+    return product.inStock;
+}
+
 function StockRow({
     product,
+    locations,
     onToggle,
 }: {
     product: Product;
-    onToggle: (product: Product) => void;
+    locations: Location[];
+    onToggle: (product: Product, locationId: string) => void;
 }) {
-    const outOfStock = !product.inStock;
+    const allOut = locations.length > 0 && locations.every((location) => !locationInStock(product, location.id));
 
     return (
-        <div className={`admin-stock-card ${outOfStock ? 'stock-card-out' : ''}`}>
+        <div className={`admin-stock-card ${allOut ? 'stock-card-out' : ''}`}>
             <span className="stock-name">{product.name}</span>
-
-            <label className="switch">
-                <input
-                    type="checkbox"
-                    checked={product.inStock}
-                    onChange={() => onToggle(product)}
-                />
-                <span className="slider round"></span>
-            </label>
-            <span className={`stock-status ${product.inStock ? 'text-success' : 'text-error'}`}>
-                {product.inStock ? 'I lager' : 'Avstängd'}
-            </span>
+            <div className="stock-location-toggles">
+                {locations.map((location) => {
+                    const inStock = locationInStock(product, location.id);
+                    return (
+                        <div key={location.id} className="stock-location-toggle">
+                            {locations.length > 1 && (
+                                <span className="stock-location-label">{location.name}</span>
+                            )}
+                            <label className="switch">
+                                <input
+                                    type="checkbox"
+                                    checked={inStock}
+                                    onChange={() => onToggle(product, location.id)}
+                                />
+                                <span className="slider round"></span>
+                            </label>
+                            <span className={`stock-status ${inStock ? 'text-success' : 'text-error'}`}>
+                                {inStock ? 'I lager' : 'Avstängd'}
+                            </span>
+                        </div>
+                    );
+                })}
+            </div>
         </div>
     );
 }
@@ -1011,7 +1031,7 @@ export const AdminDashboard: React.FC = () => {
 
     useEffect(() => {
         if (isOwner) return;
-        if (activeTab === 'stock' || activeTab === 'menu' || activeTab === 'stats') {
+        if (activeTab === 'menu' || activeTab === 'stats') {
             setActiveTab('pending');
             setStatsData(null);
             setShowStatsModal(false);
@@ -1224,9 +1244,10 @@ export const AdminDashboard: React.FC = () => {
     };
 
     // --- Stock toggle ---
-    const handleToggleStock = async (product: Product) => {
+    const handleToggleStock = async (product: Product, locationId: string) => {
         try {
-            const updated = await productApi.updateStock(product.id, !product.inStock);
+            const next = !locationInStock(product, locationId);
+            const updated = await productApi.updateStock(product.id, next, locationId);
             setProducts(prev => prev.map(p => p.id === product.id ? updated : p));
         } catch {
             setError('Kunde inte uppdatera lagerstatus.');
@@ -1328,6 +1349,7 @@ export const AdminDashboard: React.FC = () => {
         : myLocation
             ? [myLocation]
             : [];
+    const stockLocations = pauseLocations;
     const visiblePending = isOwner ? pendingOrders.filter((order) => orderMatchesPlaceFilter(order, placeFilter)) : pendingOrders;
     const visiblePreOrders = isOwner ? preOrders.filter((order) => orderMatchesPlaceFilter(order, placeFilter)) : preOrders;
     const visibleActive = isOwner ? activeOrders.filter((order) => orderMatchesPlaceFilter(order, placeFilter)) : activeOrders;
@@ -1439,15 +1461,13 @@ export const AdminDashboard: React.FC = () => {
                     <button className={`admin-tab ${activeTab === 'history' ? 'active' : ''}`} onClick={() => { setActiveTab('history'); setStatsData(null); }}>
                         Orderhistorik
                     </button>
-                    {isOwner && (
-                        <>
                     <button className={`admin-tab ${activeTab === 'stock' ? 'active' : ''}`} onClick={() => { setActiveTab('stock'); setStatsData(null); }}>
                         Lager
                     </button>
+                    {isOwner && (
                     <button className={`admin-tab ${activeTab === 'menu' ? 'active' : ''}`} onClick={() => { setActiveTab('menu'); setStatsData(null); }}>
                         Meny
                     </button>
-                        </>
                     )}
                     <button className={`admin-tab ${activeTab === 'rush' ? 'active' : ''}`} onClick={() => { setActiveTab('rush'); setStatsData(null); }}>
                         Inställningar
@@ -1771,12 +1791,18 @@ export const AdminDashboard: React.FC = () => {
                     {/* ── LAGER ── */}
                     {activeTab === 'stock' && (
                         <div className="stock-list">
+                            <p className="stock-list-hint">
+                                {isOwner
+                                    ? 'Stäng av en vara per plats. Hemleverans följer Höjas lager.'
+                                    : `Avstängd vara syns inte på menyn för ${myLocation?.name ?? 'den här platsen'}${myLocation?.fulfillsDelivery ? '. Hemleverans följer också det här lagret.' : '.'}`}
+                            </p>
                             {loadingProducts ? (
                                 <p>Laddar produkter...</p>
                             ) : products.map(product => (
                                 <StockRow
                                     key={product.id}
                                     product={product}
+                                    locations={stockLocations}
                                     onToggle={handleToggleStock}
                                 />
                             ))}
