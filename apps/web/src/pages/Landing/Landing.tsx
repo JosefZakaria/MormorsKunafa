@@ -80,7 +80,7 @@ const FALLBACK_PLACES: Location[] = [
         id: MOLLEVANGEN_LOCATION_ID,
         slug: 'mollevangen',
         name: 'Möllevången',
-        address: 'Bergsgatan 14, 211 34 Malmö',
+        address: 'Bergsgatan 35, 214 22 Malmö',
         fulfillsDelivery: false,
         eatHereEnabled: true,
         takeawayEnabled: true,
