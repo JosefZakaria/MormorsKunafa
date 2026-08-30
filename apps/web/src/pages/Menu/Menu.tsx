@@ -27,7 +27,7 @@ import {
     normalizeLineBreaks,
     prepareDescriptionHtml,
 } from '../../utils/productDescriptionHtml';
-import { getStoredLocationId, needsPickupLocation } from '../../utils/selectedLocation';
+import { getStoredLocationId, needsPickupLocation, stockLocationIdForCustomer } from '../../utils/selectedLocation';
 
 const SHORT_DESC_LENGTH = 100;
 
@@ -147,6 +147,8 @@ export const Menu: React.FC = () => {
         }
     }, [navigate]);
 
+    const stockLocationId = stockLocationIdForCustomer();
+
     // Fetch products once on mount so a refetch (e.g. from t changing) can't overwrite real data
     useEffect(() => {
         let cancelled = false;
@@ -155,7 +157,7 @@ export const Menu: React.FC = () => {
                 setLoading(true);
                 setError(null);
                 setUsingMockData(false);
-                const data = await productApi.getAll();
+                const data = await productApi.getAll(stockLocationId || undefined);
                 if (!cancelled) {
                     setProducts(
                         data
@@ -196,7 +198,7 @@ export const Menu: React.FC = () => {
 
         fetchProducts();
         return () => { cancelled = true; };
-    }, []);
+    }, [stockLocationId]);
 
     const handleAddToCart = (product: Product, option: string) => {
         if (!product.inStock) {

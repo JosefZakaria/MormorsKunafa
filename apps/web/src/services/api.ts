@@ -19,8 +19,9 @@ const getToken = (): string | null => {
 
 // Products API
 export const productApi = {
-  getAll: async (): Promise<Product[]> => {
-    return apiRequest<Product[]>('/products');
+  getAll: async (locationId?: string): Promise<Product[]> => {
+    const query = locationId ? `?locationId=${encodeURIComponent(locationId)}` : '';
+    return apiRequest<Product[]>(`/products${query}`);
   },
 
   getAllAdmin: async (): Promise<Product[]> => {
@@ -34,13 +35,13 @@ export const productApi = {
     return apiRequest<Product>(`/products/${id}`);
   },
 
-  updateStock: async (id: string, inStock: boolean): Promise<Product> => {
+  updateStock: async (id: string, inStock: boolean, locationId: string): Promise<Product> => {
     const token = getToken();
     if (!token) throw new Error('Not authenticated');
     
     return authenticatedRequest<Product>(`/products/${id}/stock`, {
       method: 'PATCH',
-      body: JSON.stringify({ inStock }),
+      body: JSON.stringify({ inStock, locationId }),
       token,
     });
   },
