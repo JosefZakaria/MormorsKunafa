@@ -70,10 +70,10 @@ const STEP_LABELS: Record<string, string> = {
     klar: 'Klar',
 };
 
-function BackToMenuButton({ onClick }: { onClick: () => void }) {
+function BackToHomeButton({ onClick }: { onClick: () => void }) {
     return (
         <button type="button" className="status-back-btn" onClick={onClick}>
-            Tillbaka till menyn
+            Tillbaka till startsidan
         </button>
     );
 }
@@ -180,12 +180,20 @@ function SimpleConfirmationView({
             <p className="status-email-note">
                 Spara ditt ordernummer {order.orderNumber} om du behöver kontakta oss.
             </p>
-            {!isAwaitingPayment && <BackToMenuButton onClick={onBack} />}
+            {!isAwaitingPayment && <BackToHomeButton onClick={onBack} />}
         </>
     );
 }
 
-function LivePickupView({ order, countdown }: { order: Order; countdown: string }) {
+function LivePickupView({
+    order,
+    countdown,
+    onBack,
+}: {
+    order: Order;
+    countdown: string;
+    onBack: () => void;
+}) {
     const isAwaitingPayment = isAwaitingOnlinePayment(order);
     const isPending = order.status === 'ny' || order.status === 'mottagen';
     const isCompleted =
@@ -248,6 +256,7 @@ function LivePickupView({ order, countdown }: { order: Order; countdown: string 
                                 ? 'Det tar lite längre än väntat — vi jobbar på din order.'
                                 : 'Vi förbereder din färska Kunafa!'}
             </p>
+            {!isAwaitingPayment && <BackToHomeButton onClick={onBack} />}
         </>
     );
 }
@@ -363,9 +372,7 @@ export const OrderStatus: React.FC = () => {
                 <Container className="status-container">
                     <div className="status-card status--on-time">
                         <p style={{ textAlign: 'center', color: '#c00' }}>{error ?? 'Beställning hittades inte.'}</p>
-                        <button type="button" onClick={() => navigate('/')} className="status-back-btn">
-                            ← Tillbaka till startsidan
-                        </button>
+                        <BackToHomeButton onClick={() => navigate('/')} />
                     </div>
                 </Container>
             </div>
@@ -399,10 +406,14 @@ export const OrderStatus: React.FC = () => {
                                     Avbruten: {new Date(order.cancelledAt).toLocaleString('sv-SE')}
                                 </p>
                             )}
-                            <BackToMenuButton onClick={() => navigate('/')} />
+                            <BackToHomeButton onClick={() => navigate('/')} />
                         </>
                     ) : liveTracking ? (
-                        <LivePickupView order={order} countdown={countdown} />
+                        <LivePickupView
+                            order={order}
+                            countdown={countdown}
+                            onBack={() => navigate('/')}
+                        />
                     ) : (
                         <SimpleConfirmationView
                             order={order}
