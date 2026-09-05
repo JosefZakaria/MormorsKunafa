@@ -22,6 +22,23 @@ export function isKitchenTicketPrintDue(
 
 const STOCKHOLM_TZ = 'Europe/Stockholm';
 
+function formatClock(hours: number, minutes: number): string {
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
+function stockholmHoursMinutes(at: Date): { hours: number; minutes: number } {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: STOCKHOLM_TZ,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(at);
+  return {
+    hours: Number(parts.find((part) => part.type === 'hour')?.value),
+    minutes: Number(parts.find((part) => part.type === 'minute')?.value),
+  };
+}
+
 /** YYYY-MM-DD for a Date in Europe/Stockholm. */
 export function dateToStockholmInputValue(at: Date = new Date()): string {
   return at.toLocaleDateString('sv-SE', { timeZone: STOCKHOLM_TZ });
@@ -31,20 +48,30 @@ export function todayInStockholmDateString(at: Date = new Date()): string {
   return dateToStockholmInputValue(at);
 }
 
+/** Snap "HH:mm" up to the next 5-minute slot (picker increment). */
+export function roundClockToNext5Min(clock: string): string {
+  const normalized = String(clock).replace('.', ':').slice(0, 5);
+  const [hStr, mStr] = normalized.split(':');
+  const hours = parseInt(hStr, 10);
+  const minutes = parseInt(mStr, 10);
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) return formatClock(0, 0);
+
+  const roundedMinutes = Math.ceil(minutes / 5) * 5;
+  if (roundedMinutes >= 60) {
+    return formatClock((hours + 1) % 24, 0);
+  }
+  return formatClock(hours, roundedMinutes);
+}
+
 /**
- * Earliest selectable clock today: now + leadMinutes in Stockholm, rounded up to the next minute.
- * Returns "HH:mm".
+ * Earliest selectable clock today: now + leadMinutes in Stockholm,
+ * rounded up to the next 5-minute slot. Returns "HH:mm".
  */
 export function defaultScheduledClock(
   leadMinutes = DEFAULT_ORDER_LEAD_MINUTES,
   at: Date = new Date()
 ): string {
-  const targetMs = at.getTime() + leadMinutes * 60 * 1000;
-  const roundedMs = Math.ceil(targetMs / 60_000) * 60_000;
-  return new Date(roundedMs).toLocaleTimeString('sv-SE', {
-    timeZone: STOCKHOLM_TZ,
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  });
+  const target = new Date(at.getTime() + leadMinutes * 60 * 1000);
+  const { hours, minutes } = stockholmHoursMinutes(target);
+  return roundClockToNext5Min(formatClock(hours, minutes));
 }
