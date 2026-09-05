@@ -180,6 +180,22 @@
     margin-bottom: var(--spacing-xs);
 }
 
+.order-items {
+    margin: 0.5rem 0;
+    padding-left: 1.2rem;
+}
+
+.order-total {
+    font-weight: 700;
+    margin: 0.35rem 0;
+}
+
+.order-meta {
+    font-size: 0.8rem;
+    color: #888;
+    margin: 0.25rem 0 0;
+}
+
 .delivery-info-panel {
     margin-top: var(--spacing-sm);
     padding: var(--spacing-sm) var(--spacing-md);
@@ -228,16 +244,6 @@
     font-weight: 500;
 }
 
-.status-pending {
-    background-color: #FEF3C7;
-    color: #D97706;
-}
-
-.status-completed {
-    background-color: #D1FAE5;
-    color: #059669;
-}
-
 .admin-header-left {
     display: flex;
     align-items: center;
@@ -248,8 +254,6 @@
     display: flex;
     gap: var(--spacing-sm);
 }
-
-
 
 .status-active {
     background-color: #D1FAE5;
@@ -580,51 +584,6 @@ input:checked+.slider:before {
     border-color: var(--color-primary-red);
 }
 
-.stats-date-picker-trigger {
-    position: relative;
-    margin-left: auto;
-}
-
-.stats-date-popover {
-    position: absolute;
-    top: 100%;
-    right: 0;
-    margin-top: 8px;
-    background: var(--color-white);
-    padding: var(--spacing-md);
-    border-radius: var(--radius-md);
-    box-shadow: var(--shadow-lg);
-    border: 1px solid var(--color-gray-200);
-    z-index: 100;
-    min-width: 250px;
-}
-
-.date-inputs {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-sm);
-    margin-bottom: var(--spacing-md);
-}
-
-.date-inputs div {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.date-inputs label {
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: var(--color-gray-500);
-}
-
-.date-inputs input {
-    padding: 0.5rem;
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--color-gray-300);
-    font-family: inherit;
-}
-
 .stats-big-cards {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -872,6 +831,38 @@ select.stats-modal-input {
     border-left-color: #DC2626;
 }
 
+/* Compact 2-column order grids (Inkommande + Förbeställningar) */
+.orders-list--grid,
+.preorder-group {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.75rem;
+    align-items: start;
+}
+
+.preorder-group {
+    margin-bottom: var(--spacing-xl);
+}
+
+.orders-list--grid > p,
+.preorder-group-heading {
+    grid-column: 1 / -1;
+}
+
+@media (max-width: 1100px) {
+    .orders-list--grid,
+    .preorder-group {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 700px) {
+    .orders-list--grid,
+    .preorder-group {
+        grid-template-columns: 1fr;
+    }
+}
+
 /* Pending order cards */
 .pending-order-card {
     border-left: 4px solid #DC2626;
@@ -883,12 +874,77 @@ select.stats-modal-input {
     50% { border-left-color: #FCA5A5; }
 }
 
+.pending-order-card,
+.preorder-card {
+    flex-direction: column;
+    padding: 0.75rem 0.9rem;
+    margin-bottom: 0;
+    min-width: 0;
+    align-items: stretch;
+}
+
+.pending-order-card .order-details h3,
+.preorder-card .order-details h3 {
+    font-size: 1rem;
+    margin-bottom: 0.2rem;
+}
+
+.pending-order-card .order-items,
+.preorder-card .order-items {
+    margin: 0.3rem 0;
+    padding-left: 1rem;
+    font-size: 0.85rem;
+}
+
+.pending-order-card .order-total,
+.preorder-card .order-total {
+    margin: 0.2rem 0;
+    font-size: 0.95rem;
+}
+
+.pending-order-card .order-meta,
+.preorder-card .order-meta {
+    font-size: 0.75rem;
+}
+
+.pending-order-card .delivery-info-panel,
+.preorder-card .delivery-info-panel {
+    padding: 0.4rem 0.55rem;
+    font-size: 0.8rem;
+    margin-top: 0.4rem;
+}
+
+.pending-order-card .order-customer-line,
+.preorder-card .order-customer-line {
+    font-size: 0.8rem;
+}
+
+.pending-order-card .scheduled-order-info,
+.preorder-card .scheduled-order-info {
+    margin: 0.25rem 0 0.15rem;
+}
+
+.pending-order-card .scheduled-order-info--preorder,
+.preorder-card .scheduled-order-info--preorder {
+    padding: 0.3rem 0.5rem;
+}
+
+.pending-order-card .order-actions,
+.preorder-card .order-actions {
+    flex-wrap: wrap;
+    margin-top: 0.5rem;
+}
+
 .pending-actions {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
+    flex-wrap: wrap;
     align-items: center;
+    justify-content: space-between;
     gap: 0.5rem;
-    min-width: 120px;
+    width: 100%;
+    min-width: 0;
+    margin-top: 0.5rem;
 }
 
 .pending-time-display {
@@ -899,7 +955,7 @@ select.stats-modal-input {
 
 .pending-time-value {
     font-family: var(--font-family-display);
-    font-size: 2rem;
+    font-size: 1.35rem;
     font-weight: 700;
     color: var(--color-primary-red);
     line-height: 1;
@@ -916,16 +972,12 @@ select.stats-modal-input {
 }
 
 /* Pre-order cards */
-.preorder-group {
-    margin-bottom: var(--spacing-xl);
-}
-
 .preorder-group-heading {
     font-family: var(--font-family-display);
     font-size: 1.25rem;
     font-weight: 700;
     color: var(--color-gray-900, #111);
-    margin: 0 0 var(--spacing-md) 0;
+    margin: 0;
     padding-bottom: 0.5rem;
     border-bottom: 2px solid var(--color-gray-200, #e5e7eb);
 }
@@ -947,18 +999,18 @@ select.stats-modal-input {
     background: #EFF6FF;
     border: 1px solid #DBEAFE;
     border-radius: var(--radius-md);
-    padding: 0.5rem 0.75rem;
-    margin: 0.35rem 0 0.5rem 0;
+    padding: 0.35rem 0.55rem;
+    margin: 0.25rem 0 0.35rem 0;
 }
 
 .preorder-date-relative {
     font-weight: 700;
-    font-size: 0.95rem;
+    font-size: 0.85rem;
     color: #1D4ED8;
 }
 
 .preorder-date-absolute {
-    font-size: 0.85rem;
+    font-size: 0.75rem;
     color: var(--color-gray-500, #6b7280);
 }
 
@@ -966,9 +1018,9 @@ select.stats-modal-input {
     background: #FEF3C7;
     border: 1px solid #FDE68A;
     border-radius: var(--radius-md);
-    padding: 0.5rem 0.75rem;
-    margin-top: 0.5rem;
-    font-size: 0.9rem;
+    padding: 0.4rem 0.55rem;
+    margin-top: 0.4rem;
+    font-size: 0.8rem;
     color: #78350F;
 }
 

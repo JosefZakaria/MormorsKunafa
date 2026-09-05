@@ -351,7 +351,7 @@ function PreOrderCard({ order, locations, onEditNotes, onCancel }: {
                         {clockLabel ? ` · ${clockLabel}` : ''}
                     </span>
                 </div>
-                <ul style={{ margin: '0.5rem 0', paddingLeft: '1.2rem' }}>
+                <ul className="order-items">
                     {order.items.map((item, i) => (
                         <li key={i}>{item.quantity}x {item.productName} – {(item.price * item.quantity / 100).toFixed(0)} kr</li>
                     ))}
@@ -363,11 +363,11 @@ function PreOrderCard({ order, locations, onEditNotes, onCancel }: {
                         <span className="preorder-notes-label">Notis:</span> {order.internalNotes}
                     </div>
                 )}
-                <p style={{ fontSize: '0.8rem', color: '#888', marginTop: '0.25rem' }}>
+                <p className="order-meta">
                     Beställd {new Date(order.createdAt).toLocaleString('sv-SE', { timeZone: 'Europe/Stockholm' })}
                 </p>
             </div>
-            <div className="order-actions" style={{ flexDirection: 'column', gap: '0.5rem' }}>
+            <div className="order-actions">
                 <Button size="sm" variant="ghost" onClick={() => onEditNotes(order)}>
                     {order.internalNotes ? 'Ändra notis' : 'Lägg till notis'}
                 </Button>
@@ -400,14 +400,14 @@ function PendingOrderCard({ order, locations, defaultPrepTime, onAccept }: {
                 </h3>
                 <span className="status-badge status-ny">Ny</span>
                 <ScheduledOrderInfo order={order} />
-                <ul style={{ margin: '0.5rem 0', paddingLeft: '1.2rem' }}>
+                <ul className="order-items">
                     {order.items.map((item, i) => (
                         <li key={i}>{item.quantity}x {item.productName} – {(item.price * item.quantity / 100).toFixed(0)} kr</li>
                     ))}
                 </ul>
                 <p className="order-total">{(order.totalPrice / 100).toFixed(0)} kr</p>
                 <OrderContactPanel order={order} />
-                <p style={{ fontSize: '0.8rem', color: '#888', marginTop: '0.25rem' }}>
+                <p className="order-meta">
                     Beställd {formatCreatedAt(order.createdAt, isAdvancePreOrder(order))}
                 </p>
             </div>
@@ -1616,7 +1616,7 @@ export const AdminDashboard: React.FC = () => {
                 <div className="admin-content animate-in">
                     {/* ── INKOMMANDE ORDRAR ── */}
                     {activeTab === 'pending' && (
-                        <div className="orders-list">
+                        <div className="orders-list orders-list--grid">
                             {loadingOrders ? (
                                 <p>Laddar ordrar...</p>
                             ) : visiblePending.length === 0 ? (
