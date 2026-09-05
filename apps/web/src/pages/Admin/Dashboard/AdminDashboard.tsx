@@ -272,6 +272,54 @@ function daysUntil(iso: string | undefined): number | null {
     return Math.round((targetUtc - todayUtc) / (1000 * 60 * 60 * 24));
 }
 
+function stockholmDateKey(iso: string | undefined): string {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleDateString('sv-SE', { timeZone: 'Europe/Stockholm' });
+}
+
+function isAdvancePreOrder(order: Order): boolean {
+    if (!order.scheduledTime) return false;
+    const scheduled = stockholmDateKey(order.scheduledTime);
+    const created = stockholmDateKey(order.createdAt);
+    return Boolean(scheduled && created && scheduled !== created);
+}
+
+function formatScheduledLabel(iso: string | undefined): string {
+    const dateLabel = formatScheduledDate(iso);
+    const clockLabel = formatScheduledClock(iso);
+    if (!dateLabel && !clockLabel) return '';
+    return `${dateLabel}${clockLabel ? ` · ${clockLabel}` : ''}`;
+}
+
+function formatCreatedAt(iso: string, fullDate: boolean): string {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    if (fullDate) {
+        return d.toLocaleString('sv-SE', { timeZone: 'Europe/Stockholm' });
+    }
+    return d.toLocaleTimeString('sv-SE', {
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZone: 'Europe/Stockholm',
+    });
+}
+
+/** Desired pickup time for takeaway / eat-here. Delivery already shows this in OrderContactPanel. */
+function ScheduledOrderInfo({ order }: { order: Order }) {
+    if (order.orderType === 'delivery') return null;
+    const label = formatScheduledLabel(order.scheduledTime);
+    if (!label) return null;
+    const preorder = isAdvancePreOrder(order);
+    return (
+        <div className={`scheduled-order-info${preorder ? ' scheduled-order-info--preorder' : ''}`}>
+            {preorder && <span className="scheduled-order-info__badge">Förbeställning</span>}
+            <p className="scheduled-order-info__time">Önskad tid: {label}</p>
+        </div>
+    );
+}
+
 function PreOrderCard({ order, locations, onEditNotes, onCancel }: {
     order: Order;
     locations: Location[];
@@ -351,6 +399,7 @@ function PendingOrderCard({ order, locations, defaultPrepTime, onAccept }: {
                     <PlaceBadge order={order} locations={locations} />
                 </h3>
                 <span className="status-badge status-ny">Ny</span>
+                <ScheduledOrderInfo order={order} />
                 <ul style={{ margin: '0.5rem 0', paddingLeft: '1.2rem' }}>
                     {order.items.map((item, i) => (
                         <li key={i}>{item.quantity}x {item.productName} – {(item.price * item.quantity / 100).toFixed(0)} kr</li>
@@ -359,7 +408,7 @@ function PendingOrderCard({ order, locations, defaultPrepTime, onAccept }: {
                 <p className="order-total">{(order.totalPrice / 100).toFixed(0)} kr</p>
                 <OrderContactPanel order={order} />
                 <p style={{ fontSize: '0.8rem', color: '#888', marginTop: '0.25rem' }}>
-                    Beställd {new Date(order.createdAt).toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' })}
+                    Beställd {formatCreatedAt(order.createdAt, isAdvancePreOrder(order))}
                 </p>
             </div>
             <div className="pending-actions">
@@ -1662,6 +1711,7 @@ export const AdminDashboard: React.FC = () => {
                                                     Nedräkning: tillagning i köket
                                                 </p>
                                             )}
+                                            <ScheduledOrderInfo order={order} />
                                             <OrderContactPanel order={order} />
                                             <ul style={{ margin: '0.5rem 0', paddingLeft: '1.2rem' }}>
                                                 {order.items.map((item, i) => (
@@ -1743,6 +1793,7 @@ export const AdminDashboard: React.FC = () => {
                                             <span className={`status-badge ${order.status === 'avbruten' ? 'status-avbruten' : 'status-klar'}`}>
                                                 {order.status === 'avbruten' ? 'Avbruten' : 'Klar'}
                                             </span>
+                                            <ScheduledOrderInfo order={order} />
                                             <ul style={{ margin: '0.5rem 0', paddingLeft: '1.2rem' }}>
                                                 {order.items.map((item, i) => (
                                                     <li key={i}>{item.quantity}x {item.productName}</li>
@@ -1750,7 +1801,9 @@ export const AdminDashboard: React.FC = () => {
                                             </ul>
                                             <p className="order-total">{(order.totalPrice / 100).toFixed(0)} kr</p>
                                             <OrderContactPanel order={order} />
-                                            <p style={{ fontSize: '0.8rem', color: '#888', margin: 0 }}>{new Date(order.createdAt).toLocaleString('sv-SE')}</p>
+                                            <p style={{ fontSize: '0.8rem', color: '#888', margin: 0 }}>
+                                                Beställd {formatCreatedAt(order.createdAt, true)}
+                                            </p>
                                             {order.status === 'avbruten' && (
                                                 <>
                                                     {order.cancelledAt && (
