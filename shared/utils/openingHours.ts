@@ -8,6 +8,7 @@ import {
   DEFAULT_ORDER_LEAD_MINUTES,
   dateToStockholmInputValue,
   defaultScheduledClock,
+  roundClockToNext5Min,
   todayInStockholmDateString,
 } from './scheduledTime.js';
 
@@ -122,6 +123,7 @@ export function getOrderableClockRange(
   if (dateStr === todayStr) {
     min = maxClock(min, defaultScheduledClock(leadMinutes, at));
   }
+  min = roundClockToNext5Min(min);
 
   if (clockToMinutes(min) > clockToMinutes(max)) return null;
   return { min, max };

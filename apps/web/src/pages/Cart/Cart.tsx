@@ -11,6 +11,7 @@ import type { CheckoutPaymentChoice, CustomerInfo, Location, OrderType } from '@
 import { DELIVERY_FEE_SEK } from '@shared/constants/delivery';
 import {
     dateToStockholmInputValue,
+    roundClockToNext5Min,
     todayInStockholmDateString,
 } from '@shared/utils/scheduledTime';
 import {
@@ -70,20 +71,6 @@ function isOrderTypeEnabled(
     return anyLocationAcceptsOrderType(locations, type);
 }
 
-function roundClockToNext5Min(clock: string): string {
-    const [hStr, mStr] = clock.split(':');
-    const h = parseInt(hStr, 10);
-    const m = parseInt(mStr, 10);
-    if (isNaN(h) || isNaN(m)) return clock;
-
-    const roundedM = Math.ceil(m / 5) * 5;
-    if (roundedM >= 60) {
-        const nextH = (h + 1) % 24;
-        return `${String(nextH).padStart(2, '0')}:00`;
-    }
-    return `${String(h).padStart(2, '0')}:${String(roundedM).padStart(2, '0')}`;
-}
-
 export const Cart: React.FC = () => {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
@@ -138,6 +125,7 @@ export const Cart: React.FC = () => {
 
     const [prepTime, setPrepTime] = useState<number>(30);
     const [isClosedNow, setIsClosedNow] = useState(() => isStoreClosedNow());
+    const [nowMs, setNowMs] = useState(() => Date.now());
     const [showClosedWarningPopup, setShowClosedWarningPopup] = useState(false);
     const [, setHasConfirmedClosedWarning] = useState(false);
 
@@ -204,18 +192,32 @@ export const Cart: React.FC = () => {
             });
     }, [searchParams]);
 
-    // Keep store closed status updated
+    // Keep store closed status and earliest slot in sync with the clock
     useEffect(() => {
         const timer = setInterval(() => {
             setIsClosedNow(isStoreClosedNow());
+            setNowMs(Date.now());
         }, 15000);
         return () => clearInterval(timer);
     }, []);
 
     const clockRange = useMemo(
         () => getOrderableClockRange(scheduledDate, prepTime),
-        [scheduledDate, prepTime]
+        [scheduledDate, prepTime, nowMs]
     );
+
+    useEffect(() => {
+        if (!clockRange) {
+            const slot = findNextOrderableSlot(prepTime);
+            setScheduledDate(slot.dateStr);
+            setScheduledClock(roundClockToNext5Min(slot.clock));
+            return;
+        }
+        setScheduledClock((prev) => {
+            const next = roundClockToNext5Min(clampScheduledClock(scheduledDate, prev, prepTime));
+            return next === prev ? prev : next;
+        });
+    }, [clockRange, scheduledDate, prepTime]);
 
     const hoursToDisplay = useMemo(() => {
         if (!clockRange) return [];
@@ -487,7 +489,7 @@ export const Cart: React.FC = () => {
                     ? `${scheduledDate}T${clock}:00`
                     : undefined;
 
-                const hoursCheck = validateScheduledOrderTime(scheduledTime);
+                const hoursCheck = validateScheduledOrderTime(scheduledTime, prepTime);
                 if (!hoursCheck.valid) {
                     setError(hoursCheck.error);
                     setIsSubmitting(false);
