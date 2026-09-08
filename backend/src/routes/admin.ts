@@ -7,6 +7,8 @@ import {
   requireAdmin,
   requireOwner,
   getRequestAdmin,
+  getAdminToken,
+  verifyAdminToken,
   revokeAdminSessions,
   signToken,
 } from '../middleware/auth.js';
@@ -215,18 +217,33 @@ const eventsLimiter = createRateLimiter({
   prefix: 'admin-events',
 });
 
-router.post('/logout', requireAdmin, async (req: Request, res: Response) => {
-  res.setHeader('Set-Cookie', clearAdminSessionCookies());
+router.post('/logout', async (req: Request, res: Response) => {
+  let logoutAdminId: string | undefined;
+  const auditRoute = { action:'admin_logout', httpMethod:'POST', routeTemplate:'/api/admin/logout' };
   try {
-    const admin = (req as Request & { admin: import('../middleware/auth.js').JwtPayload }).admin;
-    const revoked = await revokeAdminSessions(admin);
-    if (!revoked) {
-      res.status(409).json({ error: 'Session was already revoked' });
-      return;
+    // Revocation grants no administrative access. Accept a valid signed token
+    // even for a disabled account, and allow a retry after a lost success reply.
+    // Cookie requests still pass the global double-submit CSRF middleware.
+    const token = getAdminToken(req);
+    const admin = token ? verifyAdminToken(token) : null;
+    if (admin) {
+      logoutAdminId = admin.adminId;
+      await recordSecurityAuditEvent({...auditRoute,actorAdminId:admin.adminId,outcome:'attempted'});
+      await revokeAdminSessions(admin);
+      await recordSecurityAuditEvent({...auditRoute,actorAdminId:admin.adminId,outcome:'succeeded'});
     }
+    // Keep credentials available for retry on a database/revocation failure.
+    res.setHeader('Set-Cookie', clearAdminSessionCookies());
     res.status(204).send();
   } catch (error) {
     logUnexpectedError('POST /admin/logout session revocation failed', error);
+    if (logoutAdminId) {
+      try {
+        await recordSecurityAuditEvent({...auditRoute,actorAdminId:logoutAdminId,outcome:'failed'});
+      } catch (auditError) {
+        logUnexpectedError('POST /admin/logout failure audit unavailable',auditError);
+      }
+    }
     res.status(503).json({ error: 'Could not revoke session' });
   }
 });

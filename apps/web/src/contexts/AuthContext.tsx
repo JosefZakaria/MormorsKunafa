@@ -29,7 +29,7 @@ interface AuthContextType {
     isLoading: boolean;
     admin: AdminInfo | null;
     login: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
-    logout: () => void;
+    logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -78,8 +78,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
     };
 
-    const logout = () => {
-        void adminApi.logout().catch(() => undefined);
+    const logout = async () => {
+        await adminApi.logout();
         setIsAuthenticated(false);
         setAdmin(null);
     };

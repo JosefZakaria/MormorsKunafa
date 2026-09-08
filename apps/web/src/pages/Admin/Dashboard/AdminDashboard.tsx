@@ -853,6 +853,8 @@ export const AdminDashboard: React.FC = () => {
     const [loadingHistory, setLoadingHistory] = useState(false);
     const [loadingProducts, setLoadingProducts] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [logoutError, setLogoutError] = useState<string | null>(null);
+    const [isLoggingOut, setIsLoggingOut] = useState(false);
     const [historyDateFrom, setHistoryDateFrom] = useState('');
     const [historyDateTo, setHistoryDateTo] = useState('');
     const [cancelModalOpen, setCancelModalOpen] = useState(false);
@@ -1422,9 +1424,18 @@ export const AdminDashboard: React.FC = () => {
         }
     };
 
-    const handleLogout = () => {
-        logout();
-        navigate('/admin/login');
+    const handleLogout = async () => {
+        if (isLoggingOut) return;
+        setIsLoggingOut(true);
+        setLogoutError(null);
+        try {
+            await logout();
+            navigate('/admin/login');
+        } catch {
+            setLogoutError('Utloggningen kunde inte bekräftas. Försök igen innan du lämnar enheten.');
+        } finally {
+            setIsLoggingOut(false);
+        }
     };
 
     const handleStatsTabClick = () => {
@@ -1557,10 +1568,13 @@ export const AdminDashboard: React.FC = () => {
                         </div>
                     </div>
                     <div className="admin-header-actions">
-                        <Button variant="ghost" onClick={handleLogout}>Logga ut</Button>
+                        <Button variant="ghost" onClick={handleLogout} disabled={isLoggingOut}>
+                            {isLoggingOut ? 'Loggar ut…' : 'Logga ut'}
+                        </Button>
                     </div>
                 </header>
 
+                {logoutError && <p role="alert" className="admin-error-message">{logoutError}</p>}
                 {error && (
                     <div role="alert" style={{ padding: '0.75rem 1rem', background: '#fee', color: '#c00', borderRadius: '8px', marginBottom: '1rem' }}>
                         {error}{' '}

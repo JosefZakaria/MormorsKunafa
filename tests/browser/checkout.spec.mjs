@@ -76,6 +76,42 @@ test('admin cookie login, current dashboard and logout', async ({page,context})=
   const cookies=await context.cookies();
   expect(cookies.find(c=>c.name==='mk_admin_session').httpOnly).toBeTruthy();
   expect(await page.evaluate(()=>Object.keys(localStorage).some(k=>/token|admin_info/.test(k)))).toBeFalsy();
+  const oldCookie=cookies.filter(c=>['mk_admin_session','mk_csrf'].includes(c.name)).map(c=>`${c.name}=${c.value}`).join('; ');
+  await page.route('**/api/admin/logout',route=>route.abort('failed'));
+  await page.getByRole('button',{name:/Logga ut/i}).click();
+  await expect(page.getByRole('alert')).toContainText('Utloggningen kunde inte bekräftas');
+  await expect(page).toHaveURL(/dashboard/);
+  await expect(page.getByRole('button',{name:/Logga ut/i})).toBeEnabled();
+  expect((await context.request.get('/api/admin/session')).status()).toBe(200);
+  await page.reload();
+  await expect(page).toHaveURL(/dashboard/);
+  await page.unroute('**/api/admin/logout');
+  const logoutResponse=page.waitForResponse(r=>r.url().endsWith('/api/admin/logout'));
+  await page.getByRole('button',{name:/Logga ut/i}).click();
+  expect((await logoutResponse).status()).toBe(204);
+  await expect(page).not.toHaveURL(/dashboard/);
+  expect((await context.cookies()).some(c=>c.name==='mk_admin_session')).toBeFalsy();
+  expect((await context.request.get('/api/admin/session',{headers:{cookie:oldCookie}})).status()).toBe(401);
+  await page.reload();
+  await expect(page).not.toHaveURL(/dashboard/);
+});
+
+test('logout can retry after the server revoked the session but its response was lost',async({page,context})=>{
+  await page.goto('/admin/login');
+  await page.getByLabel('E-post',{exact:true}).fill('owner@example.test');
+  await page.getByLabel('Lösenord',{exact:true}).fill('Synthetic-local-password-42');
+  await page.getByRole('button',{name:'Logga in',exact:true}).click();
+  await expect(page).toHaveURL(/admin\/dashboard/);
+  await page.route('**/api/admin/logout',async route=>{
+    const response=await route.fetch();
+    expect(response.status()).toBe(204);
+    await route.abort('failed');
+  });
+  await page.getByRole('button',{name:/Logga ut/i}).click();
+  await expect(page.getByRole('alert')).toContainText('Utloggningen kunde inte bekräftas');
+  expect((await context.request.get('/api/admin/session')).status()).toBe(401);
+  await page.unroute('**/api/admin/logout');
   await page.getByRole('button',{name:/Logga ut/i}).click();
   await expect(page).not.toHaveURL(/dashboard/);
+  expect((await context.cookies()).some(c=>c.name==='mk_admin_session')).toBeFalsy();
 });

@@ -172,6 +172,22 @@ await withTestDatabase(async db => {
     assert.equal(await db.sql(`SELECT order_status_token_expires_at > scheduled_at + interval '6 days' FROM orders WHERE id='${preorder.data.id}'`),'t');
     await db.sql("UPDATE admin_users SET token_version=token_version+1 WHERE id='mollevangen-test'");
     assert.equal((await call('/api/admin/session',undefined,adminHeaders)).status,401);
+    assert.equal((await call('/api/admin/logout',{}, {cookie:ownerCookies})).status,403);
+    await db.sql(`CREATE FUNCTION test_fail_revocation() RETURNS trigger LANGUAGE plpgsql AS $body$
+      BEGIN RAISE EXCEPTION 'synthetic revocation unavailable'; END; $body$;
+      CREATE TRIGGER test_fail_revocation BEFORE UPDATE OF token_version ON admin_users FOR EACH ROW EXECUTE FUNCTION test_fail_revocation()`);
+    const failedLogout=await call('/api/admin/logout',{},ownerHeaders);
+    assert.equal(failedLogout.status,503);
+    assert.equal(failedLogout.headers.getSetCookie().length,0,'Keep credentials for a failed revocation retry');
+    assert.equal(await db.sql("SELECT count(*) FROM security_audit_log WHERE actor_admin_id='owner-test' AND action='admin_logout' AND outcome='failed'"),'1');
+    assert.equal((await call('/api/admin/session',undefined,ownerHeaders)).status,200);
+    await db.sql('DROP TRIGGER test_fail_revocation ON admin_users; DROP FUNCTION test_fail_revocation()');
+    // Disabled accounts must also be able to irrevocably end their signed session.
+    await db.sql("UPDATE admin_users SET is_active=false WHERE id='owner-test'");
+    assert.equal((await call('/api/admin/logout',{},ownerHeaders)).status,204);
+    await db.sql("UPDATE admin_users SET is_active=true WHERE id='owner-test'");
+    assert.equal((await call('/api/admin/session',undefined,ownerHeaders)).status,401);
+    assert.equal((await call('/api/admin/logout',{},ownerHeaders)).status,204,'Already revoked retry succeeds without restoring access');
     console.log('Verified real HTTP routes + PostgreSQL: server pricing, replay, token privacy, concurrent checkout/confirmation, both locations, pauses/stock/hidden products, scoped refunds/status, CSRF and session revocation.');
   } finally { server.closeAllConnections(); await new Promise(resolve=>server.close(resolve)); }
 });

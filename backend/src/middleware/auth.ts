@@ -118,7 +118,7 @@ export function verifyCsrfTokens(cookieToken?: string, headerToken?: string): bo
   return cookieBuffer.length === headerBuffer.length && timingSafeEqual(cookieBuffer, headerBuffer);
 }
 
-function getAdminToken(req: Request): string | null {
+export function getAdminToken(req: Request): string | null {
   const cookieToken = parseCookies(req).get(ADMIN_SESSION_COOKIE);
   if (cookieToken) return cookieToken;
   const auth = req.headers.authorization;
