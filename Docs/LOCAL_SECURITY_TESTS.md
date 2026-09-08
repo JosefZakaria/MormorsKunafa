@@ -1,5 +1,10 @@
 # Local security verification
 
+The final branch run used Node 24.18.1 and npm 11.6.2, matching `.nvmrc` and
+`packageManager`. Use those versions, then `npm ci --ignore-scripts`. If an npm
+cache fails integrity validation, retry with a new isolated cache; never disable
+integrity checks. Cached tools and synthetic artifacts must remain ignored.
+
 Run `npm run check` for the application builds, unit tests and mobile typecheck.
 Run `npm run test:db` for the isolated PostgreSQL checks after running
 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Setup-LocalTestDatabase.ps1`
@@ -26,6 +31,13 @@ small local PostgREST adapter. It covers server prices, checkout replay,
 payment confirmation, scoped access, CSRF, revocation and partial/full refund
 concurrency with a simulated lost provider response.
 
+It also runs the catalogue/statistics suite (including 1007 paid orders and
+2014 lines), upload-denial checks and a separate Swish transport simulation.
+Swish tests cover compact and legacy references, canonical identity, accepted
+response loss, partial/full refunds and reconciliation without repeated PUTs.
+The fake HTTPS transport asserts the configured host, ID format and TLS
+verification option; it does not validate real certificates or a merchant account.
+
 After `npm run check`, install the pinned browser with
 `$env:PLAYWRIGHT_BROWSERS_PATH='.cache/playwright'; npx playwright install chromium`
 and run `npm run test:browser`. Desktop and Pixel 7 Chromium scenarios cover both
@@ -39,6 +51,19 @@ file, and rejects external HTTP/HTTPS. Browser requests outside loopback are
 blocked; the hosted Stripe page is simulated. No email, SMS, push or live payment
 credentials are configured. These checks do not verify provider sandboxes,
 Supabase Storage, actual hosted PostgREST limits, physical printers or production.
+
+Run build/check first, then integration tests. Do not run another backend build
+while API or browser tests are active: the build deliberately cleans `dist`.
+`npm run test:api` builds first and runs the three API scripts sequentially. When
+reusing an already verified build, those scripts can instead be run directly;
+the final verification did this while the browser and database suites used their
+own isolated clusters. Browser coverage is 14 Chromium cases across desktop and
+Pixel 7; it is not a complete Safari/mobile-app/accessibility test matrix.
+
+Statistics/export pagination rejects bounds or later-page errors rather than
+returning partial success. It is not a transaction-consistent backup or ledger
+snapshot when records change during multiple page reads. The four maintenance
+scripts are typechecked by `backend/tsconfig.maintenance.json` in the normal check.
 
 The Windows operator-script contract is tested with:
 

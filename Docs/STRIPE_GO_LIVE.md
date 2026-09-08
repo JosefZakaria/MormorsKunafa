@@ -1,57 +1,15 @@
-# Stripe live – checklista (Mormors Kunafa)
+# Stripe rollout verification
 
-## Hur betalning fungerar
+Status 2026-09-08: future authorized operator work. The branch work used simulated Stripe responses only; it did not make a real payment, publish a webhook or change a merchant account.
 
-1. Frontend anropar `POST /api/orders/checkout-session/:orderId` (backend skapar Stripe Checkout).
-2. Kunden betalar på Stripe.
-3. Stripe anropar **`POST /api/stripe/webhook`** med `checkout.session.completed`.
-4. Backend sätter `payment_status` till `paid` och skickar ordermail.
+The customer first creates an order with an `Idempotency-Key`. The server selects authoritative product/variant prices, location stock and delivery fee. It returns an order-bound status capability. Starting Checkout and reading customer status require that capability; a UUID alone does not grant access. The backend reserves one Checkout attempt and verifies amount, currency, order, method, mode and stored session identity before recording payment.
 
-Utan steg 3–4 kan betalningen lyckas i Stripe men ordern stannar på `pending`.
+Configure Production secrets only in Production. Preview requires an independent backend/database/merchant test environment and isolated same-origin API rewrite; the checked-in web rewrite otherwise reaches the production backend. Do not copy `.env` or production credentials into Preview. See [VERCEL_DEPLOY.md](VERCEL_DEPLOY.md).
 
-## Stripe Dashboard (live-läge)
+The production web client uses `/api` through its proxy. Set backend `PUBLIC_WEB_APP_URL` explicitly to the matching web origin; `VITE_API_BASE_URL` is not a production cross-origin switch and `VITE_STRIPE_PUBLIC_KEY` is unused for hosted Checkout. Refunds require a bcrypt `REFUND_PASSWORD_HASH` with cost at least 10, scoped authorization and order-bound confirmation.
 
-1. **Developers → Webhooks → Add endpoint**
-2. **Endpoint URL:** `https://mormors-kunafa-backend.vercel.app/api/stripe/webhook`
-3. **Events:** `checkout.session.completed`, `refund.created`, `refund.updated`, `refund.failed`
-4. Kopiera **Signing secret** (`whsec_...`) – det är **inte** samma som test/CLI om du skapade endpoint i live.
+The merchant webhook endpoint is `/api/stripe/webhook`. Subscribe to `checkout.session.completed`, `refund.created`, `refund.updated` and `refund.failed`, with the signing secret for that endpoint and environment. A live processing lease returns `503` with `Retry-After`; a completed event can be acknowledged as a duplicate. Do not treat every non-200 as proof the payment failed, or every health 200 as proof the integration works.
 
-## Vercel – backend-projekt
+Before rollout, verify in a separately approved provider sandbox: checkout/return, duplicate clicks, provider timeout, delayed and reordered webhooks, partial/full refunds, concurrent refund reservations and accepted-response loss. After provider idempotency expiry, recover a canonical matching refund; an absent/ambiguous match must stay pending for manual reconciliation rather than create another transfer. Repeat with payments initiated by the previous version. Status-token/old-client incompatibility remains a deployment gate.
 
-Sätt i **Production** (samma värden som lokalt när du är klar):
-
-| Variabel | Exempel |
-|----------|---------|
-| `STRIPE_SECRET_KEY` | `sk_live_...` |
-| `STRIPE_WEBHOOK_SECRET` | `whsec_...` från live-webhook ovan |
-| `PUBLIC_WEB_APP_URL` | `https://mormorskunafa.se` |
-| `FRONTEND_URL` | `https://mormorskunafa.se` |
-| `REFUND_PASSWORD_HASH` | Bcrypt-hash (cost minst 10) av det separata refund-lösenordet; aldrig klartext |
-
-Efter ändring: **Redeploy** backend.
-
-## Vercel – frontend-projekt
-
-| Variabel | Exempel |
-|----------|---------|
-| `VITE_API_BASE_URL` | `https://mormors-kunafa-backend.vercel.app/api` |
-
-`VITE_STRIPE_PUBLIC_KEY` används inte i koden idag (server-side Checkout). Redeploy frontend efter env-ändringar.
-
-## Verifiering
-
-1. Lägg en liten kortbeställning på https://mormorskunafa.se
-2. Betala med riktigt kort
-3. I Stripe → Webhooks → din endpoint: senaste event ska vara **200**
-4. Ordern ska ha `payment_status: paid` i admin/databas
-5. Bekräftelsemail om kunden har e-post och Resend är konfigurerat
-6. Gör en liten delåterbetalning i admin och kontrollera att refund-eventet får **200**, rätt radantal markeras och beloppet stämmer i Stripe
-7. Skicka om samma webhook-event och kontrollera att resultatet förblir oförändrat
-
-## Vanliga fel
-
-| Symptom | Orsak |
-|---------|--------|
-| Betalning OK i Stripe, order `pending` | Webhook saknas, fel URL, eller test-`whsec_` med live-`sk_live_` |
-| Webhook 400 signature | Fel `STRIPE_WEBHOOK_SECRET` eller body parsas som JSON före webhook-routen (ska vara raw – redan så i `index.ts`) |
-| Redirect till localhost efter betalning | `PUBLIC_WEB_APP_URL` inte satt till produktion på Vercel |
+Any later real-money smoke test needs a named operator, order/payment/refund references, expected totals and reconciliation evidence in a restricted journal. It was not performed in this task. Confirm both database state and provider state, plus optional email delivery; notifications are not the payment ledger. Preserve new financial records during recovery as described in [the branch report](SECURITY_BRANCH_REVIEW.md).

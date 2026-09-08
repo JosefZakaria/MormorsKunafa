@@ -22,7 +22,7 @@ The initial audit reported 31 affected package entries (10 high, 21 moderate). A
 | `decode-uri-component`, [GHSA-vcc3-ghjq-m6fr](https://github.com/advisories/GHSA-vcc3-ghjq-m6fr) | Mobile 0.2.2 through CommonJS `query-string` 7.1.3/navigation; malicious deep links require separate mobile runtime validation. | Moderate. Patched 0.5.0 is ESM; replacing the CommonJS dependency without migration would break its consumer contract. |
 | `uuid`, [GHSA-w5hq-g745-h8pq](https://github.com/advisories/GHSA-w5hq-g745-h8pq) | Mobile 7.0.3 through xcode tooling; advisory concerns caller-supplied buffers in v3/v5/v6. | Moderate. Moving to 11.1.1 is a major change, not applied automatically. |
 
-The root override declarations must not be used as evidence of an installed fix. The observed behavior matches [npm's workspace-link override issue](https://github.com/npm/cli/issues/9659). Both the declared npm 11.6.2 and a read-only lock-resolution trial with npm 11.16.0 retained the affected workspace copies. Root package constraints are left consistent with the versions actually selected, rather than presenting an unapplied qs update as complete.
+The root override declarations must not be used as evidence of an installed fix. The observed behavior matches [npm's workspace-link override issue](https://github.com/npm/cli/issues/9659). Both the declared npm 11.6.2 and a lockfile-only resolver trial with npm 11.16.0 retained the affected workspace copies. Root package constraints are left consistent with the versions actually selected, rather than presenting an unapplied qs update as complete.
 
 ## Verification and limits
 

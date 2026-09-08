@@ -19,6 +19,9 @@ Its five-second lock timeout aborts rather than waiting indefinitely. It also
 adds the reconciliation queue index, which takes a write lock during creation.
 Measure this on a representative staging copy before scheduling the window.
 The two allocation algorithms must never run concurrently after writes reopen.
+No maintenance window or shop pause is authorized by this document. The owner
+has asked to keep checkout available; a compatible transition satisfying that
+constraint is still a deployment gate. See [the branch review](../../../../Docs/SECURITY_BRANCH_REVIEW.md).
 
 `2026-09-08-unsettled-payment-retention.sql` preserves the existing retention RPC
 signatures and periods. Unresolved online payments, pending refunds, legal holds
@@ -64,11 +67,13 @@ The read-only verification SQL raises an error for inconsistent totals, missing
 items, orphaned items, duplicate order numbers, and null/nonpositive amounts or
 quantities; printed aggregate counts alone never establish success.
 
-Immediately before migration, stop writes during the agreed night maintenance
-window, take and restore-test a fresh archive, then record the last accepted
-order number and paid gross aggregate. After migration, run both read-only
-verification files and compare those aggregates before reopening writes. A
-failed check means rollback/restore review, not manual deletion of live rows.
+Once an explicit compatible cutover strategy is approved, take and restore-test
+a fresh archive and record the last accepted order number and paid gross
+aggregate at its defined boundary. Keep incompatible writers from overlapping.
+After migration, run both read-only verification files and reconcile intervening
+payments before enabling the new writer. A failed check requires a forward fix
+or compatible-build recovery review, not deletion of live rows or restoring an
+old full backup over new orders and payments.
 
 For the historical eat-here VAT question, run
 `../verification/review-eat-here-accounting.sql` privately. If its first count
@@ -123,8 +128,10 @@ ALTER TABLE public.order_items
 
 Smoke-test a complete checkout in staging. If the function is missing, the new
 backend intentionally fails closed instead of returning a partially saved order.
-The same migration stores only a SHA-256 hash of each seven-day customer status
-token. Revocation clears that hash; existing legacy tokens intentionally stop
+The same migration stores only a SHA-256 hash of each customer status token.
+New tokens last seven days, or through a validated preorder plus seven days
+(with a bounded booking horizon). Existing token expiry is not silently extended.
+Revocation clears that hash; existing legacy tokens intentionally stop
 working after deployment.
 
 ## 2026-08-19 admin session revocation

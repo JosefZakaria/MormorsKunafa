@@ -1,88 +1,39 @@
-# Vercel deploy — felsökning
+# Vercel deployment prerequisites
 
-`npm run verify:web-deployment` kontrollerar committade Vercel-rewrites,
-globala säkerhetsheaders, privata cache-regler, juridiska klientroutes, sitemap,
-robots och security.txt. Kontrollen körs av `npm run check` och CI. Den bevisar
-lokal konfiguration, inte live-deployment; verifiera motsvarande URL:er och
-response-headers i produktion efter varje deployment.
+Status 2026-09-08: future operator instructions. No deployment or live verification was performed during the security branch review. Read [the branch review](SECURITY_BRANCH_REVIEW.md) and its unresolved gates before scheduling a rollout.
 
-## Projekt
+## Origins and environment isolation
 
-| App | Vercel-projekt | Root directory |
-|-----|----------------|----------------|
-| Webb | (frontend) | `apps/web` |
-| API | `mormors-kunafa-backend` | `backend` |
+The production web bundle uses same-origin `/api`. `apps/web/vercel.json` proxies that path to the backend. A cross-origin `VITE_API_BASE_URL` is not the production API switch; the cookie/CSRF contract depends on the same-origin proxy. The current rewrite names the production backend and also applies to ordinary Preview deployments. **Do not deploy or use a Preview until its rewrite and all backend integrations point exclusively at isolated test resources.** Do not copy a local `.env` or Production values into Preview.
 
-## Backend — obligatoriska miljövariabler
+| App | Vercel root | Output |
+| --- | --- | --- |
+| Web | `apps/web` | `dist` |
+| Backend | `backend` | Leave output override off; use `backend/vercel.json` |
 
-Kopiera värden från lokal `backend/.env` till **Vercel → Project → Settings → Environment Variables** (Production + Preview):
+For local integrated verification use [LOCAL_SECURITY_TESTS.md](LOCAL_SECURITY_TESTS.md). The harness discards inherited credentials, starts its own localhost database and simulates providers. Ordinary `dev` commands load local configuration and are not substitutes for the isolated harness.
 
-- `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
-- `JWT_SECRET` (sätt ett starkt hemligt värde i produktion)
-- `CRON_SECRET` (unik slumpsträng på minst 32 bytes; autentiserar Vercel Cron)
-- `FRONTEND_URL` eller `PUBLIC_WEB_APP_URL` = `https://mormorskunafa.se`
-- `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` (om kortbetalning ska fungera)
-- `REFUND_PASSWORD_HASH` (bcrypt cost minst 10; endast hash, aldrig refund-lösenordet i klartext)
-- `PUBLIC_WEB_APP_URL=https://mormorskunafa.se` (**krävs** för Stripe-återvändning efter kortbetalning — annars hamnar kunden på `localhost:5173`)
-- `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `SITE_PUBLIC_URL` (om ordermail ska skickas)
+Review backend settings individually in the appropriate private environment: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, strong independent `JWT_SECRET`, status-token configuration, `CRON_SECRET`, Upstash settings, Stripe secrets and `REFUND_PASSWORD_HASH`. Consult `backend/.env.example` for names and constraints; never commit values. Email/SMS/push/Swish settings must belong to the intended environment and merchant.
 
-Se `backend/.env.example` för full lista.
+Explicitly set `PUBLIC_WEB_APP_URL` to the web origin for payment returns. The code chooses `PUBLIC_WEB_APP_URL`, then `FRONTEND_URL`, then `SITE_PUBLIC_URL`; production falls back to the configured public site, development to localhost. An implicit fallback is not evidence of correct deployment configuration. Review the CORS allowlist separately. `VITE_STRIPE_PUBLIC_KEY` is not used by the server-hosted Checkout flow.
 
-## Verifiera efter deploy
+## Database and version transition
 
-Innan backend deployas ska de versionshanterade Supabase-migrationerna i
-`backend/src/db/migrations` granskas, backup tas och migrationerna appliceras i
-filnamnsordning. Backend och cronjobb avsiktligt failar stängt om deras
-databasfunktioner eller obligatoriska secrets saknas.
+Use `backend/src/db/migrations/migration-order.json`, **not filename sorting**. Compare the actual applied ledger and checksums, take a verified backup, and rehearse pending complementary migrations against an independently isolated restore before production execution. Never rerun old sequence/role initializers. Detailed lock, grant and sequence constraints are in [the migration README](../backend/src/db/migrations/README.md).
 
-1. Öppna `https://mormors-kunafa-backend.vercel.app/api/health`
-   - **OK:** `{"ok":true,"publicWebAppUrl":"https://mormorskunafa.se","stripeWebhookConfigured":true,"deployWarnings":[]}`
-   - **`deployWarnings` innehåller text** → läs varningarna (t.ex. saknad `PUBLIC_WEB_APP_URL` eller webhook)
-   - **Saknar Supabase:** `503` med tydligt felmeddelande → lägg till env och **Redeploy**
-2. Öppna `https://mormors-kunafa-backend.vercel.app/api/products` → JSON med produkter
-3. Ladda `https://mormorskunafa.se/menu`
-4. Kontrollera Vercel **Settings → Cron Jobs**. Den dagliga gallringen tar endast
-   bort checkoututkast som varit pending i minst 48 timmar och aldrig fått ett
-   Stripe- eller Swish-ID. Initierade betalningar måste provider-avstämmas först.
-5. Kontrollera att Stripe-webhooken prenumererar på `checkout.session.completed`,
-   `refund.created`, `refund.updated` och `refund.failed`. Testa delrefund och
-   full refund i provider-testläge före riktiga pengar används.
+Old `MAX` order-number writers cannot overlap the sequence-based writer. Old customers may lack the new status capability, idempotency header or required location. A compatible cutover/drain/reload plan must be proven before enabling the new versions; never restore public customer data or weak authentication to accommodate old clients. The owner's existing preference to keep checkout open has not been replaced by permission to pause it. If the transition cannot satisfy that constraint, deployment remains blocked.
 
-## Frontend
+## Verification after an independently authorized rollout
 
-I **webbprojektets** Vercel-env (Production):
+1. Production `/api/health` should return `200 {"ok":true,"status":"healthy"}`; a missing database configuration yields `503 {"ok":false,"status":"unhealthy"}`. Diagnostic flags such as `jwtConfigured` are intentionally absent in production. Health only checks configuration presence; it does not prove database reachability, merchant credentials or webhook delivery.
+2. Verify the public catalogue through the web origin, both locations, server prices, hidden products, location stock, schedules, delivery fee and owner/scoped-admin access.
+3. Verify cookie login, CSRF, session revocation, private responses and SSE through the same-origin proxy. Observe real hosted headers; local configuration checks are not live evidence.
+4. Reconcile payments that started before the version change, delayed webhooks, refunds and duplicate payment alerts. Stripe events include `checkout.session.completed`, `refund.created`, `refund.updated`, `refund.failed`. A busy webhook lease deliberately returns retryable `503`, not an acknowledgment that processing finished.
+5. The daily cleanup makes never-initiated unpaid drafts eligible after **24 hours** (normally removed at 24–48 hours with the daily schedule). Initiated drafts require canonical provider reconciliation. Open, unknown or mismatched payments remain retained. Retention also preserves unresolved financial evidence, pending refunds and legal holds. Verify dry-run aggregates before enabling execution.
+6. Confirm email/SMS/push delivery independently. Paid state is atomic; delivery side effects are not a durable outbox and are not guaranteed exactly once. Staff must have a verified order-queue fallback.
 
-```
-VITE_API_BASE_URL=https://mormors-kunafa-backend.vercel.app/api
-VITE_STRIPE_PUBLIC_KEY=pk_live_...
-```
+## Recovery
 
-`.env` i repot påverkar bara lokal build om du inte sätter samma variabler i Vercel.
+Follow the branch report's forward-repair/compatible-build procedure. Never restore a pre-cutover full backup over a database receiving real orders. Preserve new order, payment, refund, provider-event and audit records; keep reconciliation running. Reverting blindly to old main can break numbering and the new authentication/status contract.
 
-## Vercel Project Settings (viktigt)
-
-Felet *"No Output Directory named **public** found"* betyder att fel inställning används i dashboard.
-
-| Projekt | Root Directory | Output Directory | Framework |
-|---------|----------------|------------------|-----------|
-| **Backend** (`mormors-kunafa-backend`) | `backend` | **Tom / Override off** — ingen statisk mapp | Other (eller låt `vercel.json` styra) |
-| **Webb** (mormorskunafa.se) | `apps/web` | **`dist`** (styrs av `apps/web/vercel.json`) | Vite |
-
-Gå till **Settings → General → Build & Development Settings** och ta bort `public` om det står där. Spara och **Redeploy**.
-
-## Vanliga fel
-
-| Symptom | Orsak | Åtgärd |
-|---------|--------|--------|
-| `No Output Directory named "public"` | Fel Root Directory eller Output = `public` i Vercel | Backend: root `backend`, tom output. Webb: root `apps/web`, output `dist` |
-| `FUNCTION_INVOCATION_FAILED` / 500 på alla routes | TypeScript-fel i kod eller krasch vid import | Kör `npm run build --workspace=@mormors-kunafa/backend` lokalt; fixa fel; push + redeploy |
-| Health 503 + Supabase-meddelande | Env saknas på Vercel | Lägg till `SUPABASE_*`, redeploy |
-| Meny: `Failed to fetch` | Backend nere eller CORS | Fixa backend först; kontrollera `FRONTEND_URL` |
-| Admin login funkar inte | `JWT_SECRET` saknas/ändrats | Samma `JWT_SECRET` som vid skapande av admin-token |
-| Efter kortbetalning: `localhost:5173` / ingen bekräftelse | `PUBLIC_WEB_APP_URL` saknas på Vercel-backend | Sätt `https://mormorskunafa.se`, redeploy backend + webb |
-| Status står kvar på "Bekräftar betalning" | Stripe-webhook når inte API | Stripe Dashboard → Webhooks → `https://mormors-kunafa-backend.vercel.app/api/stripe/webhook` + rätt `whsec_` |
-
-## Redeploy
-
-Efter ändring av env: **Deployments → … → Redeploy** (Build Cache kan lämnas på).
+`npm run verify:web-deployment`, `npm run verify:web-build` and `npm run check` verify repository/build behavior only. They do not authorize deployment, prove hosted configuration, or discharge the remaining provider/operational gates.

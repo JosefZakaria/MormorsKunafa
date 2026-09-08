@@ -1,6 +1,6 @@
 # Privacy data map
 
-Status: code-verified inventory, 2026-08-19  
+Status: code-verified inventory updated 2026-09-08; provider/account evidence remains unverified
 Scope: current web, backend, database and kitchen-print flows
 
 This inventory describes what the current code sends. It does not prove a
@@ -34,6 +34,8 @@ region, accepted version or configured retention.
 | Admin session | First-party cookies | Authenticated administration | HttpOnly session cookie, SameSite Strict, CSRF cookie, 30-minute lifetime |
 | Push endpoint, encryption keys, user agent | Supabase and the endpoint's push provider | Deliver paid-order alerts to enrolled admin devices | Authenticated registration; origin/IP checks; bounded fields; removable/disableable subscription |
 | IP-derived abuse key | Upstash | Distributed rate limiting | Contact values and compound identifiers are HMAC-hashed before use; no request body is used as a key |
+| Completed order idempotency response | Upstash (production); process memory in isolated tests | Recover an identical checkout request for up to 24 hours | Contains the created order response, including customer fields and the status capability; hashing the request key does not anonymize this value. Restrict credentials/region/retention and include it in processor and deletion reviews |
+| Realtime admission tickets | Upstash | Short-lived single-use SSE admission | Bound to the current admin/session; authenticated consumption and expiry |
 | Admin/security events | Supabase immutable audit log | Accountability and incident investigation | Route template and internal resource ID only; no request body; login email is HMAC-hashed |
 | Provider webhook events | Supabase | Replay protection and reconciliation | Event ID/type/mode/outcome/order ID only; no provider payload |
 | Runtime logs | Vercel/runtime | Operations and security | Safe bounded metadata; no raw provider body, credential, customer contact field or stack in controlled log helpers |
@@ -54,8 +56,9 @@ destruction immediately after the service/reconciliation purpose ends.
 
 The complete first-party browser-storage inventory and lifetimes are in
 `BROWSER_STORAGE.md`. The unauthenticated order-status API requires a random,
-revocable, order-bound token and returns only order number, status and approximate
-ready time with `Cache-Control: private, no-store`.
+revocable, order-bound token and returns only order number, status, approximate
+ready time and bounded fulfillment context (payment status, order type, scheduled
+time and location ID), with `Cache-Control: private, no-store`.
 
 ## Tiered order retention
 
@@ -73,3 +76,5 @@ not direct marketing. Do not export it to a marketing list or reuse it for a new
 purpose without a separate documented legal basis and review. Production remains
 unverified until the migration, both dry runs and the security-posture queries
 have passed in staging and production.
+
+Admin request-outcome auditing is best effort after the response; financial transitions have atomic database audit records. This is not guaranteed durable coverage of every admin read. Printer and provider transmission descriptions describe code paths, not evidence they are active.

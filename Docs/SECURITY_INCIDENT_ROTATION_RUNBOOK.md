@@ -32,7 +32,7 @@ and Josef to replace their clones according to
 
 ## Ordered execution
 
-1. Make the GitHub repository private and record the containment timestamp.
+1. Record the owner-approved containment decision and timestamp. The current owner decision keeps the repository public; changing visibility requires a new owner decision. Do not mark containment complete merely because this runbook exists.
 2. Export available GitHub audit, visibility, secret-scanning and traffic
    evidence to the restricted journal. Preserve the metadata snapshot in
    `Docs/GITHUB_INCIDENT_EVIDENCE.md`.
