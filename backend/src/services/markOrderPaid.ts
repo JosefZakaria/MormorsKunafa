@@ -67,6 +67,10 @@ export async function markOrderPaid(orderId: string, options?: MarkOrderPaidOpti
     refreshed.order
   );
 
+  // Historical checkout links can settle after cancellation. Record the money
+  // and notify administrators, but do not promise fulfillment to the customer.
+  if (refreshed.order.status === 'avbruten') return true;
+
   const emailOut = String(refreshed.order.customer_email ?? '').trim();
   if (emailOut) {
     void sendOrderConfirmationEmail({

@@ -114,7 +114,8 @@ export async function createSyntheticApp(db) {
   Object.assign(process.env, { NODE_ENV:'test', DOTENV_CONFIG_PATH:emptyEnv, PUBLIC_WEB_APP_URL:TEST_ORIGIN,
     SUPABASE_URL:'http://supabase.invalid', SUPABASE_SERVICE_ROLE_KEY:'synthetic-test-role',
     STRIPE_SECRET_KEY:'sk_test_'+'a'.repeat(32), STRIPE_WEBHOOK_SECRET:'whsec_'+'b'.repeat(32),
-    JWT_SECRET:randomBytes(32).toString('hex'), ORDER_STATUS_TOKEN_SECRET:randomBytes(32).toString('hex') });
+    JWT_SECRET:randomBytes(32).toString('hex'), ORDER_STATUS_TOKEN_SECRET:randomBytes(32).toString('hex'),
+    DELETE_PASSWORD:TEST_PASSWORD });
   globalThis.fetch = syntheticPostgrest(db.sql);
   https.request = () => { throw new Error('External HTTPS is forbidden in synthetic tests'); };
   const { default: bcrypt } = await import('bcryptjs');

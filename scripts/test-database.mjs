@@ -50,6 +50,7 @@ await withTestDatabase(async ({ sql, file }) => {
     ('stripe','evt_legacy_done','test',false,'processed',1,NULL,'preserved')`);
   await apply(order);
   await file(path.join(repositoryRoot,'backend/test/fixtures/stripe-event-ownership.sql'));
+  await file(path.join(repositoryRoot,'backend/test/fixtures/online-cancellation-boundary.sql'));
   assert.equal(await sql(`SELECT order_number || ':' || stripe_checkout_session_id || ':' || location_id::text
     FROM orders WHERE id='${legacyId}'`), '#9998:cs_test_before_upgrade:' + location);
   assert.equal(await apply(order), 0, 'already applied migrations must not run again');

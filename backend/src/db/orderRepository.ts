@@ -87,14 +87,21 @@ export async function updateOrder(
 export async function compareAndUpdateOrder(
   id: string,
   expectedStatus: string,
-  patch: Record<string, unknown>
+  patch: Record<string, unknown>,
+  expectedPayment?: Partial<Pick<Row, 'payment_method' | 'payment_status' | 'refund_status'>>
 ): Promise<boolean> {
-  const { data, error } = await supabase
+  let query = supabase
     .from('orders')
     .update({ ...patch, updated_at: nowIso() })
     .eq('id', id)
-    .eq('status', expectedStatus)
-    .select('id');
+    .eq('status', expectedStatus);
+  if (expectedPayment) {
+    for (const field of ['payment_method', 'payment_status', 'refund_status'] as const) {
+      const value = expectedPayment[field];
+      query = value == null ? query.is(field, null) : query.eq(field, value);
+    }
+  }
+  const { data, error } = await query.select('id');
 
   if (error) {
     logSupabaseError('compareAndUpdateOrder', error);

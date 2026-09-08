@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { randomUUID } from 'node:crypto';
+import { canStartOrderPayment } from '../utils/orderPaymentState.js';
 import { supabase, type Row, logSupabaseError } from '../db/connection.js';
 import { fetchOrderRow } from '../db/orderRepository.js';
 import { markOrderPaid } from '../services/markOrderPaid.js';
@@ -81,8 +82,8 @@ router.post('/:orderId', swishStartLimiter, async (req: Request, res: Response) 
       res.status(400).json({ error: 'Order does not use Swish payment' });
       return;
     }
-    if (String(order.payment_status ?? '') !== 'pending') {
-      res.status(400).json({ error: 'Order is not awaiting payment' });
+    if (!canStartOrderPayment(order)) {
+      res.status(409).json({ error: 'Order is not eligible for payment' });
       return;
     }
 
@@ -115,6 +116,8 @@ router.post('/:orderId', swishStartLimiter, async (req: Request, res: Response) 
       .from('orders')
       .update({ swish_instruction_id: reservedInstructionId })
       .eq('id', orderId)
+      .eq('status', 'ny')
+      .eq('payment_status', 'pending')
       .is('swish_instruction_id', null)
       .select('swish_instruction_id');
 
@@ -128,7 +131,7 @@ router.post('/:orderId', swishStartLimiter, async (req: Request, res: Response) 
       const concurrentInstructionId = parseSwishInstructionId(
         latestOrder?.swish_instruction_id
       );
-      if (!latestOrder || !concurrentInstructionId) {
+      if (!latestOrder || !canStartOrderPayment(latestOrder) || !concurrentInstructionId) {
         res.status(409).json({ error: 'Swish payment start conflicted; retry status' });
         return;
       }

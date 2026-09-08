@@ -20,5 +20,6 @@
   "2026-08-30-product-location-stock.sql",
   "2026-08-19-row-level-security.sql",
   "2026-09-08-security-location-compatibility.sql",
-  "2026-09-08-stripe-event-ownership.sql"
+  "2026-09-08-stripe-event-ownership.sql",
+  "2026-09-08-online-cancellation-boundary.sql"
 ]

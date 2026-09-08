@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
+import { canCancelOrderPayment, canStartOrderPayment } from '../utils/orderPaymentState.js';
 import { supabase, generateId, type Row, logSupabaseError, nowIso } from '../db/connection.js';
 import {
   compareAndUpdateOrder,
@@ -467,8 +468,8 @@ router.post('/checkout-session/:orderId', checkoutLimiter, async (req: Request, 
       res.status(400).json({ error: 'Order does not use card payment' });
       return;
     }
-    if (String(order.payment_status ?? '') !== 'pending') {
-      res.status(400).json({ error: 'Order is not awaiting payment' });
+    if (!canStartOrderPayment(order)) {
+      res.status(409).json({ error: 'Order is not eligible for payment' });
       return;
     }
 
@@ -541,7 +542,9 @@ router.post('/checkout-session/:orderId', checkoutLimiter, async (req: Request, 
     const updateQuery = supabase
       .from('orders')
       .update({ stripe_checkout_session_id: session.id })
-      .eq('id', orderId);
+      .eq('id', orderId)
+      .eq('status', 'ny')
+      .eq('payment_status', 'pending');
     const { data: updatedRows, error: stripeUpdateError } = storedSessionId
       ? await updateQuery.eq('stripe_checkout_session_id', storedSessionId).select('id')
       : await updateQuery.is('stripe_checkout_session_id', null).select('id');
@@ -554,7 +557,8 @@ router.post('/checkout-session/:orderId', checkoutLimiter, async (req: Request, 
 
     if (!updatedRows || updatedRows.length === 0) {
       const current = await getOrderById(orderId);
-      if (String(current?.order.stripe_checkout_session_id ?? '') !== session.id) {
+      if (!current || !canStartOrderPayment(current.order) ||
+        String(current.order.stripe_checkout_session_id ?? '') !== session.id) {
         res.status(409).json({ error: 'Checkout session changed; retry the request' });
         return;
       }
@@ -893,13 +897,9 @@ router.post('/admin/:id/cancel', requireAdmin, async (req: Request, res: Respons
       res.status(409).json({ error: 'Order cannot be cancelled from its current status' });
       return;
     }
-    if (
-      isOnlinePayment(String(existing.order.payment_method ?? '')) &&
-      String(existing.order.payment_status ?? '') === 'paid' &&
-      String(existing.order.refund_status ?? 'none') !== 'refunded'
-    ) {
+    if (!canCancelOrderPayment(existing.order)) {
       res.status(409).json({
-        error: 'Provider refund must be completed before a paid online order can be cancelled',
+        error: 'Online payment must be confirmed and fully refunded before cancellation',
       });
       return;
     }
@@ -910,7 +910,7 @@ router.post('/admin/:id/cancel', requireAdmin, async (req: Request, res: Respons
         ? String(existing.order.cancelled_at)
         : nowIso(),
       cancellation_reason: reason,
-    });
+    }, existing.order);
     if (!cancelled) {
       res.status(409).json({ error: 'Order status changed before it could be cancelled' });
       return;

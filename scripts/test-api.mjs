@@ -96,6 +96,39 @@ await withTestDatabase(async db => {
     assert.equal(ownerLogin.status,200);
     const ownerCookies=ownerLogin.headers.getSetCookie().map(s=>s.split(';')[0]).join('; ');
     const ownerHeaders={cookie:ownerCookies,'x-csrf-token':decodeURIComponent(ownerCookies.match(/mk_csrf=([^;]+)/)[1])};
+    const cancelBody={password:TEST_PASSWORD,cancellationReason:'Synthetic cancellation'};
+    assert.equal((await call(`/api/orders/admin/${id}/cancel`,cancelBody,ownerHeaders)).status,409);
+    const pending=await newOrder(orderBody);
+    assert.equal(pending.status,201);
+    const pendingId=pending.data.id, pendingHeader={'x-order-status-token':pending.data.statusToken};
+    for (const method of ['card','app','swish']) {
+      await db.sql(`UPDATE orders SET payment_method='${method}' WHERE id='${pendingId}'`);
+      assert.equal((await call(`/api/orders/admin/${pendingId}/cancel`,cancelBody,ownerHeaders)).status,409);
+    }
+    await db.sql(`UPDATE orders SET payment_method='card' WHERE id='${pendingId}'`);
+    assert.equal((await call(`/api/orders/checkout-session/${pendingId}`,{},pendingHeader)).status,200);
+    assert.equal((await call(`/api/orders/admin/${pendingId}/cancel`,cancelBody,ownerHeaders)).status,409);
+    // Reconstruct a cancelled historical checkout without weakening the trigger.
+    await db.sql(`UPDATE orders SET status='avbruten',payment_status='paid',refund_status='refunded' WHERE id='${pendingId}';
+      UPDATE orders SET payment_status='pending',refund_status='none' WHERE id='${pendingId}'`);
+    const sessionCount=sessions.size;
+    assert.equal((await call(`/api/orders/checkout-session/${pendingId}`,{},pendingHeader)).status,409);
+    assert.equal(sessions.size,sessionCount);
+    const lateSession=[...sessions.values()].find(s=>s.metadata.orderId===pendingId);
+    lateSession.payment_status='paid'; lateSession.status='complete';
+    for (let repeat=0;repeat<2;repeat++) assert.equal((await call('/api/orders/stripe-confirm',
+      {orderId:pendingId,sessionId:lateSession.id},pendingHeader)).status,200);
+    assert.equal(await db.sql(`SELECT status || ':' || payment_status FROM orders WHERE id='${pendingId}'`),'avbruten:paid');
+    assert.equal(await db.sql(`SELECT count(*) FROM security_audit_log WHERE resource_id='${pendingId}' AND action='stripe_payment_confirmed'`),'1');
+    const cash=await newOrder(orderBody);
+    assert.equal(cash.status,201);
+    await db.sql(`UPDATE orders SET payment_method='cash',refund_status=NULL WHERE id='${cash.data.id}'`);
+    const { fetchOrderRow, compareAndUpdateOrder } = await import('../backend/dist/db/orderRepository.js');
+    const stale=await fetchOrderRow(cash.data.id);
+    await db.sql(`UPDATE orders SET payment_method='card',payment_status='paid' WHERE id='${cash.data.id}'`);
+    assert.equal(await compareAndUpdateOrder(cash.data.id,'ny',{status:'avbruten'},stale),false);
+    await db.sql(`UPDATE orders SET payment_method='cash',payment_status='pending' WHERE id='${cash.data.id}'`);
+    assert.equal((await call(`/api/orders/admin/${cash.data.id}/cancel`,cancelBody,ownerHeaders)).status,200);
     const itemId=await db.sql(`SELECT id FROM order_items WHERE order_id='${id}'`);
     const refundBody={password:TEST_PASSWORD,confirmation:`ÅTERBETALA ${first.data.orderNumber}`,items:[{orderItemId:itemId,quantity:1}]};
     faults.refundTimeout=true;
@@ -123,6 +156,7 @@ await withTestDatabase(async db => {
     assert(full.some(r=>r.status===200),JSON.stringify(full));
     assert.equal(refunds.size,2);
     assert.equal(await db.sql(`SELECT refunded_amount_ore FROM orders WHERE id='${id}'`),'19800');
+    assert.equal(await db.sql(`SELECT status FROM orders WHERE id='${id}'`),'avbruten');
     const completedReplay=await call(`/api/orders/admin/${id}/refunds`,refundBody,{...ownerHeaders,'Idempotency-Key':refundKey});
     assert.equal(completedReplay.status,200,JSON.stringify(completedReplay.data));
     assert.equal(completedReplay.data.refundId,partial.data.refundId);
