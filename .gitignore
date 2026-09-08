@@ -28,6 +28,7 @@ Database/
 *.sql
 !backend/src/db/migrations/*.sql
 !backend/src/db/verification/*.sql
+!backend/test/fixtures/*.sql
 
 # IDE & OS
 .idea/
@@ -42,6 +43,9 @@ Thumbs.db
 npm-debug.log*
 *.tsbuildinfo
 coverage/
+.cache/
+test-results/
+playwright-report/
 
 # Stripe CLI (lokal nedladdning – ska inte committas)
 stripe_*.zip
