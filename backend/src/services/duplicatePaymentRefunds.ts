@@ -4,7 +4,7 @@ import { getOrderById } from '../db/orderRepository.js';
 import { validateStripeCheckoutSessionOrderFields } from '../utils/confirmStripeCheckout.js';
 import { isExpectedStripeEventMode } from '../utils/stripeSecurity.js';
 import { getStripe } from './stripeClient.js';
-import { stripeRefundOutcome, type ProviderRefundOutcome } from './refundProviders.js';
+import { canReplayStripeRefund, RefundReconciliationRequiredError, stripeRefundOutcome, type ProviderRefundOutcome } from './refundProviders.js';
 
 export type VerifiedDuplicateStripePayment = {
   orderId: string;
@@ -96,8 +96,33 @@ export async function createDuplicateStripeRefund(input: {
   refundId: string;
   eventId: string;
   payment: VerifiedDuplicateStripePayment;
+  createdAt: string;
+  providerRefundId?: string;
 }): Promise<ProviderRefundOutcome> {
-  const refund = await getStripe().refunds.create({
+  const stripe = getStripe();
+  const expected = { ...input.payment, refundId: input.refundId, eventId: input.eventId, providerRefundId: input.providerRefundId };
+  const validatedOutcome = (refund: Stripe.Refund) => {
+    const result = validateDuplicateStripeRefundEvent(refund, expected);
+    if (!result.ok) throw new RefundReconciliationRequiredError();
+    return result.outcome;
+  };
+  if (input.providerRefundId) return validatedOutcome(await stripe.refunds.retrieve(input.providerRefundId));
+
+  let startingAfter: string | undefined;
+  const matches: Stripe.Refund[] = [];
+  for (let page = 0; page < 5; page++) {
+    const refunds = await stripe.refunds.list({ payment_intent: input.payment.paymentIntentId,
+      limit: 100, ...(startingAfter ? { starting_after: startingAfter } : {}) });
+    matches.push(...refunds.data.filter(refund => refund.metadata?.duplicateRefundId === input.refundId));
+    if (!refunds.has_more) break;
+    const lastId = refunds.data.at(-1)?.id;
+    if (!lastId || lastId === startingAfter || page === 4) throw new RefundReconciliationRequiredError();
+    startingAfter = lastId;
+  }
+  if (matches.length > 1) throw new RefundReconciliationRequiredError();
+  if (matches.length === 1) return validatedOutcome(matches[0]);
+  if (!canReplayStripeRefund(input.createdAt)) throw new RefundReconciliationRequiredError();
+  const refund = await stripe.refunds.create({
     payment_intent: input.payment.paymentIntentId,
     amount: input.payment.amountOre,
     reason: 'duplicate',
@@ -107,7 +132,7 @@ export async function createDuplicateStripeRefund(input: {
       duplicatePaymentEventId: input.eventId,
     },
   }, { idempotencyKey: `duplicate-payment-refund-${input.refundId}` });
-  return stripeRefundOutcome(refund);
+  return validatedOutcome(refund);
 }
 
 export function validateDuplicateStripeRefundEvent(

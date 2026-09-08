@@ -19,7 +19,8 @@ import {
   expectedDuplicateRefundConfirmation,
   getDuplicateStripePaymentContext,
 } from '../services/duplicatePaymentRefunds.js';
-import { getStripeRefundOutcome } from '../services/refundProviders.js';
+import { RefundReconciliationRequiredError } from '../services/refundProviders.js';
+import { getOrderById } from '../db/orderRepository.js';
 import { isRefundPasswordConfigured, verifyRefundPassword } from '../utils/refundAuthorization.js';
 import { parseRefundIdempotencyKey, RefundInputError } from '../utils/refundSelection.js';
 import { logUnexpectedError } from '../utils/safeErrorMetadata.js';
@@ -55,7 +56,7 @@ function storedResult(record: DuplicateStripeRefundRecord, orderNumber?: string)
   return {
     eventId: record.eventId,
     orderId: record.orderId,
-    ...(orderNumber ? { orderNumber } : {}),
+    ...(orderNumber ? { orderNumber, confirmation: expectedDuplicateRefundConfirmation(orderNumber) } : {}),
     amount: record.amountOre,
     status: record.status,
   };
@@ -71,7 +72,8 @@ router.get('/:eventId', requireAdmin, requireOwner, async (req: Request, res: Re
     }
     const stored = await getDuplicateStripeRefundByEvent(alert.eventId);
     if (stored) {
-      res.json(storedResult(stored));
+      const order = await getOrderById(stored.orderId);
+      res.json(storedResult(stored, String(order?.order.order_number ?? '') || undefined));
       return;
     }
     if (alert.outcome !== 'alert_paid_session_validation_failed' || !alert.orderId) {
@@ -103,6 +105,7 @@ router.get('/:eventId', requireAdmin, requireOwner, async (req: Request, res: Re
 
 router.post('/:eventId/refund', limiter, requireAdmin, requireOwner, async (req: Request, res: Response) => {
   let reserved: DuplicateStripeRefundRecord | null = null;
+  let orderNumber: string | undefined;
   try {
     if (!isRefundPasswordConfigured()) {
       res.status(503).json({ error: 'Återbetalningslösenord är inte konfigurerat.' });
@@ -118,6 +121,7 @@ router.post('/:eventId/refund', limiter, requireAdmin, requireOwner, async (req:
       return;
     }
     const context = await getDuplicateStripePaymentContext(alert.eventId);
+    orderNumber = context.orderNumber;
     if (context.payment.orderId !== alert.orderId) {
       res.status(409).json({ error: 'Larmet matchar inte den verifierade ordern.' });
       return;
@@ -154,12 +158,12 @@ router.post('/:eventId/refund', limiter, requireAdmin, requireOwner, async (req:
       res.json(storedResult(reserved, context.orderNumber));
       return;
     }
-    const outcome = reserved.providerRefundId
-      ? await getStripeRefundOutcome(reserved.providerRefundId)
-      : await createDuplicateStripeRefund({
+    const outcome = await createDuplicateStripeRefund({
           refundId: reserved.id,
           eventId: reserved.eventId,
           payment: context.payment,
+          createdAt: reserved.createdAt,
+          providerRefundId: reserved.providerRefundId,
         });
     if (!reserved.providerRefundId) {
       await setDuplicateStripeRefundProviderReference(reserved.id, outcome.providerRefundId);
@@ -176,13 +180,17 @@ router.post('/:eventId/refund', limiter, requireAdmin, requireOwner, async (req:
       status: outcome.status,
     });
   } catch (error) {
+    if (error instanceof RefundReconciliationRequiredError && reserved) {
+      res.status(409).json({ ...storedResult(reserved, orderNumber), error: error.message, code: 'REFUND_RECONCILIATION_REQUIRED' });
+      return;
+    }
     if (error instanceof RefundInputError) {
       res.status(400).json({ error: error.message });
       return;
     }
     logUnexpectedError('POST /admin/payment-alerts/:eventId/refund', error);
     if (reserved) {
-      res.status(202).json(storedResult(reserved));
+      res.status(202).json(storedResult(reserved, orderNumber));
       return;
     }
     res.status(409).json({ error: 'Dubbelbetalningen kunde inte återbetalas säkert.' });

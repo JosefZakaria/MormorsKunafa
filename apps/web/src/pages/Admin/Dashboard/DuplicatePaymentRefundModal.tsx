@@ -106,7 +106,7 @@ export function DuplicatePaymentRefundModal({
         {!loading && pending && (
           <div className="refund-warning" role="status">
             <strong>Återbetalningen behandlas</strong>
-            <span>Stripe har tagit emot begäran. Öppna larmet igen för att stämma av status.</span>
+            <span>Resultatet är ännu inte bekräftat. Stäm av eller återförsök med lösenord; en befintlig återbetalning kontrolleras först.</span>
           </div>
         )}
 
@@ -139,7 +139,7 @@ export function DuplicatePaymentRefundModal({
           </>
         )}
 
-        {!loading && eligible && stage === 'authorize' && (
+        {!loading && (eligible || pending) && stage === 'authorize' && (
           <>
             <div className="refund-total">Belopp: <strong>{formatOre(detail.amount ?? 0)}</strong></div>
             <label className="refund-field-label" htmlFor="duplicate-refund-password">Återbetalningslösenord</label>
@@ -162,7 +162,7 @@ export function DuplicatePaymentRefundModal({
               onChange={(event) => setConfirmation(event.target.value)}
             />
             <div className="stats-modal-actions">
-              <Button variant="ghost" disabled={submitting} onClick={() => setStage('review')} style={{ flex: 1 }}>
+              <Button variant="ghost" disabled={submitting} onClick={() => setStage(pending ? 'warning' : 'review')} style={{ flex: 1 }}>
                 Tillbaka
               </Button>
               <Button
@@ -170,16 +170,16 @@ export function DuplicatePaymentRefundModal({
                 disabled={submitting || !password || confirmation !== expected}
                 onClick={() => void submit()}
                 style={{ flex: 1, background: '#B91C1C' }}
-              >{submitting ? 'Behandlar...' : 'Återbetala dubbelbetalning'}</Button>
+              >{submitting ? 'Behandlar...' : pending ? 'Stäm av / återförsök' : 'Återbetala dubbelbetalning'}</Button>
             </div>
           </>
         )}
 
         {error && <p className="stats-modal-error">{error}</p>}
-        {!loading && (!eligible || complete || pending) && (
+        {!loading && (!eligible || complete || pending) && !(pending && stage === 'authorize') && (
           <div className="stats-modal-actions">
             <Button variant="ghost" onClick={onClose} style={{ flex: 1 }}>Stäng</Button>
-            {pending && <Button variant="primary" onClick={() => void load()} style={{ flex: 1 }}>Stäm av igen</Button>}
+            {pending && <Button variant="primary" onClick={() => setStage('authorize')} style={{ flex: 1 }}>Stäm av / återförsök</Button>}
           </div>
         )}
     </AccessibleDialog>

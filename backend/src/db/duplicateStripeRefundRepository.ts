@@ -9,6 +9,7 @@ export type DuplicateStripeRefundRecord = {
   amountOre: number;
   status: 'pending' | 'succeeded' | 'failed';
   providerRefundId?: string;
+  createdAt: string;
   created: boolean;
 };
 
@@ -39,6 +40,7 @@ function parseStored(row: Row, created: boolean): DuplicateStripeRefundRecord {
     amountOre,
     status: parseStatus(row.status),
     providerRefundId: String(row.provider_refund_id ?? '').trim() || undefined,
+    createdAt: requiredString(row.created_at, 'creation time'),
     created,
   };
 }
@@ -48,7 +50,7 @@ export async function getDuplicateStripeRefundByEvent(
 ): Promise<DuplicateStripeRefundRecord | null> {
   const { data, error } = await supabase
     .from('duplicate_stripe_refunds')
-    .select('id, stripe_event_id, order_id, stripe_session_id, payment_intent_id, amount_ore, status, provider_refund_id')
+    .select('id, stripe_event_id, order_id, stripe_session_id, payment_intent_id, amount_ore, status, provider_refund_id, created_at')
     .eq('stripe_event_id', eventId)
     .maybeSingle();
   if (error) {
@@ -63,7 +65,7 @@ export async function getDuplicateStripeRefundByProviderId(
 ): Promise<DuplicateStripeRefundRecord | null> {
   const { data, error } = await supabase
     .from('duplicate_stripe_refunds')
-    .select('id, stripe_event_id, order_id, stripe_session_id, payment_intent_id, amount_ore, status, provider_refund_id')
+    .select('id, stripe_event_id, order_id, stripe_session_id, payment_intent_id, amount_ore, status, provider_refund_id, created_at')
     .eq('provider_refund_id', providerRefundId)
     .maybeSingle();
   if (error) {

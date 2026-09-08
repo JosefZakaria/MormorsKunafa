@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
+import { testDuplicateRefundRecovery } from './lib/test-duplicate-refunds.mjs';
 import { withTestDatabase } from './lib/local-test-database.mjs';
 import { initializeSyntheticDatabase, createSyntheticApp, HOJA, MOLLEVANGEN, PRODUCT, TEST_PASSWORD, literal } from './lib/synthetic-api.mjs';
 
@@ -178,6 +179,7 @@ await withTestDatabase(async db => {
     const completedReplay=await call(`/api/orders/admin/${id}/refunds`,refundBody,{...ownerHeaders,'Idempotency-Key':refundKey});
     assert.equal(completedReplay.status,200,JSON.stringify(completedReplay.data));
     assert.equal(completedReplay.data.refundId,partial.data.refundId);
+    await testDuplicateRefundRecovery({ db, call, stripe, sessions, refunds, faults, expireRefundKeys, orderId: id, ownerHeaders, staffHeaders: adminHeaders });
     const scheduledDate=tomorrow.slice(0,10);
     assert.equal((await newOrder({...orderBody,scheduledTime:scheduledDate+'T14:00+14:00'})).status,400);
     assert.equal((await newOrder({...orderBody,scheduledTime:new Date(Date.now()+40*86400000).toISOString().slice(0,10)+'T14:00'})).status,400);

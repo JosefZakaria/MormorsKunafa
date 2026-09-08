@@ -3,9 +3,12 @@ import test from 'node:test';
 import type Stripe from 'stripe';
 import {
   expectedDuplicateRefundConfirmation,
+  createDuplicateStripeRefund,
   validateDuplicateStripeRefundEvent,
   validateDuplicateStripePayment,
 } from './duplicatePaymentRefunds.js';
+import { RefundReconciliationRequiredError } from './refundProviders.js';
+import { getStripe } from './stripeClient.js';
 
 const orderId = '0aa461da-4f24-45ed-b1f2-79d6a7bb72d2';
 const originalSessionId = 'cs_test_original_session';
@@ -97,6 +100,55 @@ const expectedRefund = {
   paymentIntentId: 'pi_test_duplicate_payment',
   amountOre: 17_900,
 };
+
+test('reconciles duplicate refunds after lost replies and refuses ambiguous new transfers', async () => {
+  process.env.STRIPE_SECRET_KEY = 'sk_test_' + 'a'.repeat(32);
+  const stripe = getStripe();
+  const original = { list: stripe.refunds.list, create: stripe.refunds.create, retrieve: stripe.refunds.retrieve };
+  const client = stripe as unknown as { refunds: {
+    list: (params: { starting_after?: string }) => Promise<{ data: Stripe.Refund[]; has_more: boolean }>;
+    create: (params: unknown, options: { idempotencyKey: string }) => Promise<Stripe.Refund>;
+    retrieve: (id: string) => Promise<Stripe.Refund>;
+  } };
+  const input = { refundId: expectedRefund.refundId, eventId: expectedRefund.eventId,
+    payment: { orderId, sessionId: duplicateSessionId, paymentIntentId: expectedRefund.paymentIntentId, amountOre: 17_900 },
+    createdAt: new Date(Date.now() - 48 * 3600000).toISOString() };
+  let creates = 0;
+  try {
+    client.refunds.create = async (_params, options) => {
+      creates++;
+      assert.equal(options.idempotencyKey, 'duplicate-payment-refund-' + input.refundId);
+      return refund();
+    };
+    client.refunds.list = async () => ({ data: [refund()], has_more: false });
+    assert.equal((await createDuplicateStripeRefund(input)).status, 'succeeded');
+    client.refunds.list = async params => params.starting_after
+      ? { data: [refund()], has_more: false }
+      : { data: [refund({ id: 're_unrelated', metadata: {} })], has_more: true };
+    assert.equal((await createDuplicateStripeRefund(input)).status, 'succeeded');
+    for (const data of [[], [refund(), refund()], [refund({ amount: 1 })], [refund({ currency: 'eur' })],
+      [refund({ payment_intent: 'pi_other' })], [refund({ metadata: { ...refund().metadata, duplicatePaymentEventId: 'evt_other' } })]]) {
+      client.refunds.list = async () => ({ data, has_more: false });
+      await assert.rejects(createDuplicateStripeRefund(input), RefundReconciliationRequiredError);
+    }
+    client.refunds.list = async () => ({ data: [refund()], has_more: true });
+    await assert.rejects(createDuplicateStripeRefund(input), RefundReconciliationRequiredError);
+    client.refunds.list = async () => { throw new Error('Synthetic pagination failure'); };
+    await assert.rejects(createDuplicateStripeRefund(input));
+    assert.equal(creates, 0);
+    client.refunds.retrieve = async () => refund();
+    assert.equal((await createDuplicateStripeRefund({ ...input, providerRefundId: refund().id })).status, 'succeeded');
+    client.refunds.retrieve = async () => refund({ id: 're_wrong' });
+    await assert.rejects(createDuplicateStripeRefund({ ...input, providerRefundId: refund().id }), RefundReconciliationRequiredError);
+    client.refunds.list = async () => ({ data: [], has_more: false });
+    assert.equal((await createDuplicateStripeRefund({ ...input, createdAt: new Date().toISOString() })).status, 'succeeded');
+    assert.equal(creates, 1);
+    client.refunds.create = async () => refund({ currency: 'eur' });
+    await assert.rejects(createDuplicateStripeRefund({ ...input, createdAt: new Date().toISOString() }), RefundReconciliationRequiredError);
+  } finally {
+    Object.assign(stripe.refunds, original);
+  }
+});
 
 test('accepts only an exact signed duplicate refund result', () => {
   assert.deepEqual(validateDuplicateStripeRefundEvent(refund(), expectedRefund), {

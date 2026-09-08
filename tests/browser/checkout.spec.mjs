@@ -115,3 +115,36 @@ test('logout can retry after the server revoked the session but its response was
   await expect(page).not.toHaveURL(/dashboard/);
   expect((await context.cookies()).some(c=>c.name==='mk_admin_session')).toBeFalsy();
 });
+
+test('pending duplicate refund recovery requires explicit authorization', async ({page}) => {
+  const eventId = 'evt_test_pending_browser_refund';
+  const detail = { eventId, status: 'pending', orderNumber: '#1042', amount: 9900,
+    confirmation: 'ÅTERBETALA DUBBELBETALNING #1042' };
+  let submitted = 0;
+  await page.route('**/api/admin/payment-alerts', route => route.fulfill({json:[{
+    eventId, eventType:'checkout.session.completed',outcome:'alert_paid_session_validation_failed',receivedAt:new Date().toISOString(),
+  }]}));
+  await page.route(`**/api/admin/payment-alerts/${eventId}`, route => route.fulfill({json:detail}));
+  await page.route(`**/api/admin/payment-alerts/${eventId}/refund`, route => {
+    const body = route.request().postDataJSON();
+    expect(body.confirmation).toBe(detail.confirmation);
+    expect(body.password).toBe('Synthetic-local-password-42');
+    expect(route.request().headers()['x-csrf-token']).toBeTruthy();
+    submitted++;
+    return route.fulfill({json:{...detail,status:'succeeded'}});
+  });
+  await page.goto('/admin/login');
+  await page.getByLabel('E-post',{exact:true}).fill('owner@example.test');
+  await page.getByLabel('Lösenord',{exact:true}).fill('Synthetic-local-password-42');
+  await page.getByRole('button',{name:'Logga in',exact:true}).click();
+  await page.getByRole('button',{name:'Granska larm'}).click();
+  await expect(page.getByText('Resultatet är ännu inte bekräftat.',{exact:false})).toBeVisible();
+  await page.getByRole('button',{name:'Stäm av / återförsök'}).click();
+  expect(submitted).toBe(0);
+  await expect(page.getByRole('button',{name:'Stäm av / återförsök'})).toBeDisabled();
+  await page.getByLabel('Återbetalningslösenord',{exact:true}).fill('Synthetic-local-password-42');
+  await page.locator('#duplicate-refund-confirmation').fill(detail.confirmation);
+  await page.getByRole('button',{name:'Stäm av / återförsök'}).click();
+  await expect(page.getByText('Dubbelbetalningen är återbetald.')).toBeVisible();
+  expect(submitted).toBe(1);
+});
