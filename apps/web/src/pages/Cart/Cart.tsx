@@ -13,6 +13,7 @@ import { isBreadProductId } from '@shared/constants/productPricing';
 import { safePaymentRedirectUrl } from '@shared/utils/paymentRedirect.ts';
 import {
     dateToStockholmInputValue,
+    MAX_PREORDER_DAYS,
     roundClockToNext5Min,
     todayInStockholmDateString,
 } from '@shared/utils/scheduledTime';
@@ -125,7 +126,7 @@ export const Cart: React.FC = () => {
     // --- Scheduled pickup/delivery date ---
     const todayStr = todayInStockholmDateString();
     const maxDate = new Date();
-    maxDate.setDate(maxDate.getDate() + 30);
+    maxDate.setDate(maxDate.getDate() + MAX_PREORDER_DAYS);
     const maxDateStr = dateToStockholmInputValue(maxDate);
 
     const [prepTime, setPrepTime] = useState<number>(30);

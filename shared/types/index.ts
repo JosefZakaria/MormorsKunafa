@@ -236,6 +236,10 @@ export interface Order {
 export interface PublicOrderStatus {
   orderNumber: string;
   status: OrderStatus;
+  paymentStatus: 'pending' | 'paid';
+  orderType: OrderType;
+  scheduledTime?: string;
+  locationId?: string | null;
   estimatedReadyTime?: string;
 }
 

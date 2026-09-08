@@ -38,6 +38,10 @@ await withTestDatabase(async db => {
     assert.equal(status.status,200,JSON.stringify(status.data));
     for (const privateField of ['customerInfo','customerPhone','customerEmail','items','deliveryInfo']) assert(!(privateField in status.data));
     assert.match(status.headers.get('cache-control'),/no-store/);
+    assert.equal(status.data.paymentStatus,'pending');
+    assert.equal(status.data.locationId,HOJA);
+    assert.equal(status.data.orderType,'takeaway');
+    assert.equal(status.data.scheduledTime,new Date(await db.sql(`SELECT scheduled_at FROM orders WHERE id='${id}'`)).toISOString());
     const parallel = await Promise.all([call(`/api/orders/checkout-session/${id}`,{},tokenHeader),call(`/api/orders/checkout-session/${id}`,{},tokenHeader)]);
     assert.equal(parallel[0].status,200,JSON.stringify(parallel[0].data));
     assert.equal(parallel[0].data.url,parallel[1].data.url);
@@ -160,6 +164,12 @@ await withTestDatabase(async db => {
     const completedReplay=await call(`/api/orders/admin/${id}/refunds`,refundBody,{...ownerHeaders,'Idempotency-Key':refundKey});
     assert.equal(completedReplay.status,200,JSON.stringify(completedReplay.data));
     assert.equal(completedReplay.data.refundId,partial.data.refundId);
+    const scheduledDate=tomorrow.slice(0,10);
+    assert.equal((await newOrder({...orderBody,scheduledTime:scheduledDate+'T14:00+14:00'})).status,400);
+    assert.equal((await newOrder({...orderBody,scheduledTime:new Date(Date.now()+40*86400000).toISOString().slice(0,10)+'T14:00'})).status,400);
+    const preorder=await newOrder({...orderBody,scheduledTime:new Date(Date.now()+30*86400000).toISOString().slice(0,10)+'T14:00'});
+    assert.equal(preorder.status,201,JSON.stringify(preorder.data));
+    assert.equal(await db.sql(`SELECT order_status_token_expires_at > scheduled_at + interval '6 days' FROM orders WHERE id='${preorder.data.id}'`),'t');
     await db.sql("UPDATE admin_users SET token_version=token_version+1 WHERE id='mollevangen-test'");
     assert.equal((await call('/api/admin/session',undefined,adminHeaders)).status,401);
     console.log('Verified real HTTP routes + PostgreSQL: server pricing, replay, token privacy, concurrent checkout/confirmation, both locations, pauses/stock/hidden products, scoped refunds/status, CSRF and session revocation.');

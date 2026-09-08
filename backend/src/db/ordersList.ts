@@ -107,6 +107,10 @@ export function orderRowToPublicStatus(r: Row): Record<string, unknown> {
   return {
     orderNumber: String(r.order_number ?? ''),
     status: String(r.status ?? 'ny'),
+    paymentStatus: String(r.payment_status ?? 'pending'),
+    orderType: String(r.order_type ?? 'takeaway'),
+    scheduledTime: dbTimestampToIso(r.scheduled_at),
+    locationId: r.location_id ? String(r.location_id) : null,
     estimatedReadyTime: dbTimestampToIso(r.estimated_ready_at),
   };
 }

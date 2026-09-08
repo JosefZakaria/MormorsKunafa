@@ -24,8 +24,8 @@ import { getStripe, isStripeConfigured } from '../services/stripeClient.js';
 import { loadAdminScope, orderRowVisibleToScope } from '../services/locationScope.js';
 import { resolveOrderLocationId, locationOrderTypeError, inStorePickupSmsSuffix } from '../db/locations.js';
 import { outOfStockProductNames, stockLocationIdForOrder } from '../db/productLocationStock.js';
-import { parseOrderScheduledAt, formatStockholmDateTime } from '../utils/stockholmWallTime.js';
-import { validateScheduledOrderTime } from '../shared/utils/openingHours.js';
+import { formatStockholmDateTime } from '../utils/stockholmWallTime.js';
+import { validateOrderSchedule } from '../utils/orderSchedule.js';
 import {
   isCardPayment,
   isOnlinePayment,
@@ -278,19 +278,12 @@ router.post('/', orderLimiter, orderContactLimiter, async (req: Request, res: Re
     // Hemkörning has no customer-chosen time (1–2 business days); ignore any scheduledTime.
     let scheduledAt: Date | null = null;
     if (!isDelivery) {
-      if (scheduledTimeInput) {
-        scheduledAt = parseOrderScheduledAt(scheduledTimeInput);
-        if (!scheduledAt || Number.isNaN(scheduledAt.getTime())) {
-          res.status(400).json({ error: 'Ogiltig förbeställningstid. Välj datum och tid igen.' });
-          return;
-        }
-      }
-
-      const hoursValidation = validateScheduledOrderTime(scheduledTimeInput, defaultPrep);
+      const hoursValidation = validateOrderSchedule(scheduledTimeInput, defaultPrep);
       if (!hoursValidation.valid) {
         res.status(400).json({ error: hoursValidation.error });
         return;
       }
+      scheduledAt = hoursValidation.scheduledAt;
     }
 
     const baseTime = scheduledAt && scheduledAt.getTime() > Date.now() ? scheduledAt : new Date();
@@ -333,7 +326,7 @@ router.post('/', orderLimiter, orderContactLimiter, async (req: Request, res: Re
     }
 
     const orderId = generateId();
-    const statusAccess = createOrderStatusToken(orderId);
+    const statusAccess = createOrderStatusToken(orderId, Date.now(), scheduledAt);
     const orderInsert = {
       id: orderId,
       status: 'ny',

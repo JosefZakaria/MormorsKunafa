@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import type { OrderStatus as OrderStatusValue, PublicOrderStatus } from '@shared/types';
 import { parseApiTimestamp } from '@shared/utils/parseApiTimestamp';
+import { orderStatusPresentation } from '@shared/utils/orderStatusPresentation';
 import { Container } from '../../components/common/Container/Container';
 import { orderApi } from '../../services/api';
 import './OrderStatus.css';
@@ -115,7 +116,8 @@ export const OrderStatus: React.FC = () => {
 
   const cancelled = order.status === 'avbruten';
   const completed = ['klar', 'uthämtad', 'levererad'].includes(order.status);
-  const currentIndex = order.status === 'mottagen'
+  const presentation = orderStatusPresentation(order);
+  const currentIndex = completed ? STATUS_STEPS.length - 1 : order.status === 'mottagen'
     ? 1
     : Math.max(0, STATUS_STEPS.indexOf(order.status));
 
@@ -125,15 +127,15 @@ export const OrderStatus: React.FC = () => {
         <div className={`status-card status--${cancelled ? 'cancelled' : completed ? 'almost-ready' : 'on-time'}`}>
           <p className="text-center">Beställning {order.orderNumber}</p>
           <h1 className="text-display-md status-title">
-            {cancelled ? 'Beställningen har avbrutits' : completed ? 'Din beställning är klar!' : 'Vi förbereder din beställning'}
+            {presentation.title}
           </h1>
-          {!cancelled && order.estimatedReadyTime && !completed && (
+          {presentation.showTimer && (
             <div className="timer-display">
               <span className="timer-value">{countdown}</span>
               <span className="text-body-md timer-label">Minuter kvar</span>
             </div>
           )}
-          {!cancelled && (
+          {presentation.showSteps && (
             <div className="status-steps">
               {STATUS_STEPS.map((step, index) => (
                 <div key={step} className={`step ${index < currentIndex ? 'step--completed' : ''} ${index === currentIndex ? 'step--active' : ''}`}>
@@ -144,14 +146,10 @@ export const OrderStatus: React.FC = () => {
             </div>
           )}
           <p className="text-center status-message">
-            {cancelled
-              ? 'Kontakta oss och uppge ordernumret om du har frågor.'
-              : completed
-                ? 'Din beställning är färdig. Spara ordernumret om du behöver kontakta oss.'
-                : `Aktuell status: ${STEP_LABELS[order.status] ?? order.status}.`}
+            {presentation.message}
           </p>
           <button type="button" className="status-back-btn" onClick={() => navigate('/')}>
-            Tillbaka till menyn
+            Tillbaka till startsidan
           </button>
         </div>
       </Container>

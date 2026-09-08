@@ -25,9 +25,14 @@ export function hashOrderStatusToken(token: string): string {
 
 export function createOrderStatusToken(
   orderId: string,
-  now = Date.now()
+  now = Date.now(),
+  scheduledAt?: Date | null
 ): { token: string; tokenHash: string; expiresAt: string } {
-  const expiresAtSeconds = String(Math.floor(now / 1000) + TOKEN_LIFETIME_SECONDS);
+  const scheduledMs = scheduledAt?.getTime() ?? now;
+  if (!Number.isFinite(scheduledMs) || scheduledMs > now + 31 * 24 * 60 * 60 * 1000) {
+    throw new Error('Order status token schedule exceeds the supported booking window');
+  }
+  const expiresAtSeconds = String(Math.floor(Math.max(now, scheduledMs) / 1000) + TOKEN_LIFETIME_SECONDS);
   const nonce = randomBytes(16).toString('base64url');
   const token = `${TOKEN_VERSION}.${expiresAtSeconds}.${nonce}.${signature(orderId, expiresAtSeconds, nonce)}`;
   return {

@@ -35,11 +35,31 @@ for (const location of ['Höja','Möllevången']) {
     await page.getByRole('button',{name:'Gå till betalning'}).click();
     await expect(page).toHaveURL(/\/status\?orderId=/);
     await expect(page.getByText(/^Beställning #\d+$/)).toBeVisible();
+    await expect(page.getByRole('heading',{name:'Din förbeställning är bokad'})).toBeVisible();
+    await expect(page.locator('.timer-display')).toHaveCount(0);
+    await expect(page.locator('.status-message')).toContainText(location);
     await expect(page.locator('body')).not.toContainText('browser@example.test');
     await page.reload();
     await expect(page.locator('body')).not.toContainText('browser@example.test');
   });
 }
+
+test('status presentation preserves unpaid, delivery and terminal states without customer data',async({page})=>{
+  const id='9f0e4b27-30f1-4eee-9f18-004766113333';
+  await page.addInitScript(id=>sessionStorage.setItem(`order-status-token:${id}`,'synthetic-presentation-token'),id);
+  let status={orderNumber:'#10042',status:'ny',paymentStatus:'pending',orderType:'takeaway',estimatedReadyTime:new Date(Date.now()+3600000).toISOString()};
+  await page.route(`**/api/orders/${id}`,route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(status)}));
+  await page.goto(`/status?orderId=${id}`);
+  await expect(page.getByRole('heading',{name:'Väntar på betalning'})).toBeVisible();
+  await expect(page.locator('.timer-display')).toHaveCount(0);
+  status={...status,paymentStatus:'paid',orderType:'delivery'};
+  await page.reload();
+  await expect(page.locator('.status-message')).toContainText('1–2 arbetsdagar');
+  await expect(page.locator('.timer-display')).toHaveCount(0);
+  status={...status,status:'levererad'};
+  await page.reload();
+  await expect(page.getByRole('heading',{name:'Beställningen är levererad'})).toBeVisible();
+});
 
 test('admin cookie login, current dashboard and logout', async ({page,context})=> {
   const active = page.waitForResponse(r=>r.url().includes('/api/orders/admin/active'));

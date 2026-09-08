@@ -8,6 +8,16 @@ import {
 
 process.env.JWT_SECRET = 'test-only-order-status-secret-that-is-long-enough';
 
+test('preorder status remains accessible through the booking and remains bounded', () => {
+  const now=Date.now(), day=86400000, id='ee8f1053-7e15-4675-8f80-f6cfa824ab8f';
+  const scheduled=new Date(now+30*day);
+  const {token,tokenHash,expiresAt}=createOrderStatusToken(id,now,scheduled);
+  assert.equal(verifyStoredOrderStatusToken(id,token,tokenHash,expiresAt,now+31*day),true);
+  assert.equal(verifyStoredOrderStatusToken(id,token,tokenHash,expiresAt,now+38*day),false);
+  assert.throws(()=>createOrderStatusToken(id,now,new Date(now+32*day)));
+  assert.throws(()=>createOrderStatusToken(id,now,new Date('invalid')));
+});
+
 test('accepts a fresh token only for its order', () => {
   const orderId = 'ee8f1053-7e15-4675-8f80-f6cfa824ab8f';
   const { token, tokenHash, expiresAt } = createOrderStatusToken(orderId);
