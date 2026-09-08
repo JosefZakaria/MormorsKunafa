@@ -2,6 +2,7 @@
 -- It deliberately outputs aggregates and internal consistency counts, not PII.
 
 BEGIN TRANSACTION READ ONLY;
+SET LOCAL search_path = pg_catalog;
 
 WITH required_tables(table_name) AS (
   VALUES ('admin_settings'), ('admin_users'), ('order_items'), ('orders'), ('products')
@@ -36,7 +37,7 @@ FROM (
 ) AS duplicates;
 
 SELECT
-  count(*) FILTER (WHERE total_ore <= 0) AS nonpositive_order_totals,
+  count(*) FILTER (WHERE total_ore IS NULL OR total_ore <= 0) AS invalid_order_totals,
   count(*) FILTER (WHERE payment_status = 'paid') AS paid_orders,
   coalesce(sum(total_ore) FILTER (WHERE payment_status = 'paid'), 0) AS paid_gross_ore,
   count(*) FILTER (
@@ -47,18 +48,32 @@ SELECT
 FROM public.orders;
 
 SELECT
-  count(*) FILTER (WHERE quantity <= 0) AS nonpositive_item_quantities,
-  count(*) FILTER (WHERE price_ore <= 0) AS nonpositive_item_prices,
+  count(*) FILTER (WHERE quantity IS NULL OR quantity <= 0) AS invalid_item_quantities,
+  count(*) FILTER (WHERE price_ore IS NULL OR price_ore <= 0) AS invalid_item_prices,
   coalesce(sum(quantity::bigint * price_ore::bigint), 0) AS item_gross_ore
 FROM public.order_items;
 
 SELECT count(*) AS order_total_item_sum_mismatches
 FROM public.orders AS orders
-JOIN (
+LEFT JOIN (
   SELECT order_id, sum(quantity::bigint * price_ore::bigint) AS item_total_ore
   FROM public.order_items
   GROUP BY order_id
 ) AS item_totals ON item_totals.order_id = orders.id
-WHERE item_totals.item_total_ore <> orders.total_ore;
+WHERE item_totals.item_total_ore IS DISTINCT FROM orders.total_ore;
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM public.order_items i LEFT JOIN public.orders o ON o.id=i.order_id WHERE o.id IS NULL)
+    OR EXISTS (SELECT 1 FROM public.orders GROUP BY order_number HAVING count(*) > 1)
+    OR EXISTS (SELECT 1 FROM public.orders WHERE order_number IS NULL OR total_ore IS NULL OR total_ore <= 0)
+    OR EXISTS (SELECT 1 FROM public.order_items WHERE quantity IS NULL OR quantity <= 0 OR price_ore IS NULL OR price_ore <= 0)
+    OR EXISTS (SELECT 1 FROM public.orders o LEFT JOIN (
+      SELECT order_id,sum(quantity::bigint*price_ore::bigint) AS total FROM public.order_items GROUP BY order_id
+    ) i ON i.order_id=o.id WHERE i.total IS DISTINCT FROM o.total_ore OR i.order_id IS NULL) THEN
+    RAISE EXCEPTION 'Restored data failed order/accounting integrity verification';
+  END IF;
+END;
+$$;
 
 COMMIT;

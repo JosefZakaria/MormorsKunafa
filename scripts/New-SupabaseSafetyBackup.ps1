@@ -8,6 +8,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'lib/PostgresConnection.ps1')
 
 function Get-TextSha256([string]$Value) {
   $sha = [Security.Cryptography.SHA256]::Create()
@@ -31,16 +32,11 @@ if ($destination.Equals($workspace, [StringComparison]::OrdinalIgnoreCase) -or
   throw 'The backup destination must be outside the Git workspace.'
 }
 
-$requiredEnvironment = @('PGHOST', 'PGDATABASE', 'PGUSER', 'PGPASSWORD')
-$missingEnvironment = @($requiredEnvironment | Where-Object {
-  [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($_))
-})
-if ($missingEnvironment.Count -gt 0) {
-  throw ('Missing PostgreSQL environment variables: ' + ($missingEnvironment -join ', '))
-}
+$connection = Get-PgConnectionSettings
 
 $pgDump = Get-Command pg_dump -ErrorAction Stop
 $pgRestore = Get-Command pg_restore -ErrorAction Stop
+$psql = Get-Command psql -ErrorAction Stop
 New-Item -ItemType Directory -Path $destination -Force | Out-Null
 
 $timestamp = [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ')
@@ -53,13 +49,11 @@ if ((Test-Path -LiteralPath $archivePath) -or
   throw 'Refusing to overwrite an existing backup artifact.'
 }
 
-$previousSslMode = $env:PGSSLMODE
-if ([string]::IsNullOrWhiteSpace($env:PGSSLMODE)) {
-  $env:PGSSLMODE = 'require'
-}
+$savedPgEnvironment = Enter-IsolatedPgEnvironment $connection
 
 try {
-  & $pgDump.Source '--format=custom' '--blobs' '--no-owner' '--no-privileges' '--file' $partialPath
+  $sourceIdentity = Assert-PgDatabase $psql.Source $connection.PGDATABASE
+  & $pgDump.Source '--no-password' '--format=custom' '--blobs' '--no-owner' '--no-privileges' '--file' $partialPath
   if ($LASTEXITCODE -ne 0) {
     throw 'pg_dump failed. No backup was accepted.'
   }
@@ -81,13 +75,14 @@ try {
   Move-Item -LiteralPath $partialPath -Destination $archivePath
   $file = Get-Item -LiteralPath $archivePath
   $manifest = [ordered]@{
-    formatVersion = 1
+    formatVersion = 2
     createdUtc = [DateTime]::UtcNow.ToString('o')
     archiveFile = $file.Name
     archiveBytes = $file.Length
     archiveSha256 = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
-    sourceHostFingerprint = Get-TextSha256 $env:PGHOST
-    sourceDatabase = $env:PGDATABASE
+    sourceHostFingerprint = Get-TextSha256 $connection.PGHOST
+    sourceDatabase = $sourceIdentity.database
+    sourceConnectionIsolated = $true
     requiredTables = $requiredTables
     restoreTested = $false
   }
@@ -106,5 +101,5 @@ try {
   }
   throw
 } finally {
-  $env:PGSSLMODE = $previousSslMode
+  Restore-PgEnvironment $savedPgEnvironment
 }

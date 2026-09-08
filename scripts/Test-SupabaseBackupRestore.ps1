@@ -16,6 +16,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'lib/PostgresConnection.ps1')
 
 function Get-TextSha256([string]$Value) {
   $sha = [Security.Cryptography.SHA256]::Create()
@@ -31,20 +32,18 @@ if (-not $ConfirmDisposableTarget) {
   throw 'ConfirmDisposableTarget is required because the target database is cleaned and replaced.'
 }
 
-$requiredEnvironment = @('RESTORE_PGHOST', 'RESTORE_PGDATABASE', 'RESTORE_PGUSER', 'RESTORE_PGPASSWORD')
-$missingEnvironment = @($requiredEnvironment | Where-Object {
-  [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($_))
-})
-if ($missingEnvironment.Count -gt 0) {
-  throw ('Missing restore-target environment variables: ' + ($missingEnvironment -join ', '))
-}
-if ($env:RESTORE_PGDATABASE -ne $ExpectedDisposableDatabase) {
+$connection = Get-PgConnectionSettings 'RESTORE_'
+if (-not [string]::Equals($connection.PGDATABASE,$ExpectedDisposableDatabase,[StringComparison]::Ordinal)) {
   throw 'RESTORE_PGDATABASE does not exactly match ExpectedDisposableDatabase.'
 }
 
 $archive = (Resolve-Path -LiteralPath $ArchivePath).Path
 $manifestFile = (Resolve-Path -LiteralPath $ManifestPath).Path
 $manifest = Get-Content -LiteralPath $manifestFile -Raw -Encoding utf8 | ConvertFrom-Json
+if ($manifest.formatVersion -ne 2 -or $manifest.sourceConnectionIsolated -ne $true -or
+    [string]$manifest.sourceHostFingerprint -cnotmatch '^[a-f0-9]{64}$') {
+  throw 'Retake the backup with isolated connection settings; this manifest cannot prove its declared source.'
+}
 $actualHash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($actualHash -ne [string]$manifest.archiveSha256) {
   throw 'Archive SHA-256 does not match the manifest.'
@@ -53,7 +52,7 @@ if ((Get-Item -LiteralPath $archive).Length -ne [long]$manifest.archiveBytes) {
   throw 'Archive byte length does not match the manifest.'
 }
 
-$targetFingerprint = Get-TextSha256 $env:RESTORE_PGHOST
+$targetFingerprint = Get-TextSha256 $connection.PGHOST
 if ($targetFingerprint -eq [string]$manifest.sourceHostFingerprint) {
   throw 'Restore target has the same host fingerprint as the source. Production restore is forbidden.'
 }
@@ -64,37 +63,28 @@ $verificationSql = (Resolve-Path -LiteralPath (
   Join-Path $PSScriptRoot '..\backend\src\db\verification\verify-restored-database.sql'
 )).Path
 
-$saved = @{}
-foreach ($name in @('PGHOST', 'PGPORT', 'PGDATABASE', 'PGUSER', 'PGPASSWORD', 'PGSSLMODE')) {
-  $saved[$name] = [Environment]::GetEnvironmentVariable($name)
-}
+$savedPgEnvironment = Enter-IsolatedPgEnvironment $connection
 
 try {
-  $env:PGHOST = $env:RESTORE_PGHOST
-  $env:PGPORT = if ($env:RESTORE_PGPORT) { $env:RESTORE_PGPORT } else { '5432' }
-  $env:PGDATABASE = $env:RESTORE_PGDATABASE
-  $env:PGUSER = $env:RESTORE_PGUSER
-  $env:PGPASSWORD = $env:RESTORE_PGPASSWORD
-  $env:PGSSLMODE = if ($env:RESTORE_PGSSLMODE) { $env:RESTORE_PGSSLMODE } else { 'require' }
-
-  $currentDatabase = (& $psql.Source '--no-psqlrc' '--tuples-only' '--no-align' '--command' 'SELECT current_database();').Trim()
-  if ($LASTEXITCODE -ne 0 -or $currentDatabase -ne $ExpectedDisposableDatabase) {
-    throw 'Could not prove the exact disposable restore target.'
-  }
+  $targetIdentity = Assert-PgDatabase $psql.Source $connection.PGDATABASE
 
   $description = "replace disposable database $ExpectedDisposableDatabase from the verified archive"
   if (-not $PSCmdlet.ShouldProcess($ExpectedDisposableDatabase, $description)) {
     Write-Output 'restore=cancelled'
-    exit 0
+    return
   }
 
-  & $pgRestore.Source '--clean' '--if-exists' '--no-owner' '--no-privileges' `
-    '--exit-on-error' '--single-transaction' '--dbname' $ExpectedDisposableDatabase $archive
+  & $pgRestore.Source '--no-password' '--clean' '--if-exists' '--no-owner' '--no-privileges' `
+    '--exit-on-error' '--single-transaction' '--dbname' $connection.PGDATABASE $archive
   if ($LASTEXITCODE -ne 0) {
     throw 'pg_restore failed; the single transaction was not accepted.'
   }
 
-  & $psql.Source '--no-psqlrc' '--set' 'ON_ERROR_STOP=1' '--file' $verificationSql
+  $verifiedIdentity = Assert-PgDatabase $psql.Source $connection.PGDATABASE
+  if (-not [string]::Equals([string]$targetIdentity.sessionUser,[string]$verifiedIdentity.sessionUser,[StringComparison]::Ordinal)) {
+    throw 'The effective database user changed during restore.'
+  }
+  & $psql.Source '--no-psqlrc' '--no-password' '--set' 'ON_ERROR_STOP=1' '--file' $verificationSql
   if ($LASTEXITCODE -ne 0) {
     throw 'The restored database failed verification.'
   }
@@ -102,9 +92,7 @@ try {
   Write-Output 'restore=verified'
   Write-Output ('archive_sha256=' + $actualHash)
   Write-Output ('target_database=' + $ExpectedDisposableDatabase)
-  Write-Output 'Production was not modified. Record this result in the restricted migration journal.'
+  Write-Output 'The declared target and restored data passed verification. Record independent target-isolation evidence in the restricted migration journal.'
 } finally {
-  foreach ($name in $saved.Keys) {
-    [Environment]::SetEnvironmentVariable($name, $saved[$name])
-  }
+  Restore-PgEnvironment $savedPgEnvironment
 }

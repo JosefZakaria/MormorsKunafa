@@ -37,6 +37,16 @@ access-restricted and outside both Git and ordinary cloud-synced folders. The
 script creates a custom-format archive plus a SHA-256 manifest and rejects an
 archive missing the core accounting/order tables.
 
+Both operator scripts capture one validated connection and remove every inherited
+`PG*` override while their commands run, restoring the original environment on
+exit. Host/port lists, socket hosts and connection-string database values are
+rejected. Database names are compared case-sensitively. Optional TLS certificate,
+key, root certificate and CRL settings use the corresponding `PGSSL*` variables;
+restore settings must use the `RESTORE_` prefix. `PGSERVICE`, `PGHOSTADDR`,
+`PGOPTIONS` and passfile overrides are never inherited. Prefer `verify-full`
+with a trusted root certificate for remote connections; the default is `require`.
+Use `disable` only for the explicitly isolated local test cluster.
+
 Restore that exact archive into a separate disposable PostgreSQL database with
 `scripts/Test-SupabaseBackupRestore.ps1`. Restore credentials use the
 `RESTORE_PG*` environment-variable prefix. The script rejects the source host,
@@ -44,6 +54,15 @@ requires the exact disposable database name, uses a single transaction and runs
 `../verification/verify-restored-database.sql`. Never use production as the
 restore target. Retain only the manifest, timestamps, aggregate verification
 result and operator approval in the restricted migration journal.
+
+Retake archives whose manifests predate format version 2: their claimed source
+may have been affected by inherited connection overrides. Host fingerprints and
+database/user checks verify the declared connection, not physical separation
+against DNS aliases, tunnels or an incorrectly selected project. Independently
+verify the disposable server/project and credentials before approving a restore.
+The read-only verification SQL raises an error for inconsistent totals, missing
+items, orphaned items, duplicate order numbers, and null/nonpositive amounts or
+quantities; printed aggregate counts alone never establish success.
 
 Immediately before migration, stop writes during the agreed night maintenance
 window, take and restore-test a fresh archive, then record the last accepted

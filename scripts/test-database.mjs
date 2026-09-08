@@ -3,6 +3,7 @@ import path from 'node:path';
 import { readFile, readdir } from 'node:fs/promises';
 import { randomUUID, createHash } from 'node:crypto';
 import { repositoryRoot, validateTestTarget, withTestDatabase } from './lib/local-test-database.mjs';
+import { verifyRestoreIntegrityChecks } from './lib/test-restore-integrity.mjs';
 
 for (const host of ['localhost', 'db.example.test', '0.0.0.0', '::1']) {
   assert.throws(() => validateTestTarget(host, 'mk_security_test'));
@@ -12,6 +13,7 @@ assert.throws(() => validateTestTarget('127.0.0.1', 'production'));
 
 await withTestDatabase(async ({ sql, file }) => {
   await file(path.join(repositoryRoot, 'backend/test/fixtures/base-schema.sql'));
+  await verifyRestoreIntegrityChecks({sql,file});
   assert.equal(await sql("SELECT count(*) FROM pg_roles WHERE rolname IN ('anon', 'authenticated', 'service_role')"), '3');
   assert.equal(await sql("SELECT count(*) FROM public.orders"), '0');
   await sql("BEGIN; INSERT INTO orders(id, order_number, customer_phone) VALUES ('00000000-0000-4000-8000-000000000001', '#0001', '+46700000000'); ROLLBACK;");

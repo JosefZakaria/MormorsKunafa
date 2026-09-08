@@ -39,3 +39,16 @@ file, and rejects external HTTP/HTTPS. Browser requests outside loopback are
 blocked; the hosted Stripe page is simulated. No email, SMS, push or live payment
 credentials are configured. These checks do not verify provider sandboxes,
 Supabase Storage, actual hosted PostgREST limits, physical printers or production.
+
+The Windows operator-script contract is tested with:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Test-PostgresConnectionIsolation.ps1
+```
+
+That test replaces every `psql`, `pg_dump` and `pg_restore` command with a test
+script block. It tests hostile inherited settings, exact database identity,
+`WhatIf`, failures and environment restoration without contacting a database.
+`npm run test:db` separately runs the real integrity SQL against synthetic valid
+and invalid records. Neither test is evidence that a production backup was taken
+or that a real provider database can be restored successfully.
