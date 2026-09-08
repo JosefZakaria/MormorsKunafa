@@ -6,6 +6,7 @@ import {
   getSwishRefund,
   parseSwishAmountToOre,
   parseSwishInstructionId,
+  swishInstructionIdForProvider,
   swishRefundIdFromUuid,
   verifySwishRefund,
   type SwishPaymentRequestResponse,
@@ -159,7 +160,8 @@ export function validateOriginalSwishPayment(
     merchantAlias: string;
   }
 ): { ok: true; originalPaymentReference: string } | { ok: false; reason: string } {
-  if (parseSwishInstructionId(payment.id) !== expected.instructionId) {
+  if (!parseSwishInstructionId(payment.id) || !parseSwishInstructionId(expected.instructionId)
+      || swishInstructionIdForProvider(payment.id) !== swishInstructionIdForProvider(expected.instructionId)) {
     return { ok: false, reason: 'Swish instruction ID mismatch' };
   }
   if (String(payment.status ?? '').toUpperCase() !== 'PAID') {

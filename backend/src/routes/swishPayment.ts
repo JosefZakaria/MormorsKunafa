@@ -1,5 +1,4 @@
 import { Router, type Request, type Response } from 'express';
-import { randomUUID } from 'node:crypto';
 import { canStartOrderPayment } from '../utils/orderPaymentState.js';
 import { supabase, type Row, logSupabaseError } from '../db/connection.js';
 import { fetchOrderRow } from '../db/orderRepository.js';
@@ -9,8 +8,11 @@ import {
   getSwishPaymentRequest,
   isSwishConfigured,
   parseSwishInstructionId,
+  resolveSwishInstructionId,
+  SwishHttpError,
   swishPaymentPageUrl,
   verifySwishPaymentRequest,
+  verifySwishPaymentRequestIdentity,
 } from '../services/swishClient.js';
 import { isSwishPayment, normalizeSwishPayerAlias } from '../utils/paymentMethod.js';
 import { requireOrderStatusToken } from '../middleware/orderStatusToken.js';
@@ -52,6 +54,11 @@ async function sendExistingPayment(
   instructionId: string
 ): Promise<void> {
   const payment = await getSwishPaymentRequest(instructionId);
+  const identity = verifySwishPaymentRequestIdentity(payment, {
+    instructionId, amountOre:Number(order.total_ore), payeeAlias:process.env.SWISH_PAYEE_ALIAS?.trim() ?? '',
+    payeePaymentReference:String(order.id).slice(0,35),
+  });
+  if (!identity.ok) throw new Error('Existing Swish payment identity mismatch');
   res.json({
     instructionId,
     status: String(payment.status ?? 'CREATED').slice(0, 32),
@@ -111,7 +118,7 @@ router.post('/:orderId', swishStartLimiter, async (req: Request, res: Response) 
 
     // Reserve the provider identifier before the external request. The conditional
     // update makes concurrent starts converge on one Swish payment request.
-    const reservedInstructionId = randomUUID();
+    const reservedInstructionId = resolveSwishInstructionId();
     const { data: reservationRows, error: reservationError } = await supabase
       .from('orders')
       .update({ swish_instruction_id: reservedInstructionId })
@@ -156,6 +163,12 @@ router.post('/:orderId', swishStartLimiter, async (req: Request, res: Response) 
     });
   } catch (e) {
     logUnexpectedError('swish payment create', e);
+    if (e instanceof SwishHttpError && e.statusCode === 404) {
+      // Absence is not proof a prior transfer never happened. Keep the ID;
+      // automatic recreation requires a verified provider retention contract.
+      res.status(409).json({ code:'SWISH_RECONCILIATION_REQUIRED', error:'Det tidigare Swish-försöket kunde inte bekräftas. Kontakta butiken för avstämning.' });
+      return;
+    }
     res.status(500).json({ error: 'Failed to create Swish payment' });
   }
 });
@@ -187,6 +200,14 @@ router.get('/:orderId/status', swishStatusLimiter, async (req: Request, res: Res
     const pr = await getSwishPaymentRequest(instructionId);
     const swishStatus = String(pr.status ?? '').toUpperCase();
 
+    const identity = verifySwishPaymentRequestIdentity(pr, {
+      instructionId, amountOre:Number(order.total_ore ?? 0),
+      payeeAlias:process.env.SWISH_PAYEE_ALIAS?.trim() ?? '', payeePaymentReference:orderId.slice(0,35),
+    });
+    if (!identity.ok) {
+      res.status(409).json({error:'Swish-betalningen kunde inte verifieras.'});
+      return;
+    }
     if (swishStatus === 'PAID') {
       const verification = verifySwishPaymentRequest(pr, {
         instructionId,

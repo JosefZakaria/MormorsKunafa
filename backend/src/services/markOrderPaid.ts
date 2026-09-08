@@ -8,6 +8,7 @@ import { isOnlinePayment } from '../utils/paymentMethod.js';
 import { dispatchPaidOrderCreatedEvent } from './orderNotifications.js';
 import { logUnexpectedError } from '../utils/safeErrorMetadata.js';
 import { inStorePickupSmsSuffix } from '../db/locations.js';
+import { swishInstructionIdCandidates } from './swishClient.js';
 
 export type MarkOrderPaidOptions = {
   expectedAmountOre?: number;
@@ -101,15 +102,15 @@ export async function getOrderIdBySwishInstructionId(instructionId: string): Pro
   const { data, error } = await supabase
     .from('orders')
     .select('id')
-    .eq('swish_instruction_id', instructionId)
-    .limit(1)
-    .maybeSingle();
+    .in('swish_instruction_id', swishInstructionIdCandidates(instructionId))
+    .limit(2);
 
   if (error) {
     logSupabaseError('getOrderIdBySwishInstructionId', error);
     throw error;
   }
 
-  if (!data) return null;
-  return String((data as Row).id ?? '');
+  if (!data?.length) return null;
+  if (data.length !== 1) throw new Error('Swish instruction matches multiple orders');
+  return String((data[0] as Row).id ?? '');
 }

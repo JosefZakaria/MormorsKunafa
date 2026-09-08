@@ -24,7 +24,7 @@
     "build:backend": "npm run build --workspace=@mormors-kunafa/backend",
     "test": "npm run test:backend && npm run typecheck:mobile",
     "test:db": "node scripts/test-database.mjs",
-    "test:api": "npm run build:backend && node scripts/test-api.mjs && node scripts/test-catalog-api.mjs",
+    "test:api": "npm run build:backend && node scripts/test-api.mjs && node scripts/test-catalog-api.mjs && node scripts/test-swish-api.mjs",
     "test:browser": "playwright test",
     "test:backend": "npm run test --workspace=@mormors-kunafa/backend",
     "typecheck:mobile": "npm exec --workspace=@mormors-kunafa/mobile -- tsc --noEmit",

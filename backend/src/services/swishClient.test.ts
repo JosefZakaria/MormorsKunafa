@@ -6,6 +6,8 @@ import {
   parseSwishRefundId,
   parseSwishEnvironment,
   resolveSwishInstructionId,
+  swishInstructionIdForProvider,
+  swishInstructionIdCandidates,
   validateSwishCallbackBaseUrl,
   verifySwishPaymentRequest,
   verifySwishPaymentRequestIdentity,
@@ -60,7 +62,7 @@ for (const [name, override] of [
   });
 }
 
-test('accepts only canonical version 4 Swish instruction identifiers', () => {
+test('accepts Swish compact v4 identifiers and preserves historical UUID spelling', () => {
   assert.equal(
     parseSwishInstructionId('123e4567-e89b-42d3-a456-426614174000'),
     '123e4567-e89b-42d3-a456-426614174000'
@@ -68,12 +70,17 @@ test('accepts only canonical version 4 Swish instruction identifiers', () => {
   assert.equal(parseSwishInstructionId('123e4567-e89b-12d3-a456-426614174000'), null);
   assert.equal(parseSwishInstructionId('../metadata'), null);
   assert.equal(parseSwishInstructionId('x'.repeat(1_000)), null);
+  const compact = '123E4567E89B42D3A456426614174000';
+  assert.equal(parseSwishInstructionId(compact),compact);
+  assert.equal(swishInstructionIdForProvider('123e4567-e89b-42d3-a456-426614174000'),compact);
+  assert(swishInstructionIdCandidates(compact).includes('123e4567-e89b-42d3-a456-426614174000'));
+  assert.equal(verifySwishPaymentRequest(payment({id:swishInstructionIdForProvider(expected.instructionId)}),expected).ok,true);
 });
 
 test('reuses a reserved Swish instruction instead of generating a second one', () => {
   const reserved = '123e4567-e89b-42d3-a456-426614174000';
   assert.equal(resolveSwishInstructionId(reserved), reserved);
-  assert.match(resolveSwishInstructionId(), /^[0-9a-f-]{36}$/u);
+  assert.match(resolveSwishInstructionId(), /^[0-9A-F]{32}$/u);
   assert.throws(() => resolveSwishInstructionId('not-reserved-safely'));
 });
 

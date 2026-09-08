@@ -4,6 +4,7 @@ import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import https from 'node:https';
 import { repositoryRoot } from './local-test-database.mjs';
+import { installSyntheticSwish } from './synthetic-swish.mjs';
 
 export const TEST_ORIGIN = 'http://127.0.0.1:4179';
 export const HOJA = '2f1a9c4e-6b7d-4e8f-a901-b2c3d4e5f601';
@@ -108,7 +109,7 @@ export function syntheticPostgrest(sql) {
   };
 }
 
-export async function createSyntheticApp(db) {
+export async function createSyntheticApp(db, { swish = false } = {}) {
   // Drop inherited integration credentials before importing application modules.
   const keep = new Set(['PATH','SYSTEMROOT','WINDIR','COMSPEC','TEMP','TMP','USERPROFILE','APPDATA','LOCALAPPDATA','PATHEXT']);
   for (const key of Object.keys(process.env)) if (!keep.has(key.toUpperCase())) delete process.env[key];
@@ -121,6 +122,7 @@ export async function createSyntheticApp(db) {
     DELETE_PASSWORD:TEST_PASSWORD });
   globalThis.fetch = syntheticPostgrest(db.sql);
   https.request = () => { throw new Error('External HTTPS is forbidden in synthetic tests'); };
+  const swishMock = swish ? installSyntheticSwish() : undefined;
   const { default: bcrypt } = await import('bcryptjs');
   process.env.REFUND_PASSWORD_HASH = await bcrypt.hash(TEST_PASSWORD,10);
   const { getStripe } = await import('../../backend/dist/services/stripeClient.js');
@@ -151,5 +153,5 @@ export async function createSyntheticApp(db) {
   stripe.refunds.retrieve = async id => { assert(refunds.has(id)); return refunds.get(id); };
   stripe.refunds.list = async params => ({data:faults.hideRefunds ? [] : [...refunds.values()].filter(r=>r.payment_intent===params.payment_intent),has_more:false});
   const { default: app } = await import('../../backend/dist/index.js');
-  return { app, sessions, stripe, refunds, faults, expireRefundKeys:()=>refundAttempts.clear() };
+  return { app, sessions, stripe, refunds, faults, swishMock, expireRefundKeys:()=>refundAttempts.clear() };
 }

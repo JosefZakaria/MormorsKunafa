@@ -7,7 +7,15 @@ const SWISH_TIMEOUT_MS = 10_000;
 const MAX_SWISH_RESPONSE_BYTES = 64 * 1024;
 const MAX_SWISH_REQUEST_BYTES = 32 * 1024;
 const UUID_V4_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const COMPACT_UUID_V4_PATTERN = /^[0-9a-f]{12}4[0-9a-f]{3}[89ab][0-9a-f]{15}$/i;
 const SWISH_PAYEE_PATTERN = /^\d{8,15}$/;
+
+export class SwishHttpError extends Error {
+  constructor(public readonly statusCode: number) {
+    super('Swish API request failed');
+    this.name = 'SwishHttpError';
+  }
+}
 
 export type SwishEnvironment = 'test' | 'production';
 
@@ -188,7 +196,7 @@ function swishRequest<T>(method: string, path: string, body?: unknown): Promise<
             }
             return;
           }
-          reject(new Error(`Swish API request failed with status ${res.statusCode ?? 'unknown'}`));
+          reject(new SwishHttpError(res.statusCode ?? 0));
         });
         res.on('aborted', () => fail(new Error('Swish API response was interrupted')));
       }
@@ -204,11 +212,25 @@ function swishRequest<T>(method: string, path: string, body?: unknown): Promise<
 
 export function parseSwishInstructionId(value: unknown): string | null {
   const instructionId = String(value ?? '').trim();
-  return UUID_V4_PATTERN.test(instructionId) ? instructionId : null;
+  return UUID_V4_PATTERN.test(instructionId) || COMPACT_UUID_V4_PATTERN.test(instructionId) ? instructionId : null;
+}
+
+/** Swish's wire format is 32 uppercase hex characters, without UUID hyphens. */
+export function swishInstructionIdForProvider(value: string): string {
+  const id = parseSwishInstructionId(value);
+  if (!id) throw new Error('Invalid Swish instruction ID');
+  return id.replaceAll('-', '').toUpperCase();
+}
+
+/** Match historical stored UUID spelling without rewriting a payment reference. */
+export function swishInstructionIdCandidates(value: string): string[] {
+  const compact = swishInstructionIdForProvider(value);
+  const dashed = `${compact.slice(0,8)}-${compact.slice(8,12)}-${compact.slice(12,16)}-${compact.slice(16,20)}-${compact.slice(20)}`;
+  return [...new Set([value, compact, compact.toLowerCase(), dashed, dashed.toLowerCase()])];
 }
 
 export function resolveSwishInstructionId(value?: unknown): string {
-  if (value == null) return randomUUID();
+  if (value == null) return swishInstructionIdForProvider(randomUUID());
   const instructionId = parseSwishInstructionId(value);
   if (!instructionId) throw new Error('Invalid Swish instruction ID');
   return instructionId;
@@ -265,7 +287,8 @@ export function verifySwishPaymentRequestIdentity(
     payeePaymentReference: string;
   }
 ): SwishPaymentVerification {
-  if (payment.id !== expected.instructionId) {
+  if (!parseSwishInstructionId(payment.id) || !parseSwishInstructionId(expected.instructionId)
+      || swishInstructionIdForProvider(payment.id) !== swishInstructionIdForProvider(expected.instructionId)) {
     return { ok: false, reason: 'Swish instruction ID mismatch' };
   }
   if (payment.amount == null) {
@@ -380,18 +403,26 @@ export async function createSwishPaymentRequest(params: {
 
   await swishRequest<unknown>(
     'PUT',
-    `/swish-cpcapi/api/v2/paymentrequests/${instructionId}`,
+    `/swish-cpcapi/api/v2/paymentrequests/${swishInstructionIdForProvider(instructionId)}`,
     body
   );
 
   let token: string | undefined;
   let status: string | undefined;
+  let fetched: SwishPaymentRequestResponse | undefined;
   try {
-    const fetched = await getSwishPaymentRequest(instructionId);
-    token = fetched.paymentRequestToken;
-    status = fetched.status;
+    fetched = await getSwishPaymentRequest(instructionId);
   } catch (e) {
     logUnexpectedError('swish could not fetch payment request after create', e);
+  }
+  if (fetched) {
+    const identity = verifySwishPaymentRequestIdentity(fetched, {
+      instructionId, amountOre:params.totalOre, payeeAlias,
+      payeePaymentReference:params.payeePaymentReference?.slice(0,35) ?? '',
+    });
+    if (!identity.ok) throw new Error('Created Swish payment identity mismatch');
+    token = fetched.paymentRequestToken;
+    status = fetched.status;
   }
 
   return { instructionId, token, status };
@@ -402,7 +433,7 @@ export async function getSwishPaymentRequest(instructionId: string): Promise<Swi
   if (!validatedId) throw new Error('Invalid Swish instruction ID');
   return swishRequest<SwishPaymentRequestResponse>(
     'GET',
-    `/swish-cpcapi/api/v1/paymentrequests/${validatedId}`
+    `/swish-cpcapi/api/v1/paymentrequests/${swishInstructionIdForProvider(validatedId)}`
   );
 }
 

@@ -94,7 +94,7 @@ test('rejects mismatched Stripe refund sources', () => {
 test('accepts only an exact paid Swish source with a bank payment reference', () => {
   const instructionId = 'bd7204c1-3ec1-4b18-a52c-f6f8544f012f';
   const result = validateOriginalSwishPayment({
-    id: instructionId,
+    id: instructionId.replaceAll('-', '').toUpperCase(),
     status: 'PAID',
     amount: '179.00',
     currency: 'SEK',
