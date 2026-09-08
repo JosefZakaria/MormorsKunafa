@@ -3,9 +3,29 @@
 These SQL files are versioned deployment artifacts. The application never
 applies them automatically and local builds/tests do not connect to production.
 
-Apply migrations in filename order in a controlled Supabase maintenance window.
+Use `migration-order.json` for dependency order in a controlled Supabase maintenance window.
+Compare the real database's applied-migration ledger and checksums first; execute
+only pending migrations. The local harness ledger is synthetic evidence, not a
+copy of production. Never rerun the original sequence initializer or role seeds
+on an existing installation.
 Take a backup, use a staging database first, and keep the matching backend deploy
 paused until the migration has committed successfully.
+
+The September checkout cutover requires all old order writers to be stopped:
+the old backend allocates numbers independently with `MAX`, while this branch
+uses a sequence. `2026-09-08-checkout-rollout.sql` locks the sequence before the
+orders table and advances it above both current reservations and stored numbers.
+Its five-second lock timeout aborts rather than waiting indefinitely. It also
+adds the reconciliation queue index, which takes a write lock during creation.
+Measure this on a representative staging copy before scheduling the window.
+The two allocation algorithms must never run concurrently after writes reopen.
+
+`2026-09-08-unsettled-payment-retention.sql` preserves the existing retention RPC
+signatures and periods. Unresolved online payments, pending refunds, legal holds
+and non-terminal fulfillment retain their evidence. Bounded initiated-payment
+listing rotates inconclusive attempts instead of repeatedly starving later rows;
+listing never authorizes deletion. Provider identity and terminal unpaid state
+must still be verified before the conditional delete RPC is called.
 
 ### Free-plan backup and restore gate
 

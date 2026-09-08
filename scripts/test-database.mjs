@@ -43,17 +43,18 @@ await withTestDatabase(async ({ sql, file }) => {
   const legacyId = randomUUID();
   await sql(`INSERT INTO orders(id, order_number, customer_phone, location_id, stripe_checkout_session_id)
     VALUES ('${legacyId}', '#9998', '+46700000000', '${location}', 'cs_test_before_upgrade')`);
-  await apply(order.filter(name=>name!=='2026-09-08-stripe-event-ownership.sql'));
+  const rolloutMigration='2026-09-08-checkout-rollout.sql';
+  await apply(order.filter(name=>!['2026-09-08-stripe-event-ownership.sql',rolloutMigration].includes(name)));
   await sql(`INSERT INTO payment_provider_events(provider,event_id,event_type,livemode,status,attempts,lease_expires_at,outcome)
     VALUES ('stripe','evt_legacy_first','test',false,'processing',1,now()+interval '5 minutes',NULL),
     ('stripe','evt_legacy_retry','test',false,'processing',2,now()-interval '1 second',NULL),
     ('stripe','evt_legacy_done','test',false,'processed',1,NULL,'preserved')`);
-  await apply(order);
+  await apply(order.filter(name=>name!==rolloutMigration));
   await file(path.join(repositoryRoot,'backend/test/fixtures/stripe-event-ownership.sql'));
   await file(path.join(repositoryRoot,'backend/test/fixtures/online-cancellation-boundary.sql'));
   assert.equal(await sql(`SELECT order_number || ':' || stripe_checkout_session_id || ':' || location_id::text
     FROM orders WHERE id='${legacyId}'`), '#9998:cs_test_before_upgrade:' + location);
-  assert.equal(await apply(order), 0, 'already applied migrations must not run again');
+  assert.equal(await apply(order.filter(name=>name!==rolloutMigration)), 0, 'already applied migrations must not run again');
   const createOrder = (id, quantity = 1) => `SET ROLE service_role; SELECT order_number FROM create_order_atomic(
     ${quote(JSON.stringify({ id, status: 'ny', order_type: 'takeaway', payment_method: 'card', payment_status: 'pending',
       default_preparation_time_minutes: 30, customer_phone: '+46700000000', location_id: location }))}::jsonb,
@@ -67,6 +68,18 @@ await withTestDatabase(async ({ sql, file }) => {
   const invalidId = randomUUID();
   await assert.rejects(sql(createOrder(invalidId, 51)));
   assert.equal(await sql(`SELECT count(*) FROM orders WHERE id='${invalidId}'`), '0');
+  // Old main can continue writing display numbers after the original sequence
+  // migration. Simulate that drift before the final cutover migration.
+  await sql(`INSERT INTO orders(id,order_number,customer_phone) VALUES
+    ('${randomUUID()}','#10020','+46700000000'),('${randomUUID()}','#10021','+46700000000')`);
+  await apply(order);
+  assert.equal(await sql(createOrder(randomUUID())), '#10022');
+  await sql("SELECT setval('order_number_seq', 10030, true)");
+  // Explicit staging-only repeat proves the repair never rewinds reserved numbers.
+  await file(path.join(migrations,rolloutMigration));
+  assert.equal(await sql(createOrder(randomUUID())), '#10031');
+  assert.equal(await apply(order),0);
+  await file(path.join(repositoryRoot,'backend/test/fixtures/checkout-retention.sql'));
   for (const role of ['anon', 'authenticated']) {
     for (const table of ['orders', 'order_items', 'admin_users', 'locations', 'product_location_stock']) {
       await assert.rejects(sql(`SET ROLE ${role}; SELECT * FROM ${table}`));
