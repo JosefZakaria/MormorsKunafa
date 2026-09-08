@@ -559,7 +559,7 @@ router.patch('/locations/:id', requireAdmin, async (req: Request, res: Response)
     }
     res.json(updated);
   } catch (e) {
-    console.error('[PATCH /admin/locations/:id]', e);
+    logUnexpectedError('PATCH /admin/locations/:id', e);
     res.status(500).json({ error: 'Failed to update location' });
   }
 });

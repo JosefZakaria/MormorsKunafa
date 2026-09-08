@@ -61,6 +61,33 @@ test('status presentation preserves unpaid, delivery and terminal states without
   await expect(page.getByRole('heading',{name:'Beställningen är levererad'})).toBeVisible();
 });
 
+test('custom piece products keep the unit price when cart quantity changes', async ({page}) => {
+  await page.goto('/');
+  await page.getByRole('button',{name:/Ta med/i}).first().click();
+  await page.getByRole('button',{name:/Höja/}).click();
+  await page.getByRole('button',{name:'Visa Syntetiskt bröd'}).click();
+  await page.getByRole('button',{name:'Öka antal'}).click();
+  await page.getByRole('button',{name:'Öka antal'}).click();
+  await page.getByRole('button',{name:/Lägg till/i}).click();
+  await page.getByRole('button',{name:/VARUKORG/i}).click();
+  await expect(page.locator('.quantity-value')).toHaveText('3');
+  await page.locator('.cart-item').getByRole('button',{name:'+',exact:true}).click();
+  await expect(page.locator('.quantity-value')).toHaveText('4');
+  await page.locator('#customer-first-name').fill('Synthetic');
+  await page.locator('#customer-last-name').fill('Bread');
+  await page.locator('#customer-phone').fill('0700000001');
+  await page.locator('#customer-email').fill('bread@example.test');
+  await page.locator('#cart-schedule-date').fill(new Date(Date.now()+86400000).toISOString().slice(0,10));
+  await page.getByRole('checkbox').check();
+  const created = page.waitForResponse(response=>response.url().endsWith('/api/orders') && response.request().method()==='POST');
+  await page.getByRole('button',{name:'Gå till betalning'}).click();
+  const response = await created;
+  expect(response.status()).toBe(201);
+  expect(response.request().postDataJSON().items).toEqual([{productId:'65a74ec3-afd2-4c49-a8a1-ea3d87d4255c',variantId:'st',quantity:4}]);
+  expect((await response.json()).totalPrice).toBe(18000);
+  await expect(page).toHaveURL(/\/status\?orderId=/);
+});
+
 test('admin cookie login, current dashboard and logout', async ({page,context})=> {
   const active = page.waitForResponse(r=>r.url().includes('/api/orders/admin/active'));
   const preorders = page.waitForResponse(r=>r.url().includes('/api/orders/admin/pre-orders'));
@@ -79,7 +106,7 @@ test('admin cookie login, current dashboard and logout', async ({page,context})=
   const oldCookie=cookies.filter(c=>['mk_admin_session','mk_csrf'].includes(c.name)).map(c=>`${c.name}=${c.value}`).join('; ');
   await page.route('**/api/admin/logout',route=>route.abort('failed'));
   await page.getByRole('button',{name:/Logga ut/i}).click();
-  await expect(page.getByRole('alert')).toContainText('Utloggningen kunde inte bekräftas');
+  await expect(page.getByRole('alert').filter({hasText:'Utloggningen kunde inte bekräftas'})).toBeVisible();
   await expect(page).toHaveURL(/dashboard/);
   await expect(page.getByRole('button',{name:/Logga ut/i})).toBeEnabled();
   expect((await context.request.get('/api/admin/session')).status()).toBe(200);
@@ -108,7 +135,7 @@ test('logout can retry after the server revoked the session but its response was
     await route.abort('failed');
   });
   await page.getByRole('button',{name:/Logga ut/i}).click();
-  await expect(page.getByRole('alert')).toContainText('Utloggningen kunde inte bekräftas');
+  await expect(page.getByRole('alert').filter({hasText:'Utloggningen kunde inte bekräftas'})).toBeVisible();
   expect((await context.request.get('/api/admin/session')).status()).toBe(401);
   await page.unroute('**/api/admin/logout');
   await page.getByRole('button',{name:/Logga ut/i}).click();

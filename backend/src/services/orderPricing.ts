@@ -106,7 +106,10 @@ export function priceValidatedProductRows(
     let snapshotSuffix = '';
 
     if (bread) {
-      if (input.variantId && input.variantId !== 'st' && input.variantId !== `${input.quantity} st`) {
+      // Legacy per-piece carts encoded their original quantity in the label.
+      // Quantity edits do not change the unit price; actual bundle maps reach
+      // the exact variant branch below instead of this catalog-confirmed mode.
+      if (input.variantId && input.variantId !== 'st' && !/^\d+\s+st$/u.test(input.variantId)) {
         throw new OrderValidationError('Ogiltig brödvariant.');
       }
       priceOre = variants?.st ?? databasePriceOre;

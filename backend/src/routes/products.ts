@@ -50,6 +50,15 @@ import { parsePriceOre, parseVariantPricesInput, variantPricesForProduct } from 
 
 const router = Router();
 
+// Catalog visibility depends on the current admin cookie. Never share a staff
+// response with public clients or retain a stale hidden/stock/price response.
+router.use((_req, res, next) => {
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.vary('Cookie');
+  res.vary('Authorization');
+  next();
+});
+
 router.param('id', (_req, res, next, value) => {
   if (!isCanonicalUuidV4(value)) {
     res.status(400).json({ error: 'Invalid resource identifier' });
@@ -305,7 +314,7 @@ router.patch('/:id/stock', requireAdmin, async (req: Request, res: Response) => 
 
     if (refreshError) {
       logSupabaseError('PATCH /api/products/:id/stock refresh', refreshError);
-      return res.status(500).json({ error: 'Failed to update stock', details: refreshError.message });
+      return res.status(500).json({ error: 'Failed to update stock' });
     }
 
     const [product] = await productsWithLocationStock([(refreshed ?? data) as Row]);
@@ -399,7 +408,7 @@ router.patch('/reorder', requireAdmin, requireOwner, async (req: Request, res: R
     const { data: existing, error: existingError } = await supabase.from('products').select('id');
     if (existingError) {
       logSupabaseError('PATCH /api/products/reorder', existingError);
-      return res.status(500).json({ error: 'Failed to reorder products', details: existingError.message });
+      return res.status(500).json({ error: 'Failed to reorder products' });
     }
     const known = new Set((existing ?? []).map((r) => String((r as Row).id)));
     const unknown = ids.filter((id) => !known.has(id));
@@ -414,7 +423,7 @@ router.patch('/reorder', requireAdmin, requireOwner, async (req: Request, res: R
         .eq('id', ids[i]);
       if (error) {
         logSupabaseError('PATCH /api/products/reorder update', error);
-        return res.status(500).json({ error: 'Failed to reorder products', details: error.message });
+        return res.status(500).json({ error: 'Failed to reorder products' });
       }
     }
 
@@ -427,7 +436,7 @@ router.patch('/reorder', requireAdmin, requireOwner, async (req: Request, res: R
         .eq('id', leftover[i]);
       if (error) {
         logSupabaseError('PATCH /api/products/reorder leftover', error);
-        return res.status(500).json({ error: 'Failed to reorder products', details: error.message });
+        return res.status(500).json({ error: 'Failed to reorder products' });
       }
     }
 
@@ -438,11 +447,11 @@ router.patch('/reorder', requireAdmin, requireOwner, async (req: Request, res: R
       .order('name', { ascending: true });
     if (error) {
       logSupabaseError('PATCH /api/products/reorder list', error);
-      return res.status(500).json({ error: 'Failed to reorder products', details: error.message });
+      return res.status(500).json({ error: 'Failed to reorder products' });
     }
     return res.status(200).json((data ?? []).map((r) => rowToProduct(r as Row)));
   } catch (e) {
-    console.error('[PATCH /api/products/reorder] unexpected error:', e);
+    logUnexpectedError('PATCH /api/products/reorder unexpected error', e);
     return res.status(500).json({ error: 'Failed to reorder products' });
   }
 });
@@ -500,7 +509,7 @@ router.post('/', requireAdmin, requireOwner, async (req: Request, res: Response)
 
     if (error) {
       logSupabaseError('POST /api/products', error);
-      return res.status(500).json({ error: 'Failed to create product', details: error.message });
+      return res.status(500).json({ error: 'Failed to create product' });
     }
     if (!data) {
       return res.status(500).json({ error: 'Failed to create product' });
@@ -509,7 +518,7 @@ router.post('/', requireAdmin, requireOwner, async (req: Request, res: Response)
     const [product] = await productsWithLocationStock([data as Row]);
     return res.status(201).json(product);
   } catch (e) {
-    console.error('[POST /api/products] unexpected error:', e);
+    logUnexpectedError('POST /api/products unexpected error', e);
     return res.status(500).json({ error: 'Failed to create product' });
   }
 });
@@ -573,14 +582,14 @@ router.patch('/:id', requireAdmin, requireOwner, async (req: Request, res: Respo
 
     if (error) {
       logSupabaseError('PATCH /api/products/:id', error);
-      return res.status(500).json({ error: 'Failed to update product', details: error.message });
+      return res.status(500).json({ error: 'Failed to update product' });
     }
     if (!data) {
       return res.status(404).json({ error: 'Product not found' });
     }
     return res.status(200).json(rowToProduct(data as Row));
   } catch (e) {
-    console.error('[PATCH /api/products/:id] unexpected error:', e);
+    logUnexpectedError('PATCH /api/products/:id unexpected error', e);
     return res.status(500).json({ error: 'Failed to update product' });
   }
 });
@@ -599,7 +608,7 @@ router.delete('/:id', requireAdmin, requireOwner, async (req: Request, res: Resp
       .maybeSingle();
     if (lookupError) {
       logSupabaseError('DELETE /api/products/:id lookup', lookupError);
-      return res.status(500).json({ error: 'Failed to delete product', details: lookupError.message });
+      return res.status(500).json({ error: 'Failed to delete product' });
     }
     if (!existing) {
       return res.status(404).json({ error: 'Product not found' });
@@ -611,17 +620,17 @@ router.delete('/:id', requireAdmin, requireOwner, async (req: Request, res: Resp
       .eq('product_id', id);
     if (unlinkError) {
       logSupabaseError('DELETE /api/products/:id unlink', unlinkError);
-      return res.status(500).json({ error: 'Failed to delete product', details: unlinkError.message });
+      return res.status(500).json({ error: 'Failed to delete product' });
     }
 
     const { error } = await supabase.from('products').delete().eq('id', id);
     if (error) {
       logSupabaseError('DELETE /api/products/:id', error);
-      return res.status(500).json({ error: 'Failed to delete product', details: error.message });
+      return res.status(500).json({ error: 'Failed to delete product' });
     }
     return res.status(200).json({ ok: true });
   } catch (e) {
-    console.error('[DELETE /api/products/:id] unexpected error:', e);
+    logUnexpectedError('DELETE /api/products/:id unexpected error', e);
     return res.status(500).json({ error: 'Failed to delete product' });
   }
 });

@@ -36,8 +36,8 @@ function runMulter(req: Request, res: Response, next: () => void): void {
       res.status(400).json({ error: 'Image is too large (max 4 MB)' });
       return;
     }
-    const message = err instanceof Error ? err.message : 'Upload failed';
-    res.status(400).json({ error: message });
+    logUnexpectedError('POST /admin/uploads multipart rejected', err);
+    res.status(400).json({ error: 'Invalid multipart upload' });
   });
 }
 

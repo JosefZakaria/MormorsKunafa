@@ -67,6 +67,7 @@ export async function withTestDatabase(callback) {
   env.PGPASSWORD = password;
   env.PGCLIENTENCODING = 'UTF8';
   let started = false;
+  const pendingQueries = new Set();
   try {
     await run(binary('initdb'), ['-D', data, '-U', 'mk_test_runner', '-A', 'scram-sha-256',
       '--pwfile', passwordFile, '--encoding=UTF8', '--locale=C'], { env, timeout: 60_000 });
@@ -82,11 +83,16 @@ export async function withTestDatabase(callback) {
     assert.equal(await psql(['--command', 'SELECT current_database()']), database);
     // Windows command-line arguments pass through the active code page in psql.
     // UTF-8 files preserve Swedish order statuses and customer text exactly.
-    const sql = async (statement) => {
-      const filename = path.join(cluster, `${randomUUID()}.sql`);
-      await writeFile(filename, statement, 'utf8');
-      try { return await psql(['--file', filename]); }
-      finally { await rm(filename); }
+    const sql = (statement) => {
+      const query = (async () => {
+        const filename = path.join(cluster, `${randomUUID()}.sql`);
+        await writeFile(filename, statement, 'utf8');
+        try { return await psql(['--file', filename]); }
+        finally { await rm(filename); }
+      })();
+      pendingQueries.add(query);
+      query.then(()=>pendingQueries.delete(query),()=>pendingQueries.delete(query));
+      return query;
     };
     const file = (filename) => psql(['--file', path.resolve(filename)]);
     await callback({ sql, file, host, port, database });
@@ -97,6 +103,9 @@ export async function withTestDatabase(callback) {
     }
     throw error;
   } finally {
+    // Express response-finish audit hooks can outlive their HTTP response.
+    // Finish local SQL before stopping the owned cluster, including after failure.
+    while (pendingQueries.size) await Promise.allSettled([...pendingQueries]);
     const hasServerPid = await access(path.join(data, 'postmaster.pid')).then(() => true, () => false);
     if (started || hasServerPid) await control(binary('pg_ctl'), ['-D', data, '-m', 'fast', '-w', 'stop'], env);
     // Only delete the exact newly-created directory whose ownership marker we wrote.

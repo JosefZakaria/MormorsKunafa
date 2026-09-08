@@ -84,14 +84,16 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setItems((prevItems) => {
       const fixedWeight = getFixedWeight(product);
       const resolvedOption = option ?? fixedWeight ?? undefined;
-      const uniqueId = resolvedOption ? `${product.id}-${resolvedOption}` : product.id;
-      const displayName = resolvedOption ? `${product.name} - ${resolvedOption}` : product.name;
+      const bread = isBreadProduct(product);
+      const stableOption = bread ? 'st' : resolvedOption;
+      const uniqueId = stableOption ? `${product.id}-${stableOption}` : product.id;
+      const displayName = !bread && resolvedOption ? `${product.name} - ${resolvedOption}` : product.name;
 
       const unitPriceOre =
         getVariantPriceOre(product, resolvedOption ?? '') ??
         product.price;
 
-      const lineQuantity = isBreadProduct(product) && resolvedOption
+      const lineQuantity = bread && resolvedOption
         ? parseBreadQuantity(resolvedOption)
         : quantity;
 

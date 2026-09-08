@@ -9,7 +9,7 @@ import { useCart } from '../../contexts/CartContext';
 import { orderApi, locationApi, storeOrderStatusToken } from '../../services/api';
 import type { CheckoutPaymentChoice, CustomerInfo, Location, OrderType } from '@shared/types';
 import { DELIVERY_FEE_SEK } from '@shared/constants/delivery';
-import { isBreadProductId } from '@shared/constants/productPricing';
+import { cartItemToOrderLine } from '@shared/utils/cartOrderLine';
 import { safePaymentRedirectUrl } from '@shared/utils/paymentRedirect.ts';
 import {
     dateToStockholmInputValue,
@@ -476,16 +476,7 @@ export const Cart: React.FC = () => {
         try {
             // Only identifiers and quantity cross the trust boundary. The backend
             // resolves product names, stock state and prices from its own catalog.
-            const orderItems = items.map(item => {
-                const baseProductId = item.productId.slice(0, 36).toLowerCase();
-                const suffix = item.productId.slice(36);
-                const variantId = suffix.startsWith('-') ? suffix.slice(1).trim() : '';
-                return {
-                    productId: baseProductId,
-                    ...(!isBreadProductId(baseProductId) && variantId ? { variantId } : {}),
-                    quantity: item.quantity,
-                };
-            });
+            const orderItems = items.map(cartItemToOrderLine);
 
             if (!customerInfo) {
                 setError(t('cart.customer_info_required'));

@@ -9,6 +9,7 @@ export const TEST_ORIGIN = 'http://127.0.0.1:4179';
 export const HOJA = '2f1a9c4e-6b7d-4e8f-a901-b2c3d4e5f601';
 export const MOLLEVANGEN = '2f1a9c4e-6b7d-4e8f-a901-b2c3d4e5f602';
 export const PRODUCT = '1ae3fd7a-0042-4220-b330-b27b3147a0a6';
+export const CUSTOM_BREAD = '65a74ec3-afd2-4c49-a8a1-ea3d87d4255c';
 export const TEST_PASSWORD = 'Synthetic-local-password-42';
 const identifier = s => { assert.match(s, /^[a-z_][a-z0-9_]*$/); return `"${s}"`; };
 export const literal = value => value == null ? 'NULL' : typeof value === 'number' ? String(value)
@@ -22,8 +23,10 @@ export async function initializeSyntheticDatabase({ file, sql }) {
   const { default: bcrypt } = await import('bcryptjs');
   const hash = await bcrypt.hash(TEST_PASSWORD, 10);
   await sql(`INSERT INTO products(id,name,slug,price_ore,variant_prices,stock_status,sort_order)
-    VALUES ('${PRODUCT}','Syntetisk baklawa','baklawa-pistage',8900,'{"250 gram":9900,"500 gram":18000}', 'instock',1);
+    VALUES ('${PRODUCT}','Syntetisk baklawa','baklawa-pistage',8900,'{"250 gram":9900,"500 gram":18000}', 'instock',1),
+    ('${CUSTOM_BREAD}','Syntetiskt bröd','syntetiskt-brod',4500,'{"st":4500}', 'instock',2);
     INSERT INTO product_location_stock SELECT '${PRODUCT}', id, true FROM locations;
+    INSERT INTO product_location_stock SELECT '${CUSTOM_BREAD}', id, true FROM locations;
     INSERT INTO admin_users(id,email,password_hash,role,location_id) VALUES
     ('owner-test','owner@example.test',${literal(hash)},'owner',NULL),
     ('hoja-test','hoja@example.test',${literal(hash)},'location','${HOJA}'),
