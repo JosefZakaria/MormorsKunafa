@@ -1,3 +1,4 @@
+import { AllergenNotice } from '../../components/common/AllergenNotice/AllergenNotice';
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { Truck } from 'lucide-react';
@@ -5,14 +6,14 @@ import { Container } from '../../components/common/Container/Container';
 import { Button } from '../../components/common/Button/Button';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useCart } from '../../contexts/CartContext';
-import { orderApi, storeOrderStatusToken } from '../../services/api';
-import type { CheckoutPaymentChoice, CustomerInfo, OrderType } from '@shared/types';
+import { orderApi, locationApi, storeOrderStatusToken } from '../../services/api';
+import type { CheckoutPaymentChoice, CustomerInfo, Location, OrderType } from '@shared/types';
 import { DELIVERY_FEE_SEK } from '@shared/constants/delivery';
 import { isBreadProductId } from '@shared/constants/productPricing';
 import { safePaymentRedirectUrl } from '@shared/utils/paymentRedirect.ts';
-import { AllergenNotice } from '../../components/common/AllergenNotice/AllergenNotice';
 import {
     dateToStockholmInputValue,
+    roundClockToNext5Min,
     todayInStockholmDateString,
 } from '@shared/utils/scheduledTime';
 import {
@@ -24,22 +25,53 @@ import {
 } from '@shared/utils/openingHours';
 import './Cart.css';
 import { LEGACY_STORAGE_KEYS, removePersistentValue } from '../../utils/browserStorage';
+import {
+    clearStoredLocation,
+    getStoredLocationId,
+    needsPickupLocation,
+} from '../../utils/selectedLocation';
+import { anyLocationAcceptsOrderType, locationAcceptsOrderType } from '../../utils/orderTypeAvailability';
 
 /** Set to true when Swish checkout is ready for customers. */
 const SWISH_CHECKOUT_ENABLED = false;
 
-function roundClockToNext5Min(clock: string): string {
-    const [hStr, mStr] = clock.split(':');
-    const h = parseInt(hStr, 10);
-    const m = parseInt(mStr, 10);
-    if (isNaN(h) || isNaN(m)) return clock;
+type OrderTypeFlags = {
+    isPaused: boolean;
+    eatHereEnabled: boolean;
+    takeawayEnabled: boolean;
+    deliveryEnabled: boolean;
+};
 
-    const roundedM = Math.ceil(m / 5) * 5;
-    if (roundedM >= 60) {
-        const nextH = (h + 1) % 24;
-        return `${String(nextH).padStart(2, '0')}:00`;
+const DEFAULT_ORDER_TYPE_FLAGS: OrderTypeFlags = {
+    isPaused: false,
+    eatHereEnabled: true,
+    takeawayEnabled: true,
+    deliveryEnabled: true,
+};
+
+const ORDER_TYPE_LABEL_KEY: Record<OrderType, string> = {
+    'eat-here': 'landing.eat_here',
+    takeaway: 'landing.takeaway',
+    delivery: 'landing.delivery',
+};
+
+function isOrderTypeEnabled(
+    type: OrderType | '',
+    flags: OrderTypeFlags,
+    locations: Location[],
+    locationId: string
+): boolean {
+    if (!type) return false;
+    if (flags.isPaused) return false;
+    if (type === 'delivery') return flags.deliveryEnabled;
+    const selected = locations.find((location) => location.id === locationId);
+    if (selected) return locationAcceptsOrderType(selected, type);
+    if (locations.length === 0) {
+        if (type === 'eat-here') return flags.eatHereEnabled;
+        if (type === 'takeaway') return flags.takeawayEnabled;
+        return flags.deliveryEnabled;
     }
-    return `${String(h).padStart(2, '0')}:${String(roundedM).padStart(2, '0')}`;
+    return anyLocationAcceptsOrderType(locations, type);
 }
 
 export const Cart: React.FC = () => {
@@ -50,7 +82,8 @@ export const Cart: React.FC = () => {
     const { items, updateQuantity, removeItem, getTotal, clearCart } = useCart();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [showPausedPopup, setShowPausedPopup] = useState(false);
+    const [pausedPopup, setPausedPopup] = useState<OrderType | 'all' | null>(null);
+    const [orderTypeFlags, setOrderTypeFlags] = useState<OrderTypeFlags>(DEFAULT_ORDER_TYPE_FLAGS);
     const [acceptedTerms, setAcceptedTerms] = useState(false);
     const [orderType, setOrderType] = useState<OrderType | ''>(() => {
         const fromUrl = searchParams.get('type') as OrderType;
@@ -59,7 +92,8 @@ export const Cart: React.FC = () => {
         return stored || '';
     });
     const [orderTypeError, setOrderTypeError] = useState<string | null>(null);
-    const [customerName, setCustomerName] = useState('');
+    const [customerFirstName, setCustomerFirstName] = useState('');
+    const [customerLastName, setCustomerLastName] = useState('');
     const [customerPhone, setCustomerPhone] = useState('');
     const [customerEmail, setCustomerEmail] = useState('');
     const [deliveryAddress, setDeliveryAddress] = useState('');
@@ -68,10 +102,23 @@ export const Cart: React.FC = () => {
     const [customerInfoError, setCustomerInfoError] = useState<string | null>(null);
     const [paymentChoice, setPaymentChoice] = useState<CheckoutPaymentChoice>('card');
     const orderIdempotencyRef = useRef<{ payload: string; key: string } | null>(null);
+    const [locations, setLocations] = useState<Location[]>([]);
+    const [locationId, setLocationId] = useState(() => getStoredLocationId());
+    const [placeError, setPlaceError] = useState<string | null>(null);
 
     useEffect(() => {
         removePersistentValue(LEGACY_STORAGE_KEYS.deliveryInfo);
     }, []);
+
+    useEffect(() => {
+        locationApi.getAll().then(setLocations).catch(() => undefined);
+    }, []);
+
+    useEffect(() => {
+        if (needsPickupLocation(orderType) && !getStoredLocationId()) {
+            navigate('/select-location?from=cart', { replace: true });
+        }
+    }, [navigate, orderType]);
 
     const needsInlineCustomerInfo = orderType === 'eat-here' || orderType === 'takeaway' || orderType === 'delivery';
 
@@ -83,6 +130,7 @@ export const Cart: React.FC = () => {
 
     const [prepTime, setPrepTime] = useState<number>(30);
     const [isClosedNow, setIsClosedNow] = useState(() => isStoreClosedNow());
+    const [nowMs, setNowMs] = useState(() => Date.now());
     const [showClosedWarningPopup, setShowClosedWarningPopup] = useState(false);
     const [, setHasConfirmedClosedWarning] = useState(false);
 
@@ -112,10 +160,32 @@ export const Cart: React.FC = () => {
                 if (settings) {
                     const newPrepTime = settings.defaultPreparationTime;
                     setPrepTime(newPrepTime);
-                    if (settings.isPaused) {
-                        setShowPausedPopup(true);
+                    const flags: OrderTypeFlags = {
+                        isPaused: Boolean(settings.isPaused),
+                        eatHereEnabled: settings.eatHereEnabled !== false,
+                        takeawayEnabled: settings.takeawayEnabled !== false,
+                        deliveryEnabled: settings.deliveryEnabled !== false,
+                    };
+                    setOrderTypeFlags(flags);
+                    const nextLocations = settings.locations ?? [];
+                    if (nextLocations.length) setLocations(nextLocations);
+                    const storedPlace = getStoredLocationId();
+
+                    if (flags.isPaused) {
+                        setPausedPopup('all');
+                    } else {
+                        const storedType = (searchParams.get('type') || sessionStorage.getItem('orderType') || '') as OrderType | '';
+                        if (storedType && !isOrderTypeEnabled(storedType, flags, nextLocations, storedPlace)) {
+                            if (needsPickupLocation(storedType) && anyLocationAcceptsOrderType(nextLocations, storedType)) {
+                                setPausedPopup(storedType);
+                            } else {
+                                sessionStorage.removeItem('orderType');
+                                setOrderType('');
+                                setPausedPopup(storedType);
+                            }
+                        }
                     }
-                    
+
                     // Recalculate and set the initial slot with the correct prep time
                     const slot = findNextOrderableSlot(newPrepTime);
                     setScheduledDate(slot.dateStr);
@@ -125,20 +195,34 @@ export const Cart: React.FC = () => {
             .catch((err) => {
                 console.error('Failed to fetch public settings:', err);
             });
-    }, []);
+    }, [searchParams]);
 
-    // Keep store closed status updated
+    // Keep store closed status and earliest slot in sync with the clock
     useEffect(() => {
         const timer = setInterval(() => {
             setIsClosedNow(isStoreClosedNow());
+            setNowMs(Date.now());
         }, 15000);
         return () => clearInterval(timer);
     }, []);
 
     const clockRange = useMemo(
         () => getOrderableClockRange(scheduledDate, prepTime),
-        [scheduledDate, prepTime]
+        [scheduledDate, prepTime, nowMs]
     );
+
+    useEffect(() => {
+        if (!clockRange) {
+            const slot = findNextOrderableSlot(prepTime);
+            setScheduledDate(slot.dateStr);
+            setScheduledClock(roundClockToNext5Min(slot.clock));
+            return;
+        }
+        setScheduledClock((prev) => {
+            const next = roundClockToNext5Min(clampScheduledClock(scheduledDate, prev, prepTime));
+            return next === prev ? prev : next;
+        });
+    }, [clockRange, scheduledDate, prepTime]);
 
     const hoursToDisplay = useMemo(() => {
         if (!clockRange) return [];
@@ -268,11 +352,46 @@ export const Cart: React.FC = () => {
     const isDeliveryOrder = orderType === 'delivery';
     const deliveryFeeKr = isDeliveryOrder ? DELIVERY_FEE_SEK : 0;
     const totalKr = subtotalKr + deliveryFeeKr;
+    const selectedPlace = locations.find((location) => location.id === locationId);
+    const selectedPlaceLabel = selectedPlace
+        ? (selectedPlace.address.trim()
+            ? `${selectedPlace.name}, ${selectedPlace.address}`
+            : selectedPlace.name)
+        : '';
 
     const handleOrderTypeChange = (value: string) => {
         setOrderTypeError(null);
-        sessionStorage.setItem('orderType', value);
-        setOrderType(value as OrderType);
+        if (!value) return;
+        const nextType = value as OrderType;
+        if (orderTypeFlags.isPaused) {
+            setPausedPopup('all');
+            return;
+        }
+        if (!isOrderTypeEnabled(nextType, orderTypeFlags, locations, locationId)) {
+            if (needsPickupLocation(nextType) && anyLocationAcceptsOrderType(locations, nextType)) {
+                sessionStorage.setItem('orderType', nextType);
+                setOrderType(nextType);
+                clearStoredLocation();
+                setLocationId('');
+                navigate('/select-location?from=cart');
+                return;
+            }
+            setPausedPopup(nextType);
+            return;
+        }
+        sessionStorage.setItem('orderType', nextType);
+        setOrderType(nextType);
+        if (nextType === 'delivery') {
+            clearStoredLocation();
+            setLocationId('');
+            setPlaceError(null);
+            return;
+        }
+        const storedPlace = getStoredLocationId();
+        setLocationId(storedPlace);
+        if (!storedPlace) {
+            navigate('/select-location?from=cart');
+        }
     };
 
     const handleConfirmClosedWarning = () => {
@@ -290,6 +409,25 @@ export const Cart: React.FC = () => {
             setOrderTypeError('Välj hur du vill få din beställning.');
             return;
         }
+        if (orderTypeFlags.isPaused) {
+            setPausedPopup('all');
+            return;
+        }
+        if (!isOrderTypeEnabled(orderType, orderTypeFlags, locations, locationId)) {
+            if (needsPickupLocation(orderType) && anyLocationAcceptsOrderType(locations, orderType)) {
+                setPausedPopup(orderType);
+                navigate('/select-location?from=cart');
+                return;
+            }
+            setPausedPopup(orderType);
+            return;
+        }
+
+        if (needsPickupLocation(orderType) && !locationId) {
+            setPlaceError(t('cart.place_required'));
+            navigate('/select-location?from=cart');
+            return;
+        }
 
         if (isClosedNow && !bypassClosedCheck && orderType !== 'delivery') {
             setShowClosedWarningPopup(true);
@@ -297,15 +435,15 @@ export const Cart: React.FC = () => {
         }
 
         let customerInfo: CustomerInfo | undefined;
+        const fullName = `${customerFirstName.trim()} ${customerLastName.trim()}`.trim();
         if (needsInlineCustomerInfo) {
-            const name = customerName.trim();
             const phone = customerPhone.trim();
-            if (!name || !phone) {
+            if (!customerFirstName.trim() || !customerLastName.trim() || !phone) {
                 setCustomerInfoError(t('cart.customer_info_required'));
                 return;
             }
             const email = customerEmail.trim();
-            customerInfo = { name, phone, ...(email ? { email } : {}) };
+            customerInfo = { name: fullName, phone, ...(email ? { email } : {}) };
         }
 
         let deliveryInfo = undefined;
@@ -320,7 +458,7 @@ export const Cart: React.FC = () => {
             }
 
             deliveryInfo = {
-                name: customerName.trim(),
+                name: fullName,
                 phone: customerPhone.trim(),
                 email: customerEmail.trim(),
                 address,
@@ -366,7 +504,7 @@ export const Cart: React.FC = () => {
                     ? `${scheduledDate}T${clock}:00`
                     : undefined;
 
-                const hoursCheck = validateScheduledOrderTime(scheduledTime);
+                const hoursCheck = validateScheduledOrderTime(scheduledTime, prepTime);
                 if (!hoursCheck.valid) {
                     setError(hoursCheck.error);
                     setIsSubmitting(false);
@@ -381,6 +519,7 @@ export const Cart: React.FC = () => {
                 deliveryInfo: deliveryInfo,
                 ...(scheduledTime ? { scheduledTime } : {}),
                 paymentMethod: paymentChoice,
+                ...(needsPickupLocation(orderType) ? { locationId } : {}),
             };
             const payload = JSON.stringify(orderRequest);
             if (!orderIdempotencyRef.current || orderIdempotencyRef.current.payload !== payload) {
@@ -406,8 +545,8 @@ export const Cart: React.FC = () => {
             if (err.data && err.data.error) {
                 errorMsg = err.data.error;
             }
-            if (errorMsg.toLowerCase().includes('pausade') || err.status === 403) {
-                setShowPausedPopup(true);
+            if (errorMsg.toLowerCase().includes('pausa') || err.status === 403) {
+                setPausedPopup(orderTypeFlags.isPaused || !orderType ? 'all' : orderType);
             } else {
                 setError(errorMsg);
             }
@@ -515,32 +654,77 @@ export const Cart: React.FC = () => {
                                     onChange={(e) => handleOrderTypeChange(e.target.value)}
                                 >
                                     <option value="" disabled>Välj leveranssätt...</option>
-                                    <option value="eat-here">Äta här</option>
-                                    <option value="takeaway">Ta med</option>
-                                    <option value="delivery">Hemkörning</option>
+                                    <option value="eat-here">
+                                        Äta här{orderTypeFlags.isPaused || isOrderTypeEnabled('eat-here', orderTypeFlags, locations, locationId) ? '' : t('cart.order_type_paused_suffix')}
+                                    </option>
+                                    <option value="takeaway">
+                                        Ta med{orderTypeFlags.isPaused || isOrderTypeEnabled('takeaway', orderTypeFlags, locations, locationId) ? '' : t('cart.order_type_paused_suffix')}
+                                    </option>
+                                    <option value="delivery">
+                                        Hemkörning{orderTypeFlags.isPaused || isOrderTypeEnabled('delivery', orderTypeFlags, locations, locationId) ? '' : t('cart.order_type_paused_suffix')}
+                                    </option>
                                 </select>
                                 {orderTypeError && (
                                     <p className="order-type-error">{orderTypeError}</p>
                                 )}
                             </div>
 
+                            {needsPickupLocation(orderType) && (
+                                <div className="cart-place-banner">
+                                    <p className="cart-place-banner__text">
+                                        {selectedPlaceLabel
+                                            ? t('cart.selected_place').replace('{place}', selectedPlaceLabel)
+                                            : t('cart.place_required')}
+                                    </p>
+                                    <button
+                                        type="button"
+                                        className="cart-place-banner__change"
+                                        onClick={() => navigate('/select-location?from=cart')}
+                                    >
+                                        {t('cart.change_place')}
+                                    </button>
+                                </div>
+                            )}
+                            {placeError && (
+                                <p className="order-type-error">{placeError}</p>
+                            )}
+
                             {needsInlineCustomerInfo && (
                                 <div className="customer-info">
                                     <h3 className="customer-info__title">{t('cart.customer_info_title')}</h3>
-                                    <div className="customer-info__field">
-                                        <label htmlFor="customer-name" className="customer-info__label">
-                                            {t('cart.customer_name')}
-                                            <span className="customer-info__required" aria-hidden="true">*</span>
-                                        </label>
-                                        <input
-                                            id="customer-name"
-                                            type="text"
-                                            className="customer-info__input"
-                                            placeholder={t('cart.customer_name_placeholder')}
-                                            value={customerName}
-                                            onChange={(e) => setCustomerName(e.target.value)}
-                                            required
-                                        />
+                                    <div className="customer-info__row">
+                                        <div className="customer-info__field">
+                                            <label htmlFor="customer-first-name" className="customer-info__label">
+                                                {t('cart.customer_first_name')}
+                                                <span className="customer-info__required" aria-hidden="true">*</span>
+                                            </label>
+                                            <input
+                                                id="customer-first-name"
+                                                type="text"
+                                                className="customer-info__input"
+                                                placeholder={t('cart.customer_first_name_placeholder')}
+                                                value={customerFirstName}
+                                                onChange={(e) => setCustomerFirstName(e.target.value)}
+                                                autoComplete="given-name"
+                                                required
+                                            />
+                                        </div>
+                                        <div className="customer-info__field">
+                                            <label htmlFor="customer-last-name" className="customer-info__label">
+                                                {t('cart.customer_last_name')}
+                                                <span className="customer-info__required" aria-hidden="true">*</span>
+                                            </label>
+                                            <input
+                                                id="customer-last-name"
+                                                type="text"
+                                                className="customer-info__input"
+                                                placeholder={t('cart.customer_last_name_placeholder')}
+                                                value={customerLastName}
+                                                onChange={(e) => setCustomerLastName(e.target.value)}
+                                                autoComplete="family-name"
+                                                required
+                                            />
+                                        </div>
                                     </div>
                                     <div className="customer-info__field">
                                         <label htmlFor="customer-phone" className="customer-info__label">
@@ -826,16 +1010,23 @@ export const Cart: React.FC = () => {
                 )}
             </Container>
 
-            {showPausedPopup && (
+            {pausedPopup && (
                 <div className="cart-popup-overlay animate-in">
                     <div className="cart-popup-content">
                         <div className="cart-popup-icon">⚠️</div>
-                        <h3 className="text-heading-md" style={{ marginBottom: '1rem' }}>Pausat</h3>
+                        <h3 className="text-heading-md" style={{ marginBottom: '1rem' }}>
+                            {t('landing.order_type_paused_title')}
+                        </h3>
                         <p className="text-body-lg" style={{ marginBottom: '2rem' }}>
-                            Beställningar är för tillfället pausade. Vänligen försök igen lite senare!
+                            {pausedPopup === 'all'
+                                ? t('landing.orders_paused_message')
+                                : t('landing.order_type_paused_message').replace(
+                                    '{type}',
+                                    t(ORDER_TYPE_LABEL_KEY[pausedPopup])
+                                )}
                         </p>
-                        <Button variant="primary" onClick={() => setShowPausedPopup(false)} fullWidth>
-                            Okej, jag förstår
+                        <Button variant="primary" onClick={() => setPausedPopup(null)} fullWidth>
+                            {t('landing.order_type_paused_ok')}
                         </Button>
                     </div>
                 </div>

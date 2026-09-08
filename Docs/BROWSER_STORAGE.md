@@ -29,6 +29,8 @@ IPv4 address and a bounded device identifier.
 | Key | Purpose | Lifetime |
 | --- | --- | --- |
 | `orderType` | Carry the selected fulfillment method into checkout | Current browser tab |
+| `locationId` | Carry the selected bakery into checkout and filter stock | Current browser tab |
+| `locationSlug` | Preserve the selected bakery label for navigation | Current browser tab |
 | `order-status-token:<order UUID>` | Authorize access to the matching customer's minimized order status | Current browser tab; server token expires after seven days and is revocable |
 
 The legacy `deliveryInfo`, `authToken` and `adminInfo` keys are removed and are

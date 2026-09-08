@@ -59,10 +59,24 @@
     align-items: flex-start;
     padding: var(--spacing-xl) 0 calc(var(--spacing-3xl) + 72px);
     background-color: var(--color-primary-red);
-    background-image: url('/images/kunafa-ashta.jpg');
-    background-size: cover;
-    background-position: 75% bottom;
-    background-repeat: no-repeat;
+    overflow: visible;
+}
+
+.landing__hero-media {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    display: block;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.landing__hero-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: 75% bottom;
+    user-select: none;
 }
 
 @media (max-width: 968px) {
@@ -71,10 +85,10 @@
         min-height: 480px;
         padding-bottom: calc(var(--spacing-3xl) + 88px);
         background-color: var(--color-primary-red);
-        background-image: url('/images/ny-kunafa-bild.jpg');
-        /* Samma edge-to-edge som desktop – undviker skarv vid knapparna */
-        background-size: cover;
-        background-position: center 40%;
+    }
+
+    .landing__hero-img {
+        object-position: center 40%;
     }
 }
 
@@ -125,7 +139,8 @@
     letter-spacing: 0.05em;
     text-transform: uppercase;
     text-align: center;
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
 }
 
 
@@ -138,6 +153,59 @@
 
 .landing__btn-icon svg { width: 36px; height: 36px; }
 .landing__btn-label { line-height: 1.2; }
+
+.landing__actions .landing__btn.landing__btn--paused {
+    opacity: 0.45;
+    filter: grayscale(0.4);
+    box-shadow: none;
+    cursor: pointer;
+}
+
+.landing__actions .landing__btn.landing__btn--paused:hover {
+    transform: none;
+    opacity: 0.5;
+}
+
+.landing-popup-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+    padding: var(--spacing-lg);
+    box-sizing: border-box;
+}
+
+.landing-popup-content {
+    background: #fff;
+    color: var(--color-gray-800);
+    padding: 2.5rem;
+    border-radius: 16px;
+    max-width: 400px;
+    width: 100%;
+    text-align: center;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+}
+
+.landing-popup-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+}
+
+.landing-popup-content h3 {
+    color: var(--color-gray-800);
+}
+
+.landing-popup-content p {
+    color: var(--color-gray-600);
+    line-height: 1.5;
+}
 
 /* ---- FAVORITER ---- */
 .favorites {
@@ -428,6 +496,36 @@
 
 .findus__info { margin-bottom: var(--spacing-md); }
 
+.findus__place {
+    margin-bottom: var(--spacing-lg);
+}
+
+.findus__card-title + .findus__place {
+    margin-top: 0.5rem;
+}
+
+.findus__place + .findus__info {
+    padding-top: var(--spacing-md);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.findus__place-address {
+    margin: 0.15rem 0 0.35rem;
+    color: rgba(255, 255, 255, 0.75);
+    font-size: 0.95rem;
+}
+
+.findus__directions {
+    color: var(--color-secondary-gold);
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.findus__directions:hover {
+    text-decoration: underline;
+}
+
 .findus__label {
     display: block;
     font-size: 0.7rem;
@@ -478,17 +576,35 @@
     border-radius: var(--radius-full);
 }
 
+.findus__maps {
+    display: grid;
+    grid-auto-rows: minmax(200px, 1fr);
+    gap: var(--spacing-lg);
+    min-height: 420px;
+}
+
 .findus__map-wrap {
     border-radius: var(--radius-lg);
     overflow: hidden;
-    min-height: 420px;
-    background: linear-gradient(135deg, rgba(200, 150, 42, 0.22), rgba(143, 31, 18, 0.72));
+    min-height: 200px;
+    display: flex;
+    flex-direction: column;
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.findus__map-label {
+    display: block;
+    font-size: 0.75rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--color-secondary-gold);
+    padding: 0.65rem 0.85rem 0.35rem;
 }
 
 .findus__map {
     width: 100%;
-    height: 100%;
-    min-height: 420px;
+    flex: 1;
+    min-height: 180px;
     border: 0;
     display: flex;
     flex-direction: column;
@@ -505,8 +621,9 @@
 
 @media (max-width: 860px) {
     .findus__grid { grid-template-columns: 1fr; }
-    .findus__map-wrap { min-height: 320px; }
-    .findus__map { min-height: 320px; }
+    .findus__maps { grid-template-rows: none; min-height: 0; }
+    .findus__map-wrap { min-height: 240px; }
+    .findus__map { min-height: 220px; }
 }
 
 /* ---- Språkväljare ---- */
@@ -572,7 +689,8 @@
         padding: var(--spacing-xs);
         font-size: 0.68rem;
         border-radius: 12px !important;
-        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
     }
 
     .landing__btn-icon svg {

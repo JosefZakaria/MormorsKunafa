@@ -4,10 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { Container } from '../../../components/common/Container/Container';
 import { Button } from '../../../components/common/Button/Button';
 import { AccessibleDialog } from '../../../components/common/AccessibleDialog/AccessibleDialog';
-import { orderApi, productApi, adminApi } from '../../../services/api';
+import { orderApi, productApi, adminApi, locationApi } from '../../../services/api';
 import { printKitchenTicket, printReceipt, testConnection, isPrinterConfigured, getPrinterConfig, setPrinterConfig } from '../../../services/printer';
-import { useLanguage } from '../../../contexts/LanguageContext';
-import { getDisplayName } from '../../../utils/productDisplayName';
 import type {
     DeliveryInfo,
     Order,
@@ -15,7 +13,9 @@ import type {
     AdminSettings,
     OrderCreatedRealtimeEvent,
     PaymentSecurityAlert,
+    Location,
 } from '@shared/types';
+import { HOJA_LOCATION_ID, MOLLEVANGEN_LOCATION_ID } from '@shared/types';
 import { parseApiTimestamp } from '@shared/utils/parseApiTimestamp';
 import { isKitchenTicketPrintDue } from '@shared/utils/scheduledTime';
 import '../Admin.css';
@@ -30,6 +30,7 @@ import {
     STORAGE_TTL_MS,
     writePersistentValue,
 } from '../../../utils/browserStorage';
+import { MenuTab } from './MenuTab';
 
 // --- Helper: countdown string from ISO time ---
 function getCountdown(isoTime: string | undefined): string {
@@ -114,6 +115,24 @@ function OrderTypeLabel({ type }: { type: string }) {
         'delivery': 'Hemleverans',
     };
     return <span>{labels[type] ?? type}</span>;
+}
+
+type PlaceFilter = 'all' | 'hoja' | 'mollevangen' | 'delivery';
+
+function placeName(order: Order, locations: Location[]): string {
+    if (order.orderType === 'delivery') return 'Hemleverans';
+    return locations.find((location) => location.id === order.locationId)?.name ?? 'Plats';
+}
+
+function PlaceBadge({ order, locations }: { order: Order; locations: Location[] }) {
+    return <span className="place-badge">{placeName(order, locations)}</span>;
+}
+
+function orderMatchesPlaceFilter(order: Order, filter: PlaceFilter): boolean {
+    if (filter === 'all') return true;
+    if (filter === 'delivery') return order.orderType === 'delivery';
+    if (filter === 'hoja') return order.orderType !== 'delivery' && order.locationId === HOJA_LOCATION_ID;
+    return order.orderType !== 'delivery' && order.locationId === MOLLEVANGEN_LOCATION_ID;
 }
 
 // --- Per-order timer component ---
@@ -289,8 +308,57 @@ function RefundStatusBadge({ order }: { order: Order }) {
     return <span className="status-badge refund-status">{label}</span>;
 }
 
-function PreOrderCard({ order, onEditNotes, onCancel, onRefund }: {
+function stockholmDateKey(iso: string | undefined): string {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleDateString('sv-SE', { timeZone: 'Europe/Stockholm' });
+}
+
+function isAdvancePreOrder(order: Order): boolean {
+    if (!order.scheduledTime) return false;
+    const scheduled = stockholmDateKey(order.scheduledTime);
+    const created = stockholmDateKey(order.createdAt);
+    return Boolean(scheduled && created && scheduled !== created);
+}
+
+function formatScheduledLabel(iso: string | undefined): string {
+    const dateLabel = formatScheduledDate(iso);
+    const clockLabel = formatScheduledClock(iso);
+    if (!dateLabel && !clockLabel) return '';
+    return `${dateLabel}${clockLabel ? ` · ${clockLabel}` : ''}`;
+}
+
+function formatCreatedAt(iso: string, fullDate: boolean): string {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    if (fullDate) {
+        return d.toLocaleString('sv-SE', { timeZone: 'Europe/Stockholm' });
+    }
+    return d.toLocaleTimeString('sv-SE', {
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZone: 'Europe/Stockholm',
+    });
+}
+
+/** Desired pickup time for takeaway / eat-here. Delivery already shows this in OrderContactPanel. */
+function ScheduledOrderInfo({ order }: { order: Order }) {
+    if (order.orderType === 'delivery') return null;
+    const label = formatScheduledLabel(order.scheduledTime);
+    if (!label) return null;
+    const preorder = isAdvancePreOrder(order);
+    return (
+        <div className={`scheduled-order-info${preorder ? ' scheduled-order-info--preorder' : ''}`}>
+            {preorder && <span className="scheduled-order-info__badge">Förbeställning</span>}
+            <p className="scheduled-order-info__time">Önskad tid: {label}</p>
+        </div>
+    );
+}
+
+function PreOrderCard({ order, locations, onEditNotes, onCancel, onRefund }: {
     order: Order;
+    locations: Location[];
     onEditNotes: (order: Order) => void;
     onCancel: (order: Order) => void;
     onRefund: (order: Order) => void;
@@ -310,6 +378,8 @@ function PreOrderCard({ order, onEditNotes, onCancel, onRefund }: {
                     {order.orderNumber}
                     &nbsp;·&nbsp;
                     <OrderTypeLabel type={order.orderType} />
+                    &nbsp;·&nbsp;
+                    <PlaceBadge order={order} locations={locations} />
                 </h3>
                 <RefundStatusBadge order={order} />
                 <div className="preorder-date-banner">
@@ -319,7 +389,7 @@ function PreOrderCard({ order, onEditNotes, onCancel, onRefund }: {
                         {clockLabel ? ` · ${clockLabel}` : ''}
                     </span>
                 </div>
-                <ul style={{ margin: '0.5rem 0', paddingLeft: '1.2rem' }}>
+                <ul className="order-items">
                     {order.items.map((item, i) => (
                         <li key={i}>{item.quantity}x {item.productName} – {(item.price * item.quantity / 100).toFixed(0)} kr</li>
                     ))}
@@ -331,11 +401,11 @@ function PreOrderCard({ order, onEditNotes, onCancel, onRefund }: {
                         <span className="preorder-notes-label">Notis:</span> {order.internalNotes}
                     </div>
                 )}
-                <p style={{ fontSize: '0.8rem', color: '#888', marginTop: '0.25rem' }}>
+                <p className="order-meta">
                     Beställd {new Date(order.createdAt).toLocaleString('sv-SE', { timeZone: 'Europe/Stockholm' })}
                 </p>
             </div>
-            <div className="order-actions" style={{ flexDirection: 'column', gap: '0.5rem' }}>
+            <div className="order-actions">
                 <Button size="sm" variant="ghost" onClick={() => onEditNotes(order)}>
                     {order.internalNotes ? 'Ändra notis' : 'Lägg till notis'}
                 </Button>
@@ -348,8 +418,9 @@ function PreOrderCard({ order, onEditNotes, onCancel, onRefund }: {
     );
 }
 
-function PendingOrderCard({ order, defaultPrepTime, onAccept, onRefund }: {
+function PendingOrderCard({ order, locations, defaultPrepTime, onAccept, onRefund }: {
     order: Order;
+    locations: Location[];
     defaultPrepTime: number;
     onAccept: (orderId: string, extraMinutes: number) => void;
     onRefund: (order: Order) => void;
@@ -364,18 +435,21 @@ function PendingOrderCard({ order, defaultPrepTime, onAccept, onRefund }: {
                     {order.orderNumber}
                     &nbsp;·&nbsp;
                     <OrderTypeLabel type={order.orderType} />
+                    &nbsp;·&nbsp;
+                    <PlaceBadge order={order} locations={locations} />
                 </h3>
                 <span className="status-badge status-ny">Ny</span>
                 <RefundStatusBadge order={order} />
-                <ul style={{ margin: '0.5rem 0', paddingLeft: '1.2rem' }}>
+                <ScheduledOrderInfo order={order} />
+                <ul className="order-items">
                     {order.items.map((item, i) => (
                         <li key={i}>{item.quantity}x {item.productName} – {(item.price * item.quantity / 100).toFixed(0)} kr</li>
                     ))}
                 </ul>
                 <p className="order-total">{(order.totalPrice / 100).toFixed(0)} kr</p>
                 <OrderContactPanel order={order} />
-                <p style={{ fontSize: '0.8rem', color: '#888', marginTop: '0.25rem' }}>
-                    Beställd {new Date(order.createdAt).toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' })}
+                <p className="order-meta">
+                    Beställd {formatCreatedAt(order.createdAt, isAdvancePreOrder(order))}
                 </p>
             </div>
             <div className="pending-actions">
@@ -598,39 +672,153 @@ function ConfirmDeleteAllHistoryModal({
     );
 }
 
+function OrderTypeToggleRow({
+    label,
+    enabled,
+    onToggle,
+}: {
+    label: string;
+    enabled: boolean;
+    onToggle: () => void;
+}) {
+    return (
+        <div className="order-type-toggle-row">
+            <span className="order-type-toggle-label">{label}</span>
+            <div className="order-type-toggle-controls">
+                <label className="switch">
+                    <input
+                        type="checkbox"
+                        checked={enabled}
+                        onChange={onToggle}
+                    />
+                    <span className="slider round"></span>
+                </label>
+                <span className={`stock-status ${enabled ? 'text-success' : 'text-error'}`}>
+                    {enabled ? 'På' : 'Av'}
+                </span>
+            </div>
+        </div>
+    );
+}
+
+function LocationPauseBlock({
+    location,
+    showTypeToggles,
+    showDeliveryToggle,
+    deliveryEnabled,
+    onPauseToggle,
+    onToggleEatHere,
+    onToggleTakeaway,
+    onToggleDelivery,
+}: {
+    location: Location;
+    showTypeToggles: boolean;
+    showDeliveryToggle?: boolean;
+    deliveryEnabled?: boolean;
+    onPauseToggle: () => void;
+    onToggleEatHere: () => void;
+    onToggleTakeaway: () => void;
+    onToggleDelivery?: () => void;
+}) {
+    const showToggles = showTypeToggles || showDeliveryToggle;
+    return (
+        <div className="location-pause-block">
+            <h4>{location.name}</h4>
+            <div className="order-availability-pause">
+                <Button
+                    variant={location.isPaused ? 'primary' : 'ghost'}
+                    className={location.isPaused ? 'btn-resume' : 'btn-pause'}
+                    onClick={onPauseToggle}
+                >
+                    {location.isPaused ? `Återuppta ${location.name}` : `Pausa ${location.name}`}
+                </Button>
+            </div>
+            <p className="order-availability-hint">
+                {location.isPaused
+                    ? `Äta här och Ta med är stoppade på ${location.name}.`
+                    : `Nya beställningar tas emot på ${location.name}.`}
+            </p>
+            {showToggles && (
+                <div className="order-type-toggle-list">
+                    {showTypeToggles && (
+                        <>
+                            <OrderTypeToggleRow
+                                label="Äta här"
+                                enabled={location.eatHereEnabled}
+                                onToggle={onToggleEatHere}
+                            />
+                            <OrderTypeToggleRow
+                                label="Ta med"
+                                enabled={location.takeawayEnabled}
+                                onToggle={onToggleTakeaway}
+                            />
+                        </>
+                    )}
+                    {showDeliveryToggle && onToggleDelivery && (
+                        <OrderTypeToggleRow
+                            label="Hemleverans"
+                            enabled={deliveryEnabled !== false}
+                            onToggle={onToggleDelivery}
+                        />
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
+
+function locationInStock(product: Product, locationId: string): boolean {
+    if (product.stockByLocation && locationId in product.stockByLocation) {
+        return product.stockByLocation[locationId];
+    }
+    return product.inStock;
+}
+
 function StockRow({
     product,
+    locations,
     onToggle,
     onEditFoodInformation,
 }: {
     product: Product;
-    onToggle: (product: Product) => void;
-    onEditFoodInformation: (product: Product) => void;
+    locations: Location[];
+    onToggle: (product: Product, locationId: string) => void;
+    onEditFoodInformation?: (product: Product) => void;
 }) {
-    const { t } = useLanguage();
-    const outOfStock = !product.inStock;
+    const allOut = locations.length > 0 && locations.every((location) => !locationInStock(product, location.id));
 
     return (
-        <div className={`admin-stock-card ${outOfStock ? 'stock-card-out' : ''}`}>
-            <span className="stock-name">{getDisplayName(product, t)}</span>
-
-            <label className="switch">
-                <input
-                    type="checkbox"
-                    checked={product.inStock}
-                    onChange={() => onToggle(product)}
-                />
-                <span className="slider round"></span>
-            </label>
-            <span className={`stock-status ${product.inStock ? 'text-success' : 'text-error'}`}>
-                {product.inStock ? 'I lager' : 'Avstängd'}
-            </span>
+        <div className={`admin-stock-card ${allOut ? 'stock-card-out' : ''}`}>
+            <span className="stock-name">{product.name}</span>
+            <div className="stock-location-toggles">
+                {locations.map((location) => {
+                    const inStock = locationInStock(product, location.id);
+                    return (
+                        <div key={location.id} className="stock-location-toggle">
+                            {locations.length > 1 && (
+                                <span className="stock-location-label">{location.name}</span>
+                            )}
+                            <label className="switch">
+                                <input
+                                    type="checkbox"
+                                    checked={inStock}
+                                    onChange={() => onToggle(product, location.id)}
+                                />
+                                <span className="slider round"></span>
+                            </label>
+                            <span className={`stock-status ${inStock ? 'text-success' : 'text-error'}`}>
+                                {inStock ? 'I lager' : 'Avstängd'}
+                            </span>
+                        </div>
+                    );
+                })}
+            </div>
             <span className={product.foodInformationVerifiedAt ? 'text-success' : 'text-error'}>
                 {product.foodInformationVerifiedAt ? 'Matinfo verifierad' : 'Matinfo saknas'}
             </span>
-            <Button type="button" size="sm" variant="outline" onClick={() => onEditFoodInformation(product)}>
+            {onEditFoodInformation && <Button type="button" size="sm" variant="outline" onClick={() => onEditFoodInformation(product)}>
                 Ingredienser
-            </Button>
+            </Button>}
         </div>
     );
 }
@@ -638,7 +826,7 @@ function StockRow({
 export const AdminDashboard: React.FC = () => {
     const { logout, admin } = useAuth();
     const navigate = useNavigate();
-    const [activeTab, setActiveTab] = useState<'pending' | 'preorders' | 'active' | 'history' | 'stock' | 'rush' | 'stats'>('pending');
+    const [activeTab, setActiveTab] = useState<'pending' | 'preorders' | 'active' | 'history' | 'stock' | 'menu' | 'rush' | 'stats'>('pending');
 
     // Data state
     const [pendingOrders, setPendingOrders] = useState<Order[]>([]);
@@ -647,6 +835,8 @@ export const AdminDashboard: React.FC = () => {
     const [historyOrders, setHistoryOrders] = useState<Order[]>([]);
     const [products, setProducts] = useState<Product[]>([]);
     const [settings, setSettings] = useState<AdminSettings | null>(null);
+    const [locations, setLocations] = useState<Location[]>([]);
+    const [placeFilter, setPlaceFilter] = useState<PlaceFilter>('all');
 
     // Statistics state
     const [showStatsModal, setShowStatsModal] = useState(false);
@@ -763,6 +953,7 @@ export const AdminDashboard: React.FC = () => {
     useEffect(() => {
         let active = true;
         const refreshPaymentAlerts = async () => {
+            if (admin?.role !== 'owner') { if (active) setPaymentAlerts([]); return; }
             try {
                 const alerts = await adminApi.getPaymentAlerts();
                 if (active) setPaymentAlerts(alerts);
@@ -956,31 +1147,58 @@ export const AdminDashboard: React.FC = () => {
 
     // --- Fetch products + settings on mount ---
     useEffect(() => {
-        productApi.getAll().then(setProducts).finally(() => setLoadingProducts(false));
-        adminApi.getSettings().then(setSettings);
+        productApi.getAllAdmin().then(setProducts).finally(() => setLoadingProducts(false));
+        adminApi.getSettings().then((next) => {
+            setSettings(next);
+            if (next.locations?.length) setLocations(next.locations);
+        });
+        locationApi.getAll().then(setLocations).catch(() => undefined);
     }, []);
 
+    const isOwner = admin?.role === 'owner';
+
     useEffect(() => {
+        if (isOwner) return;
+        if (activeTab === 'menu' || activeTab === 'stats') {
+            setActiveTab('pending');
+            setStatsData(null);
+            setShowStatsModal(false);
+        }
+    }, [isOwner, activeTab]);
+
+    useEffect(() => {
+        if (activeTab === 'menu') {
+            productApi.getAllAdmin().then(setProducts).catch(() => undefined);
+            return;
+        }
         if (activeTab !== 'stock') return;
-        const refresh = () => productApi.getAll().then(setProducts).catch(() => undefined);
+        const refresh = () => productApi.getAllAdmin().then(setProducts).catch(() => undefined);
         const id = setInterval(refresh, 5000);
         return () => clearInterval(id);
     }, [activeTab]);
 
-    // --- Fetch history when tab opens + poll while on tab ---
+    // Historik hämtas vid öppning och när datumfiltret ändras — ingen polling.
+    // Live-uppdatering sköts av pending/active; historik ändras sällan.
     useEffect(() => {
         if (activeTab !== 'history') return;
 
-        const fetchHistory = () => {
-            orderApi.getHistory(200, historyDateFrom || undefined, historyDateTo || undefined)
-                .then(setHistoryOrders)
-                .finally(() => setLoadingHistory(false));
-        };
-
+        let cancelled = false;
         setLoadingHistory(true);
-        fetchHistory();
-        const id = setInterval(fetchHistory, 5000);
-        return () => clearInterval(id);
+
+        orderApi.getHistory(200, historyDateFrom || undefined, historyDateTo || undefined)
+            .then((orders) => {
+                if (!cancelled) setHistoryOrders(orders);
+            })
+            .catch(() => {
+                if (!cancelled) setError('Kunde inte hämta historik.');
+            })
+            .finally(() => {
+                if (!cancelled) setLoadingHistory(false);
+            });
+
+        return () => {
+            cancelled = true;
+        };
     }, [activeTab, historyDateFrom, historyDateTo]);
 
     // --- Accept pending order ---
@@ -1154,9 +1372,10 @@ export const AdminDashboard: React.FC = () => {
     };
 
     // --- Stock toggle ---
-    const handleToggleStock = async (product: Product) => {
+    const handleToggleStock = async (product: Product, locationId: string) => {
         try {
-            const updated = await productApi.updateStock(product.id, !product.inStock);
+            const next = !locationInStock(product, locationId);
+            const updated = await productApi.updateStock(product.id, next, locationId);
             setProducts(prev => prev.map(p => p.id === product.id ? updated : p));
         } catch {
             setError('Kunde inte uppdatera lagerstatus.');
@@ -1174,6 +1393,30 @@ export const AdminDashboard: React.FC = () => {
         try {
             const updated = await adminApi.updateSettings(patch);
             setSettings(updated);
+            if (updated.locations?.length) setLocations(updated.locations);
+        } catch {
+            setError('Kunde inte spara inställningar.');
+        }
+    };
+
+    const handleUpdateLocation = async (
+        id: string,
+        patch: Partial<Pick<Location, 'isPaused' | 'eatHereEnabled' | 'takeawayEnabled'>>
+    ) => {
+        try {
+            const updated = await adminApi.updateLocation(id, patch);
+            const nextLocations = locations.map((location) => (location.id === updated.id ? updated : location));
+            setLocations(nextLocations);
+            if (settings) {
+                setSettings({
+                    ...settings,
+                    locations: (settings.locations ?? nextLocations).map((location) =>
+                        location.id === updated.id ? updated : location
+                    ),
+                    eatHereEnabled: nextLocations.some((location) => !location.isPaused && location.eatHereEnabled),
+                    takeawayEnabled: nextLocations.some((location) => !location.isPaused && location.takeawayEnabled),
+                });
+            }
         } catch {
             setError('Kunde inte spara inställningar.');
         }
@@ -1229,6 +1472,23 @@ export const AdminDashboard: React.FC = () => {
     };
 
     const isPaused = settings?.isPaused ?? false;
+    const myLocation = admin?.role === 'location'
+        ? locations.find((location) => location.id === admin.locationId)
+        : undefined;
+    const headerPaused = isOwner ? isPaused : Boolean(myLocation?.isPaused);
+    const canManageDelivery = isOwner || myLocation?.fulfillsDelivery === true;
+    const pauseLocations = isOwner
+        ? locations
+        : myLocation
+            ? [myLocation]
+            : [];
+    const stockLocations = pauseLocations;
+    const visiblePending = isOwner ? pendingOrders.filter((order) => orderMatchesPlaceFilter(order, placeFilter)) : pendingOrders;
+    const visiblePreOrders = isOwner ? preOrders.filter((order) => orderMatchesPlaceFilter(order, placeFilter)) : preOrders;
+    const visibleActive = isOwner ? activeOrders.filter((order) => orderMatchesPlaceFilter(order, placeFilter)) : activeOrders;
+    const visibleHistory = isOwner ? historyOrders.filter((order) => orderMatchesPlaceFilter(order, placeFilter)) : historyOrders;
+    const hojaName = locations.find((location) => location.slug === 'hoja')?.name ?? 'Höja';
+    const molleName = locations.find((location) => location.slug === 'mollevangen')?.name ?? 'Möllevången';
     return (
         <div className="admin-dashboard">
             <Container>
@@ -1236,8 +1496,13 @@ export const AdminDashboard: React.FC = () => {
                     <div className="admin-header-left">
                         <h1>Admin Dashboard</h1>
                         {admin && <span className="admin-name">👤 {admin.name}</span>}
-                        <span className={`status-badge ${isPaused ? 'status-paused' : 'status-active'}`}>
-                            {isPaused ? '🔴 STOPPAD' : '🟢 ONLINE'}
+                        {admin?.role === 'location' && (
+                            <span className="place-badge">
+                                {locations.find((location) => location.id === admin.locationId)?.name ?? 'Plats'}
+                            </span>
+                        )}
+                        <span className={`status-badge ${headerPaused ? 'status-paused' : 'status-active'}`}>
+                            {headerPaused ? '🔴 STOPPAD' : '🟢 ONLINE'}
                         </span>
 
                         {/* Ljudlarm-indikator i headern */}
@@ -1292,13 +1557,6 @@ export const AdminDashboard: React.FC = () => {
                         </div>
                     </div>
                     <div className="admin-header-actions">
-                        <Button
-                            variant={isPaused ? 'primary' : 'ghost'}
-                            className={isPaused ? 'btn-resume' : 'btn-pause'}
-                            onClick={() => handleUpdateSettings({ isPaused: !isPaused })}
-                        >
-                            {isPaused ? 'Återuppta Beställningar' : 'Pausa Beställningar'}
-                        </Button>
                         <Button variant="ghost" onClick={handleLogout}>Logga ut</Button>
                     </div>
                 </header>
@@ -1361,13 +1619,13 @@ export const AdminDashboard: React.FC = () => {
 
                 <nav className="admin-tabs" aria-label="Adminsektioner">
                     <button type="button" aria-current={activeTab === 'preorders' ? 'page' : undefined} className={`admin-tab ${activeTab === 'preorders' ? 'active' : ''}`} onClick={() => { setActiveTab('preorders'); setStatsData(null); }}>
-                        Förbeställningar {preOrders.length > 0 && <span className="tab-badge">{preOrders.length}</span>}
+                        Förbeställningar {visiblePreOrders.length > 0 && <span className="tab-badge">{visiblePreOrders.length}</span>}
                     </button>
                     <button type="button" aria-current={activeTab === 'pending' ? 'page' : undefined} className={`admin-tab ${activeTab === 'pending' ? 'active' : ''}`} onClick={() => { setActiveTab('pending'); setStatsData(null); }}>
-                        Inkommande {pendingOrders.length > 0 && <span className="tab-badge">{pendingOrders.length}</span>}
+                        Inkommande {visiblePending.length > 0 && <span className="tab-badge">{visiblePending.length}</span>}
                     </button>
                     <button type="button" aria-current={activeTab === 'active' ? 'page' : undefined} className={`admin-tab ${activeTab === 'active' ? 'active' : ''}`} onClick={() => { setActiveTab('active'); setStatsData(null); }}>
-                        Aktiva Ordrar ({activeOrders.length})
+                        Aktiva Ordrar ({visibleActive.length})
                     </button>
                     <button type="button" aria-current={activeTab === 'history' ? 'page' : undefined} className={`admin-tab ${activeTab === 'history' ? 'active' : ''}`} onClick={() => { setActiveTab('history'); setStatsData(null); }}>
                         Orderhistorik
@@ -1375,13 +1633,40 @@ export const AdminDashboard: React.FC = () => {
                     <button type="button" aria-current={activeTab === 'stock' ? 'page' : undefined} className={`admin-tab ${activeTab === 'stock' ? 'active' : ''}`} onClick={() => { setActiveTab('stock'); setStatsData(null); }}>
                         Lager
                     </button>
-                    <button type="button" aria-current={activeTab === 'rush' ? 'page' : undefined} className={`admin-tab ${activeTab === 'rush' ? 'active' : ''}`} onClick={() => { setActiveTab('rush'); setStatsData(null); }}>
+                    {isOwner && (
+                    <button type="button" className={`admin-tab ${activeTab === 'menu' ? 'active' : ''}`} onClick={() => { setActiveTab('menu'); setStatsData(null); }}>
+                        Meny
+                    </button>
+                    )}
+                    <button type="button" className={`admin-tab ${activeTab === 'rush' ? 'active' : ''}`} onClick={() => { setActiveTab('rush'); setStatsData(null); }}>
                         Inställningar
                     </button>
-                    <button type="button" aria-current={activeTab === 'stats' ? 'page' : undefined} className={`admin-tab ${activeTab === 'stats' ? 'active' : ''}`} onClick={handleStatsTabClick}>
+                    {isOwner && (
+                    <button type="button" className={`admin-tab ${activeTab === 'stats' ? 'active' : ''}`} onClick={handleStatsTabClick}>
                         Statistik
                     </button>
+                    )}
                 </nav>
+
+                {isOwner && (activeTab === 'pending' || activeTab === 'preorders' || activeTab === 'active' || activeTab === 'history') && (
+                    <div className="place-filter" role="group" aria-label="Filtrera plats">
+                        {([
+                            { id: 'all' as const, label: 'Alla' },
+                            { id: 'hoja' as const, label: hojaName },
+                            { id: 'mollevangen' as const, label: molleName },
+                            { id: 'delivery' as const, label: 'Hemleverans' },
+                        ]).map((chip) => (
+                            <button
+                                key={chip.id}
+                                type="button"
+                                className={`place-filter-chip ${placeFilter === chip.id ? 'active' : ''}`}
+                                onClick={() => setPlaceFilter(chip.id)}
+                            >
+                                {chip.label}
+                            </button>
+                        ))}
+                    </div>
+                )}
 
                 {/* ── STATISTIK LÖSENORDS-POPUP ── */}
                 {showStatsModal && (
@@ -1467,16 +1752,17 @@ export const AdminDashboard: React.FC = () => {
                 <div className="admin-content animate-in">
                     {/* ── INKOMMANDE ORDRAR ── */}
                     {activeTab === 'pending' && (
-                        <div className="orders-list">
+                        <div className="orders-list orders-list--grid">
                             {loadingOrders ? (
                                 <p>Laddar ordrar...</p>
-                            ) : pendingOrders.length === 0 ? (
+                            ) : visiblePending.length === 0 ? (
                                 <p>Inga inkommande ordrar just nu.</p>
                             ) : (
-                                pendingOrders.map(order => (
+                                visiblePending.map(order => (
                                     <PendingOrderCard
                                         key={order.id}
                                         order={order}
+                                        locations={locations}
                                         defaultPrepTime={settings?.defaultPreparationTime ?? 30}
                                         onAccept={handleAcceptOrder}
                                         onRefund={setRefundOrder}
@@ -1491,12 +1777,12 @@ export const AdminDashboard: React.FC = () => {
                         <div className="orders-list">
                             {loadingOrders ? (
                                 <p>Laddar förbeställningar...</p>
-                            ) : preOrders.length === 0 ? (
+                            ) : visiblePreOrders.length === 0 ? (
                                 <p>Inga förbeställningar just nu.</p>
                             ) : (
                                 (() => {
                                     const groups = new Map<string, Order[]>();
-                                    for (const order of preOrders) {
+                                    for (const order of visiblePreOrders) {
                                         const key = order.scheduledTime
                                             ? new Date(order.scheduledTime).toLocaleDateString('sv-SE', { timeZone: 'Europe/Stockholm' })
                                             : 'okänt';
@@ -1522,6 +1808,7 @@ export const AdminDashboard: React.FC = () => {
                                                     <PreOrderCard
                                                         key={o.id}
                                                         order={o}
+                                                        locations={locations}
                                                         onEditNotes={openNotesModal}
                                                         onCancel={(order) => openCancelModal(order.id)}
                                                         onRefund={setRefundOrder}
@@ -1540,16 +1827,18 @@ export const AdminDashboard: React.FC = () => {
                         <div className="orders-list">
                             {loadingOrders ? (
                                 <p>Laddar ordrar...</p>
-                            ) : activeOrders.length === 0 ? (
+                            ) : visibleActive.length === 0 ? (
                                 <p>Inga aktiva ordrar just nu.</p>
                             ) : (
-                                activeOrders.map(order => (
+                                visibleActive.map(order => (
                                     <div key={order.id} className="admin-order-card">
                                         <div className="order-details">
                                             <h3>
                                                 {order.orderNumber}
                                                 &nbsp;·&nbsp;
                                                 <OrderTypeLabel type={order.orderType} />
+                                                &nbsp;·&nbsp;
+                                                <PlaceBadge order={order} locations={locations} />
                                             </h3>
                                             <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
                                                 <OrderTimer estimatedReadyTime={order.estimatedReadyTime} />
@@ -1561,6 +1850,7 @@ export const AdminDashboard: React.FC = () => {
                                                     Nedräkning: tillagning i köket
                                                 </p>
                                             )}
+                                            <ScheduledOrderInfo order={order} />
                                             <OrderContactPanel order={order} />
                                             <ul style={{ margin: '0.5rem 0', paddingLeft: '1.2rem' }}>
                                                 {order.items.map((item, i) => (
@@ -1622,7 +1912,7 @@ export const AdminDashboard: React.FC = () => {
                                         Rensa filter
                                     </button>
                                 )}
-                                {historyOrders.length > 0 && (
+                                {historyOrders.length > 0 && isOwner && (
                                     <button
                                         className="history-delete-all"
                                         onClick={openDeleteAllModal}
@@ -1633,17 +1923,20 @@ export const AdminDashboard: React.FC = () => {
                             </div>
                             {loadingHistory ? (
                                 <p>Laddar historik...</p>
-                            ) : historyOrders.length === 0 ? (
+                            ) : visibleHistory.length === 0 ? (
                                 <p>Ingen orderhistorik ännu.</p>
                             ) : (
-                                historyOrders.map(order => (
+                                visibleHistory.map(order => (
                                     <div key={order.id} className={`admin-order-card ${order.status === 'avbruten' ? 'history-card-cancelled' : 'history-card-done'}`}>
                                         <div className="order-details">
-                                            <h3>{order.orderNumber} · <OrderTypeLabel type={order.orderType} /></h3>
+                                            <h3>
+                                                {order.orderNumber} · <OrderTypeLabel type={order.orderType} /> · <PlaceBadge order={order} locations={locations} />
+                                            </h3>
                                             <span className={`status-badge ${order.status === 'avbruten' ? 'status-avbruten' : 'status-klar'}`}>
                                                 {order.status === 'avbruten' ? 'Avbruten' : 'Klar'}
                                             </span>
                                             <RefundStatusBadge order={order} />
+                                            <ScheduledOrderInfo order={order} />
                                             <ul style={{ margin: '0.5rem 0', paddingLeft: '1.2rem' }}>
                                                 {order.items.map((item, i) => (
                                                     <li key={i}>{item.quantity}x {item.productName}</li>
@@ -1651,7 +1944,9 @@ export const AdminDashboard: React.FC = () => {
                                             </ul>
                                             <p className="order-total">{(order.totalPrice / 100).toFixed(0)} kr</p>
                                             <OrderContactPanel order={order} />
-                                            <p style={{ fontSize: '0.8rem', color: '#888', margin: 0 }}>{new Date(order.createdAt).toLocaleString('sv-SE')}</p>
+                                            <p style={{ fontSize: '0.8rem', color: '#888', margin: 0 }}>
+                                                Beställd {formatCreatedAt(order.createdAt, true)}
+                                            </p>
                                             {order.status === 'avbruten' && (
                                                 <>
                                                     {order.cancelledAt && (
@@ -1693,14 +1988,20 @@ export const AdminDashboard: React.FC = () => {
                     {/* ── LAGER ── */}
                     {activeTab === 'stock' && (
                         <div className="stock-list">
+                            <p className="stock-list-hint">
+                                {isOwner
+                                    ? 'Stäng av en vara per plats. Hemleverans följer Höjas lager.'
+                                    : `Avstängd vara syns inte på menyn för ${myLocation?.name ?? 'den här platsen'}${myLocation?.fulfillsDelivery ? '. Hemleverans följer också det här lagret.' : '.'}`}
+                            </p>
                             {loadingProducts ? (
                                 <p>Laddar produkter...</p>
                             ) : products.map(product => (
                                 <StockRow
                                     key={product.id}
                                     product={product}
+                                    locations={stockLocations}
                                     onToggle={handleToggleStock}
-                                    onEditFoodInformation={setFoodInformationProduct}
+                                    onEditFoodInformation={isOwner ? setFoodInformationProduct : undefined}
                                 />
                             ))}
                         </div>
@@ -1711,6 +2012,18 @@ export const AdminDashboard: React.FC = () => {
                             product={foodInformationProduct}
                             onClose={() => setFoodInformationProduct(null)}
                             onSaved={handleFoodInformationSaved}
+                        />
+                    )}
+
+                    {/* ── MENY ── */}
+                    {activeTab === 'menu' && (
+                        <MenuTab
+                            settings={settings}
+                            products={products}
+                            loadingProducts={loadingProducts}
+                            onSettingsChange={setSettings}
+                            onProductsChange={setProducts}
+                            onError={setError}
                         />
                     )}
 
@@ -1886,6 +2199,48 @@ export const AdminDashboard: React.FC = () => {
                     {/* ── INSTÄLLNINGAR ── */}
                     {activeTab === 'rush' && settings && (
                         <div className="rush-settings">
+                            <div className="rush-card order-availability-card">
+                                <h3>Beställningar</h3>
+                                <p>
+                                    {isOwner
+                                        ? 'Pausa per plats, stäng av Äta här/Ta med, eller nödstoppa allt.'
+                                        : canManageDelivery
+                                            ? 'Pausa den här platsen, eller stäng av hemleverans.'
+                                            : 'Pausa Äta här och Ta med på den här platsen.'}
+                                </p>
+                                {isOwner && (
+                                    <>
+                                        <div className="order-availability-pause">
+                                            <Button
+                                                variant={isPaused ? 'primary' : 'ghost'}
+                                                className={isPaused ? 'btn-resume' : 'btn-pause'}
+                                                onClick={() => handleUpdateSettings({ isPaused: !isPaused })}
+                                            >
+                                                {isPaused ? 'Återuppta allt' : 'Nödstoppa alla beställningar'}
+                                            </Button>
+                                        </div>
+                                        <p className="order-availability-hint">
+                                            {isPaused
+                                                ? 'Alla nya beställningar är stoppade, inklusive hemleverans.'
+                                                : 'Nödstopp påverkar alla platser och hemleverans.'}
+                                        </p>
+                                    </>
+                                )}
+                                {pauseLocations.map((location) => (
+                                    <LocationPauseBlock
+                                        key={location.id}
+                                        location={location}
+                                        showTypeToggles={isOwner}
+                                        showDeliveryToggle={canManageDelivery && location.fulfillsDelivery}
+                                        deliveryEnabled={settings.deliveryEnabled !== false}
+                                        onPauseToggle={() => handleUpdateLocation(location.id, { isPaused: !location.isPaused })}
+                                        onToggleEatHere={() => handleUpdateLocation(location.id, { eatHereEnabled: !location.eatHereEnabled })}
+                                        onToggleTakeaway={() => handleUpdateLocation(location.id, { takeawayEnabled: !location.takeawayEnabled })}
+                                        onToggleDelivery={() => handleUpdateSettings({ deliveryEnabled: settings.deliveryEnabled === false })}
+                                    />
+                                ))}
+                            </div>
+                            {isOwner && (
                             <div className="rush-card">
                                 <h3>Standard tillagningstid</h3>
                                 <p>Används för alla nya beställningar.</p>
@@ -1898,6 +2253,7 @@ export const AdminDashboard: React.FC = () => {
                                     <Button variant="ghost" onClick={() => handleUpdateSettings({ defaultPreparationTime: settings.defaultPreparationTime + 5 })}>+ 5 min</Button>
                                 </div>
                             </div>
+                            )}
                             <PrinterSettings />
 
                             {/* --- Ljudinställningar för inkommande ordrar --- */}
@@ -1980,8 +2336,10 @@ export const AdminDashboard: React.FC = () => {
                             <div className="alarm-order-header">
                                 <span className="alarm-order-number">{activeAlarmOrder.orderNumber}</span>
                                 <span className="alarm-order-type">
-                                    {activeAlarmOrder.orderType === 'eat-here' ? 'Äta här' : 
+                                    {activeAlarmOrder.orderType === 'eat-here' ? 'Äta här' :
                                      activeAlarmOrder.orderType === 'takeaway' ? 'Ta med' : 'Leverans'}
+                                    {' · '}
+                                    {placeName(activeAlarmOrder, locations)}
                                 </span>
                             </div>
                             <ul className="alarm-order-items">

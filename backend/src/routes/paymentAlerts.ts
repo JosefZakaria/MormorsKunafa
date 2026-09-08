@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import type { JwtPayload } from '../middleware/auth.js';
-import { requireAdmin } from '../middleware/auth.js';
+import { requireAdmin, requireOwner } from '../middleware/auth.js';
 import {
   createRateLimiter,
   getTrustedClientIp,
@@ -61,7 +61,7 @@ function storedResult(record: DuplicateStripeRefundRecord, orderNumber?: string)
   };
 }
 
-router.get('/:eventId', requireAdmin, async (req: Request, res: Response) => {
+router.get('/:eventId', requireAdmin, requireOwner, async (req: Request, res: Response) => {
   try {
     res.setHeader('Cache-Control', 'private, no-store');
     const alert = await getPaymentSecurityAlert(req.params.eventId);
@@ -101,7 +101,7 @@ router.get('/:eventId', requireAdmin, async (req: Request, res: Response) => {
   }
 });
 
-router.post('/:eventId/refund', limiter, requireAdmin, async (req: Request, res: Response) => {
+router.post('/:eventId/refund', limiter, requireAdmin, requireOwner, async (req: Request, res: Response) => {
   let reserved: DuplicateStripeRefundRecord | null = null;
   try {
     if (!isRefundPasswordConfigured()) {

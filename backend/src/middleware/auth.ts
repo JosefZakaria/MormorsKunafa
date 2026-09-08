@@ -1,5 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import type { AdminRole } from '@mormors-kunafa/shared/types';
+import { loadAdminScope, parseAdminRole } from '../services/locationScope.js';
 import { timingSafeEqual } from 'node:crypto';
 import { supabase, type Row, logSupabaseError } from '../db/connection.js';
 import { logUnexpectedError } from '../utils/safeErrorMetadata.js';
@@ -34,6 +36,12 @@ export interface JwtPayload {
   adminId: string;
   email: string;
   tokenVersion: number;
+  role?: AdminRole;
+  locationId?: string | null;
+}
+
+export function getRequestAdmin(req: Request): JwtPayload | undefined {
+  return (req as Request & { admin?: JwtPayload }).admin;
 }
 
 export function verifyAdminToken(token: string): JwtPayload | null {
@@ -117,6 +125,29 @@ function getAdminToken(req: Request): string | null {
   return auth?.startsWith('Bearer ') ? auth.slice(7).trim() : null;
 }
 
+/** Optional authentication for public reads; never trusts token claims alone. */
+export async function readAdminFromRequest(req: Request): Promise<JwtPayload | null> {
+  const token = getAdminToken(req);
+  const decoded = token ? verifyAdminToken(token) : null;
+  if (!decoded) return null;
+  const { data: admin, error } = await supabase.from('admin_users')
+    .select('id, email, token_version, is_active, role, location_id')
+    .eq('id', decoded.adminId).eq('email', decoded.email).maybeSingle();
+  if (error) throw new Error('Authentication service unavailable');
+  if (!admin || admin.is_active !== true || Number(admin.token_version) !== decoded.tokenVersion
+    || !parseAdminRole(admin.role)) return null;
+  const scope = await loadAdminScope(decoded.adminId);
+  return { ...decoded, role: scope.role, locationId: scope.locationId };
+}
+
+export async function requireOwner(req: Request, res: Response, next: NextFunction): Promise<void> {
+  // requireAdmin refreshes the role and active session from the database.
+  const admin = getRequestAdmin(req);
+  if (!admin) { res.status(401).json({ error: 'Unauthorized' }); return; }
+  if (admin.role !== 'owner') { res.status(403).json({ error: 'Endast ägare har åtkomst.' }); return; }
+  next();
+}
+
 export async function requireAdmin(req: Request, res: Response, next: NextFunction): Promise<void> {
   const token = getAdminToken(req);
   if (!token) {
@@ -124,7 +155,7 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
     return;
   }
   try {
-    const decoded = verifyAdminToken(token);
+    const decoded = await readAdminFromRequest(req);
     if (!decoded) {
       res.status(401).json({ error: 'Invalid or expired token' });
       return;
@@ -223,4 +254,3 @@ export function signToken(payload: JwtPayload): string {
     expiresIn: '30m',
   });
 }
-

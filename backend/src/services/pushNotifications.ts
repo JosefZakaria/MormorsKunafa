@@ -14,6 +14,7 @@ import {
   sendWebPushSafely,
 } from '../utils/webPushSecurity.js';
 import { safeErrorMetadata } from '../utils/safeErrorMetadata.js';
+import { loadAdminScopes, orderVisibleToScope } from './locationScope.js';
 
 const deliveredInRuntime = new Map<string, Set<string>>();
 
@@ -64,6 +65,17 @@ export async function sendOrderCreatedPush(event: OrderCreatedEvent): Promise<vo
   const subscriptions = await listActivePushSubscriptions();
   if (!subscriptions.length) return;
 
+  const scopes = await loadAdminScopes(subscriptions.map((s) => s.admin_id));
+  const visibleSubscriptions = subscriptions.filter((subscription) => {
+    const scope = scopes.get(subscription.admin_id);
+    if (!scope) return false;
+    return orderVisibleToScope(scope, {
+      orderType: event.order_type,
+      locationId: event.location_id,
+    });
+  });
+  if (!visibleSubscriptions.length) return;
+
   const payload = JSON.stringify({
     event_id: event.event_id,
     event_type: event.event_type,
@@ -77,7 +89,7 @@ export async function sendOrderCreatedPush(event: OrderCreatedEvent): Promise<vo
   });
 
   await Promise.all(
-    subscriptions.map(async (subscription) => {
+    visibleSubscriptions.map(async (subscription) => {
       if (hasRuntimeDelivered(event.event_id, subscription.id)) {
         return;
       }

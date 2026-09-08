@@ -42,3 +42,22 @@ test('rejects out-of-stock products', () => {
     OrderValidationError
   );
 });
+
+test('uses editable server variant prices and rejects hidden or malformed products', () => {
+  const input = [{ productId: pistachioId, variantId: '250 gram', quantity: 2 }];
+  const row = product(pistachioId, { variant_prices: { '250 gram': 12345 } });
+  assert.equal(priceValidatedProductRows(input, [row])[0].priceOre, 12345);
+  assert.throws(() => priceValidatedProductRows(input, [{ ...row, hidden: true }]), OrderValidationError);
+  assert.throws(() => priceValidatedProductRows(input, [{ ...row, variant_prices: { '250 gram': -1 } }]), OrderValidationError);
+  assert.throws(() => priceValidatedProductRows([{ ...input[0], variantId: 'constructor' }], [row]), OrderValidationError);
+});
+
+test('supports new per-piece products and the existing quantity label without trusting its price', () => {
+  const id = '00000000-0000-4000-8000-000000000001';
+  const row = product(id, { variant_prices: { st: 4500 } });
+  const input = [{ productId: id, variantId: '3 st', quantity: 3 }];
+  const line = priceValidatedProductRows(input, [row])[0];
+  assert.equal(line.priceOre, 4500);
+  assert.equal(line.quantity, 3);
+  assert.throws(() => priceValidatedProductRows([{ ...input[0], variantId: '1 st' }], [row]), OrderValidationError);
+});

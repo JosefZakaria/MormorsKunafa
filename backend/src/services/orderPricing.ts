@@ -1,11 +1,10 @@
 import {
-  getAllowedVariantIds,
-  getCatalogVariantPriceOre,
   getFixedVariantId,
   isBreadProductId,
 } from '../shared/constants/productPricing.js';
 import { supabase, type Row, logSupabaseError } from '../db/connection.js';
 import { sanitizeProductName } from '../utils/sanitizeProductName.js';
+import { parseVariantPricesInput, variantPricesForProduct } from '../utils/productPrices.js';
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -61,7 +60,7 @@ function validateInputs(items: unknown): Array<{
         `Antalet på orderrad ${index + 1} måste vara ett heltal mellan 1 och ${MAX_QUANTITY_PER_LINE}.`
       );
     }
-    if (variantId && variantId.length > 40) {
+    if (variantId && variantId.length > 80) {
       throw new OrderValidationError(`Variant-ID på orderrad ${index + 1} är för långt.`);
     }
 
@@ -86,6 +85,7 @@ export function priceValidatedProductRows(
     if (!product) {
       throw new OrderValidationError('En eller flera produkter finns inte längre i menyn.', 409);
     }
+    if (product.hidden === true) throw new OrderValidationError('Produkten finns inte längre i menyn.', 409);
     if (String(product.stock_status ?? '').toLowerCase() !== 'instock') {
       throw new OrderValidationError(`${String(product.name ?? 'Produkten')} är slut i lager.`, 409);
     }
@@ -95,21 +95,27 @@ export function priceValidatedProductRows(
       throw new OrderValidationError('En produkt har ett ogiltigt serverpris.', 409);
     }
 
-    const allowedVariants = getAllowedVariantIds(input.productId);
+    if (product.variant_prices != null && parseVariantPricesInput(product.variant_prices) === 'invalid') {
+      throw new OrderValidationError('Produktens variantpriser är ogiltiga.', 409);
+    }
+    const variants = variantPricesForProduct(input.productId, product.variant_prices);
     const fixedVariantId = getFixedVariantId(input.productId);
-    const bread = isBreadProductId(input.productId);
+    const bread = isBreadProductId(input.productId)
+      || (variants != null && Object.keys(variants).length === 1 && Object.hasOwn(variants, 'st'));
     let priceOre = databasePriceOre;
     let snapshotSuffix = '';
 
     if (bread) {
-      priceOre = getCatalogVariantPriceOre(input.productId) ?? databasePriceOre;
+      if (input.variantId && input.variantId !== 'st' && input.variantId !== `${input.quantity} st`) {
+        throw new OrderValidationError('Ogiltig brödvariant.');
+      }
+      priceOre = variants?.st ?? databasePriceOre;
       snapshotSuffix = `${input.quantity} st`;
-    } else if (allowedVariants.length > 0) {
-      const variantPrice = getCatalogVariantPriceOre(input.productId, input.variantId);
-      if (!input.variantId || variantPrice == null) {
+    } else if (variants && Object.keys(variants).length > 0) {
+      if (!input.variantId || !Object.hasOwn(variants, input.variantId)) {
         throw new OrderValidationError('Välj en giltig variant för produkten.');
       }
-      priceOre = variantPrice;
+      priceOre = variants[input.variantId];
       snapshotSuffix = input.variantId;
     } else if (fixedVariantId) {
       if (input.variantId !== fixedVariantId) {
@@ -120,6 +126,9 @@ export function priceValidatedProductRows(
       throw new OrderValidationError('Produkten har inte den angivna varianten.');
     }
 
+    if (!Number.isSafeInteger(priceOre) || priceOre <= 0 || priceOre > MAX_UNIT_PRICE_ORE) {
+      throw new OrderValidationError('Produktens variantpris är ogiltigt.', 409);
+    }
     const name = sanitizeProductName(String(product.name ?? ''));
     if (!name) throw new OrderValidationError('En produkt saknar ett giltigt namn.', 409);
 
@@ -137,7 +146,7 @@ export async function buildServerPricedOrderLines(items: unknown): Promise<Serve
   const productIds = [...new Set(inputs.map((item) => item.productId))];
   const { data, error } = await supabase
     .from('products')
-    .select('id, name, price_ore, stock_status')
+    .select('id, name, price_ore, variant_prices, stock_status, hidden')
     .in('id', productIds);
 
   if (error) {

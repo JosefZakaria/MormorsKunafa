@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import type { CreateOrderRefundResult } from '../shared/types/index.js';
 import { requireAdmin, type JwtPayload } from '../middleware/auth.js';
+import { requireOrderAccess } from '../middleware/orderAccess.js';
 import {
   createRateLimiter,
   getTrustedClientIp,
@@ -104,7 +105,7 @@ async function callProvider(
   });
 }
 
-router.get('/:id/refunds', requireAdmin, async (req: Request, res: Response) => {
+router.get('/:id/refunds', requireAdmin, requireOrderAccess, async (req: Request, res: Response) => {
   try {
     const overview = await getAdminRefundOverview(req.params.id);
     if (!overview) {
@@ -118,7 +119,7 @@ router.get('/:id/refunds', requireAdmin, async (req: Request, res: Response) => 
   }
 });
 
-router.post('/:id/refunds', refundLimiter, requireAdmin, async (req: Request, res: Response) => {
+router.post('/:id/refunds', refundLimiter, requireAdmin, requireOrderAccess, async (req: Request, res: Response) => {
   let reserved: ReservedRefund | null = null;
   try {
     if (!isRefundPasswordConfigured()) {
@@ -209,7 +210,7 @@ router.post('/:id/refunds', refundLimiter, requireAdmin, async (req: Request, re
   }
 });
 
-router.post('/:id/refunds/:refundId/reconcile', refundLimiter, requireAdmin, async (req, res) => {
+router.post('/:id/refunds/:refundId/reconcile', refundLimiter, requireAdmin, requireOrderAccess, async (req, res) => {
   try {
     if (!isCanonicalUuidV4(req.params.refundId)) {
       res.status(400).json({ error: 'Invalid refund identifier' });

@@ -56,7 +56,7 @@ const FALLBACK_PRODUCT_IMAGE = '/images/walnut-baklawa-plated.jpg';
 
 const USE_WP_MIRROR = false;
 const TRUSTED_IMAGE_HOSTS = new Set(['mormorskunafa.se', 'www.mormorskunafa.se']);
-const SAFE_IMAGE_PATH = /^\/(?:images|wp-content\/uploads)\/[A-Za-z0-9][A-Za-z0-9._/-]*\.(?:avif|gif|jpe?g|png|webp)$/i;
+const SAFE_IMAGE_PATH = /^\/(?:images|wp-content\/uploads|api\/media)\/[A-Za-z0-9][A-Za-z0-9._/-]*\.(?:avif|gif|jpe?g|png|webp)$/i;
 
 function isLegacyWordPressMediaUrl(url: string): boolean {
   return /wp-content\/uploads/i.test(url);

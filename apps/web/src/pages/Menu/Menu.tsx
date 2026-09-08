@@ -1,5 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { AllergenNotice } from '../../components/common/AllergenNotice/AllergenNotice';
 import DOMPurify from 'dompurify';
+import React, { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Container } from '../../components/common/Container/Container';
 import { Button } from '../../components/common/Button/Button';
 import { AccessibleDialog } from '../../components/common/AccessibleDialog/AccessibleDialog';
@@ -8,13 +10,12 @@ import { useCart } from '../../contexts/CartContext';
 import { productApi } from '../../services/api';
 import { API_CONFIG } from '@shared/api';
 import { resolveProductImage } from '@shared/utils/productImage.ts';
-import { AllergenNotice } from '../../components/common/AllergenNotice/AllergenNotice';
 import type { FoodAllergen, Product } from '@shared/types';
-import { getDisplayName, getTranslationIndex } from '../../utils/productDisplayName';
+import { getTranslationIndex } from '../../utils/productDisplayName';
 import {
-    BREAD_UNIT_PRICE_ORE,
     formatBreadOption,
     getBreadDisplayPriceOre,
+    getBreadUnitPriceOre,
     getDisplayPriceOre,
     getFixedWeight,
     getOptionSelectorType,
@@ -24,6 +25,11 @@ import {
     isMenuExcluded,
 } from '../../utils/productVariantPrices';
 import './Menu.css';
+import {
+    normalizeLineBreaks,
+    prepareDescriptionHtml,
+} from '../../utils/productDescriptionHtml';
+import { getStoredLocationId, needsPickupLocation, stockLocationIdForCustomer } from '../../utils/selectedLocation';
 
 const SHORT_DESC_LENGTH = 100;
 
@@ -54,60 +60,13 @@ function stripHtmlAndTruncate(html: string, maxLen: number): string {
     return text.slice(0, maxLen).trim() + '…';
 }
 
-/** Remove escaped quotes (e.g. \\"ashta\\" from API) so text shows as ashta. */
-function stripEscapedQuotes(html: string): string {
-    if (!html || typeof html !== 'string') return html;
-    return html.replace(/\\"/g, '');
-}
-
-/** Replace literal \r\n and real newlines with <br> so they don't show as text. */
-function normalizeLineBreaks(html: string): string {
-    if (!html || typeof html !== 'string') return html;
-    return html
-        // Handle double-escaped (e.g. from JSON/DB: "\\\\r\\\\n" -> backslash+r+backslash+n)
-        .replace(/\\\\r\\\\n/g, '<br>')
-        .replace(/\\\\n/g, '<br>')
-        .replace(/\\\\r/g, '<br>')
-        // Handle literal backslash-r-backslash-n in string (one backslash each)
-        .replace(/\\r\\n/g, '<br>')
-        .replace(/\\n/g, '<br>')
-        .replace(/\\r/g, '<br>')
-        // Handle actual newline characters
-        .replace(/\r\n/g, '<br>')
-        .replace(/\n/g, '<br>')
-        .replace(/\r/g, '<br>');
-}
-
-/** Strip newlines and \r\n for plain-text display (e.g. truncated fallback). */
 function normalizeLineBreaksToSpaces(text: string): string {
     if (!text || typeof text !== 'string') return text;
     return normalizeLineBreaks(text).replace(/<br\s*\/?>/gi, ' ').replace(/\s+/g, ' ').trim();
 }
 
-/** Convert common header patterns like <p><strong>För vem?</strong></p> to <h3>För vem?</h3> for proper spacing. */
-function normalizeHeaders(html: string): string {
-    if (!html || typeof html !== 'string') return html;
-    // Convert <p><strong>För vem?</strong></p> or similar header patterns to <h3>
-    // Also handles cases with <br> tags: <p><strong>För vem?</strong><br /></p>
-    return html
-        .replace(
-            /<p[^>]*>\s*<strong[^>]*>(För vem\?|For whom\?|Who is it for\?|لمن هذا المنتج\?|لمن|Vem är den för\?|Vem passar den för\?)<\/strong>\s*(<br\s*\/?>)?\s*<\/p>/gi,
-            '<h3>$1</h3>'
-        )
-        .replace(
-            /<p[^>]*>\s*<strong[^>]*>(För vem\?|For whom\?|Who is it for\?|لمن هذا المنتج\?|لمن|Vem är den för\?|Vem passar den för\?)<\/strong>\s*<br\s*\/?>\s*/gi,
-            '<h3>$1</h3>'
-        );
-}
-
 function sanitizeHtml(html: string): string {
-    return DOMPurify.sanitize(
-        normalizeHeaders(normalizeLineBreaks(stripEscapedQuotes(html))),
-        {
-            ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'h3', 'ul', 'li', 'span'],
-            ALLOWED_ATTR: [],
-        }
-    );
+    return prepareDescriptionHtml(html);
 }
 
 /** Remove leading <strong>displayName</strong><br /> so the modal doesn't repeat the product name (match Kunafa layout). */
@@ -120,9 +79,6 @@ function stripLeadingProductName(html: string, displayName: string): string {
     );
     return html.replace(re, '').trim();
 }
-
-/** Product id to exclude from menu (Mormors Box – En Gåva av äkta Smaker). */
-const MENU_EXCLUDE_PRODUCT_IDS = new Set(['f05b6a24-7b90-4dfb-8f2f-be67a475cbfa']);
 
 /** Translated short description when we have a translation index; else normalized API description (no raw \r\n). */
 function getDisplayShortDesc(product: Product, t: (key: string) => string): string {
@@ -146,36 +102,40 @@ const getMockProducts = (t: (key: string) => string): Product[] => {
     const now = new Date().toISOString();
     const mock = (
         id: string,
-        nameKey: string,
+        name: string,
         descKey: string,
         image: string,
-        priceOre: number
+        priceOre: number,
+        sortOrder: number
     ): Product => ({
         id,
-        name: t(nameKey),
+        name,
         price: priceOre,
         description: t(descKey),
         image,
         inStock: true,
+        hidden: false,
+        sortOrder,
         createdAt: now,
         updatedAt: now,
     });
     return [
-        mock('1ae3fd7a-0042-4220-b330-b27b3147a0a6', 'products.1.name', 'products.1.desc', '/images/pistage-baklawa.jpg', 8900),
-        mock('054b4adf-4da3-42c0-aa9b-b939023aafad', 'products.2.name', 'products.2.desc', '/images/walnut-baklawa.jpg', 6900),
-        mock('77048580-fd68-454d-b34b-395b351a96d4', 'products.3.name', 'products.3.desc', '/images/finmald-kunafa.jpg', 14900),
-        mock('fc469599-82e8-4ea3-aa18-0436bc2a2afd', 'products.5.name', 'products.5.desc', '/images/kunafa-ashta.jpg', 14900),
-        mock('6c1efa0e-149c-4259-9bd0-f85fd35f4b62', 'products.7.name', 'products.7.desc', '/images/ostkaka.jpg', 7900),
-        mock('37b8b656-2604-4ca6-9745-e0d6f52338c1', 'products.8.name', 'products.8.desc', '/images/krispig-kunafa.jpg', 14900),
-        mock('856b591e-08b3-40ec-b505-cb3b143293bb', 'products.9.name', 'products.9.desc', '/images/kaake-kunafa.jpg', 1500),
-        mock('94fd4a72-2685-4bc4-8813-0f5e5eaa4a1c', 'products.11.name', 'products.11.desc', '/images/harise-ashta.jpg', 7900),
-        mock('c005c8af-3f2e-401c-923f-7dac0f682cda', 'products.12.name', 'products.12.desc', '/images/mormorsbox-mix.jpg', 29900),
-        mock('6312f48a-b156-431b-9f6d-103cc30bc9f8', 'products.13.name', 'products.13.desc', '/images/mamoul-pistage.jpg', 17900),
-        mock('9e6d210b-8637-4deb-889c-0726060288aa', 'products.14.name', 'products.14.desc', '/images/pistagemix.jpg', 49900),
+        mock('1ae3fd7a-0042-4220-b330-b27b3147a0a6', 'Pistage Baklawa', 'products.1.desc', '/images/pistage-baklawa.jpg', 8900, 1),
+        mock('054b4adf-4da3-42c0-aa9b-b939023aafad', 'Walnut Baklawa', 'products.2.desc', '/images/walnut-baklawa.jpg', 6900, 2),
+        mock('77048580-fd68-454d-b34b-395b351a96d4', 'Finmald Kunafa', 'products.3.desc', '/images/finmald-kunafa.jpg', 14900, 3),
+        mock('fc469599-82e8-4ea3-aa18-0436bc2a2afd', 'Ashta Baklawa', 'products.5.desc', '/images/kunafa-ashta.jpg', 14900, 4),
+        mock('6c1efa0e-149c-4259-9bd0-f85fd35f4b62', 'Ostkaka (Halawet el Jibn)', 'products.7.desc', '/images/ostkaka.jpg', 7900, 5),
+        mock('37b8b656-2604-4ca6-9745-e0d6f52338c1', 'Krispig Kunafa', 'products.8.desc', '/images/krispig-kunafa.jpg', 14900, 6),
+        mock('856b591e-08b3-40ec-b505-cb3b143293bb', 'Bröd (kaek)', 'products.9.desc', '/images/kaake-kunafa.jpg', 1500, 7),
+        mock('94fd4a72-2685-4bc4-8813-0f5e5eaa4a1c', 'Mad bel Ashta', 'products.11.desc', '/images/harise-ashta.jpg', 7900, 8),
+        mock('c005c8af-3f2e-401c-923f-7dac0f682cda', 'Mormorsbox - BaklawaMix', 'products.12.desc', '/images/mormorsbox-mix.jpg', 29900, 9),
+        mock('6312f48a-b156-431b-9f6d-103cc30bc9f8', 'Mamoul Pistage', 'products.13.desc', '/images/mamoul-pistage.jpg', 17900, 10),
+        mock('9e6d210b-8637-4deb-889c-0726060288aa', 'Pistagemix', 'products.14.desc', '/images/pistagemix.jpg', 49900, 11),
     ];
 };
 
 export const Menu: React.FC = () => {
+    const navigate = useNavigate();
     const { t, language } = useLanguage();
     const { addItem } = useCart();
     const [products, setProducts] = useState<Product[]>([]);
@@ -200,6 +160,15 @@ export const Menu: React.FC = () => {
     }, [selectedProduct]);
     tRef.current = t;
 
+    useEffect(() => {
+        const orderType = sessionStorage.getItem('orderType');
+        if (needsPickupLocation(orderType) && !getStoredLocationId()) {
+            navigate('/select-location', { replace: true });
+        }
+    }, [navigate]);
+
+    const stockLocationId = stockLocationIdForCustomer();
+
     // Fetch products once on mount so a refetch (e.g. from t changing) can't overwrite real data
     useEffect(() => {
         let cancelled = false;
@@ -208,13 +177,16 @@ export const Menu: React.FC = () => {
                 setLoading(true);
                 setError(null);
                 setUsingMockData(false);
-                const data = await productApi.getAll();
+                const data = await productApi.getAll(stockLocationId || undefined);
                 if (!cancelled) {
                     setProducts(
                         data
-                            .filter(
-                                (p) => !MENU_EXCLUDE_PRODUCT_IDS.has(p.id) && !isMenuExcluded(p)
-                            )
+                            .filter((p) => !isMenuExcluded(p) && !p.hidden)
+                            .sort((a, b) => {
+                                const order = (a.sortOrder || 0) - (b.sortOrder || 0);
+                                if (order !== 0) return order;
+                                return a.name.localeCompare(b.name, 'sv');
+                            })
                             .map((p) => ({
                                 ...p,
                                 image: resolveProductImage(p.id, p.image),
@@ -246,7 +218,7 @@ export const Menu: React.FC = () => {
 
         fetchProducts();
         return () => { cancelled = true; };
-    }, []);
+    }, [stockLocationId]);
 
     const handleAddToCart = (product: Product, option: string) => {
         if (!product.inStock) {
@@ -312,14 +284,18 @@ export const Menu: React.FC = () => {
     };
 
     const selectedIsBread = selectedProduct ? isBreadProduct(selectedProduct) : false;
+    const selectedSelectorType = selectedProduct ? getOptionSelectorType(selectedProduct) : null;
     const modalPriceOre = selectedProduct
         ? selectedIsBread
-            ? getBreadDisplayPriceOre(breadQuantity)
+            ? getBreadDisplayPriceOre(selectedProduct, breadQuantity)
             : getDisplayPriceOre(selectedProduct, selectedOption)
         : 0;
     const canAddToCart =
-        selectedProduct?.inStock &&
-        (selectedIsBread || !!selectedOption || !!getFixedWeight(selectedProduct));
+        !!selectedProduct?.inStock &&
+        (selectedIsBread ||
+            !!selectedOption ||
+            selectedSelectorType === 'fixed' ||
+            selectedSelectorType === 'none');
 
     if (loading) {
         return (
@@ -371,7 +347,7 @@ export const Menu: React.FC = () => {
                                     onClick={() => setSelectedProduct(product)}
                                     role="button"
                                     tabIndex={0}
-                                    aria-label={`Visa ${getDisplayName(product, t)}`}
+                                    aria-label={`Visa ${product.name}`}
                                     onKeyDown={(e) => {
                                         if (e.key === 'Enter' || e.key === ' ') {
                                             e.preventDefault();
@@ -380,7 +356,7 @@ export const Menu: React.FC = () => {
                                     }}
                                 >
                                     <div className="menu-item-simple__image-container">
-                                        <img src={product.image} alt={getDisplayName(product, t)} className="menu-item-simple__image" />
+                                        <img src={product.image} alt={product.name} className="menu-item-simple__image" />
                                         {!product.inStock && (
                                             <div className="menu-item-simple__out-of-stock-badge">
                                                 {t('menu.out_of_stock')}
@@ -389,7 +365,7 @@ export const Menu: React.FC = () => {
                                     </div>
                                     <div className="menu-item-simple__content">
                                         <h3 className="menu-item-simple__title">
-                                            {getDisplayName(product, t)}
+                                            {product.name}
                                         </h3>
                                     </div>
                                 </div>
@@ -438,85 +414,85 @@ export const Menu: React.FC = () => {
                             <div className="menu-modal__image-wrap">
                                 <img
                                     src={selectedProduct.image}
-                                    alt={getDisplayName(selectedProduct, t)}
+                                    alt={selectedProduct.name}
                                     className="menu-modal__image"
                                 />
                             </div>
-                            <div className="menu-modal__options-box">
-                                {(() => {
-                                    const fixedWeight = getFixedWeight(selectedProduct);
-                                    if (fixedWeight) {
+                            {selectedSelectorType && selectedSelectorType !== 'none' && (
+                                <div className="menu-modal__options-box">
+                                    {(() => {
+                                        const fixedWeight = getFixedWeight(selectedProduct);
+                                        if (fixedWeight) {
+                                            return (
+                                                <>
+                                                    <label className="menu-modal__options-label">Vikt</label>
+                                                    <div className="menu-modal__fixed-weight">{fixedWeight}</div>
+                                                </>
+                                            );
+                                        }
+                                        if (selectedSelectorType === 'bread') {
+                                            return (
+                                                <>
+                                                    <label className="menu-modal__options-label">Välj antal</label>
+                                                    <div className="menu-modal__quantity" role="group" aria-label="Antal bröd">
+                                                        <button
+                                                            type="button"
+                                                            className="menu-modal__quantity-btn"
+                                                            onClick={() => setBreadQuantity((q) => Math.max(1, q - 1))}
+                                                            disabled={breadQuantity <= 1}
+                                                            aria-label="Minska antal"
+                                                        >
+                                                            −
+                                                        </button>
+                                                        <span className="menu-modal__quantity-value" aria-live="polite">
+                                                            {breadQuantity}
+                                                        </span>
+                                                        <button
+                                                            type="button"
+                                                            className="menu-modal__quantity-btn"
+                                                            onClick={() => setBreadQuantity((q) => q + 1)}
+                                                            aria-label="Öka antal"
+                                                        >
+                                                            +
+                                                        </button>
+                                                    </div>
+                                                </>
+                                            );
+                                        }
+                                        const options = getProductOptions(selectedProduct);
+                                        const label =
+                                            selectedSelectorType === 'persons'
+                                                ? 'Välj antal personer'
+                                                : 'Välj vikt';
                                         return (
                                             <>
-                                                <span className="menu-modal__options-label">Vikt</span>
-                                                <div className="menu-modal__fixed-weight">{fixedWeight}</div>
+                                                <label htmlFor="menu-product-option" className="menu-modal__options-label">{label}</label>
+                                                <select id="menu-product-option"
+                                                    className="menu-modal__select"
+                                                    value={selectedOption}
+                                                    onChange={(e) => setSelectedOption(e.target.value)}
+                                                >
+                                                    <option value="" disabled>Välj...</option>
+                                                    {options.map((opt) => (
+                                                        <option key={opt} value={opt}>{opt}</option>
+                                                    ))}
+                                                </select>
                                             </>
                                         );
-                                    }
-                                    const selectorType = getOptionSelectorType(selectedProduct);
-                                    if (selectorType === 'bread') {
-                                        return (
-                                            <>
-                                                <span className="menu-modal__options-label">Välj antal</span>
-                                                <div className="menu-modal__quantity" role="group" aria-label="Antal bröd">
-                                                    <button
-                                                        type="button"
-                                                        className="menu-modal__quantity-btn"
-                                                        onClick={() => setBreadQuantity((q) => Math.max(1, q - 1))}
-                                                        disabled={breadQuantity <= 1}
-                                                        aria-label="Minska antal"
-                                                    >
-                                                        −
-                                                    </button>
-                                                    <span className="menu-modal__quantity-value" aria-live="polite">
-                                                        {breadQuantity}
-                                                    </span>
-                                                    <button
-                                                        type="button"
-                                                        className="menu-modal__quantity-btn"
-                                                        onClick={() => setBreadQuantity((q) => q + 1)}
-                                                        aria-label="Öka antal"
-                                                    >
-                                                        +
-                                                    </button>
-                                                </div>
-                                            </>
-                                        );
-                                    }
-                                    const options = getProductOptions(selectedProduct);
-                                    const label =
-                                        selectorType === 'persons'
-                                            ? 'Välj antal personer'
-                                            : 'Välj vikt';
-                                    return (
-                                        <>
-                                            <label htmlFor="menu-product-option" className="menu-modal__options-label">{label}</label>
-                                            <select
-                                                id="menu-product-option"
-                                                className="menu-modal__select"
-                                                value={selectedOption}
-                                                onChange={(e) => setSelectedOption(e.target.value)}
-                                            >
-                                                <option value="" disabled>Välj...</option>
-                                                {options.map((opt) => (
-                                                    <option key={opt} value={opt}>{opt}</option>
-                                                ))}
-                                            </select>
-                                        </>
-                                    );
-                                })()}
-                            </div>
+                                    })()}
+                                </div>
+                            )}
                         </div>
                         <div className="menu-modal__body">
                             <h2 id="menu-modal-title" className="text-heading-md menu-modal__title">
-                                {getDisplayName(selectedProduct, t)}
+                                {selectedProduct.name}
                             </h2>
                             <p className="menu-modal__price">
                                 {(modalPriceOre / 100).toFixed(0)} kr
                                 {selectedIsBread && breadQuantity > 1 && (
                                     <span className="menu-modal__price-detail">
                                         {' '}
-                                        ({breadQuantity} × {(BREAD_UNIT_PRICE_ORE / 100).toFixed(0)} kr)
+                                        ({breadQuantity} × {(getBreadUnitPriceOre(selectedProduct) / 100).toFixed(0)} kr)
                                     </span>
                                 )}
                             </p>
@@ -527,7 +503,7 @@ export const Menu: React.FC = () => {
                                 if (language === 'sv') {
                                     const descriptionHtml = stripLeadingProductName(
                                         sanitizedApiDescription,
-                                        getDisplayName(selectedProduct, t)
+                                        selectedProduct.name
                                     );
                                     return (
                                         <div
@@ -563,7 +539,7 @@ export const Menu: React.FC = () => {
                                 }
                                 const descriptionHtml = stripLeadingProductName(
                                     sanitizedApiDescription,
-                                    getDisplayName(selectedProduct, t)
+                                    selectedProduct.name
                                 );
                                 return (
                                     <div
@@ -613,7 +589,12 @@ export const Menu: React.FC = () => {
                                     const option = selectedIsBread
                                         ? formatBreadOption(breadQuantity)
                                         : selectedOption || fixed || '';
-                                    if (!option) return;
+                                    if (
+                                        (selectedSelectorType === 'weight' || selectedSelectorType === 'persons') &&
+                                        !option
+                                    ) {
+                                        return;
+                                    }
                                     handleAddToCart(selectedProduct, option);
                                     setSelectedProduct(null);
                                 }}

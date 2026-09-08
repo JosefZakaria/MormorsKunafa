@@ -8,6 +8,9 @@ const allowedSessionStorageFiles = new Set([
   'services/api.ts',
   'pages/Cart/Cart.tsx',
   'pages/Landing/Landing.tsx',
+  'pages/Menu/Menu.tsx',
+  'pages/SelectLocation/SelectLocation.tsx',
+  'utils/selectedLocation.ts',
 ]);
 const allowedCookieFiles = new Set(['services/api.ts']);
 
@@ -47,6 +50,8 @@ for (const documentedKey of [
   'printer_devid',
   'admin_alarm_volume',
   'orderType',
+  'locationId',
+  'locationSlug',
   'order-status-token:<order UUID>',
   'mk_admin_session',
   'mk_csrf',

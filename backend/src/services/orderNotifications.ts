@@ -1,19 +1,22 @@
-import { generateId, nowIso } from '../db/connection.js';
+import { generateId, nowIso, type Row } from '../db/connection.js';
+import type { OrderType } from '@mormors-kunafa/shared/types';
 import { broadcastOrderCreated, type OrderCreatedEvent } from './realtimeEvents.js';
 import { sendOrderCreatedPush } from './pushNotifications.js';
 import { safeErrorMetadata } from '../utils/safeErrorMetadata.js';
 
 /** Notify authenticated admin clients only after an order has been paid. */
-export function dispatchPaidOrderCreatedEvent(orderId: string, orderNumber: string): void {
+export function dispatchPaidOrderCreatedEvent(orderId: string, orderNumber: string, order: Row): void {
   const event: OrderCreatedEvent = {
     event_id: generateId(),
     event_type: 'ORDER_CREATED',
     order_id: orderId,
     order_number: orderNumber,
     created_at: nowIso(),
+    order_type: String(order.order_type) as OrderType,
+    location_id: order.location_id == null ? null : String(order.location_id),
   };
 
-  broadcastOrderCreated(event);
+  void broadcastOrderCreated(event);
   void sendOrderCreatedPush(event).catch((error) => {
     console.error('[push] sendOrderCreatedPush failed', {
       eventId: event.event_id,

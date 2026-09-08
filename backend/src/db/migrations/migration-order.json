@@ -1,0 +1,23 @@
+[
+  "2026-06-06-admin-pwa-notifications.sql",
+  "2026-08-15-order-type-enabled.sql",
+  "2026-08-19-admin-session-revocation.sql",
+  "2026-08-19-atomic-order-creation.sql",
+  "2026-08-19-immutable-security-audit.sql",
+  "2026-08-19-stripe-event-idempotency.sql",
+  "2026-08-19-provider-refunds.sql",
+  "2026-08-19-duplicate-stripe-refunds.sql",
+  "2026-08-19-abandoned-checkout-cleanup.sql",
+  "2026-08-19-initiated-checkout-reconciliation.sql",
+  "2026-08-19-operational-pii-retention.sql",
+  "2026-08-19-menu-sort-and-hero.sql",
+  "2026-08-19-site-media-bucket.sql",
+  "2026-08-19-structured-food-information.sql",
+  "2026-08-27-product-hidden.sql",
+  "2026-08-27-product-variant-prices.sql",
+  "2026-08-28-locations.sql",
+  "2026-08-30-mollevangen-address.sql",
+  "2026-08-30-product-location-stock.sql",
+  "2026-08-19-row-level-security.sql",
+  "2026-09-08-security-location-compatibility.sql"
+]

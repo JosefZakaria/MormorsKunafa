@@ -73,7 +73,7 @@ export async function withTestDatabase(callback) {
     await control(binary('pg_ctl'), ['-D', data, '-l', path.join(cluster, 'postgres.log'), '-w', '-t', '30',
       '-o', `-h 127.0.0.1 -p ${port}`, 'start'], env);
     started = true;
-    const args = ['--no-psqlrc', '--no-password', '--host', host, '--port', String(port),
+    const args = ['--quiet', '--no-psqlrc', '--no-password', '--host', host, '--port', String(port),
       '--username', 'mk_test_runner', '--set', 'ON_ERROR_STOP=1', '--no-align', '--tuples-only'];
     const psql = async (extra, db = database) => (await run(binary('psql'),
       [...args, '--dbname', db, ...extra], { env, timeout: 60_000, maxBuffer: 2 * 1024 * 1024 })).stdout.trim();

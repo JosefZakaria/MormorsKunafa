@@ -7,6 +7,7 @@ import { formatStockholmDateTime } from '../utils/stockholmWallTime.js';
 import { isOnlinePayment } from '../utils/paymentMethod.js';
 import { dispatchPaidOrderCreatedEvent } from './orderNotifications.js';
 import { logUnexpectedError } from '../utils/safeErrorMetadata.js';
+import { inStorePickupSmsSuffix } from '../db/locations.js';
 
 export type MarkOrderPaidOptions = {
   expectedAmountOre?: number;
@@ -62,7 +63,8 @@ export async function markOrderPaid(orderId: string, options?: MarkOrderPaidOpti
 
   dispatchPaidOrderCreatedEvent(
     orderId,
-    String(refreshed.order.order_number ?? '')
+    String(refreshed.order.order_number ?? ''),
+    refreshed.order
   );
 
   const emailOut = String(refreshed.order.customer_email ?? '').trim();
@@ -82,7 +84,8 @@ export async function markOrderPaid(orderId: string, options?: MarkOrderPaidOpti
   if (phoneOut && String(refreshed.order.order_type ?? '') !== 'delivery') {
     const schedStr = refreshed.order.scheduled_at ? formatStockholmDateTime(refreshed.order.scheduled_at as string) : '';
     const schedSuffix = schedStr ? ` Planerad upphämtning: ${schedStr}.` : '';
-    void sendSms(phoneOut, `Tack för din beställning från Mormors Kunafa${smsCustomerName ? ', ' + smsCustomerName : ''}! Vi tar snart emot din beställning.${schedSuffix}`).catch((err) =>
+    const placeSuffix = await inStorePickupSmsSuffix(refreshed.order);
+    void sendSms(phoneOut, `Tack för din beställning från Mormors Kunafa${smsCustomerName ? ', ' + smsCustomerName : ''}! Vi tar snart emot din beställning.${placeSuffix}${schedSuffix}`).catch((err) =>
       logUnexpectedError('order confirmation sms after payment', err)
     );
   }

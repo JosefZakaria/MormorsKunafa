@@ -3,11 +3,13 @@ import type {
   Product,
   Order,
   PublicOrderStatus,
+  Location,
   CreateOrderRequest,
   UpdateOrderStatusRequest,
   UpdateOrderTimeRequest,
   UpdateOrderNotesRequest,
   AdminSettings,
+  AdminRole,
   PushSubscriptionRecord,
   AdminRefundOverview,
   CreateOrderRefundResult,
@@ -47,21 +49,29 @@ function orderStatusHeaders(orderId: string): Record<string, string> {
 
 // Products API
 export const productApi = {
-  getAll: async (): Promise<Product[]> => {
-    return apiRequest<Product[]>('/products');
+  getAll: async (locationId?: string): Promise<Product[]> => {
+    const query = locationId ? `?locationId=${encodeURIComponent(locationId)}` : '';
+    return apiRequest<Product[]>(`/products${query}`);
+  },
+
+  getAllAdmin: async (): Promise<Product[]> => {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    return authenticatedRequest<Product[]>('/products', { token });
   },
 
   getById: async (id: string): Promise<Product> => {
     return apiRequest<Product>(`/products/${id}`);
   },
 
-  updateStock: async (id: string, inStock: boolean): Promise<Product> => {
+  updateStock: async (id: string, inStock: boolean, locationId: string): Promise<Product> => {
     const token = getToken();
     if (!token) throw new Error('Not authenticated');
     
     return authenticatedRequest<Product>(`/products/${id}/stock`, {
       method: 'PATCH',
-      body: JSON.stringify({ inStock }),
+      body: JSON.stringify({ inStock, locationId }),
       token,
     });
   },
@@ -82,6 +92,70 @@ export const productApi = {
     return authenticatedRequest<Product>(`/products/${id}/food-information`, {
       method: 'DELETE',
     });
+  },
+  create: async (data: {
+    name: string;
+    price: number;
+    description?: string;
+    image?: string;
+    variantPrices?: Record<string, number> | null;
+  }): Promise<Product> => {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    return authenticatedRequest<Product>('/products', {
+      method: 'POST',
+      body: JSON.stringify(data),
+      token,
+    });
+  },
+
+  update: async (
+    id: string,
+    data: {
+      name?: string;
+      price?: number;
+      description?: string;
+      image?: string;
+      variantPrices?: Record<string, number> | null;
+      hidden?: boolean;
+    }
+  ): Promise<Product> => {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    return authenticatedRequest<Product>(`/products/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+      token,
+    });
+  },
+
+  reorder: async (orderedIds: string[]): Promise<Product[]> => {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    return authenticatedRequest<Product[]>('/products/reorder', {
+      method: 'PATCH',
+      body: JSON.stringify({ orderedIds }),
+      token,
+    });
+  },
+
+  remove: async (id: string): Promise<void> => {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    await authenticatedRequest<{ ok: boolean }>(`/products/${id}`, {
+      method: 'DELETE',
+      token,
+    });
+  },
+};
+
+export const locationApi = {
+  getAll: async (): Promise<Location[]> => {
+    return apiRequest<Location[]>('/locations');
   },
 };
 
@@ -260,15 +334,19 @@ export const orderApi = {
     });
   },
 
-  getPublicSettings: async (): Promise<{ defaultPreparationTime: number; isPaused: boolean }> => {
-    return apiRequest<{ defaultPreparationTime: number; isPaused: boolean }>('/orders/settings');
+  getPublicSettings: async (): Promise<AdminSettings> => {
+    return apiRequest<AdminSettings>('/orders/settings');
   },
 };
 
 // Admin API
 export const adminApi = {
-  login: async (email: string, password: string): Promise<{ admin: { id: string; email: string; name: string } }> => {
-    return apiRequest<{ admin: { id: string; email: string; name: string } }>('/admin/login', {
+  login: async (email: string, password: string): Promise<{
+    admin: { id: string; email: string; name: string; role: AdminRole; locationId: string | null };
+  }> => {
+    return apiRequest<{
+        admin: { id: string; email: string; name: string; role: AdminRole; locationId: string | null };
+    }>('/admin/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
@@ -313,7 +391,7 @@ export const adminApi = {
     );
   },
 
-  getSession: async (): Promise<{ admin: { id: string; email: string; name: string } }> => {
+  getSession: async (): Promise<{ admin: { id: string; email: string; name: string; role: AdminRole; locationId: string | null } }> => {
     return adminRequest('/admin/session');
   },
 
@@ -336,6 +414,41 @@ export const adminApi = {
       method: 'PATCH',
       body: JSON.stringify(settings),
       token,
+    });
+  },
+
+  updateLocation: async (
+    id: string,
+    patch: Partial<Pick<Location, 'isPaused' | 'eatHereEnabled' | 'takeawayEnabled'>>
+  ): Promise<Location> => {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    return authenticatedRequest<Location>(`/admin/locations/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+      token,
+    });
+  },
+
+  uploadImage: async (
+    kind: 'product' | 'hero-desktop' | 'hero-mobile',
+    file: File,
+    productId?: string
+  ): Promise<{ url: string; settings?: AdminSettings; product?: Product }> => {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    const body = new FormData();
+    body.append('file', file);
+    body.append('kind', kind);
+    if (productId) body.append('productId', productId);
+
+    return authenticatedRequest('/admin/uploads', {
+      method: 'POST',
+      body,
+      token,
+      timeout: 60_000,
     });
   },
 
