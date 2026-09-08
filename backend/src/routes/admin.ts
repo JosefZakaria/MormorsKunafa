@@ -342,86 +342,101 @@ router.get('/payment-alerts', requireAdmin, requireOwner, async (_req: Request, 
 });
 
 router.get('/push-subscriptions', requireAdmin, async (req: Request, res: Response) => {
-  const admin = getAuthenticatedAdmin(req);
-  if (!admin?.adminId) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
+  try {
+    const admin = getAuthenticatedAdmin(req);
+    if (!admin?.adminId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
 
-  const subscriptions = await listActivePushSubscriptions(admin.adminId);
-  res.json(
-    subscriptions.map((it) => ({
-      id: it.id,
-      endpoint: it.endpoint,
-      deviceLabel: it.device_label,
-      userAgent: it.user_agent,
-      createdAt: it.created_at,
-      updatedAt: it.updated_at,
-      lastSuccessAt: it.last_success_at,
-      lastFailureAt: it.last_failure_at,
-      lastFailureReason: it.last_failure_reason,
-    }))
-  );
+    const subscriptions = await listActivePushSubscriptions(admin.adminId);
+    res.json(
+      subscriptions.map((it) => ({
+        id: it.id,
+        endpoint: it.endpoint,
+        deviceLabel: it.device_label,
+        userAgent: it.user_agent,
+        createdAt: it.created_at,
+        updatedAt: it.updated_at,
+        lastSuccessAt: it.last_success_at,
+        lastFailureAt: it.last_failure_at,
+        lastFailureReason: it.last_failure_reason,
+      }))
+    );
+  } catch (error) {
+    logUnexpectedError('GET /admin/push-subscriptions failed', error);
+    res.status(503).json({ error: 'Push subscriptions unavailable' });
+  }
 });
 
 router.post('/push-subscriptions', requireAdmin, pushSubscriptionLimiter, async (req: Request, res: Response) => {
-  const admin = getAuthenticatedAdmin(req);
-  if (!admin?.adminId) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
+  try {
+    const admin = getAuthenticatedAdmin(req);
+    if (!admin?.adminId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    const subscription = req.body?.subscription as
+      | {
+          endpoint?: string;
+          keys?: { p256dh?: string; auth?: string };
+        }
+      | undefined;
+    const validated = validatePushSubscription({
+      endpoint: subscription?.endpoint,
+      p256dh: subscription?.keys?.p256dh,
+      auth: subscription?.keys?.auth,
+      deviceLabel: req.body?.deviceLabel,
+      userAgent: req.headers['user-agent'],
+    });
+
+    if (!validated) {
+      res.status(400).json({ error: 'Invalid subscription payload' });
+      return;
+    }
+
+    const saved = await upsertPushSubscription({
+      adminId: admin.adminId,
+      ...validated,
+    });
+
+    if (!saved) {
+      res.status(500).json({ error: 'Failed to save subscription' });
+      return;
+    }
+
+    res.status(201).json({
+      id: saved.id,
+      endpoint: saved.endpoint,
+      deviceLabel: saved.device_label,
+      createdAt: saved.created_at,
+      updatedAt: saved.updated_at,
+    });
+  } catch (error) {
+    logUnexpectedError('POST /admin/push-subscriptions failed', error);
+    res.status(503).json({ error: 'Push subscriptions unavailable' });
   }
-  const subscription = req.body?.subscription as
-    | {
-        endpoint?: string;
-        keys?: { p256dh?: string; auth?: string };
-      }
-    | undefined;
-  const validated = validatePushSubscription({
-    endpoint: subscription?.endpoint,
-    p256dh: subscription?.keys?.p256dh,
-    auth: subscription?.keys?.auth,
-    deviceLabel: req.body?.deviceLabel,
-    userAgent: req.headers['user-agent'],
-  });
-
-  if (!validated) {
-    res.status(400).json({ error: 'Invalid subscription payload' });
-    return;
-  }
-
-  const saved = await upsertPushSubscription({
-    adminId: admin.adminId,
-    ...validated,
-  });
-
-  if (!saved) {
-    res.status(500).json({ error: 'Failed to save subscription' });
-    return;
-  }
-
-  res.status(201).json({
-    id: saved.id,
-    endpoint: saved.endpoint,
-    deviceLabel: saved.device_label,
-    createdAt: saved.created_at,
-    updatedAt: saved.updated_at,
-  });
 });
 
 router.delete('/push-subscriptions/:id', requireAdmin, pushSubscriptionLimiter, async (req: Request, res: Response) => {
-  const admin = getAuthenticatedAdmin(req);
-  if (!admin?.adminId) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
+  try {
+    const admin = getAuthenticatedAdmin(req);
+    if (!admin?.adminId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
 
-  const ok = await disablePushSubscriptionById(String(req.params.id), admin.adminId);
-  if (!ok) {
-    res.status(500).json({ error: 'Failed to disable subscription' });
-    return;
-  }
+    const ok = await disablePushSubscriptionById(String(req.params.id), admin.adminId);
+    if (!ok) {
+      res.status(500).json({ error: 'Failed to disable subscription' });
+      return;
+    }
 
-  res.status(204).send();
+    res.status(204).send();
+  } catch (error) {
+    logUnexpectedError('DELETE /admin/push-subscriptions/:id failed', error);
+    res.status(503).json({ error: 'Push subscriptions unavailable' });
+  }
 });
 
 async function fetchAdminSettingsRow(): Promise<Row | null> {

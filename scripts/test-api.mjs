@@ -100,6 +100,20 @@ await withTestDatabase(async db => {
     assert.equal(ownerLogin.status,200);
     const ownerCookies=ownerLogin.headers.getSetCookie().map(s=>s.split(';')[0]).join('; ');
     const ownerHeaders={cookie:ownerCookies,'x-csrf-token':decodeURIComponent(ownerCookies.match(/mk_csrf=([^;]+)/)[1])};
+    const pushBody={subscription:{endpoint:'https://fcm.googleapis.com/fcm/send/synthetic-test',keys:{
+      p256dh:Buffer.alloc(65,1).toString('base64url'),auth:Buffer.alloc(16,2).toString('base64url')}},deviceLabel:'Synthetic tablet'};
+    assert.equal((await call('/api/admin/push-subscriptions',pushBody,{cookie:cookies})).status,403);
+    assert.equal((await call('/api/admin/push-subscriptions',{subscription:{...pushBody.subscription,endpoint:'https://127.0.0.1/push'}},adminHeaders)).status,400);
+    const pushSaved=await call('/api/admin/push-subscriptions',pushBody,adminHeaders);
+    assert.equal(pushSaved.status,201,JSON.stringify(pushSaved.data));
+    const ownPush=await call('/api/admin/push-subscriptions',undefined,adminHeaders);
+    assert.equal(ownPush.data.length,1);
+    assert.match(ownPush.headers.get('cache-control'),/private.*no-store/);
+    assert.equal((await call('/api/admin/push-subscriptions',undefined,ownerHeaders)).data.length,0);
+    await call(`/api/admin/push-subscriptions/${pushSaved.data.id}`,undefined,ownerHeaders,'DELETE');
+    assert.equal((await call('/api/admin/push-subscriptions',undefined,adminHeaders)).data.length,1,'Another admin cannot disable this subscription');
+    assert.equal((await call(`/api/admin/push-subscriptions/${pushSaved.data.id}`,undefined,adminHeaders,'DELETE')).status,204);
+    assert.equal((await call('/api/admin/push-subscriptions',undefined,adminHeaders)).data.length,0);
     const cancelBody={password:TEST_PASSWORD,cancellationReason:'Synthetic cancellation'};
     assert.equal((await call(`/api/orders/admin/${id}/cancel`,cancelBody,ownerHeaders)).status,409);
     const pending=await newOrder(orderBody);

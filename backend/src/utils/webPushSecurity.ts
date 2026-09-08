@@ -1,4 +1,5 @@
 import { lookup } from 'node:dns/promises';
+import type { LookupAddress, LookupAllOptions } from 'node:dns';
 import https from 'node:https';
 import { BlockList, isIP, type LookupFunction } from 'node:net';
 import webpush from 'web-push';
@@ -16,7 +17,10 @@ const defaultAllowedPushHosts = new Set([
   'web.push.apple.com',
 ]);
 
-const blockedAddresses = new BlockList();
+// A mapped IPv6 subnet also matches IPv4 in Node's BlockList. Keep families
+// separate so rejecting mapped literals does not reject every public IPv4.
+const blockedIpv4 = new BlockList();
+const blockedIpv6 = new BlockList();
 
 for (const [network, prefix] of [
   ['0.0.0.0', 8],
@@ -34,7 +38,7 @@ for (const [network, prefix] of [
   ['224.0.0.0', 4],
   ['240.0.0.0', 4],
 ] as const) {
-  blockedAddresses.addSubnet(network, prefix, 'ipv4');
+  blockedIpv4.addSubnet(network, prefix, 'ipv4');
 }
 
 for (const [network, prefix] of [
@@ -46,13 +50,14 @@ for (const [network, prefix] of [
   ['ff00::', 8],
   ['2001:db8::', 32],
 ] as const) {
-  blockedAddresses.addSubnet(network, prefix, 'ipv6');
+  blockedIpv6.addSubnet(network, prefix, 'ipv6');
 }
 
 function isPublicAddress(address: string, family?: number): boolean {
-  const resolvedFamily = family ?? isIP(address);
-  if (resolvedFamily === 4) return !blockedAddresses.check(address, 'ipv4');
-  if (resolvedFamily === 6) return !blockedAddresses.check(address, 'ipv6');
+  const resolvedFamily = isIP(address);
+  if (family !== undefined && family !== resolvedFamily) return false;
+  if (resolvedFamily === 4) return !blockedIpv4.check(address, 'ipv4');
+  if (resolvedFamily === 6) return !blockedIpv6.check(address, 'ipv6');
   return false;
 }
 
@@ -140,32 +145,39 @@ export function validatePushSubscription(input: {
   };
 }
 
-const safeLookup: LookupFunction = (hostname, options, callback) => {
-  lookup(hostname, {
-    all: true,
-    family: options.family,
-    hints: options.hints,
-    verbatim: true,
-  })
-    .then((addresses) => {
-      if (!addresses.length || addresses.some(({ address, family }) => !isPublicAddress(address, family))) {
-        const error = new Error('Push endpoint resolved to a non-public address') as NodeJS.ErrnoException;
-        error.code = 'EPUSHPRIVATE';
-        callback(error, '', 0);
-        return;
-      }
+type PushResolver = (hostname: string, options: LookupAllOptions) => Promise<LookupAddress[]>;
 
-      const selected = addresses[0];
-      callback(null, selected.address, selected.family);
+export function createSafePushLookup(resolve: PushResolver = lookup): LookupFunction {
+  return (hostname, options, callback) => {
+    resolve(hostname, {
+      all: true,
+      family: options.family,
+      hints: options.hints,
+      verbatim: true,
     })
-    .catch((error: NodeJS.ErrnoException) => callback(error, '', 0));
-};
+      .then((addresses) => {
+        if (!addresses.length || addresses.some(({ address, family }) => !isPublicAddress(address, family))) {
+          const error = new Error('Push endpoint resolved to a non-public address') as NodeJS.ErrnoException;
+          error.code = 'EPUSHPRIVATE';
+          callback(error, '', 0);
+          return;
+        }
+
+        if (options.all) callback(null, addresses);
+        else {
+          const selected = addresses[0];
+          callback(null, selected.address, selected.family);
+        }
+      })
+      .catch((error: NodeJS.ErrnoException) => callback(error, '', 0));
+  };
+}
 
 export function createSafePushAgent(): https.Agent {
   return new https.Agent({
     keepAlive: false,
     maxSockets: 10,
-    lookup: safeLookup,
+    lookup: createSafePushLookup(),
   });
 }
 
