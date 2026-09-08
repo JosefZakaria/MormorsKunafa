@@ -2,6 +2,7 @@ import {
   finalizeOrderRefund,
   getRefundByProviderId,
   getRefundRecord,
+  setRefundProviderReference,
   type RefundRecord,
 } from '../db/refundRepository.js';
 import { getOrderById } from '../db/orderRepository.js';
@@ -15,7 +16,9 @@ import {
   getSwishPaymentRequest,
   parseSwishInstructionId,
   parseSwishRefundId,
+  swishRefundIdFromUuid,
 } from './swishClient.js';
+import { isCanonicalUuidV4 } from '../utils/resourceId.js';
 
 async function applyFinalOutcome(
   record: RefundRecord,
@@ -41,7 +44,7 @@ export async function reconcileStripeRefund(refundId: string): Promise<ProviderR
 
 export async function reconcileSwishRefund(refundId: string): Promise<ProviderRefundOutcome> {
   const record = await getRefundRecord(refundId);
-  if (!record || record.provider !== 'swish' || !record.providerRefundId) {
+  if (!record || record.provider !== 'swish') {
     throw new Error('Swish refund record is incomplete');
   }
   const result = await getOrderById(record.orderId);
@@ -61,10 +64,11 @@ export async function reconcileSwishRefund(refundId: string): Promise<ProviderRe
   });
   if (!validation.ok) throw new Error(validation.reason);
   const outcome = await getSwishRefundOutcome({
-    providerRefundId: record.providerRefundId,
+    providerRefundId: record.providerRefundId ?? swishRefundIdFromUuid(record.id),
     originalPaymentReference: validation.originalPaymentReference,
     amountOre: record.amountOre,
   });
+  if (!record.providerRefundId) await setRefundProviderReference(record.id, outcome.providerRefundId);
   return applyFinalOutcome(record, outcome);
 }
 
@@ -73,7 +77,16 @@ export async function reconcileSwishRefundCallback(
 ): Promise<'unknown' | 'pending' | 'succeeded' | 'failed'> {
   const providerRefundId = parseSwishRefundId(untrustedProviderRefundId);
   if (!providerRefundId) throw new Error('Invalid Swish refund callback identifier');
-  const record = await getRefundByProviderId('swish', providerRefundId);
+  let record = await getRefundByProviderId('swish', providerRefundId);
+  if (!record) {
+    // Historical accepted attempts may lack the reference. Recover only the
+    // reserved deterministic ID, then authenticate and validate provider state.
+    const id=providerRefundId.toLowerCase();
+    const refundId=`${id.slice(0,8)}-${id.slice(8,12)}-${id.slice(12,16)}-${id.slice(16,20)}-${id.slice(20)}`;
+    if (!isCanonicalUuidV4(refundId)) return 'unknown';
+    const candidate=await getRefundRecord(refundId);
+    if (candidate?.provider === 'swish' && !candidate.providerRefundId) record=candidate;
+  }
   if (!record) return 'unknown';
   return (await reconcileSwishRefund(record.id)).status;
 }

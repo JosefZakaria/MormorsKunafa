@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { withTestDatabase } from './lib/local-test-database.mjs';
 import { initializeSyntheticDatabase, createSyntheticApp, HOJA, PRODUCT, literal } from './lib/synthetic-api.mjs';
+import { verifySwishRefundRecovery } from './lib/test-swish-refunds.mjs';
 
 const nativeFetch = globalThis.fetch;
 await withTestDatabase(async db => {
@@ -18,7 +19,7 @@ await withTestDatabase(async db => {
   };
   let number=0;
   const create = async () => {
-    const result = await call('/api/orders',{items:[{productId:PRODUCT,variantId:'250 gram',quantity:1}],orderType:'takeaway',
+    const result = await call('/api/orders',{items:[{productId:PRODUCT,variantId:'250 gram',quantity:2}],orderType:'takeaway',
       locationId:HOJA,paymentMethod:'swish',scheduledTime:new Date(Date.now()+86400000).toISOString().slice(0,10)+'T14:00',
       customerInfo:{name:'Synthetic Swish Buyer',phone:'07000000'+String(++number).padStart(2,'0'),email:'swish@example.test'}},
       {'Idempotency-Key':randomUUID()});
@@ -73,6 +74,7 @@ await withTestDatabase(async db => {
     assert.equal(await paymentStatus(legacy.order),'paid','Compact callbacks must resolve an existing hyphenated reservation');
     assert.equal(await storedId(legacy.order),dashed,'Do not rewrite references needed for atomic reconciliation');
     assert.equal(putCount(),beforeRetry);
+    await verifySwishRefundRecovery({db,call,swish,order:first.order,legacy:legacy.order,nativeFetch,origin});
     console.log('Verified Swish wire identity, concurrent starts, accepted timeout recovery, immutable fields, canonical callbacks and legacy reservations without external HTTPS.');
   } finally {
     server.closeAllConnections(); await new Promise(resolve=>server.close(resolve)); swish.close();

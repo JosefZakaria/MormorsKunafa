@@ -12,9 +12,8 @@ export async function handleSwishRefundCallback(req: Request, res: Response): Pr
   try {
     const status = await reconcileSwishRefundCallback(refundId);
     if (status === 'unknown') {
-      // Do not reveal whether an attacker-guessed identifier exists. A genuine
-      // callback can be reconciled from the admin UI after the create response
-      // has stored its provider identifier.
+      // No reserved refund matches this identifier. Historical reservations
+      // are recovered only after canonical provider verification.
       res.status(202).json({ received: true });
       return;
     }

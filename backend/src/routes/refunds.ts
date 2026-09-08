@@ -21,6 +21,7 @@ import {
   RefundReconciliationRequiredError,
   type ProviderRefundOutcome,
 } from '../services/refundProviders.js';
+import { swishRefundIdFromUuid } from '../services/swishClient.js';
 import {
   reconcileStripeRefund,
   reconcileSwishRefund,
@@ -97,6 +98,10 @@ async function callProvider(
     });
   }
   if (!reservation.swishInstructionId) throw new Error('Swish instruction is missing');
+  if (reservation.created) {
+    // Bind the callback reference before the first possible external side effect.
+    await setRefundProviderReference(reservation.refundId, swishRefundIdFromUuid(reservation.refundId));
+  }
   return createSwishOrderRefund({
     refundId: reservation.refundId,
     orderId,
@@ -104,6 +109,7 @@ async function callProvider(
     instructionId: reservation.swishInstructionId,
     totalPaidOre,
     amountOre: reservation.amountOre,
+    allowCreate: reservation.created,
   });
 }
 
@@ -169,7 +175,9 @@ router.post('/:id/refunds', refundLimiter, requireAdmin, requireOrderAccess, asy
     }
 
     const outcome = await callProvider(reserved, before.orderId, before.totalPrice);
-    await setRefundProviderReference(reserved.refundId, outcome.providerRefundId);
+    if (reserved.provider !== 'swish' || !reserved.created) {
+      await setRefundProviderReference(reserved.refundId, outcome.providerRefundId);
+    }
     if (outcome.status !== 'pending') {
       await finalizeOrderRefund({
         refundId: reserved.refundId,

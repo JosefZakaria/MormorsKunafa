@@ -8,6 +8,7 @@ import {
   parseSwishInstructionId,
   swishInstructionIdForProvider,
   swishRefundIdFromUuid,
+  SwishHttpError,
   verifySwishRefund,
   type SwishPaymentRequestResponse,
 } from './swishClient.js';
@@ -193,6 +194,7 @@ export async function createSwishOrderRefund(input: {
   instructionId: string;
   totalPaidOre: number;
   amountOre: number;
+  allowCreate: boolean;
 }): Promise<ProviderRefundOutcome> {
   const instructionId = parseSwishInstructionId(input.instructionId);
   const merchantAlias = process.env.SWISH_PAYEE_ALIAS?.trim() ?? '';
@@ -206,6 +208,10 @@ export async function createSwishOrderRefund(input: {
   });
   if (!validation.ok) throw new Error(validation.reason);
   const providerRefundId = swishRefundIdFromUuid(input.refundId);
+  if (!input.allowCreate) {
+    return getSwishRefundOutcome({ providerRefundId,
+      originalPaymentReference:validation.originalPaymentReference, amountOre:input.amountOre });
+  }
   await createSwishRefundRequest({
     refundId: providerRefundId,
     originalPaymentReference: validation.originalPaymentReference,
@@ -222,7 +228,13 @@ export async function getSwishRefundOutcome(input: {
   amountOre: number;
 }): Promise<ProviderRefundOutcome> {
   const payerAlias = process.env.SWISH_PAYEE_ALIAS?.trim() ?? '';
-  const result = verifySwishRefund(await getSwishRefund(input.providerRefundId), {
+  let refund;
+  try { refund = await getSwishRefund(input.providerRefundId); }
+  catch (error) {
+    if (error instanceof SwishHttpError && error.statusCode === 404) throw new RefundReconciliationRequiredError();
+    throw error;
+  }
+  const result = verifySwishRefund(refund, {
     refundId: input.providerRefundId,
     originalPaymentReference: input.originalPaymentReference,
     amountOre: input.amountOre,
