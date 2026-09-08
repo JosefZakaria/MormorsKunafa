@@ -17,6 +17,19 @@ export type ProviderRefundOutcome = {
   failureCode?: string;
 };
 
+export class RefundReconciliationRequiredError extends Error {
+  constructor() {
+    super('Återbetalningen är fortfarande oklar och kräver manuell avstämning hos betalningsleverantören. Beloppet är fortsatt reserverat.');
+    this.name = 'RefundReconciliationRequiredError';
+  }
+}
+
+export function canReplayStripeRefund(createdAt: string, now = Date.now()): boolean {
+  const age = now - Date.parse(createdAt);
+  // Stripe may discard idempotency keys after 24 hours. Leave one hour of margin.
+  return Number.isFinite(age) && age >= 0 && age < 23 * 60 * 60 * 1000;
+}
+
 export function validateStripeRefundSession(
   session: Stripe.Checkout.Session,
   expected: { orderId: string; sessionId: string; totalPaidOre: number }
@@ -93,6 +106,7 @@ export async function createStripeOrderRefund(input: {
   sessionId: string;
   totalPaidOre: number;
   amountOre: number;
+  createdAt: string;
 }): Promise<ProviderRefundOutcome> {
   const stripe = getStripe();
   const session = await stripe.checkout.sessions.retrieve(input.sessionId);
@@ -102,13 +116,34 @@ export async function createStripeOrderRefund(input: {
     totalPaidOre: input.totalPaidOre,
   });
   if (!validation.ok) throw new Error(validation.reason);
+  const expected = { ...input, paymentIntentId: validation.paymentIntentId };
+  let startingAfter: string | undefined;
+  const matches: Stripe.Refund[] = [];
+  for (let page = 0; page < 5; page++) {
+    const refunds = await stripe.refunds.list({ payment_intent: validation.paymentIntentId,
+      limit: 100, ...(startingAfter ? { starting_after: startingAfter } : {}) });
+    matches.push(...refunds.data.filter(refund => refund.metadata?.refundId === input.refundId));
+    if (!refunds.has_more) break;
+    const lastId = refunds.data.at(-1)?.id;
+    if (!lastId || lastId === startingAfter || page === 4) throw new RefundReconciliationRequiredError();
+    startingAfter = lastId;
+  }
+  if (matches.length > 1) throw new RefundReconciliationRequiredError();
+  if (matches.length === 1) {
+    const recovered = validateStripeRefundEvent(matches[0], expected);
+    if (!recovered.ok) throw new RefundReconciliationRequiredError();
+    return recovered.outcome;
+  }
+  if (!canReplayStripeRefund(input.createdAt)) throw new RefundReconciliationRequiredError();
   const refund = await stripe.refunds.create({
     payment_intent: validation.paymentIntentId,
     amount: input.amountOre,
     reason: 'requested_by_customer',
     metadata: { orderId: input.orderId, refundId: input.refundId },
   }, { idempotencyKey: `order-refund-${input.refundId}` });
-  return stripeRefundOutcome(refund);
+  const result = validateStripeRefundEvent(refund, expected);
+  if (!result.ok) throw new RefundReconciliationRequiredError();
+  return result.outcome;
 }
 
 export async function getStripeRefundOutcome(providerRefundId: string): Promise<ProviderRefundOutcome> {

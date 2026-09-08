@@ -5,7 +5,58 @@ import {
   validateOriginalSwishPayment,
   validateStripeRefundEvent,
   validateStripeRefundSession,
+  canReplayStripeRefund,
+  createStripeOrderRefund,
+  RefundReconciliationRequiredError,
 } from './refundProviders.js';
+import { getStripe } from './stripeClient.js';
+
+test('bounds creation retries by persisted age with a margin before provider key expiry', () => {
+  const now=Date.now();
+  assert.equal(canReplayStripeRefund(new Date(now-23*3600000+1).toISOString(),now),true);
+  for (const value of ['', 'invalid', new Date(now+1).toISOString(), new Date(now-23*3600000).toISOString()]) {
+    assert.equal(canReplayStripeRefund(value,now),false);
+  }
+});
+
+test('recovers canonical refunds and rejects ambiguous or inconsistent recovery without creating', async () => {
+  process.env.STRIPE_SECRET_KEY='sk_test_'+'a'.repeat(32);
+  const stripe=getStripe();
+  const original={retrieve:stripe.checkout.sessions.retrieve,list:stripe.refunds.list,create:stripe.refunds.create};
+  const client=stripe as unknown as {
+    checkout:{sessions:{retrieve:()=>Promise<Stripe.Checkout.Session>}};
+    refunds:{list:(params:{starting_after?:string})=>Promise<{data:Stripe.Refund[];has_more:boolean}>;
+      create:(params:unknown,options:{idempotencyKey:string})=>Promise<Stripe.Refund>};
+  };
+  const input={refundId:'223e4567-e89b-42d3-a456-426614174000',orderId,
+    sessionId:'cs_test_expected',totalPaidOre:17900,amountOre:7900,createdAt:new Date(Date.now()-48*3600000).toISOString()};
+  const refund={object:'refund',id:'re_existing',amount:7900,currency:'sek',status:'succeeded',payment_intent:'pi_expected',
+    metadata:{orderId,refundId:input.refundId}} as unknown as Stripe.Refund;
+  let creates=0;
+  try {
+    client.checkout.sessions.retrieve=async()=>stripeSession();
+    client.refunds.create=async(_params,options)=> { creates++; assert.equal(options.idempotencyKey,'order-refund-'+input.refundId); return refund; };
+    client.refunds.list=async()=>({data:[refund],has_more:false});
+    assert.equal((await createStripeOrderRefund(input)).providerRefundId,refund.id);
+    client.refunds.list=async params=>params.starting_after
+      ? {data:[refund],has_more:false}
+      : {data:[{...refund,id:'re_unrelated',metadata:{}} as Stripe.Refund],has_more:true};
+    assert.equal((await createStripeOrderRefund(input)).providerRefundId,refund.id);
+    for (const data of [[],[refund,refund],[{...refund,currency:'eur'}],[{...refund,amount:1}],
+      [{...refund,payment_intent:'pi_other'}],[{...refund,metadata:{...refund.metadata,orderId:'other'}}]]) {
+      client.refunds.list=async()=>({data:data as Stripe.Refund[],has_more:false});
+      await assert.rejects(createStripeOrderRefund(input),RefundReconciliationRequiredError);
+    }
+    client.refunds.list=async()=>{throw new Error('Synthetic list unavailable');};
+    await assert.rejects(createStripeOrderRefund(input));
+    assert.equal(creates,0);
+    client.refunds.list=async()=>({data:[],has_more:false});
+    assert.equal((await createStripeOrderRefund({...input,createdAt:new Date().toISOString()})).status,'succeeded');
+    assert.equal(creates,1);
+  } finally {
+    stripe.checkout.sessions.retrieve=original.retrieve;stripe.refunds.list=original.list;stripe.refunds.create=original.create;
+  }
+});
 
 const orderId = '123e4567-e89b-42d3-a456-426614174000';
 

@@ -134,8 +134,9 @@ export async function createSyntheticApp(db) {
   };
   stripe.checkout.sessions.retrieve = async id => { assert(sessions.has(id),'Unknown synthetic session'); return sessions.get(id); };
   const refunds = new Map(), refundAttempts = new Map();
-  const faults = { refundTimeout:false };
+  const faults = { refundTimeout:false, hideRefunds:false, refundCreateCalls:0 };
   stripe.refunds.create = async (params,options) => {
+    faults.refundCreateCalls++;
     if (refundAttempts.has(options.idempotencyKey)) return refunds.get(refundAttempts.get(options.idempotencyKey));
     const id='re_test_'+randomBytes(12).toString('hex');
     const refund={id,...params,currency:'sek',status:'succeeded'};
@@ -144,6 +145,7 @@ export async function createSyntheticApp(db) {
     return refund;
   };
   stripe.refunds.retrieve = async id => { assert(refunds.has(id)); return refunds.get(id); };
+  stripe.refunds.list = async params => ({data:faults.hideRefunds ? [] : [...refunds.values()].filter(r=>r.payment_intent===params.payment_intent),has_more:false});
   const { default: app } = await import('../../backend/dist/index.js');
-  return { app, sessions, stripe, refunds, faults };
+  return { app, sessions, stripe, refunds, faults, expireRefundKeys:()=>refundAttempts.clear() };
 }

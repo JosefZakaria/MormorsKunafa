@@ -18,6 +18,7 @@ import {
 import {
   createStripeOrderRefund,
   createSwishOrderRefund,
+  RefundReconciliationRequiredError,
   type ProviderRefundOutcome,
 } from '../services/refundProviders.js';
 import {
@@ -92,6 +93,7 @@ async function callProvider(
       sessionId: reservation.stripeCheckoutSessionId,
       totalPaidOre,
       amountOre: reservation.amountOre,
+      createdAt: reservation.createdAt,
     });
   }
   if (!reservation.swishInstructionId) throw new Error('Swish instruction is missing');
@@ -133,10 +135,6 @@ router.post('/:id/refunds', refundLimiter, requireAdmin, requireOrderAccess, asy
     }
     if (before.paymentStatus !== 'paid' || !['card', 'app', 'swish'].includes(before.paymentMethod)) {
       res.status(409).json({ error: 'Ordern har ingen återbetalningsbar onlinebetalning.' });
-      return;
-    }
-    if (before.refundableAmount <= 0) {
-      res.status(409).json({ error: 'Ordern saknar ett återbetalningsbart belopp.' });
       return;
     }
 
@@ -190,9 +188,13 @@ router.post('/:id/refunds', refundLimiter, requireAdmin, requireOrderAccess, asy
       return;
     }
     logUnexpectedError('POST /orders/admin/:id/refunds', error);
+    if (error instanceof RefundReconciliationRequiredError) {
+      res.status(409).json({ error: error.message, code: 'REFUND_RECONCILIATION_REQUIRED' });
+      return;
+    }
     if (reserved) {
       // The provider may have accepted a request whose response was interrupted.
-      // Keep the reservation pending and reuse the same idempotency key on retry.
+      // Keep it pending; provider recovery enforces a bounded replay window.
       res.status(202).json({
         refundId: reserved.refundId,
         amount: reserved.amountOre,
@@ -252,6 +254,7 @@ router.post('/:id/refunds/:refundId/reconcile', refundLimiter, requireAdmin, req
         stripeCheckoutSessionId: String(order.order.stripe_checkout_session_id ?? '').trim() || undefined,
         swishInstructionId: String(order.order.swish_instruction_id ?? '').trim() || undefined,
         created: false,
+        createdAt: record.createdAt,
       };
       outcome = await callProvider(reservation, record.orderId, overview.totalPrice);
       await setRefundProviderReference(record.id, outcome.providerRefundId);
@@ -274,6 +277,10 @@ router.post('/:id/refunds/:refundId/reconcile', refundLimiter, requireAdmin, req
     );
   } catch (error) {
     logUnexpectedError('POST /orders/admin/:id/refunds/:refundId/reconcile', error);
+    if (error instanceof RefundReconciliationRequiredError) {
+      res.status(409).json({ error: error.message, code: 'REFUND_RECONCILIATION_REQUIRED' });
+      return;
+    }
     res.status(502).json({ error: 'Kunde inte stämma av återbetalningen med betalningsleverantören.' });
   }
 });

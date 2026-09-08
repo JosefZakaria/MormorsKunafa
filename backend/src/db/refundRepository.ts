@@ -16,6 +16,7 @@ export type ReservedRefund = {
   stripeCheckoutSessionId?: string;
   swishInstructionId?: string;
   created: boolean;
+  createdAt: string;
 };
 
 export type RefundRecord = {
@@ -25,6 +26,7 @@ export type RefundRecord = {
   amountOre: number;
   status: 'pending' | 'succeeded' | 'failed';
   providerRefundId?: string;
+  createdAt: string;
 };
 
 function requiredString(value: unknown, field: string): string {
@@ -64,8 +66,12 @@ export async function reserveOrderRefund(input: {
   if (provider !== 'stripe' && provider !== 'swish') {
     throw new Error('Refund repository returned an unsupported provider');
   }
+  const refundIdValue = requiredString(row?.refund_id, 'refund id');
+  const record = await getRefundRecord(refundIdValue);
+  if (!record || record.orderId !== input.orderId) throw new Error('Refund reservation disappeared');
   return {
-    refundId: requiredString(row?.refund_id, 'refund id'),
+    refundId: refundIdValue,
+    createdAt: record.createdAt,
     amountOre: safeOre(row?.amount_ore, 'refund amount'),
     provider,
     orderNumber: requiredString(row?.order_number, 'order number'),
@@ -114,7 +120,7 @@ export async function finalizeOrderRefund(input: {
 export async function getRefundRecord(refundId: string): Promise<RefundRecord | null> {
   const { data, error } = await supabase
     .from('order_refunds')
-    .select('id, order_id, provider, amount_ore, status, provider_refund_id')
+    .select('id, order_id, provider, amount_ore, status, provider_refund_id, created_at')
     .eq('id', refundId)
     .maybeSingle();
   if (error) {
@@ -130,6 +136,7 @@ export async function getRefundRecord(refundId: string): Promise<RefundRecord | 
     amountOre: safeOre(row.amount_ore, 'amount'),
     status: requiredString(row.status, 'status') as RefundRecord['status'],
     providerRefundId: String(row.provider_refund_id ?? '').trim() || undefined,
+    createdAt: String(row.created_at ?? ''),
   };
 }
 
@@ -139,7 +146,7 @@ export async function getRefundByProviderId(
 ): Promise<RefundRecord | null> {
   const { data, error } = await supabase
     .from('order_refunds')
-    .select('id, order_id, provider, amount_ore, status, provider_refund_id')
+    .select('id, order_id, provider, amount_ore, status, provider_refund_id, created_at')
     .eq('provider', provider)
     .eq('provider_refund_id', providerRefundId)
     .maybeSingle();
@@ -156,6 +163,7 @@ export async function getRefundByProviderId(
     amountOre: safeOre(row.amount_ore, 'amount'),
     status: requiredString(row.status, 'status') as RefundRecord['status'],
     providerRefundId: requiredString(row.provider_refund_id, 'provider refund id'),
+    createdAt: String(row.created_at ?? ''),
   };
 }
 
