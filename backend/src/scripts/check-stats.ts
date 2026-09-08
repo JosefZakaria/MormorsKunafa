@@ -1,32 +1,19 @@
 import 'dotenv/config';
-import { logSupabaseError, supabase, type Row } from '../db/connection.js';
+import type { Row } from '../db/connection.js';
+import { readAllRows } from '../db/pagination.js';
 import { requireExternalOutputPath, writeSensitiveArtifact } from './safe-local-artifact.js';
 
 async function run() {
   const outputPath = requireExternalOutputPath(process.argv.slice(2));
 
-  const { data: orders, error: ordersError } = await supabase
-    .from('orders')
-    .select('total_ore, status')
-    .neq('status', 'avbruten');
-  if (ordersError) {
-    logSupabaseError('check-stats orders', ordersError);
-    throw new Error('Kunde inte läsa orderstatistiken.');
-  }
-
-  const { data: orderItems, error: itemsError } = await supabase
-    .from('order_items')
-    .select('product_name_snapshot, quantity, price_ore, orders!inner(status)');
-  if (itemsError) {
-    logSupabaseError('check-stats order items', itemsError);
-    throw new Error('Kunde inte läsa produktstatistiken.');
-  }
+  const orders = (await readAllRows('orders', 'id, total_ore, status')).filter(row=>row.status!=='avbruten');
+  const eligible = new Set(orders.map(order=>String(order.id)));
+  const orderItems = await readAllRows('order_items', 'id, order_id, product_name_snapshot, quantity, price_ore');
 
   const products = new Map<string, { name: string; sold_total: number; revenue_total_ore: number }>();
   for (const item of orderItems ?? []) {
     const row = item as Row;
-    const order = row.orders as Row | undefined;
-    if (!order || order.status === 'avbruten') continue;
+    if (!eligible.has(String(row.order_id))) continue;
     const name = String(row.product_name_snapshot ?? 'Okänd produkt');
     const quantity = Number(row.quantity ?? 0);
     const current = products.get(name) ?? { name, sold_total: 0, revenue_total_ore: 0 };

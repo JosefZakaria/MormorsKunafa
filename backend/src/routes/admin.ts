@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
+import { readAllRows } from '../db/pagination.js';
 import { supabase, type Row, logSupabaseError, nowIso } from '../db/connection.js';
 import {
   clearAdminSessionCookies,
@@ -597,38 +598,12 @@ router.post('/statistics', requireAdmin, requireOwner, async (req: Request, res:
     const monthStart = daysAgoStockholm(30);
     const yearStart = startOfYearStockholm();
 
-    const { data: products, error: productsError } = await supabase
-      .from('products')
-      .select('id, name')
-      .order('name', { ascending: true });
-
-    if (productsError) {
-      logSupabaseError('POST /admin/statistics products', productsError);
-      res.status(500).json({ error: 'Failed to fetch statistics' });
-      return;
-    }
-
-    const { data: lineRows, error: linesError } = await supabase
-      .from('order_items')
-      .select(
-        'quantity, price_ore, product_id, product_name_snapshot, orders!inner(id, status, payment_status, created_at)'
-      );
-
-    if (linesError) {
-      logSupabaseError('POST /admin/statistics order_items', linesError);
-      res.status(500).json({ error: 'Failed to fetch statistics' });
-      return;
-    }
-
-    const { data: allOrders, error: ordersError } = await supabase
-      .from('orders')
-      .select('id, status, payment_status, total_ore, created_at');
-
-    if (ordersError) {
-      logSupabaseError('POST /admin/statistics orders', ordersError);
-      res.status(500).json({ error: 'Failed to fetch statistics' });
-      return;
-    }
+    const products = (await readAllRows('products', 'id, name'))
+      .sort((a,b)=>String(a.name).localeCompare(String(b.name),'sv'));
+    const allOrders = await readAllRows('orders', 'id, status, payment_status, total_ore, created_at');
+    const ordersById = new Map(allOrders.map(order=>[String(order.id),order]));
+    const lineRows = (await readAllRows('order_items', 'id, order_id, quantity, price_ore, product_id, product_name_snapshot'))
+      .map(row=>({...row, orders:ordersById.get(String(row.order_id))}));
 
     type ProductAgg = {
       name: string;

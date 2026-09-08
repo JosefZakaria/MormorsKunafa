@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "noEmit": true },
+  "include": [
+    "src/scripts/export-order-items.ts",
+    "src/scripts/export-products.ts",
+    "src/scripts/check-stats.ts",
+    "src/scripts/check-menu.ts"
+  ],
+  "exclude": ["node_modules", "dist"]
+}

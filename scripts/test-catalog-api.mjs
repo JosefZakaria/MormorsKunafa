@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { withTestDatabase } from './lib/local-test-database.mjs';
 import { initializeSyntheticDatabase, createSyntheticApp, CUSTOM_BREAD, HOJA, MOLLEVANGEN, PRODUCT, TEST_PASSWORD, literal } from './lib/synthetic-api.mjs';
+import { verifyLargeStatistics } from './lib/test-large-statistics.mjs';
 
 const nativeFetch = globalThis.fetch;
 await withTestDatabase(async db => {
@@ -80,6 +81,7 @@ await withTestDatabase(async db => {
     assert.equal(await upload('<svg/>','image/svg+xml',{cookie:owner.cookie}),403);
     assert.equal(await upload('<svg onload="alert(1)"/>','image/png',owner),400,'A claimed raster MIME must not admit active SVG');
     assert.equal(await upload(new Uint8Array(4*1024*1024+1),'image/png',owner),400);
+    await verifyLargeStatistics({db,call,owner,staff});
     await db.sql(`CREATE FUNCTION test_catalog_failure() RETURNS trigger LANGUAGE plpgsql AS $body$ BEGIN RAISE EXCEPTION 'sensitive synthetic detail'; END; $body$;
       CREATE TRIGGER test_catalog_failure BEFORE UPDATE ON products FOR EACH ROW EXECUTE FUNCTION test_catalog_failure()`);
     const failed = await call(`/api/products/${CUSTOM_BREAD}`,{price:10},owner,'PATCH');
