@@ -24,6 +24,8 @@
     "build:backend": "npm run build --workspace=@mormors-kunafa/backend",
     "test": "npm run test:backend && npm run typecheck:mobile",
     "test:db": "node scripts/test-database.mjs",
+    "test:api": "npm run build:backend && node scripts/test-api.mjs",
+    "test:browser": "playwright test",
     "test:backend": "npm run test --workspace=@mormors-kunafa/backend",
     "typecheck:mobile": "npm exec --workspace=@mormors-kunafa/mobile -- tsc --noEmit",
     "check": "npm run verify:browser-storage && npm run verify:web-deployment && npm run build:web && npm run verify:web-build && npm test",
@@ -49,7 +51,7 @@
     "undici": "6.28.0"
   },
   "devDependencies": {
+    "@playwright/test": "1.63.0",
     "typescript": "~5.6.2"
   }
 }
-

@@ -65,6 +65,7 @@ export async function withTestDatabase(callback) {
   const password = randomBytes(32).toString('hex');
   await writeFile(passwordFile, password, { flag: 'wx', mode: 0o600 });
   env.PGPASSWORD = password;
+  env.PGCLIENTENCODING = 'UTF8';
   let started = false;
   try {
     await run(binary('initdb'), ['-D', data, '-U', 'mk_test_runner', '-A', 'scram-sha-256',
@@ -79,7 +80,14 @@ export async function withTestDatabase(callback) {
       [...args, '--dbname', db, ...extra], { env, timeout: 60_000, maxBuffer: 2 * 1024 * 1024 })).stdout.trim();
     await psql(['--command', `CREATE DATABASE ${database}`], 'postgres');
     assert.equal(await psql(['--command', 'SELECT current_database()']), database);
-    const sql = (statement) => psql(['--command', statement]);
+    // Windows command-line arguments pass through the active code page in psql.
+    // UTF-8 files preserve Swedish order statuses and customer text exactly.
+    const sql = async (statement) => {
+      const filename = path.join(cluster, `${randomUUID()}.sql`);
+      await writeFile(filename, statement, 'utf8');
+      try { return await psql(['--file', filename]); }
+      finally { await rm(filename); }
+    };
     const file = (filename) => psql(['--file', path.resolve(filename)]);
     await callback({ sql, file, host, port, database });
   } catch (error) {

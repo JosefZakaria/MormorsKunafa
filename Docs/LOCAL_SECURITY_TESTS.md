@@ -20,3 +20,22 @@ The fixture in `backend/test/fixtures` contains synthetic tables and Supabase-li
 roles reconstructed from the repository. It does not prove the actual production
 schema, Supabase extensions, hosted PostgREST behavior or account configuration.
 Never replace it with a customer-data dump.
+
+`npm run test:api` exercises real HTTP handlers and SQL through a deliberately
+small local PostgREST adapter. It covers server prices, checkout replay,
+payment confirmation, scoped access, CSRF, revocation and partial/full refund
+concurrency with a simulated lost provider response.
+
+After `npm run check`, install the pinned browser with
+`$env:PLAYWRIGHT_BROWSERS_PATH='.cache/playwright'; npx playwright install chromium`
+and run `npm run test:browser`. Desktop and Pixel 7 Chromium scenarios cover both
+pickup locations, hosted-payment return, private order status, admin loading,
+HttpOnly cookies and logout. Screenshots and failure traces are ignored locally.
+The test-only server binds 127.0.0.1:4179 and loads the actual web CSP. Test teardown
+waits for its own database to stop, including on Windows.
+
+The API process discards inherited integration settings, uses an empty dotenv
+file, and rejects external HTTP/HTTPS. Browser requests outside loopback are
+blocked; the hosted Stripe page is simulated. No email, SMS, push or live payment
+credentials are configured. These checks do not verify provider sandboxes,
+Supabase Storage, actual hosted PostgREST limits, physical printers or production.

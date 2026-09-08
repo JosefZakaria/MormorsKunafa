@@ -146,7 +146,7 @@ app.use((error: unknown, _req: express.Request, res: express.Response, next: exp
   next(error);
 });
 
-if (process.env.NODE_ENV !== 'production') {
+if (process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'test') {
   const PORT = Number(process.env.PORT) || 3001;
   app.listen(PORT, () => {
     console.log(`Backend listening on http://localhost:${PORT}`);
