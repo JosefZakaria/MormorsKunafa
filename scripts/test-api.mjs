@@ -55,8 +55,20 @@ await withTestDatabase(async db => {
     const event={id:'evt_test_'+randomUUID().replaceAll('-',''),type:'checkout.session.completed',livemode:false,data:{object:session}};
     const payload=JSON.stringify(event);
     const signature=stripe.webhooks.generateTestHeaderString({payload,secret:process.env.STRIPE_WEBHOOK_SECRET});
-    const callbacks=await Promise.all([1,2].map(()=>nativeFetch(origin+'/api/stripe/webhook',{method:'POST',headers:{'content-type':'application/json','stripe-signature':signature},body:payload})));
-    assert(callbacks.every(r=>r.status===200));
+    const webhook=()=>nativeFetch(origin+'/api/stripe/webhook',{method:'POST',headers:{'content-type':'application/json','stripe-signature':signature},body:payload});
+    const held=JSON.parse(await db.sql(`SELECT claim_stripe_event_v2('${event.id}','${event.type}',false)`));
+    const busy=await webhook();
+    assert.equal(busy.status,503,'A live lease must remain retryable');
+    assert.equal(busy.headers.get('retry-after'),'30');
+    await busy.text();
+    await db.sql(`SELECT fail_stripe_event_v2('${event.id}','${held.token}')`);
+    const callbacks=await Promise.all([webhook(),webhook()]);
+    assert(callbacks.some(r=>r.status===200));
+    assert(callbacks.every(r=>[200,503].includes(r.status)));
+    await Promise.all(callbacks.map(r=>r.text()));
+    const duplicate=await webhook();
+    assert.equal(duplicate.status,200);
+    assert.equal((await duplicate.json()).duplicate,true);
     assert.equal(await db.sql(`SELECT count(*) FROM security_audit_log WHERE resource_id='${id}' AND action='stripe_payment_confirmed'`),'1');
     for (const locationId of [HOJA,MOLLEVANGEN]) {
       for (const orderType of ['eat-here','takeaway']) assert.equal((await newOrder({...orderBody,locationId,orderType})).status,201);

@@ -184,13 +184,19 @@ export async function handleStripeWebhook(req: Request, res: Response): Promise<
     return;
   }
 
-  let claimed = false;
+  let claimToken: string | undefined;
   try {
-    claimed = await claimStripeEvent(event.id, event.type, event.livemode);
-    if (!claimed) {
+    const claim = await claimStripeEvent(event.id, event.type, event.livemode);
+    if (claim.status === 'processed') {
       res.json({ received: true, duplicate: true });
       return;
     }
+    if (claim.status === 'busy') {
+      res.setHeader('Retry-After', '30');
+      res.status(503).send('Webhook processing; retry later');
+      return;
+    }
+    claimToken = claim.token;
 
     let orderId: string | null = null;
     let outcome = 'ignored_event_type';
@@ -213,12 +219,12 @@ export async function handleStripeWebhook(req: Request, res: Response): Promise<
       orderId = result.orderId;
       outcome = result.outcome;
     }
-    await completeStripeEvent(event.id, orderId, outcome);
+    await completeStripeEvent(event.id, claimToken, orderId, outcome);
     res.json({ received: true });
   } catch (e) {
-    if (claimed) {
+    if (claimToken) {
       try {
-        await failStripeEvent(event.id);
+        await failStripeEvent(event.id, claimToken);
       } catch (markFailedError) {
         logUnexpectedError('stripe webhook could not release event lease', markFailedError);
       }

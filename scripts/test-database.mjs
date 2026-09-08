@@ -43,7 +43,13 @@ await withTestDatabase(async ({ sql, file }) => {
   const legacyId = randomUUID();
   await sql(`INSERT INTO orders(id, order_number, customer_phone, location_id, stripe_checkout_session_id)
     VALUES ('${legacyId}', '#9998', '+46700000000', '${location}', 'cs_test_before_upgrade')`);
+  await apply(order.filter(name=>name!=='2026-09-08-stripe-event-ownership.sql'));
+  await sql(`INSERT INTO payment_provider_events(provider,event_id,event_type,livemode,status,attempts,lease_expires_at,outcome)
+    VALUES ('stripe','evt_legacy_first','test',false,'processing',1,now()+interval '5 minutes',NULL),
+    ('stripe','evt_legacy_retry','test',false,'processing',2,now()-interval '1 second',NULL),
+    ('stripe','evt_legacy_done','test',false,'processed',1,NULL,'preserved')`);
   await apply(order);
+  await file(path.join(repositoryRoot,'backend/test/fixtures/stripe-event-ownership.sql'));
   assert.equal(await sql(`SELECT order_number || ':' || stripe_checkout_session_id || ':' || location_id::text
     FROM orders WHERE id='${legacyId}'`), '#9998:cs_test_before_upgrade:' + location);
   assert.equal(await apply(order), 0, 'already applied migrations must not run again');

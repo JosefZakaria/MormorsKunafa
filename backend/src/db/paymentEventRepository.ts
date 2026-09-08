@@ -1,5 +1,16 @@
 import type { PaymentSecurityAlert } from '../shared/types/index.js';
 import { logSupabaseError, supabase, type Row } from './connection.js';
+import { isCanonicalUuidV4 } from '../utils/resourceId.js';
+
+export type StripeEventClaim = { status: 'claimed'; token: string } | { status: 'busy' } | { status: 'processed' };
+export function parseStripeEventClaim(data: unknown): StripeEventClaim {
+  if (data && typeof data === 'object') {
+    const row = data as Record<string, unknown>;
+    if (row.status === 'busy' || row.status === 'processed') return { status: row.status };
+    if (row.status === 'claimed' && isCanonicalUuidV4(row.token)) return { status: 'claimed', token: row.token as string };
+  }
+  throw new Error('Invalid Stripe event claim result');
+}
 
 export const PAYMENT_SECURITY_ALERT_OUTCOMES = [
   'alert_missing_order_id',
@@ -17,8 +28,8 @@ export async function claimStripeEvent(
   eventId: string,
   eventType: string,
   livemode: boolean
-): Promise<boolean> {
-  const { data, error } = await supabase.rpc('claim_stripe_event', {
+): Promise<StripeEventClaim> {
+  const { data, error } = await supabase.rpc('claim_stripe_event_v2', {
     p_event_id: eventId,
     p_event_type: eventType,
     p_livemode: livemode,
@@ -27,16 +38,18 @@ export async function claimStripeEvent(
     logSupabaseError('claimStripeEvent', error);
     throw error;
   }
-  return data === true;
+  return parseStripeEventClaim(data);
 }
 
 export async function completeStripeEvent(
   eventId: string,
+  claimToken: string,
   orderId: string | null,
   outcome: string
 ): Promise<void> {
-  const { error } = await supabase.rpc('complete_stripe_event', {
+  const { data, error } = await supabase.rpc('complete_stripe_event_v2', {
     p_event_id: eventId,
+    p_claim_token: claimToken,
     p_order_id: orderId ?? '',
     p_outcome: outcome,
   });
@@ -44,10 +57,11 @@ export async function completeStripeEvent(
     logSupabaseError('completeStripeEvent', error);
     throw error;
   }
+  if (data !== true) throw new Error('Stripe event ownership lost');
 }
 
-export async function failStripeEvent(eventId: string): Promise<void> {
-  const { error } = await supabase.rpc('fail_stripe_event', { p_event_id: eventId });
+export async function failStripeEvent(eventId: string, claimToken: string): Promise<void> {
+  const { error } = await supabase.rpc('fail_stripe_event_v2', { p_event_id: eventId, p_claim_token: claimToken });
   if (error) {
     logSupabaseError('failStripeEvent', error);
     throw error;
