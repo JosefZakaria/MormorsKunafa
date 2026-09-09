@@ -32,9 +32,9 @@ Explicitly set `PUBLIC_WEB_APP_URL` to the web origin for payment returns. The c
 
 ## Database and version transition
 
-Use `backend/src/db/migrations/migration-order.json`, **not filename sorting**. Compare the actual applied ledger and checksums, take a verified backup, and rehearse pending complementary migrations against an independently isolated restore before production execution. Never rerun old sequence/role initializers. Detailed lock, grant and sequence constraints are in [the migration README](../backend/src/db/migrations/README.md).
+Choose the migration track from the actual applied ledger and checksums; never use filename sorting. `migration-order.json` is for an empty/fresh installation. A database already served by main must use the four phases in `legacy-transition-order.json`. Take a verified backup and rehearse every pending complementary migration against an independently isolated restore. Never rerun or falsely mark an old migration. Detailed commands, lock/grant checks, web-first ordering and recovery boundaries are in [LEGACY_CHECKOUT_TRANSITION.md](LEGACY_CHECKOUT_TRANSITION.md) and the [migration README](../backend/src/db/migrations/README.md).
 
-Old `MAX` order-number writers cannot overlap the sequence-based writer. Old customers may lack the new status capability, idempotency header or required location. A compatible cutover/drain/reload plan must be proven before enabling the new versions; never restore public customer data or weak authentication to accommodate old clients. The owner's existing preference to keep checkout open has not been replaced by permission to pause it. If the transition cannot satisfy that constraint, deployment remains blocked.
+The Phase 1 trigger gives legacy `MAX` inserts and the atomic RPC one shared sequence while the old backend stays usable. Deploy the dual-contract web before the guarded backend; then cached mutation requests fail before writes with `CLIENT_UPGRADE_REQUIRED` and a reload instruction. Apply positive-total/item constraints only after every old writer and alias is proven drained. Missing legacy status capabilities lead to help, not public order data. Raw main is not a valid rollback after finalization.
 
 ## Verification after an independently authorized rollout
 

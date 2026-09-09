@@ -2,6 +2,7 @@
   "2026-06-06-admin-pwa-notifications.sql",
   "2026-08-15-order-type-enabled.sql",
   "2026-08-19-admin-session-revocation.sql",
+  "2026-09-09-legacy-order-writer-bridge.sql",
   "2026-08-19-atomic-order-creation.sql",
   "2026-08-19-immutable-security-audit.sql",
   "2026-08-19-stripe-event-idempotency.sql",
@@ -20,8 +21,10 @@
   "2026-08-30-product-location-stock.sql",
   "2026-08-19-row-level-security.sql",
   "2026-09-08-security-location-compatibility.sql",
+  "2026-09-09-shared-order-number-allocation.sql",
   "2026-09-08-stripe-event-ownership.sql",
   "2026-09-08-online-cancellation-boundary.sql",
   "2026-09-08-checkout-rollout.sql",
-  "2026-09-08-unsettled-payment-retention.sql"
+  "2026-09-08-unsettled-payment-retention.sql",
+  "2026-09-09-checkout-contract-finalization.sql"
 ]

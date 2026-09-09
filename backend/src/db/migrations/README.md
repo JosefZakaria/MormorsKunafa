@@ -3,25 +3,24 @@
 These SQL files are versioned deployment artifacts. The application never
 applies them automatically and local builds/tests do not connect to production.
 
-Use `migration-order.json` for dependency order in a controlled Supabase maintenance window.
+Use `migration-order.json` only for an empty/fresh installation. An existing
+main database must use the phased `legacy-transition-order.json`; see
+[`Docs/LEGACY_CHECKOUT_TRANSITION.md`](../../../../Docs/LEGACY_CHECKOUT_TRANSITION.md).
 Compare the real database's applied-migration ledger and checksums first; execute
-only pending migrations. The local harness ledger is synthetic evidence, not a
-copy of production. Never rerun the original sequence initializer or role seeds
-on an existing installation.
+only pending migrations from the selected track. The local harness ledger is
+synthetic evidence, not a copy of production. Never falsify the ledger, rerun a
+changed migration or rerun old sequence/role initializers.
 Take a backup, use a staging database first, and keep the matching backend deploy
 paused until the migration has committed successfully.
 
-The September checkout cutover requires all old order writers to be stopped:
-the old backend allocates numbers independently with `MAX`, while this branch
-uses a sequence. `2026-09-08-checkout-rollout.sql` locks the sequence before the
-orders table and advances it above both current reservations and stored numbers.
-Its five-second lock timeout aborts rather than waiting indefinitely. It also
-adds the reconciliation queue index, which takes a write lock during creation.
-Measure this on a representative staging copy before scheduling the window.
-The two allocation algorithms must never run concurrently after writes reopen.
-No maintenance window or shop pause is authorized by this document. The owner
-has asked to keep checkout available; a compatible transition satisfying that
-constraint is still a deployment gate. See [the branch review](../../../../Docs/SECURITY_BRANCH_REVIEW.md).
+The legacy Phase 1 bridge is additive and keeps the shop writer-compatible: a
+table-then-sequence lock seeds one trigger used by both old `MAX` inserts and the
+new RPC. The original atomic and checkout-rollout files stay immutable and are
+excluded from the existing-main track. Phase 4 uses the complementary checkout
+finalization only after old processes and aliases are proven drained. Its index
+is concurrent; its short metadata/sequence transaction uses the same lock order
+as trigger-backed inserts and aborts after five seconds of lock contention.
+No shop pause is authorized by this document.
 
 `2026-09-08-unsettled-payment-retention.sql` preserves the existing retention RPC
 signatures and periods. Unresolved online payments, pending refunds, legal holds
@@ -81,10 +80,11 @@ is zero, record that no paid eat-here order was found from 2026-04-01 onward. If
 rows exist, give the non-PII order-number report and original receipts to the
 accounting adviser; the query is evidence collection, not an accounting ruling.
 
-## 2026-08-19 atomic order creation
+## 2026-08-19 atomic order creation (fresh installations only)
 
-Before applying `2026-08-19-atomic-order-creation.sql`, verify that no duplicate
-order numbers exist:
+Do not apply `2026-08-19-atomic-order-creation.sql` to the live legacy track. It
+adds constraints that reject main's transient zero-total parent. For a fresh
+installation, verify that no duplicate order numbers exist:
 
 ```sql
 SELECT order_number, count(*)
