@@ -28,8 +28,9 @@
     "test:browser": "playwright test",
     "test:backend": "npm run test --workspace=@mormors-kunafa/backend",
     "typecheck:mobile": "npm exec --workspace=@mormors-kunafa/mobile -- tsc --noEmit",
-    "check": "npm run verify:dependencies && npm run verify:browser-storage && npm run verify:web-deployment && npm run build:web && npm run verify:web-build && npm test",
+    "check": "npm run verify:dependencies && npm run verify:mobile-links && npm run verify:browser-storage && npm run verify:web-deployment && npm run build:web && npm run verify:web-build && npm test",
     "verify:dependencies": "node scripts/verify-dependency-security.mjs",
+    "verify:mobile-links": "node scripts/verify-mobile-deep-links.mjs",
     "verify:browser-storage": "node scripts/verify-browser-storage.mjs",
     "verify:web-deployment": "node scripts/verify-web-deployment-config.mjs",
     "verify:web-build": "node scripts/verify-web-build-security.mjs",
@@ -43,17 +44,21 @@
     "brace-expansion@^1": "1.1.18",
     "brace-expansion@^2": "2.1.4",
     "browserslist": "4.28.9",
-    "js-yaml@^3": "3.15.1",
-    "js-yaml@^4": "4.3.1",
+    "js-yaml@^3": "3.15.2",
+    "js-yaml@^4": "4.3.2",
     "postcss": "8.5.28",
     "qs": "6.16.0",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
     "shell-quote": "1.10.0",
     "socket.io-parser": "4.2.7",
     "tar": "7.5.22",
-    "undici": "6.28.0"
+    "undici": "6.28.1"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
     "typescript": "~5.6.2"
   }
 }
