@@ -1,6 +1,14 @@
 import { test, expect } from '@playwright/test';
 const origin='http://127.0.0.1:4179';
 
+async function submitCheckout(page,button=page.getByRole('button',{name:'Gå till betalning'})) {
+  await button.click();
+  const closedHoursConfirmation=page.getByRole('button',{name:/^Ja, jag vill att min beställning ska vara klar /});
+  if (await closedHoursConfirmation.isVisible()) {
+    await closedHoursConfirmation.click();
+  }
+}
+
 test.beforeEach(async ({context}) => {
   await context.route('**/*', async route => {
     const url=new URL(route.request().url());
@@ -33,7 +41,7 @@ for (const location of ['Höja','Möllevången']) {
     await page.locator('#customer-email').fill('browser@example.test');
     await page.locator('#cart-schedule-date').fill(new Date(Date.now()+86400000).toISOString().slice(0,10));
     await page.getByRole('checkbox').check();
-    await page.getByRole('button',{name:'Gå till betalning'}).click();
+    await submitCheckout(page);
     await expect(page).toHaveURL(/\/status\?orderId=/,{timeout:20_000});
     await expect(page.getByText(/^Beställning #\d+$/)).toBeVisible({timeout:20_000});
     await expect(page.getByRole('heading',{name:'Din förbeställning är bokad'})).toBeVisible();
@@ -98,7 +106,7 @@ test('custom piece products keep the unit price when cart quantity changes', asy
   await page.locator('#cart-schedule-date').fill(new Date(Date.now()+86400000).toISOString().slice(0,10));
   await page.getByRole('checkbox').check();
   const created = page.waitForResponse(response=>response.url().endsWith('/api/orders') && response.request().method()==='POST');
-  await page.getByRole('button',{name:'Gå till betalning'}).click();
+  await submitCheckout(page);
   const response = await created;
   expect(response.status()).toBe(201);
   expect(response.request().headers()['x-checkout-contract']).toBe('order-v2');
@@ -142,7 +150,7 @@ test('an upgrade rejection keeps the cart and never starts payment automatically
   await page.locator('#customer-phone').fill('0700000002');
   await page.locator('#cart-schedule-date').fill(new Date(Date.now()+86400000).toISOString().slice(0,10));
   await page.getByRole('checkbox').check();
-  await page.getByRole('button',{name:'Gå till betalning'}).click();
+  await submitCheckout(page);
 
   await expect(page.getByText('Den här sidan är inaktuell.',{exact:false})).toBeVisible();
   await expect(page.getByRole('button',{name:'Ladda om sidan'})).toBeVisible();
@@ -181,7 +189,7 @@ test('a committed order with a lost response cannot be created again after reloa
   await page.locator('#cart-schedule-date').fill(new Date(Date.now()+86400000).toISOString().slice(0,10));
   await page.getByRole('checkbox').check();
   const checkoutButton=page.getByRole('button',{name:'Gå till betalning'});
-  await checkoutButton.click();
+  await submitCheckout(page,checkoutButton);
 
   await expect(page.getByText('Betala eller beställ inte igen',{exact:false})).toBeVisible();
   expect(creates).toBe(1);
@@ -192,7 +200,7 @@ test('a committed order with a lost response cannot be created again after reloa
 
   await page.reload();
   await expect(page.locator('.cart-item')).toHaveCount(1);
-  await page.getByRole('button',{name:'Gå till betalning'}).click();
+  await submitCheckout(page);
   await expect(page.getByText('Betala eller beställ inte igen',{exact:false})).toBeVisible();
   await page.waitForTimeout(200);
   expect(creates).toBe(1);
@@ -241,14 +249,14 @@ test('a lost legacy payment response cannot be resubmitted',async({page})=>{
   await page.locator('#cart-schedule-date').fill(new Date(Date.now()+86400000).toISOString().slice(0,10));
   await page.getByRole('checkbox').check();
   const checkoutButton=page.getByRole('button',{name:'Gå till betalning'});
-  await checkoutButton.click();
+  await submitCheckout(page,checkoutButton);
 
   await expect(page.getByText('Betala eller beställ inte igen',{exact:false})).toBeVisible();
   await expect(page.locator('.cart-item')).toHaveCount(1);
   await expect(checkoutButton).toBeEnabled();
   expect({creates,paymentStarts}).toEqual({creates:1,paymentStarts:1});
 
-  await checkoutButton.click();
+  await submitCheckout(page,checkoutButton);
   await page.waitForTimeout(200);
   expect({creates,paymentStarts}).toEqual({creates:1,paymentStarts:1});
   expect(await page.evaluate(()=>localStorage.getItem('mormors-kunafa-cart'))).toBeTruthy();
