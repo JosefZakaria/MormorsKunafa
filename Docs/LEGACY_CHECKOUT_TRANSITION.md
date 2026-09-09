@@ -65,16 +65,24 @@ the timeout blindly; measure and retry only under an approved operator plan.
 
 Deploy the reviewed web build while the old backend remains active. Its create
 request retains the legacy composite product ID/name/price fields but also sends
-the new checkout contract and idempotency key. Old main ignores the new headers;
+`X-Checkout-Contract: order-v2` and an idempotency key. Old main ignores the new headers;
 the new backend ignores client price/name and resolves the composite ID against
 its own catalogue. There is no health/capability preflight and no weaker request
 chosen from a cached response.
 
-The create response is the only transition signal. A valid status capability
-means the new contract; its absence means that the already-created order belongs
-to the legacy flow. If legacy payment initiation has an ambiguous/lost response,
-the browser must not resubmit it or create another order automatically. It shows
-the contact/reconciliation path instead.
+The create response is the only transition signal. The exact `order-v2`
+response marker together with a structurally valid status capability means the
+new contract; absence of both means that the already-created order belongs to
+the legacy flow. A partial or unfamiliar signal is ambiguous and never starts a
+payment. Before the create request, the browser records a non-PII random key and
+timestamp in `pending-checkout-create`. It replaces that marker with the order
+ID, payment method, contract class, start flag and timestamp in
+`pending-checkout-order` only after validating the response. A lost create
+response therefore blocks another create after reload. The pre-create marker is
+cleared without an order only for the backend's explicit 426 pre-write upgrade
+rejection. If legacy payment initiation has an ambiguous/lost response, it also
+cannot be resubmitted. Both ambiguous paths show the staffed
+contact/reconciliation message instead.
 
 ## Phase 3 — guarded backend and drain
 

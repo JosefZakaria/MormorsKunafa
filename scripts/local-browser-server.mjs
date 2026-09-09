@@ -3,7 +3,7 @@ import path from 'node:path';
 import { writeFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import { withTestDatabase, repositoryRoot } from './lib/local-test-database.mjs';
-import { initializeSyntheticDatabase, createSyntheticApp, TEST_ORIGIN } from './lib/synthetic-api.mjs';
+import { initializeSyntheticDatabase, createSyntheticApp, literal, TEST_ORIGIN } from './lib/synthetic-api.mjs';
 import { createWebVercelConfig } from '../apps/web/config/vercel-config.mjs';
 
 const runId = process.env.MK_BROWSER_RUN_ID;
@@ -24,6 +24,15 @@ await withTestDatabase(async db => {
     if (!session) { res.status(404).end(); return; }
     session.status='complete'; session.payment_status='paid';
     res.json({url:session.success_url.replace('{CHECKOUT_SESSION_ID}',session.id)});
+  });
+  app.get('/__test/order-count', async (req,res) => {
+    if (req.get('x-test-run') !== runId) { res.status(403).end(); return; }
+    const phone = typeof req.query.phone === 'string' ? req.query.phone : '';
+    if (!/^07\d{8}$/.test(phone)) { res.status(400).end(); return; }
+    const count = Number(await db.sql(
+      `SELECT count(*)::int FROM orders WHERE customer_phone = ${literal(phone)}`
+    ));
+    res.json({count});
   });
   let stop;
   app.post('/__test/shutdown', (req,res) => {

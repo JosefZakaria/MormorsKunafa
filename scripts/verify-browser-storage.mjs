@@ -53,6 +53,8 @@ for (const documentedKey of [
   'locationId',
   'locationSlug',
   'order-status-token:<order UUID>',
+  'pending-checkout-create',
+  'pending-checkout-order',
   'mk_admin_session',
   'mk_csrf',
 ]) {

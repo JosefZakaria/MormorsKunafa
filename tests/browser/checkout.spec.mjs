@@ -46,7 +46,8 @@ for (const location of ['Höja','Möllevången']) {
 
 test('status presentation preserves unpaid, delivery and terminal states without customer data',async({page})=>{
   const id='9f0e4b27-30f1-4eee-9f18-004766113333';
-  await page.addInitScript(id=>sessionStorage.setItem(`order-status-token:${id}`,'synthetic-presentation-token'),id);
+  const token=`v1.9999999999.${'a'.repeat(22)}.${'b'.repeat(43)}`;
+  await page.addInitScript(({id,token})=>sessionStorage.setItem(`order-status-token:${id}`,token),{id,token});
   let status={orderNumber:'#10042',status:'ny',paymentStatus:'pending',orderType:'takeaway',estimatedReadyTime:new Date(Date.now()+3600000).toISOString()};
   await page.route(`**/api/orders/${id}`,route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(status)}));
   await page.goto(`/status?orderId=${id}`);
@@ -59,6 +60,22 @@ test('status presentation preserves unpaid, delivery and terminal states without
   status={...status,status:'levererad'};
   await page.reload();
   await expect(page.getByRole('heading',{name:'Beställningen är levererad'})).toBeVisible();
+});
+
+test('a tokenless legacy status link stays local and shows staffed help',async({page})=>{
+  const id='9f0e4b27-30f1-4eee-9f18-004766114444';
+  let statusRequests=0;
+  page.on('request',request=>{
+    if (request.url().endsWith(`/api/orders/${id}`)) statusRequests++;
+  });
+  await page.goto(`/status?orderId=${id}&session_id=cs_legacy_browser`);
+  await expect(page.getByRole('heading',{name:'Orderstatus kan inte visas här'})).toBeVisible();
+  await expect(page.getByText('inga order- eller betalningsuppgifter',{exact:false})).toBeVisible();
+  const statusCard=page.locator('.status-card');
+  await expect(statusCard.getByRole('link',{name:'072-868 25 92'})).toBeVisible();
+  await expect(statusCard.getByRole('link',{name:'Mormorskunafa@gmail.com'})).toBeVisible();
+  await page.waitForTimeout(200);
+  expect(statusRequests).toBe(0);
 });
 
 test('custom piece products keep the unit price when cart quantity changes', async ({page}) => {
@@ -83,9 +100,157 @@ test('custom piece products keep the unit price when cart quantity changes', asy
   await page.getByRole('button',{name:'Gå till betalning'}).click();
   const response = await created;
   expect(response.status()).toBe(201);
-  expect(response.request().postDataJSON().items).toEqual([{productId:'65a74ec3-afd2-4c49-a8a1-ea3d87d4255c',variantId:'st',quantity:4}]);
+  expect(response.request().headers()['x-checkout-contract']).toBe('order-v2');
+  expect(response.request().postDataJSON().items).toEqual([{
+    productId:'65a74ec3-afd2-4c49-a8a1-ea3d87d4255c-st',
+    variantId:'st',
+    productName:'Syntetiskt bröd',
+    price:4500,
+    quantity:4,
+  }]);
+  expect((await response.json()).checkoutContract).toBe('order-v2');
   expect((await response.json()).totalPrice).toBe(18000);
   await expect(page).toHaveURL(/\/status\?orderId=/);
+});
+
+test('an upgrade rejection keeps the cart and never starts payment automatically',async({page})=>{
+  let creates=0, paymentStarts=0;
+  await page.route('**/api/orders',route=>{
+    if (route.request().method() !== 'POST') return route.continue();
+    creates++;
+    expect(route.request().headers()['x-checkout-contract']).toBe('order-v2');
+    return route.fulfill({status:426,contentType:'application/json',body:JSON.stringify({
+      code:'CLIENT_UPGRADE_REQUIRED',
+      error:'Den här sidan är inaktuell. Ladda om sidan innan du försöker igen.',
+    })});
+  });
+  await page.route('**/api/orders/checkout-session/**',route=>{
+    paymentStarts++;
+    return route.abort('blockedbyclient');
+  });
+
+  await page.goto('/');
+  await page.getByRole('button',{name:/Ta med/i}).first().click();
+  await page.getByRole('button',{name:/Höja/}).click();
+  await page.getByRole('button',{name:'Visa Syntetisk baklawa'}).click();
+  await page.locator('#menu-product-option').selectOption('250 gram');
+  await page.getByRole('button',{name:/Lägg till/i}).click();
+  await page.getByRole('button',{name:/VARUKORG/i}).click();
+  await page.locator('#customer-first-name').fill('Synthetic');
+  await page.locator('#customer-last-name').fill('Upgrade');
+  await page.locator('#customer-phone').fill('0700000002');
+  await page.locator('#cart-schedule-date').fill(new Date(Date.now()+86400000).toISOString().slice(0,10));
+  await page.getByRole('checkbox').check();
+  await page.getByRole('button',{name:'Gå till betalning'}).click();
+
+  await expect(page.getByText('Den här sidan är inaktuell.',{exact:false})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Ladda om sidan'})).toBeVisible();
+  await expect(page.locator('.cart-item')).toHaveCount(1);
+  await page.waitForTimeout(200);
+  expect(creates).toBe(1);
+  expect(paymentStarts).toBe(0);
+  expect(await page.evaluate(()=>sessionStorage.getItem('pending-checkout-create'))).toBeNull();
+  expect(await page.evaluate(()=>localStorage.getItem('mormors-kunafa-cart'))).toBeTruthy();
+});
+
+test('a committed order with a lost response cannot be created again after reload',async({page,context})=>{
+  const phone = test.info().project.name === 'desktop' ? '0700000004' : '0700000005';
+  let creates=0;
+  let committedOrderId='';
+  await page.route('**/api/orders',async route=>{
+    if (route.request().method() !== 'POST') return route.continue();
+    creates++;
+    const response=await route.fetch();
+    expect(response.status()).toBe(201);
+    committedOrderId=(await response.json()).id;
+    expect(committedOrderId).toMatch(/^[0-9a-f-]{36}$/);
+    await route.abort('failed');
+  });
+
+  await page.goto('/');
+  await page.getByRole('button',{name:/Ta med/i}).first().click();
+  await page.getByRole('button',{name:/Höja/}).click();
+  await page.getByRole('button',{name:'Visa Syntetisk baklawa'}).click();
+  await page.locator('#menu-product-option').selectOption('250 gram');
+  await page.getByRole('button',{name:/Lägg till/i}).click();
+  await page.getByRole('button',{name:/VARUKORG/i}).click();
+  await page.locator('#customer-first-name').fill('Synthetic');
+  await page.locator('#customer-last-name').fill('Lost create');
+  await page.locator('#customer-phone').fill(phone);
+  await page.locator('#cart-schedule-date').fill(new Date(Date.now()+86400000).toISOString().slice(0,10));
+  await page.getByRole('checkbox').check();
+  const checkoutButton=page.getByRole('button',{name:'Gå till betalning'});
+  await checkoutButton.click();
+
+  await expect(page.getByText('Betala eller beställ inte igen',{exact:false})).toBeVisible();
+  expect(creates).toBe(1);
+  const createMarker=await page.evaluate(()=>sessionStorage.getItem('pending-checkout-create'));
+  expect(createMarker).toBeTruthy();
+  expect(createMarker).not.toContain(phone);
+  expect(await page.evaluate(()=>sessionStorage.getItem('pending-checkout-order'))).toBeNull();
+
+  await page.reload();
+  await expect(page.locator('.cart-item')).toHaveCount(1);
+  await page.getByRole('button',{name:'Gå till betalning'}).click();
+  await expect(page.getByText('Betala eller beställ inte igen',{exact:false})).toBeVisible();
+  await page.waitForTimeout(200);
+  expect(creates).toBe(1);
+
+  const countResponse=await context.request.get(
+    `${origin}/__test/order-count?phone=${encodeURIComponent(phone)}`,
+    {headers:{'x-test-run':test.info().config.metadata.browserRunId}}
+  );
+  expect(countResponse.status()).toBe(200);
+  expect(await countResponse.json()).toEqual({count:1});
+  expect(committedOrderId).toBeTruthy();
+});
+
+test('a lost legacy payment response cannot be resubmitted',async({page})=>{
+  const legacyOrderId='9f0e4b27-30f1-4eee-9f18-004766115555';
+  let creates=0, paymentStarts=0;
+  await page.route('**/api/orders',route=>{
+    if (route.request().method() !== 'POST') return route.continue();
+    creates++;
+    const [line]=route.request().postDataJSON().items;
+    expect(line.productId).toMatch(/^[0-9a-f-]{36}-250 gram$/);
+    expect(line.productName).toContain('Syntetisk baklawa');
+    expect(line.price).toBe(9900);
+    return route.fulfill({status:201,contentType:'application/json',body:JSON.stringify({
+      id:legacyOrderId,
+      orderNumber:'#1042',
+    })});
+  });
+  await page.route(`**/api/orders/checkout-session/${legacyOrderId}`,route=>{
+    paymentStarts++;
+    expect(route.request().headers()['x-checkout-contract']).toBeUndefined();
+    expect(route.request().headers()['x-order-status-token']).toBeUndefined();
+    return route.abort('failed');
+  });
+
+  await page.goto('/');
+  await page.getByRole('button',{name:/Ta med/i}).first().click();
+  await page.getByRole('button',{name:/Höja/}).click();
+  await page.getByRole('button',{name:'Visa Syntetisk baklawa'}).click();
+  await page.locator('#menu-product-option').selectOption('250 gram');
+  await page.getByRole('button',{name:/Lägg till/i}).click();
+  await page.getByRole('button',{name:/VARUKORG/i}).click();
+  await page.locator('#customer-first-name').fill('Synthetic');
+  await page.locator('#customer-last-name').fill('Legacy');
+  await page.locator('#customer-phone').fill('0700000003');
+  await page.locator('#cart-schedule-date').fill(new Date(Date.now()+86400000).toISOString().slice(0,10));
+  await page.getByRole('checkbox').check();
+  const checkoutButton=page.getByRole('button',{name:'Gå till betalning'});
+  await checkoutButton.click();
+
+  await expect(page.getByText('Betala eller beställ inte igen',{exact:false})).toBeVisible();
+  await expect(page.locator('.cart-item')).toHaveCount(1);
+  await expect(checkoutButton).toBeEnabled();
+  expect({creates,paymentStarts}).toEqual({creates:1,paymentStarts:1});
+
+  await checkoutButton.click();
+  await page.waitForTimeout(200);
+  expect({creates,paymentStarts}).toEqual({creates:1,paymentStarts:1});
+  expect(await page.evaluate(()=>localStorage.getItem('mormors-kunafa-cart'))).toBeTruthy();
 });
 
 test('admin cookie login, current dashboard and logout', async ({page,context})=> {

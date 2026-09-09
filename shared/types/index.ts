@@ -179,10 +179,15 @@ export interface OrderItem {
   modifications?: string[]; // ingredient additions/removals
 }
 
-/** Minimal client input. Names and prices are always resolved by the backend. */
+/**
+ * Names/prices are carried only so the bridge web remains readable by locked
+ * main. The current backend always resolves both from its own catalog.
+ */
 export interface CreateOrderItemRequest {
   productId: string;
   variantId?: string;
+  productName?: string;
+  price?: number;
   quantity: number;
 }
 

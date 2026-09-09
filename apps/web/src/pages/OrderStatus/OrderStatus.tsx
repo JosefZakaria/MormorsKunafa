@@ -4,7 +4,7 @@ import type { OrderStatus as OrderStatusValue, PublicOrderStatus } from '@shared
 import { parseApiTimestamp } from '@shared/utils/parseApiTimestamp';
 import { orderStatusPresentation } from '@shared/utils/orderStatusPresentation';
 import { Container } from '../../components/common/Container/Container';
-import { orderApi } from '../../services/api';
+import { hasOrderStatusToken, orderApi } from '../../services/api';
 import './OrderStatus.css';
 
 const STATUS_STEPS: OrderStatusValue[] = ['ny', 'påbörjad', 'klar'];
@@ -34,14 +34,19 @@ export const OrderStatus: React.FC = () => {
   const navigate = useNavigate();
   const orderId = searchParams.get('orderId');
   const stripeSessionId = searchParams.get('session_id');
+  const hasStatusAccess = orderId ? hasOrderStatusToken(orderId) : false;
   const [order, setOrder] = useState<PublicOrderStatus | null>(null);
   const [countdown, setCountdown] = useState('--:--');
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(hasStatusAccess);
 
   useEffect(() => {
     if (!orderId) {
       setError('Inget order-ID hittades.');
+      setLoading(false);
+      return;
+    }
+    if (!hasStatusAccess) {
       setLoading(false);
       return;
     }
@@ -84,7 +89,7 @@ export const OrderStatus: React.FC = () => {
       cancelled = true;
       window.clearInterval(pollId);
     };
-  }, [orderId, stripeSessionId]);
+  }, [hasStatusAccess, orderId, stripeSessionId]);
 
   useEffect(() => {
     if (!order?.estimatedReadyTime) return;
@@ -98,6 +103,29 @@ export const OrderStatus: React.FC = () => {
 
   if (loading) {
     return <div className="status-page"><Container><p>Hämtar beställningsstatus…</p></Container></div>;
+  }
+  if (orderId && !hasStatusAccess) {
+    return (
+      <div className="status-page">
+        <Container className="status-container">
+          <div className="status-card status--on-time">
+            <h1 className="text-display-md status-title">Orderstatus kan inte visas här</h1>
+            <p className="text-center status-message">
+              Länken saknar den säkra behörighet som krävs. Därför visas inga order-
+              eller betalningsuppgifter. Betala eller beställ inte igen innan personalen
+              har kontrollerat beställningen.
+            </p>
+            <p className="text-center status-message">
+              Ring <a href="tel:+46728682592">072-868 25 92</a> eller mejla{' '}
+              <a href="mailto:Mormorskunafa@gmail.com">Mormorskunafa@gmail.com</a>.
+            </p>
+            <button type="button" className="status-back-btn" onClick={() => navigate('/')}>
+              Tillbaka till startsidan
+            </button>
+          </div>
+        </Container>
+      </div>
+    );
   }
   if (error || !order) {
     return (

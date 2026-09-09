@@ -1,7 +1,7 @@
 # Browser storage register
 
 Policy version: 1  
-Last code review: 2026-08-19
+Last code review: 2026-09-09
 
 The public application does not load analytics, advertising tags, remote fonts
 or embedded maps. Google Maps is an ordinary external link activated by the
@@ -32,9 +32,18 @@ IPv4 address and a bounded device identifier.
 | `locationId` | Carry the selected bakery into checkout and filter stock | Current browser tab |
 | `locationSlug` | Preserve the selected bakery label for navigation | Current browser tab |
 | `order-status-token:<order UUID>` | Authorize access to the matching customer's minimized order status | Current browser tab; server token expires after seven days and is revocable |
+| `pending-checkout-create` | Record a non-PII idempotency key before order creation so an ambiguous response cannot lead to a second order | Current browser tab; rejected after 24 hours and removed only after a validated order response or a definitive pre-write upgrade rejection |
+| `pending-checkout-order` | Preserve the non-PII order ID, payment method, backend-contract generation and whether payment initiation started, so a lost response cannot create a second order/payment automatically | Current browser tab; rejected after 24 hours and deleted after a safe redirect/confirmed payment |
 
 The legacy `deliveryInfo`, `authToken` and `adminInfo` keys are removed and are
 never written by the current application.
+
+The pending checkout records contain no name, contact data, address, cart
+contents or price. `pending-checkout-create` contains only a random idempotency
+key and timestamp. Malformed, future-dated and expired values are deleted on
+read. An order creation with an ambiguous response and a legacy payment whose
+response was lost are not resubmitted; the customer is sent to the staffed
+reconciliation path instead.
 
 ## Strictly necessary admin cookies
 

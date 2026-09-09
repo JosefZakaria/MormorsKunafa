@@ -82,6 +82,8 @@ import {
   OrderIdempotencyError,
   type OrderIdempotencyContext,
 } from '../middleware/orderIdempotency.js';
+import { requireCurrentCheckoutContract } from '../middleware/checkoutContract.js';
+import { CHECKOUT_CONTRACT_VERSION } from '../shared/constants/checkoutContract.js';
 
 const orderLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000, // 15 min window
@@ -150,7 +152,7 @@ for (const parameter of ['id', 'orderId']) {
   });
 }
 
-router.use('/swish-payment', swishPaymentRouter);
+router.use('/swish-payment', requireCurrentCheckoutContract, swishPaymentRouter);
 
 const ACTIVE_STATUSES = ['mottagen', 'påbörjad'] as const;
 
@@ -191,7 +193,7 @@ async function assertOrderVisible(req: Request, res: Response, order: Row): Prom
 }
 
 // Create order (public)
-router.post('/', orderLimiter, orderContactLimiter, async (req: Request, res: Response) => {
+router.post('/', requireCurrentCheckoutContract, orderLimiter, orderContactLimiter, async (req: Request, res: Response) => {
   let idempotencyContext: OrderIdempotencyContext | undefined;
   let orderPersisted = false;
   try {
@@ -401,6 +403,7 @@ router.post('/', orderLimiter, orderContactLimiter, async (req: Request, res: Re
 
     const responseBody = {
       ...orderRowToOrder(result.order, result.items),
+      checkoutContract: CHECKOUT_CONTRACT_VERSION,
       statusToken: statusAccess.token,
     };
     try {
@@ -438,7 +441,7 @@ router.post('/', orderLimiter, orderContactLimiter, async (req: Request, res: Re
 });
 
 // Stripe Checkout: start payment for an existing order (must be before GET /:id)
-router.post('/checkout-session/:orderId', checkoutLimiter, async (req: Request, res: Response) => {
+router.post('/checkout-session/:orderId', requireCurrentCheckoutContract, checkoutLimiter, async (req: Request, res: Response) => {
   try {
     let stripe;
     try {
@@ -571,7 +574,7 @@ router.post('/checkout-session/:orderId', checkoutLimiter, async (req: Request, 
 });
 
 /** Confirm card payment after Stripe redirect (backup when webhook is slow/missing). */
-router.post('/stripe-confirm', paymentConfirmLimiter, async (req: Request, res: Response) => {
+router.post('/stripe-confirm', requireCurrentCheckoutContract, paymentConfirmLimiter, async (req: Request, res: Response) => {
   try {
     const orderId = String(req.body?.orderId ?? '').trim();
     const sessionId = String(req.body?.sessionId ?? '').trim();

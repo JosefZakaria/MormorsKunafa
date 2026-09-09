@@ -5,6 +5,7 @@ import { withTestDatabase } from './lib/local-test-database.mjs';
 import { initializeSyntheticDatabase, createSyntheticApp, HOJA, MOLLEVANGEN, PRODUCT, TEST_PASSWORD, literal } from './lib/synthetic-api.mjs';
 
 const nativeFetch = globalThis.fetch;
+const checkoutContractHeader = {'X-Checkout-Contract':'order-v2'};
 await withTestDatabase(async db => {
   await initializeSyntheticDatabase(db);
   const { app, sessions, stripe, refunds, faults, expireRefundKeys } = await createSyntheticApp(db);
@@ -23,18 +24,28 @@ await withTestDatabase(async db => {
     customerInfo:{name:'Synthetic Test',phone:'+46700000000',email:'buyer@example.test'} };
   let customerNumber = 1;
   const newOrder = body => call('/api/orders',{...body, customerInfo:{...body.customerInfo,
-    phone:'+4670000'+String(customerNumber++).padStart(4,'0'), email:`buyer${customerNumber}@example.test`}}, {'Idempotency-Key':randomUUID()});
+    phone:'+4670000'+String(customerNumber++).padStart(4,'0'), email:`buyer${customerNumber}@example.test`}},
+    {...checkoutContractHeader,'Idempotency-Key':randomUUID()});
   try {
+    const orderCountBeforeStaleClients = await db.sql('SELECT count(*) FROM orders');
+    for (let attempt=0; attempt<16; attempt++) {
+      const stale = await call('/api/orders',orderBody,{'Idempotency-Key':randomUUID()});
+      assert.equal(stale.status,426,JSON.stringify(stale.data));
+      assert.equal(stale.data.code,'CLIENT_UPGRADE_REQUIRED');
+      assert.match(stale.headers.get('cache-control'),/private.*no-store/);
+    }
+    assert.equal(await db.sql('SELECT count(*) FROM orders'),orderCountBeforeStaleClients);
     const key = randomUUID();
-    const first = await call('/api/orders',orderBody,{'Idempotency-Key':key});
+    const first = await call('/api/orders',orderBody,{...checkoutContractHeader,'Idempotency-Key':key});
     assert.equal(first.status,201,JSON.stringify(first.data));
+    assert.equal(first.data.checkoutContract,'order-v2');
     const id = first.data.id, token = first.data.statusToken;
     assert.equal(await db.sql(`SELECT total_ore FROM orders WHERE id='${id}'`),'19800');
     assert.equal(first.data.locationId,HOJA);
-    const replay = await call('/api/orders',orderBody,{'Idempotency-Key':key});
+    const replay = await call('/api/orders',orderBody,{...checkoutContractHeader,'Idempotency-Key':key});
     assert.equal(replay.data.id,id);
     assert.equal((await call(`/api/orders/${id}`)).status,401);
-    const tokenHeader = {'x-order-status-token':token};
+    const tokenHeader = {...checkoutContractHeader,'x-order-status-token':token};
     const status = await call(`/api/orders/${id}`,undefined,tokenHeader);
     assert.equal(status.status,200,JSON.stringify(status.data));
     for (const privateField of ['customerInfo','customerPhone','customerEmail','items','deliveryInfo']) assert(!(privateField in status.data));
@@ -43,6 +54,12 @@ await withTestDatabase(async db => {
     assert.equal(status.data.locationId,HOJA);
     assert.equal(status.data.orderType,'takeaway');
     assert.equal(status.data.scheduledTime,new Date(await db.sql(`SELECT scheduled_at FROM orders WHERE id='${id}'`)).toISOString());
+    for (let attempt=0; attempt<11; attempt++) {
+      const stale = await call(`/api/orders/checkout-session/${id}`,{}, {'x-order-status-token':token});
+      assert.equal(stale.status,426);
+      assert.equal(stale.data.code,'CLIENT_UPGRADE_REQUIRED');
+    }
+    assert.equal(sessions.size,0,'Stale checkout clients must not reach Stripe');
     const parallel = await Promise.all([call(`/api/orders/checkout-session/${id}`,{},tokenHeader),call(`/api/orders/checkout-session/${id}`,{},tokenHeader)]);
     assert.equal(parallel[0].status,200,JSON.stringify(parallel[0].data));
     assert.equal(parallel[0].data.url,parallel[1].data.url);
@@ -119,7 +136,7 @@ await withTestDatabase(async db => {
     assert.equal((await call(`/api/orders/admin/${id}/cancel`,cancelBody,ownerHeaders)).status,409);
     const pending=await newOrder(orderBody);
     assert.equal(pending.status,201);
-    const pendingId=pending.data.id, pendingHeader={'x-order-status-token':pending.data.statusToken};
+    const pendingId=pending.data.id, pendingHeader={...checkoutContractHeader,'x-order-status-token':pending.data.statusToken};
     for (const method of ['card','app','swish']) {
       await db.sql(`UPDATE orders SET payment_method='${method}' WHERE id='${pendingId}'`);
       assert.equal((await call(`/api/orders/admin/${pendingId}/cancel`,cancelBody,ownerHeaders)).status,409);

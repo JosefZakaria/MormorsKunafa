@@ -4,7 +4,12 @@ import {
 } from '../shared/constants/productPricing.js';
 import { supabase, type Row, logSupabaseError } from '../db/connection.js';
 import { sanitizeProductName } from '../utils/sanitizeProductName.js';
-import { parseVariantPricesInput, variantPricesForProduct } from '../utils/productPrices.js';
+import {
+  parseVariantPricesInput,
+  resolveLineOption,
+  variantPricesForProduct,
+} from '../utils/productPrices.js';
+import { resolveProductIdFromLineId } from '../utils/resolveProductId.js';
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -33,7 +38,7 @@ export class OrderValidationError extends Error {
   }
 }
 
-function validateInputs(items: unknown): Array<{
+export function validateOrderItemInputs(items: unknown): Array<{
   productId: string;
   variantId?: string;
   quantity: number;
@@ -48,11 +53,21 @@ function validateInputs(items: unknown): Array<{
       throw new OrderValidationError(`Orderrad ${index + 1} är ogiltig.`);
     }
     const input = raw as OrderItemInput;
-    const productId = typeof input.productId === 'string' ? input.productId.trim().toLowerCase() : '';
-    const variantId = typeof input.variantId === 'string' ? input.variantId.trim() : undefined;
+    const lineProductId = typeof input.productId === 'string' ? input.productId.trim() : '';
+    if (lineProductId.length > 117) {
+      throw new OrderValidationError(`Orderrad ${index + 1} har ett för långt produkt-ID.`);
+    }
+    const productId = resolveProductIdFromLineId(lineProductId);
+    const encodedVariantId = resolveLineOption(lineProductId) ?? undefined;
+    const explicitVariantId = typeof input.variantId === 'string' ? input.variantId.trim() : undefined;
     const quantity = input.quantity;
 
-    if (!UUID_PATTERN.test(productId)) {
+    const suffix = productId ? lineProductId.slice(productId.length) : '';
+    if (
+      !productId
+      || !UUID_PATTERN.test(productId)
+      || (suffix !== '' && (!suffix.startsWith('-') || !encodedVariantId))
+    ) {
       throw new OrderValidationError(`Orderrad ${index + 1} har ett ogiltigt produkt-ID.`);
     }
     if (!Number.isInteger(quantity) || Number(quantity) < 1 || Number(quantity) > MAX_QUANTITY_PER_LINE) {
@@ -60,9 +75,13 @@ function validateInputs(items: unknown): Array<{
         `Antalet på orderrad ${index + 1} måste vara ett heltal mellan 1 och ${MAX_QUANTITY_PER_LINE}.`
       );
     }
-    if (variantId && variantId.length > 80) {
+    if ((encodedVariantId?.length ?? 0) > 80 || (explicitVariantId?.length ?? 0) > 80) {
       throw new OrderValidationError(`Variant-ID på orderrad ${index + 1} är för långt.`);
     }
+    if (encodedVariantId && explicitVariantId && encodedVariantId !== explicitVariantId) {
+      throw new OrderValidationError(`Orderrad ${index + 1} har motstridiga varianter.`);
+    }
+    const variantId = explicitVariantId || encodedVariantId;
 
     totalQuantity += Number(quantity);
     return { productId, variantId: variantId || undefined, quantity: Number(quantity) };
@@ -75,7 +94,7 @@ function validateInputs(items: unknown): Array<{
 }
 
 export function priceValidatedProductRows(
-  inputs: ReturnType<typeof validateInputs>,
+  inputs: ReturnType<typeof validateOrderItemInputs>,
   productRows: Row[]
 ): ServerPricedOrderLine[] {
   const rowsById = new Map(productRows.map((row) => [String(row.id).toLowerCase(), row]));
@@ -145,7 +164,7 @@ export function priceValidatedProductRows(
 }
 
 export async function buildServerPricedOrderLines(items: unknown): Promise<ServerPricedOrderLine[]> {
-  const inputs = validateInputs(items);
+  const inputs = validateOrderItemInputs(items);
   const productIds = [...new Set(inputs.map((item) => item.productId))];
   const { data, error } = await supabase
     .from('products')

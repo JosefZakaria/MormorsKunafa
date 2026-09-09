@@ -16,7 +16,14 @@ import type {
   PaymentSecurityAlert,
   DuplicatePaymentAlertDetail,
   VerifiedFoodInformationUpdate,
+  CheckoutPaymentChoice,
 } from '@shared/types';
+import {
+  CHECKOUT_CONTRACT_HEADER,
+  CHECKOUT_CONTRACT_VERSION,
+  isOrderStatusCapability,
+  type CheckoutBackendContract,
+} from '@shared/constants/checkoutContract';
 
 const adminRequest = apiRequest;
 
@@ -36,15 +43,162 @@ async function authenticatedRequest<T>(
 }
 
 const orderStatusTokenKey = (orderId: string): string => `order-status-token:${orderId}`;
+const pendingCheckoutKey = 'pending-checkout-order';
+const pendingCheckoutCreateKey = 'pending-checkout-create';
+const pendingCheckoutLifetimeMs = 24 * 60 * 60 * 1000;
+const UUID_V4_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export type PendingCheckoutOrder = {
+  orderId: string;
+  paymentMethod: CheckoutPaymentChoice;
+  contract: CheckoutBackendContract;
+  paymentStarted: boolean;
+  createdAt: number;
+};
+
+export type PendingCheckoutCreateAttempt = {
+  idempotencyKey: string;
+  createdAt: number;
+};
+
+function hasValidPendingTimestamp(createdAt: unknown): createdAt is number {
+  return typeof createdAt === 'number'
+    && Number.isSafeInteger(createdAt)
+    && createdAt <= Date.now() + 5 * 60 * 1000
+    && createdAt > Date.now() - pendingCheckoutLifetimeMs;
+}
+
+function isPendingCheckoutOrder(value: unknown): value is PendingCheckoutOrder {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const candidate = value as Partial<PendingCheckoutOrder>;
+  return typeof candidate.orderId === 'string'
+    && UUID_V4_PATTERN.test(candidate.orderId)
+    && (candidate.paymentMethod === 'card' || candidate.paymentMethod === 'swish')
+    && ['current', 'legacy', 'unknown'].includes(String(candidate.contract))
+    && typeof candidate.paymentStarted === 'boolean'
+    && hasValidPendingTimestamp(candidate.createdAt);
+}
+
+function isPendingCheckoutCreateAttempt(value: unknown): value is PendingCheckoutCreateAttempt {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const candidate = value as Partial<PendingCheckoutCreateAttempt>;
+  return typeof candidate.idempotencyKey === 'string'
+    && UUID_V4_PATTERN.test(candidate.idempotencyKey)
+    && hasValidPendingTimestamp(candidate.createdAt);
+}
+
+export function readPendingCheckoutCreateAttempt(): PendingCheckoutCreateAttempt | null {
+  const raw = sessionStorage.getItem(pendingCheckoutCreateKey);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (isPendingCheckoutCreateAttempt(parsed)) return parsed;
+  } catch {
+    // Remove malformed state below.
+  }
+  sessionStorage.removeItem(pendingCheckoutCreateKey);
+  return null;
+}
+
+export function storePendingCheckoutCreateAttempt(
+  idempotencyKey: string
+): PendingCheckoutCreateAttempt {
+  if (!UUID_V4_PATTERN.test(idempotencyKey)) {
+    throw new Error('Beställningsförsöket har en ogiltig identifierare. Ingen beställning skickades.');
+  }
+  const pending: PendingCheckoutCreateAttempt = {
+    idempotencyKey,
+    createdAt: Date.now(),
+  };
+  try {
+    sessionStorage.setItem(pendingCheckoutCreateKey, JSON.stringify(pending));
+  } catch {
+    throw new Error('Beställningsförsöket kunde inte bevaras lokalt. Ingen beställning skickades.');
+  }
+  return pending;
+}
+
+export function clearPendingCheckoutCreateAttempt(idempotencyKey?: string): void {
+  if (idempotencyKey) {
+    const pending = readPendingCheckoutCreateAttempt();
+    if (pending?.idempotencyKey !== idempotencyKey) return;
+  }
+  sessionStorage.removeItem(pendingCheckoutCreateKey);
+}
+
+export function readPendingCheckoutOrder(): PendingCheckoutOrder | null {
+  const raw = sessionStorage.getItem(pendingCheckoutKey);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (isPendingCheckoutOrder(parsed)) return parsed;
+  } catch {
+    // Remove malformed state below.
+  }
+  sessionStorage.removeItem(pendingCheckoutKey);
+  return null;
+}
+
+export function storePendingCheckoutOrder(
+  orderId: string,
+  paymentMethod: CheckoutPaymentChoice,
+  contract: CheckoutBackendContract
+): PendingCheckoutOrder {
+  if (!UUID_V4_PATTERN.test(orderId)) throw new Error('Order response has an invalid identifier');
+  const pending: PendingCheckoutOrder = {
+    orderId,
+    paymentMethod,
+    contract,
+    paymentStarted: false,
+    createdAt: Date.now(),
+  };
+  sessionStorage.setItem(pendingCheckoutKey, JSON.stringify(pending));
+  return pending;
+}
+
+export function markPendingCheckoutPaymentStarted(orderId: string): PendingCheckoutOrder | null {
+  const pending = readPendingCheckoutOrder();
+  if (!pending || pending.orderId !== orderId) return null;
+  const next = { ...pending, paymentStarted: true };
+  sessionStorage.setItem(pendingCheckoutKey, JSON.stringify(next));
+  return next;
+}
+
+export function clearPendingCheckoutOrder(orderId: string): void {
+  const pending = readPendingCheckoutOrder();
+  if (pending?.orderId === orderId) sessionStorage.removeItem(pendingCheckoutKey);
+}
 
 export function storeOrderStatusToken(orderId: string, token: string): void {
+  if (!UUID_V4_PATTERN.test(orderId) || !isOrderStatusCapability(token)) {
+    throw new Error('Order response has an invalid status capability');
+  }
   sessionStorage.setItem(orderStatusTokenKey(orderId), token);
+}
+
+export function hasOrderStatusToken(orderId: string): boolean {
+  if (!UUID_V4_PATTERN.test(orderId)) return false;
+  return isOrderStatusCapability(sessionStorage.getItem(orderStatusTokenKey(orderId)));
 }
 
 function orderStatusHeaders(orderId: string): Record<string, string> {
   const token = sessionStorage.getItem(orderStatusTokenKey(orderId));
-  if (!token) throw new Error('Order status token is missing');
+  if (!isOrderStatusCapability(token)) throw new Error('Order status token is missing');
   return { 'X-Order-Status-Token': token };
+}
+
+function currentCheckoutHeaders(): Record<string, string> {
+  return { [CHECKOUT_CONTRACT_HEADER]: CHECKOUT_CONTRACT_VERSION };
+}
+
+function paymentMutationHeaders(
+  orderId: string,
+  contract: Exclude<CheckoutBackendContract, 'unknown'>
+): Record<string, string> {
+  return contract === 'current'
+    ? { ...currentCheckoutHeaders(), ...orderStatusHeaders(orderId) }
+    : {};
 }
 
 // Products API
@@ -161,18 +315,24 @@ export const locationApi = {
 
 // Orders API
 export const orderApi = {
-  create: async (data: CreateOrderRequest, idempotencyKey: string): Promise<Order & { statusToken: string }> => {
-    return apiRequest<Order & { statusToken: string }>('/orders', {
+  create: async (data: CreateOrderRequest, idempotencyKey: string): Promise<Order & {
+    checkoutContract?: string;
+    statusToken?: string;
+  }> => {
+    return apiRequest('/orders', {
       method: 'POST',
-      headers: { 'Idempotency-Key': idempotencyKey },
+      headers: { ...currentCheckoutHeaders(), 'Idempotency-Key': idempotencyKey },
       body: JSON.stringify(data),
     });
   },
 
-  createCheckoutSession: async (orderId: string): Promise<{ url: string }> => {
+  createCheckoutSession: async (
+    orderId: string,
+    contract: Exclude<CheckoutBackendContract, 'unknown'>
+  ): Promise<{ url: string }> => {
     return apiRequest<{ url: string }>(`/orders/checkout-session/${orderId}`, {
       method: 'POST',
-      headers: orderStatusHeaders(orderId),
+      headers: paymentMutationHeaders(orderId, contract),
     });
   },
 
@@ -180,12 +340,15 @@ export const orderApi = {
   confirmStripeCheckout: async (orderId: string, sessionId: string): Promise<PublicOrderStatus> => {
     return apiRequest<PublicOrderStatus>('/orders/stripe-confirm', {
       method: 'POST',
-      headers: orderStatusHeaders(orderId),
+      headers: paymentMutationHeaders(orderId, 'current'),
       body: JSON.stringify({ orderId, sessionId }),
     });
   },
 
-  createSwishPayment: async (orderId: string): Promise<{
+  createSwishPayment: async (
+    orderId: string,
+    contract: Exclude<CheckoutBackendContract, 'unknown'>
+  ): Promise<{
     instructionId: string;
     status: string;
     paymentPageUrl?: string;
@@ -194,19 +357,20 @@ export const orderApi = {
   }> => {
     return apiRequest(`/orders/swish-payment/${orderId}`, {
       method: 'POST',
-      headers: orderStatusHeaders(orderId),
+      headers: paymentMutationHeaders(orderId, contract),
     });
   },
 
   getSwishPaymentStatus: async (
-    orderId: string
+    orderId: string,
+    contract: Exclude<CheckoutBackendContract, 'unknown'>
   ): Promise<{
     paymentStatus: string;
     swishStatus: string | null;
     paymentPageUrl?: string;
   }> => {
     return apiRequest(`/orders/swish-payment/${orderId}/status`, {
-      headers: orderStatusHeaders(orderId),
+      headers: paymentMutationHeaders(orderId, contract),
     });
   },
 

@@ -1,13 +1,24 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Container } from '../../components/common/Container/Container';
-import { orderApi } from '../../services/api';
+import {
+  clearPendingCheckoutOrder,
+  markPendingCheckoutPaymentStarted,
+  orderApi,
+  readPendingCheckoutOrder,
+} from '../../services/api';
 import { safePaymentRedirectUrl } from '@shared/utils/paymentRedirect.ts';
+import { useCart } from '../../contexts/CartContext';
+import { removePersistentValue, STORAGE_KEYS } from '../../utils/browserStorage';
 import './SwishPay.css';
+
+const SWISH_RECONCILIATION_MESSAGE =
+  'En beställning kan redan ha skapats. Betala eller beställ inte igen innan personalen har kontrollerat den. Ring 072-868 25 92 eller mejla Mormorskunafa@gmail.com.';
 
 export const SwishPay: React.FC = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { clearCart } = useCart();
   const orderId = searchParams.get('orderId');
 
   const [error, setError] = useState<string | null>(null);
@@ -26,13 +37,40 @@ export const SwishPay: React.FC = () => {
       setLoading(false);
       return;
     }
+    const pending = readPendingCheckoutOrder();
+    if (!pending || pending.orderId !== orderId || pending.paymentMethod !== 'swish') {
+      setError(SWISH_RECONCILIATION_MESSAGE);
+      setLoading(false);
+      return;
+    }
+    if (pending.contract === 'unknown') {
+      setError(SWISH_RECONCILIATION_MESSAGE);
+      setLoading(false);
+      return;
+    }
+    if (pending.contract === 'legacy' && pending.paymentStarted) {
+      setError(SWISH_RECONCILIATION_MESSAGE);
+      setLoading(false);
+      return;
+    }
+    const checkoutContract = pending.contract === 'current' ? 'current' : 'legacy';
 
     let cancelled = false;
 
     const start = async () => {
+      if (pending.paymentStarted) {
+        setLoading(false);
+        return;
+      }
       try {
-        const created = await orderApi.createSwishPayment(orderId);
+        if (!markPendingCheckoutPaymentStarted(orderId)) {
+          throw new Error('Beställningsförsöket kunde inte bevaras lokalt.');
+        }
+        const created = await orderApi.createSwishPayment(orderId, checkoutContract);
         if (cancelled) return;
+        if (!Number.isSafeInteger(created.amountOre) || created.amountOre <= 0) {
+          throw new Error('Swish returnerade ett ogiltigt belopp.');
+        }
         setOrderNumber(String(created.orderNumber ?? ''));
         setAmountKr(((created.amountOre ?? 0) / 100).toFixed(0));
         if (created.paymentPageUrl) {
@@ -40,14 +78,16 @@ export const SwishPay: React.FC = () => {
           if (!safeUrl) throw new Error('Swish returnerade en ogiltig betalningsadress.');
           setPaymentPageUrl(safeUrl);
         }
+        clearCart();
+        removePersistentValue(STORAGE_KEYS.cart);
         setLoading(false);
       } catch (err: unknown) {
         if (cancelled) return;
         const msg =
           err && typeof err === 'object' && 'data' in err
-            ? String((err as { data?: { error?: string } }).data?.error ?? 'Kunde inte starta Swish.')
-            : 'Kunde inte starta Swish.';
-        setError(msg);
+            ? String((err as { data?: { error?: string } }).data?.error ?? SWISH_RECONCILIATION_MESSAGE)
+            : SWISH_RECONCILIATION_MESSAGE;
+        setError(pending.contract === 'legacy' ? SWISH_RECONCILIATION_MESSAGE : msg);
         setLoading(false);
       }
     };
@@ -56,9 +96,12 @@ export const SwishPay: React.FC = () => {
 
     const poll = setInterval(async () => {
       try {
-        const st = await orderApi.getSwishPaymentStatus(orderId);
+        const st = await orderApi.getSwishPaymentStatus(orderId, checkoutContract);
         if (st.paymentStatus === 'paid') {
           clearInterval(poll);
+          clearPendingCheckoutOrder(orderId);
+          clearCart();
+          removePersistentValue(STORAGE_KEYS.cart);
           goToStatus();
         } else if (st.paymentPageUrl && !paymentPageUrl) {
           const safeUrl = safePaymentRedirectUrl(st.paymentPageUrl, 'swish');
@@ -73,7 +116,7 @@ export const SwishPay: React.FC = () => {
       cancelled = true;
       clearInterval(poll);
     };
-  }, [orderId, goToStatus]);
+  }, [goToStatus, orderId]);
 
   if (loading) {
     return (

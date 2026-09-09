@@ -6,7 +6,19 @@ import { Container } from '../../components/common/Container/Container';
 import { Button } from '../../components/common/Button/Button';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useCart } from '../../contexts/CartContext';
-import { orderApi, locationApi, storeOrderStatusToken } from '../../services/api';
+import {
+    clearPendingCheckoutCreateAttempt,
+    clearPendingCheckoutOrder,
+    locationApi,
+    markPendingCheckoutPaymentStarted,
+    orderApi,
+    readPendingCheckoutOrder,
+    readPendingCheckoutCreateAttempt,
+    storeOrderStatusToken,
+    storePendingCheckoutCreateAttempt,
+    storePendingCheckoutOrder,
+    type PendingCheckoutOrder,
+} from '../../services/api';
 import type { CheckoutPaymentChoice, CustomerInfo, Location, OrderType } from '@shared/types';
 import { DELIVERY_FEE_SEK } from '@shared/constants/delivery';
 import { cartItemToOrderLine } from '@shared/utils/cartOrderLine';
@@ -25,16 +37,23 @@ import {
     isStoreClosedNow,
 } from '@shared/utils/openingHours';
 import './Cart.css';
-import { LEGACY_STORAGE_KEYS, removePersistentValue } from '../../utils/browserStorage';
+import { LEGACY_STORAGE_KEYS, removePersistentValue, STORAGE_KEYS } from '../../utils/browserStorage';
 import {
     clearStoredLocation,
     getStoredLocationId,
     needsPickupLocation,
 } from '../../utils/selectedLocation';
 import { anyLocationAcceptsOrderType, locationAcceptsOrderType } from '../../utils/orderTypeAvailability';
+import {
+    classifyCheckoutCreateResponse,
+    CLIENT_UPGRADE_REQUIRED_CODE,
+    isOrderStatusCapability,
+} from '@shared/constants/checkoutContract';
 
 /** Set to true when Swish checkout is ready for customers. */
 const SWISH_CHECKOUT_ENABLED = false;
+const CREATED_ORDER_RECONCILIATION_MESSAGE =
+    'En beställning kan redan ha skapats, men betalningen kunde inte bekräftas säkert. Varukorgen är kvar. Betala eller beställ inte igen innan personalen har kontrollerat beställningen. Ring 072-868 25 92 eller mejla Mormorskunafa@gmail.com.';
 
 type OrderTypeFlags = {
     isPaused: boolean;
@@ -83,6 +102,7 @@ export const Cart: React.FC = () => {
     const { items, updateQuantity, removeItem, getTotal, clearCart } = useCart();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [upgradeRequired, setUpgradeRequired] = useState(false);
     const [pausedPopup, setPausedPopup] = useState<OrderType | 'all' | null>(null);
     const [orderTypeFlags, setOrderTypeFlags] = useState<OrderTypeFlags>(DEFAULT_ORDER_TYPE_FLAGS);
     const [acceptedTerms, setAcceptedTerms] = useState(false);
@@ -401,9 +421,90 @@ export const Cart: React.FC = () => {
         void handleCheckout(true);
     };
 
+    const showCheckoutFailure = (
+        err: unknown,
+        pending?: PendingCheckoutOrder | null,
+        hasUnresolvedCreateAttempt = false
+    ) => {
+        const apiData = err && typeof err === 'object' && 'data' in err
+            ? (err as { data?: { code?: unknown; error?: unknown } }).data
+            : undefined;
+        const status = err && typeof err === 'object' && 'status' in err
+            ? Number((err as { status?: unknown }).status)
+            : 0;
+        const message = typeof apiData?.error === 'string'
+            ? apiData.error
+            : err instanceof Error
+                ? err.message
+                : 'Kunde inte skapa beställning. Försök igen.';
+
+        if (apiData?.code === CLIENT_UPGRADE_REQUIRED_CODE || status === 426) {
+            setUpgradeRequired(true);
+            setError(message);
+        } else if (hasUnresolvedCreateAttempt) {
+            setError(CREATED_ORDER_RECONCILIATION_MESSAGE);
+        } else if (pending?.contract === 'legacy' || pending?.contract === 'unknown') {
+            setError(CREATED_ORDER_RECONCILIATION_MESSAGE);
+        } else if (pending) {
+            setError(`Beställningen är skapad men betalningen öppnades inte. Varukorgen är kvar. Klicka på ”Gå till betalning” för att återuppta samma betalningsförsök. ${message}`);
+        } else if (message.toLowerCase().includes('pausa') || status === 403) {
+            setPausedPopup(orderTypeFlags.isPaused || !orderType ? 'all' : orderType);
+        } else {
+            setError(message);
+        }
+        console.error('Checkout failed:', err);
+    };
+
+    const continuePendingCheckout = async (pending: PendingCheckoutOrder) => {
+        if (pending.contract === 'unknown') throw new Error(CREATED_ORDER_RECONCILIATION_MESSAGE);
+
+        if (pending.paymentMethod === 'swish') {
+            navigate(`/pay/swish?orderId=${encodeURIComponent(pending.orderId)}`);
+            return;
+        }
+        if (pending.contract === 'legacy' && pending.paymentStarted) {
+            throw new Error(CREATED_ORDER_RECONCILIATION_MESSAGE);
+        }
+
+        if (!markPendingCheckoutPaymentStarted(pending.orderId)) {
+            throw new Error('Beställningsförsöket kunde inte bevaras lokalt.');
+        }
+        const { url } = await orderApi.createCheckoutSession(pending.orderId, pending.contract);
+        const checkoutUrl = safePaymentRedirectUrl(url, 'stripe');
+        if (!checkoutUrl) throw new Error('Betaltjänsten returnerade en ogiltig adress.');
+
+        clearPendingCheckoutOrder(pending.orderId);
+        clearCart();
+        removePersistentValue(STORAGE_KEYS.cart);
+        window.location.assign(checkoutUrl);
+    };
+
     const handleCheckout = async (bypassClosedCheck = false) => {
         if (items.length === 0) {
             setError('Din varukorg är tom');
+            return;
+        }
+
+        const existingPending = readPendingCheckoutOrder();
+        if (existingPending) {
+            // The durable order record wins if a page close happened between the
+            // two storage operations that transition out of the create attempt.
+            clearPendingCheckoutCreateAttempt();
+            setIsSubmitting(true);
+            setError(null);
+            setUpgradeRequired(false);
+            try {
+                await continuePendingCheckout(existingPending);
+            } catch (err: unknown) {
+                showCheckoutFailure(err, existingPending);
+            } finally {
+                setIsSubmitting(false);
+            }
+            return;
+        }
+        if (readPendingCheckoutCreateAttempt()) {
+            setUpgradeRequired(false);
+            setError(CREATED_ORDER_RECONCILIATION_MESSAGE);
             return;
         }
         if (!orderType) {
@@ -470,12 +571,14 @@ export const Cart: React.FC = () => {
 
         setIsSubmitting(true);
         setError(null);
+        setUpgradeRequired(false);
         setOrderTypeError(null);
         setCustomerInfoError(null);
 
+        let createAttemptId: string | null = null;
         try {
-            // Only identifiers and quantity cross the trust boundary. The backend
-            // resolves product names, stock state and prices from its own catalog.
+            // Compatibility name/price fields keep this request readable by
+            // locked main. Current backends ignore them and price by identifier.
             const orderItems = items.map(cartItemToOrderLine);
 
             if (!customerInfo) {
@@ -517,32 +620,33 @@ export const Cart: React.FC = () => {
             if (!orderIdempotencyRef.current || orderIdempotencyRef.current.payload !== payload) {
                 orderIdempotencyRef.current = { payload, key: crypto.randomUUID() };
             }
+            const createAttempt = storePendingCheckoutCreateAttempt(orderIdempotencyRef.current.key);
+            createAttemptId = createAttempt.idempotencyKey;
             const order = await orderApi.create(orderRequest, orderIdempotencyRef.current.key);
-
-            storeOrderStatusToken(order.id, order.statusToken);
+            const contract = classifyCheckoutCreateResponse(order);
+            const pending = storePendingCheckoutOrder(order.id, paymentChoice, contract);
+            clearPendingCheckoutCreateAttempt(createAttempt.idempotencyKey);
             orderIdempotencyRef.current = null;
 
-            clearCart();
-
-            if (paymentChoice === 'card') {
-                const { url } = await orderApi.createCheckoutSession(order.id);
-                const checkoutUrl = safePaymentRedirectUrl(url, 'stripe');
-                if (!checkoutUrl) throw new Error('Betaltjänsten returnerade en ogiltig adress.');
-                window.location.assign(checkoutUrl);
-            } else {
-                navigate(`/pay/swish?orderId=${encodeURIComponent(order.id)}`);
+            if (contract === 'current' && isOrderStatusCapability(order.statusToken)) {
+                storeOrderStatusToken(order.id, order.statusToken);
             }
-        } catch (err: any) {
-            let errorMsg = err.message || 'Kunde inte skapa beställning. Försök igen.';
-            if (err.data && err.data.error) {
-                errorMsg = err.data.error;
+            await continuePendingCheckout(pending);
+        } catch (err: unknown) {
+            const pending = readPendingCheckoutOrder();
+            const apiData = err && typeof err === 'object' && 'data' in err
+                ? (err as { data?: { code?: unknown } }).data
+                : undefined;
+            const status = err && typeof err === 'object' && 'status' in err
+                ? Number((err as { status?: unknown }).status)
+                : 0;
+            const isDefinitiveUpgradeRejection =
+                apiData?.code === CLIENT_UPGRADE_REQUIRED_CODE || status === 426;
+            if (!pending && createAttemptId && isDefinitiveUpgradeRejection) {
+                clearPendingCheckoutCreateAttempt(createAttemptId);
+                orderIdempotencyRef.current = null;
             }
-            if (errorMsg.toLowerCase().includes('pausa') || err.status === 403) {
-                setPausedPopup(orderTypeFlags.isPaused || !orderType ? 'all' : orderType);
-            } else {
-                setError(errorMsg);
-            }
-            console.error('Error creating order:', err);
+            showCheckoutFailure(err, pending, Boolean(!pending && readPendingCheckoutCreateAttempt()));
         } finally {
             setIsSubmitting(false);
         }
@@ -588,7 +692,12 @@ export const Cart: React.FC = () => {
                         borderRadius: '8px',
                         marginBottom: '1rem'
                     }}>
-                        {error}
+                        <p>{error}</p>
+                        {upgradeRequired && (
+                            <button type="button" onClick={() => window.location.reload()}>
+                                Ladda om sidan
+                            </button>
+                        )}
                     </div>
                 )}
 

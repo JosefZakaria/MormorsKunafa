@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Row } from '../db/connection.js';
-import { OrderValidationError, priceValidatedProductRows } from './orderPricing.js';
+import {
+  OrderValidationError,
+  priceValidatedProductRows,
+  validateOrderItemInputs,
+} from './orderPricing.js';
 import { cartItemToOrderLine } from '../shared/utils/cartOrderLine.js';
 
 const pistachioId = '1ae3fd7a-0042-4220-b330-b27b3147a0a6';
@@ -68,15 +72,49 @@ test('current and cached per-piece carts preserve changed quantities using serve
   const row = product(id, { variant_prices: { st: 4500 } });
   for (const suffix of ['3 st', 'st']) {
     const input = cartItemToOrderLine({ productId: `${id}-${suffix}`, quantity: 4, price: 1, productName: 'FORGED' } as {productId:string;quantity:number});
-    assert.deepEqual(input, { productId:id, variantId:suffix, quantity:4 });
-    const line = priceValidatedProductRows([input], [row])[0];
+    assert.deepEqual(input, {
+      productId:`${id}-${suffix}`,
+      variantId:suffix,
+      productName:'FORGED',
+      price:1,
+      quantity:4,
+    });
+    const validated = validateOrderItemInputs([input]);
+    const line = priceValidatedProductRows(validated, [row])[0];
     assert.equal(line.priceOre * line.quantity, 18000);
     assert.equal(line.productNameSnapshot, 'Databasnamn - 4 st');
-    assert.throws(() => priceValidatedProductRows([input], [product(id)]), OrderValidationError);
+    assert.throws(() => priceValidatedProductRows(validated, [product(id)]), OrderValidationError);
   }
-  assert.deepEqual(cartItemToOrderLine({productId:`${pistachioId}-250 gram`,quantity:2}),{productId:pistachioId,variantId:'250 gram',quantity:2});
+  assert.deepEqual(
+    cartItemToOrderLine({productId:`${pistachioId}-250 gram`,quantity:2}),
+    {productId:`${pistachioId}-250 gram`,variantId:'250 gram',quantity:2}
+  );
   for (const variant_prices of [{ '3 st':12000,'6 st':22000 }, { st:4500,'3 st':12000 }]) {
     const input = cartItemToOrderLine({productId:`${id}-3 st`,quantity:1});
-    assert.equal(priceValidatedProductRows([input],[product(id,{variant_prices})])[0].priceOre,12000,'Preserve real bundle labels even when a st variant also exists');
+    assert.equal(priceValidatedProductRows(validateOrderItemInputs([input]),[product(id,{variant_prices})])[0].priceOre,12000,'Preserve real bundle labels even when a st variant also exists');
   }
+});
+
+test('canonicalizes the legacy composite id without trusting compatibility fields', () => {
+  const [input] = validateOrderItemInputs([{
+    productId: `${pistachioId}-250 gram`,
+    variantId: '250 gram',
+    productName: 'FORGED',
+    price: 1,
+    quantity: 2,
+  }]);
+  assert.deepEqual(input, { productId: pistachioId, variantId: '250 gram', quantity: 2 });
+  assert.equal(priceValidatedProductRows([input], [product(pistachioId)])[0].priceOre, 8900);
+});
+
+test('rejects conflicting or malformed composite variants', () => {
+  assert.throws(() => validateOrderItemInputs([{
+    productId: `${pistachioId}-250 gram`, variantId: '1 kg', quantity: 1,
+  }]), OrderValidationError);
+  assert.throws(() => validateOrderItemInputs([{
+    productId: `${pistachioId}-`, quantity: 1,
+  }]), OrderValidationError);
+  assert.throws(() => validateOrderItemInputs([{
+    productId: `${pistachioId}-${'x'.repeat(81)}`, quantity: 1,
+  }]), OrderValidationError);
 });

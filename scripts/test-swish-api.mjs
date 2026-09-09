@@ -5,6 +5,7 @@ import { initializeSyntheticDatabase, createSyntheticApp, HOJA, PRODUCT, literal
 import { verifySwishRefundRecovery } from './lib/test-swish-refunds.mjs';
 
 const nativeFetch = globalThis.fetch;
+const checkoutContractHeader = {'X-Checkout-Contract':'order-v2'};
 await withTestDatabase(async db => {
   await initializeSyntheticDatabase(db);
   const { app, swishMock: swish } = await createSyntheticApp(db, { swish:true });
@@ -22,9 +23,9 @@ await withTestDatabase(async db => {
     const result = await call('/api/orders',{items:[{productId:PRODUCT,variantId:'250 gram',quantity:2}],orderType:'takeaway',
       locationId:HOJA,paymentMethod:'swish',scheduledTime:new Date(Date.now()+86400000).toISOString().slice(0,10)+'T14:00',
       customerInfo:{name:'Synthetic Swish Buyer',phone:'07000000'+String(++number).padStart(2,'0'),email:'swish@example.test'}},
-      {'Idempotency-Key':randomUUID()});
+      {...checkoutContractHeader,'Idempotency-Key':randomUUID()});
     assert.equal(result.status,201,JSON.stringify(result));
-    const order=result.data, headers={'x-order-status-token':order.statusToken};
+    const order=result.data, headers={...checkoutContractHeader,'x-order-status-token':order.statusToken};
     return {order, start:()=>call(`/api/orders/swish-payment/${order.id}`,{},headers),
       status:()=>call(`/api/orders/swish-payment/${order.id}/status`,undefined,headers)};
   };
@@ -34,6 +35,13 @@ await withTestDatabase(async db => {
   const putCount = () => swish.calls.filter(call=>call.method==='PUT').length;
   try {
     const first=await create();
+    for (let attempt=0; attempt<11; attempt++) {
+      const stale=await call(`/api/orders/swish-payment/${first.order.id}`,{},
+        {'x-order-status-token':first.order.statusToken});
+      assert.equal(stale.status,426);
+      assert.equal(stale.data.code,'CLIENT_UPGRADE_REQUIRED');
+    }
+    assert.equal(putCount(),0,'Stale clients must not reach Swish or consume its limiter');
     const starts=await Promise.all([first.start(),first.start()]);
     assert(starts.every(result=>[200,409].includes(result.status)),JSON.stringify(starts));
     assert.equal(putCount(),1);

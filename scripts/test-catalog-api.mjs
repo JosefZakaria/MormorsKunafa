@@ -5,6 +5,7 @@ import { initializeSyntheticDatabase, createSyntheticApp, CUSTOM_BREAD, HOJA, MO
 import { verifyLargeStatistics } from './lib/test-large-statistics.mjs';
 
 const nativeFetch = globalThis.fetch;
+const checkoutContractHeader = {'X-Checkout-Contract':'order-v2'};
 await withTestDatabase(async db => {
   await initializeSyntheticDatabase(db);
   const { app } = await createSyntheticApp(db);
@@ -38,11 +39,11 @@ await withTestDatabase(async db => {
     const publicCatalog = await call('/api/products');
     assert(!publicCatalog.data.some(product=>product.id===PRODUCT));
     assert.equal((await call(`/api/products/${PRODUCT}`)).status,404);
-    const body = {items:[{productId:CUSTOM_BREAD,variantId:'st',quantity:4,price:1,name:'FORGED'}],
+    const body = {items:[{productId:`${CUSTOM_BREAD}-st`,variantId:'st',quantity:4,price:1,productName:'FORGED'}],
       orderType:'takeaway',locationId:HOJA,paymentMethod:'card',scheduledTime:new Date(Date.now()+86400000).toISOString().slice(0,10)+'T14:00',
       customerInfo:{name:'Synthetic Buyer',phone:'0700000021',email:'catalog@example.test'}};
     let n = 0;
-    const create = (overrides={}) => call('/api/orders',{...body,...overrides,customerInfo:{...body.customerInfo,phone:'07000000'+String(++n).padStart(2,'0')}},{'Idempotency-Key':randomUUID()});
+    const create = (overrides={}) => call('/api/orders',{...body,...overrides,customerInfo:{...body.customerInfo,phone:'07000000'+String(++n).padStart(2,'0')}},{...checkoutContractHeader,'Idempotency-Key':randomUUID()});
     const purchase = await create();
     assert.equal(purchase.status,201,JSON.stringify(purchase.data));
     assert.equal(await db.sql(`SELECT total_ore FROM orders WHERE id=${literal(purchase.data.id)}`),'20800');
@@ -57,7 +58,12 @@ await withTestDatabase(async db => {
     await db.sql(`UPDATE products SET variant_prices='{"st":5200}' WHERE id='${CUSTOM_BREAD}'`);
     assert.equal((await create({items:[{productId:CUSTOM_BREAD,variantId:'invented',quantity:4}]})).status,400);
     assert.equal((await create({locationId:undefined})).status,400,'Old tokenless/locationless checkout must fail closed');
-    assert.equal((await call('/api/orders',body)).status,400,'An old client without an idempotency key must not create an order');
+    const beforeStale = await db.sql('SELECT count(*) FROM orders');
+    const stale = await call('/api/orders',body,{'Idempotency-Key':randomUUID()});
+    assert.equal(stale.status,426,'A stale client must stop at the contract boundary');
+    assert.equal(stale.data.code,'CLIENT_UPGRADE_REQUIRED');
+    assert.equal(await db.sql('SELECT count(*) FROM orders'),beforeStale);
+    assert.equal((await call('/api/orders',body,checkoutContractHeader)).status,400,'The current contract still requires an idempotency key');
     const delivery = await create({orderType:'delivery',locationId:MOLLEVANGEN,deliveryFee:1,scheduledTime:body.scheduledTime,
       deliveryInfo:{address:'Syntetisk gata 1',postalCode:'12345',city:'Teststad'}});
     assert.equal(delivery.status,201,JSON.stringify(delivery.data));
