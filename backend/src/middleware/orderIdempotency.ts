@@ -8,8 +8,10 @@ type StoredRequest = {
   response?: unknown;
 };
 
-const PROCESSING_TTL_MS = 10 * 60 * 1000;
-const COMPLETE_TTL_MS = 24 * 60 * 60 * 1000;
+export const ORDER_IDEMPOTENCY_PROCESSING_TTL_SECONDS = 10 * 60;
+export const ORDER_IDEMPOTENCY_COMPLETE_TTL_SECONDS = 24 * 60 * 60;
+const PROCESSING_TTL_MS = ORDER_IDEMPOTENCY_PROCESSING_TTL_SECONDS * 1000;
+const COMPLETE_TTL_MS = ORDER_IDEMPOTENCY_COMPLETE_TTL_SECONDS * 1000;
 
 export type OrderIdempotencyContext = {
   storageKey: string;
@@ -79,7 +81,10 @@ export async function beginOrderIdempotency(
   let existing: StoredRequest | null = null;
   if (hasRedis()) {
     const redis = Redis.fromEnv();
-    acquired = (await redis.set(storageKey, processing, { nx: true, ex: 10 * 60 })) === 'OK';
+    acquired = (await redis.set(storageKey, processing, {
+      nx: true,
+      ex: ORDER_IDEMPOTENCY_PROCESSING_TTL_SECONDS,
+    })) === 'OK';
     if (!acquired) existing = await redis.get<StoredRequest>(storageKey);
   } else {
     existing = localRequests.get(storageKey) ?? null;
@@ -114,7 +119,7 @@ export async function completeOrderIdempotency(
   if (hasRedis()) {
     const stored = await Redis.fromEnv().set(context.storageKey, complete, {
       xx: true,
-      ex: 24 * 60 * 60,
+      ex: ORDER_IDEMPOTENCY_COMPLETE_TTL_SECONDS,
     });
     if (stored !== 'OK') {
       throw new Error('The order idempotency lock expired before completion');

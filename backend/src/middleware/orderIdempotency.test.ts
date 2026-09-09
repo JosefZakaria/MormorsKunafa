@@ -5,6 +5,8 @@ import {
   beginOrderIdempotency,
   completeOrderIdempotency,
   hashOrderPayload,
+  ORDER_IDEMPOTENCY_COMPLETE_TTL_SECONDS,
+  ORDER_IDEMPOTENCY_PROCESSING_TTL_SECONDS,
   parseOrderIdempotencyKey,
 } from './orderIdempotency.js';
 
@@ -38,6 +40,37 @@ test('replays a completed local request and rejects key reuse with new input', a
   await abandonOrderIdempotency(first.context);
 });
 
+test('retains the complete customer response and bearer status capability for exactly the declared TTL', async () => {
+  const key = 'sensitive-response-contract-0001';
+  const createdAt = 10_000;
+  const first = await beginOrderIdempotency(key, { order: 3 }, createdAt);
+  assert.equal(first.kind, 'acquired');
+  if (first.kind !== 'acquired') return;
+  assert(!first.context.storageKey.includes(key), 'Redis keys must not expose the raw idempotency key');
+
+  const completeResponse = {
+    id: 'order-3',
+    statusToken: 'synthetic-bearer-status-capability',
+    customerInfo: { name: 'Synthetic Customer', phone: '+46700000000' },
+    deliveryInfo: { address: 'Synthetic address' },
+  };
+  await completeOrderIdempotency(first.context, completeResponse, createdAt);
+  assert.deepEqual(await beginOrderIdempotency(key, { order: 3 }, createdAt), {
+    kind: 'replay',
+    response: completeResponse,
+  });
+  assert.equal((await beginOrderIdempotency(
+    key,
+    { order: 3 },
+    createdAt + ORDER_IDEMPOTENCY_COMPLETE_TTL_SECONDS * 1000 - 1
+  )).kind, 'replay');
+  assert.equal((await beginOrderIdempotency(
+    key,
+    { order: 3 },
+    createdAt + ORDER_IDEMPOTENCY_COMPLETE_TTL_SECONDS * 1000 + 1
+  )).kind, 'acquired');
+});
+
 test('expires local processing and completed entries like distributed storage', async () => {
   const processingKey = 'test-idempotency-expiry-processing';
   const first = await beginOrderIdempotency(processingKey, { order: 1 }, 1_000);
@@ -45,7 +78,7 @@ test('expires local processing and completed entries like distributed storage', 
   const afterProcessingTtl = await beginOrderIdempotency(
     processingKey,
     { order: 1 },
-    1_000 + 10 * 60 * 1_000 + 1
+    1_000 + ORDER_IDEMPOTENCY_PROCESSING_TTL_SECONDS * 1_000 + 1
   );
   assert.equal(afterProcessingTtl.kind, 'acquired');
   if (afterProcessingTtl.kind === 'acquired') {
@@ -60,7 +93,7 @@ test('expires local processing and completed entries like distributed storage', 
   const afterCompleteTtl = await beginOrderIdempotency(
     completedKey,
     { order: 2 },
-    2_000 + 24 * 60 * 60 * 1_000 + 1
+    2_000 + ORDER_IDEMPOTENCY_COMPLETE_TTL_SECONDS * 1_000 + 1
   );
   assert.equal(afterCompleteTtl.kind, 'acquired');
   if (afterCompleteTtl.kind === 'acquired') {
