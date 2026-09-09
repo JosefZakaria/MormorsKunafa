@@ -29,7 +29,10 @@ Never replace it with a customer-data dump.
 `npm run test:api` exercises real HTTP handlers and SQL through a deliberately
 small local PostgREST adapter. It covers server prices, checkout replay,
 payment confirmation, scoped access, CSRF, revocation and partial/full refund
-concurrency with a simulated lost provider response.
+concurrency with a simulated lost provider response. It also proves that older
+delete endpoints return 409 without removing accounting history, failed realtime
+or push dispatch cannot hide a paid order from the correctly scoped staff queue,
+and verified payments store the receipt VAT snapshot atomically.
 
 It also runs the catalogue/statistics suite (including 1007 paid orders and
 2014 lines), upload-denial checks and a separate Swish transport simulation.
@@ -51,14 +54,24 @@ file, and rejects external HTTP/HTTPS. Browser requests outside loopback are
 blocked; the hosted Stripe page is simulated. No email, SMS, push or live payment
 credentials are configured. These checks do not verify provider sandboxes,
 Supabase Storage, actual hosted PostgREST limits, physical printers or production.
+The Upstash unit contract verifies hashed raw idempotency keys, the complete
+readable response value and the declared 600-second lock/86,400-second result
+TTLs; hosted access, backups, multi-instance behavior and observed expiry remain
+external checks.
 
 Run build/check first, then integration tests. Do not run another backend build
 while API or browser tests are active: the build deliberately cleans `dist`.
 `npm run test:api` builds first and runs the three API scripts sequentially. When
 reusing an already verified build, those scripts can instead be run directly;
 the final verification did this while the browser and database suites used their
-own isolated clusters. Browser coverage is 14 Chromium cases across desktop and
+own isolated clusters. Browser coverage is 22 Chromium cases across desktop and
 Pixel 7; it is not a complete Safari/mobile-app/accessibility test matrix.
+
+CI has a separate Windows integration job. It sets up the pinned PostgreSQL
+runtime and runs `test:db`, `test:api` and the PowerShell connection-isolation
+contract after the portable build/unit job. This mirrors the required sequencing;
+CI still uses synthetic local resources and cannot replace the separate hosted
+verification checklist in `EXTERNAL_RELEASE_VERIFICATION.md`.
 
 Statistics/export pagination rejects bounds or later-page errors rather than
 returning partial success. It is not a transaction-consistent backup or ledger

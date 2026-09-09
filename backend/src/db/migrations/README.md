@@ -79,6 +79,9 @@ For the historical eat-here VAT question, run
 is zero, record that no paid eat-here order was found from 2026-04-01 onward. If
 rows exist, give the non-PII order-number report and original receipts to the
 accounting adviser; the query is evidence collection, not an accounting ruling.
+The report also identifies paid rows without the new receipt VAT snapshot and
+stored snapshots that differ from the current application formula. Do not infer
+or backfill historical VAT from today's code.
 
 ## 2026-08-19 atomic order creation (fresh installations only)
 
@@ -242,10 +245,9 @@ failing client work.
 Apply `2026-08-19-operational-pii-retention.sql` after the immutable audit
 migration. It adds an explicit legal-hold flag and two service-role-only RPCs.
 Neither the migration nor the daily checkout cleanup schedules fulfilled-order
-anonymization automatically.
-
-The owner approved two fixed scopes on 2026-08-19. Start each scope with the
-authenticated maintenance endpoint in dry-run mode:
+anonymization automatically. The 90- and 1,095-day cutoffs are current technical
+minimums only; they are not evidence that the periods or selected fields have
+owner, privacy or accounting approval. Start any future review in dry-run mode:
 
 ```json
 {"scope":"operational_details","limit":100,"dryRun":true}
@@ -267,9 +269,41 @@ days and also catches any older operational details missed by the shorter pass.
 Both scopes preserve financial and provider records and append one immutable
 audit event per changed order.
 
-Run small batches, retain only counts and non-secret execution metadata, and
-never add this endpoint to Vercel Cron until the approved interval and an owner
-have been recorded in the restricted operations journal.
+Run small batches, retain only counts and non-secret execution metadata, and do
+not execute a mutation or add this endpoint to Vercel Cron until the field-level
+preservation matrix, interval and named owner have been independently approved
+and recorded in the restricted operations journal. See
+[`Docs/ACCOUNTING_DATA_PRESERVATION.md`](../../../../Docs/ACCOUNTING_DATA_PRESERVATION.md)
+and
+[`Docs/EXTERNAL_RELEASE_VERIFICATION.md`](../../../../Docs/EXTERNAL_RELEASE_VERIFICATION.md).
+
+## 2026-09-09 accounting history protection
+
+Apply `2026-09-09-accounting-history-protection.sql` after unsettled-payment
+retention and before the receipt VAT snapshot. It blocks physical deletion of
+every order except a `ny`/`pending` draft, including when called through the
+service role. Existing provider-aware abandoned-checkout functions remain the
+only intended application deletion path and repeat their stricter age,
+provider-state and refund checks atomically.
+
+The admin UI exposes no history deletion action. Compatibility endpoints return
+HTTP 409 rather than deleting a row. This is a safety boundary, not a complete
+bookkeeping archive: the owner/accountant still must identify the authoritative
+copy, retention schedule and access/export procedure.
+
+## 2026-09-09 receipt VAT snapshot
+
+Apply `2026-09-09-receipt-vat-snapshot.sql` after accounting history protection
+and before checkout finalization. It adds nullable receipt VAT rate/amount fields
+and replaces the existing paid-transition RPC without changing its signature.
+For a newly verified payment, the current application calculation and immutable
+payment audit are stored in the same transaction. Receipt renderers prefer the
+snapshot so later code changes cannot silently rewrite that displayed history.
+
+Existing paid rows deliberately remain null. The migration performs no guessed
+backfill, and the current 6%/12% application formula is not an accounting ruling.
+Review legacy rows and legal edge cases from original receipts with an accountant
+before any correction.
 
 ## 2026-08-19 provider refunds
 

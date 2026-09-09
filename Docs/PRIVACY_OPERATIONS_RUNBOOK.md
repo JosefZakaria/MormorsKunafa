@@ -1,6 +1,6 @@
 # Privacy operations runbook
 
-Status: executable draft, 2026-08-19  
+Status: unapproved executable draft, updated 2026-09-09
 The business owner is the primary internal owner for rights requests, incidents,
 legal holds, backup decisions and paper destruction. A backup person, restricted
 journal location and production verification still must be assigned before this
@@ -71,8 +71,9 @@ Authoritative guidance:
 3. Perform a scheduled staging restore test at least annually and after material
    schema/backup changes. Record date, backup identifier, operator, duration,
    integrity checks and whether RLS/constraints/audit protections survived.
-4. A restore must not silently resurrect data whose erasure period has elapsed.
-   Re-run approved deletion/anonymization jobs and document reconciliation.
+4. A restore must not silently resurrect data whose approved erasure period has
+   elapsed. Reconcile affected records first; run anonymization only under the
+   independently approved field/interval decision and document the result.
 
 ## Kitchen paper and printer routine
 
@@ -99,10 +100,13 @@ Authoritative guidance:
 
 ## Fulfilled-order tiered retention
 
-The versioned database migration and maintenance API support a dry-run-first,
-bounded, dry-run-first process. The approved application intervals are 90 days
-for operational details and 1,095 days for contact data. The process remains
-unscheduled until staging verification and a restricted execution journal exist.
+The versioned database migration and maintenance API support a bounded,
+dry-run-first process. The current code rejects cutoffs newer than 90 days for
+operational details and 1,095 days for contact data. Those are technical minimum
+boundaries only: they are not evidence of legal correctness or owner/accountant
+approval. The process is unscheduled. Do not send `dryRun:false` until the
+preservation matrix, legal holds, field selection, interval and restricted
+execution journal have been independently approved.
 
 1. Confirm that no dispute, incident, DSAR or other legal hold applies. Set the
    order's `operational_pii_legal_hold` flag when a hold is required.
@@ -112,16 +116,22 @@ unscheduled until staging verification and a restricted execution journal exist.
 3. Review only the returned internal order IDs, order numbers, states and
    terminal timestamps. Do not export customer data for the review.
 4. Record the fixed scope, cutoff, owner, candidate count and rollback decision
-   in the restricted journal, then repeat the same bounded request with
-   `dryRun: false`.
+   in the restricted journal. Stop here unless the approval gate above has been
+   completed; only then may an authorized operator repeat the same bounded
+   request with `dryRun:false`.
 5. Repeat steps 2–4 with `scope` set to `customer_contact`. This second pass uses
    the fixed 1,095-day period; it must not be substituted for the 90-day pass.
 6. Retain the immutable audit results and run the read-only database verification.
 
-Both passes preserve order numbers, product/quantity/price/VAT snapshots,
+Both passes are designed to preserve order numbers, product/quantity/price/VAT snapshots,
 payment-provider identifiers and refund ledgers. The 90-day pass removes
 delivery data, internal/cancellation free text, item modification text and
 customer status credentials. The 1,095-day pass anonymizes name, phone and email
-and catches older operational details if the shorter pass was missed. Restoring
-a backup can reintroduce erased PII; after a restore, rerun both approved scopes
-and document the reconciliation.
+and catches older operational details if the shorter pass was missed. Paid or
+operational order rows cannot be physically deleted by the application or the
+database service role. Restoring a backup can reintroduce erased PII; after a
+restore, reconcile it and run only the scopes that remain explicitly approved.
+
+Use `ACCOUNTING_DATA_PRESERVATION.md` for the owner/accountant field decision and
+`EXTERNAL_RELEASE_VERIFICATION.md` for the separate-project rehearsal. Neither
+document authorizes execution against Production.
