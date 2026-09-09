@@ -3,11 +3,12 @@ import { supabase } from '../db/connection.js';
 import { isSiteMediaPath } from '../utils/siteMediaUrl.js';
 import { SITE_MEDIA_BUCKET, SITE_MEDIA_MAX_BYTES, sniffImageKind, contentTypeForKind } from '../services/siteMedia.js';
 import { logUnexpectedError } from '../utils/safeErrorMetadata.js';
+import { joinedWildcardRouteParam } from '../utils/routeParam.js';
 
 const router = Router();
 // Same-origin public image delivery keeps the storefront CSP narrow.
-router.get('/*', async (req: Request, res: Response) => {
-  const path = req.params[0];
+router.get('/*path', async (req: Request, res: Response) => {
+  const path = joinedWildcardRouteParam(req.params.path);
   if (!isSiteMediaPath(path)) { res.status(404).end(); return; }
   try {
     const { data, error } = await supabase.storage.from(SITE_MEDIA_BUCKET).download(path);

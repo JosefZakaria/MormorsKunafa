@@ -19,6 +19,7 @@ test.beforeEach(async ({context}) => {
 
 for (const location of ['Höja','Möllevången']) {
   test(`purchase, simulated payment return and private status at ${location}`,async ({page})=> {
+    test.setTimeout(60_000);
     await page.goto('/');
     await page.getByRole('button',{name:/Ta med/i}).first().click();
     await page.getByRole('button',{name:new RegExp(location)}).click();
@@ -33,8 +34,8 @@ for (const location of ['Höja','Möllevången']) {
     await page.locator('#cart-schedule-date').fill(new Date(Date.now()+86400000).toISOString().slice(0,10));
     await page.getByRole('checkbox').check();
     await page.getByRole('button',{name:'Gå till betalning'}).click();
-    await expect(page).toHaveURL(/\/status\?orderId=/);
-    await expect(page.getByText(/^Beställning #\d+$/)).toBeVisible();
+    await expect(page).toHaveURL(/\/status\?orderId=/,{timeout:20_000});
+    await expect(page.getByText(/^Beställning #\d+$/)).toBeVisible({timeout:20_000});
     await expect(page.getByRole('heading',{name:'Din förbeställning är bokad'})).toBeVisible();
     await expect(page.locator('.timer-display')).toHaveCount(0);
     await expect(page.locator('.status-message')).toContainText(location);

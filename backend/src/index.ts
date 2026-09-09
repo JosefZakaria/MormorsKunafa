@@ -25,6 +25,8 @@ import { assertOperationalSecretsConfiguration } from './utils/operationalSecret
 
 const app = express();
 app.disable('x-powered-by');
+// Every API query parameter is scalar. Avoid the extended qs parser entirely.
+app.set('query parser', 'simple');
 // Vercel overwrites the forwarding chain; use exactly its nearest proxy hop.
 app.set('trust proxy', process.env.VERCEL ? 1 : false);
 assertJwtConfiguration();
@@ -85,6 +87,13 @@ app.post('/api/swish/refund-callback', paymentCallbackLimiter, express.json({ li
   void handleSwishRefundCallback(req, res);
 });
 app.use(express.json({ limit: '64kb' }));
+// Express 5 leaves an unparsed or empty body undefined. Preserve the previous
+// fail-closed route contract so validators see an empty object, never throw on
+// a destructuring operation before they can return a bounded client error.
+app.use((req, _res, next) => {
+  if (req.body === undefined) req.body = {};
+  next();
+});
 
 app.use('/api/admin', requireCsrfProtection);
 app.use('/api/orders/admin', requireCsrfProtection);
@@ -148,7 +157,8 @@ app.use((error: unknown, _req: express.Request, res: express.Response, next: exp
 
 if (process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'test') {
   const PORT = Number(process.env.PORT) || 3001;
-  app.listen(PORT, () => {
+  app.listen(PORT, (error?: Error) => {
+    if (error) throw error;
     console.log(`Backend listening on http://localhost:${PORT}`);
   });
 }

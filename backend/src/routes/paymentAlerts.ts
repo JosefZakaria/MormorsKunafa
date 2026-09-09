@@ -24,6 +24,7 @@ import { getOrderById } from '../db/orderRepository.js';
 import { isRefundPasswordConfigured, verifyRefundPassword } from '../utils/refundAuthorization.js';
 import { parseRefundIdempotencyKey, RefundInputError } from '../utils/refundSelection.js';
 import { logUnexpectedError } from '../utils/safeErrorMetadata.js';
+import { singleRouteParam } from '../utils/routeParam.js';
 
 const router = Router();
 const EVENT_ID = /^evt_[A-Za-z0-9_]{8,255}$/;
@@ -65,7 +66,7 @@ function storedResult(record: DuplicateStripeRefundRecord, orderNumber?: string)
 router.get('/:eventId', requireAdmin, requireOwner, async (req: Request, res: Response) => {
   try {
     res.setHeader('Cache-Control', 'private, no-store');
-    const alert = await getPaymentSecurityAlert(req.params.eventId);
+    const alert = await getPaymentSecurityAlert(singleRouteParam(req.params.eventId));
     if (!alert) {
       res.status(404).json({ error: 'Betalningslarmet hittades inte.' });
       return;
@@ -111,7 +112,7 @@ router.post('/:eventId/refund', limiter, requireAdmin, requireOwner, async (req:
       res.status(503).json({ error: 'Återbetalningslösenord är inte konfigurerat.' });
       return;
     }
-    const alert = await getPaymentSecurityAlert(req.params.eventId);
+    const alert = await getPaymentSecurityAlert(singleRouteParam(req.params.eventId));
     if (
       !alert
       || alert.outcome !== 'alert_paid_session_validation_failed'

@@ -41,9 +41,12 @@ await withTestDatabase(async db => {
     res.once('finish',()=>stop());
   });
   app.use(express.static(path.join(repositoryRoot,'apps/web/dist')));
-  app.get('*', (_req,res)=>res.sendFile(path.join(repositoryRoot,'apps/web/dist/index.html')));
-  const server = app.listen(4179,'127.0.0.1', ()=>console.log(`Synthetic test server ${TEST_ORIGIN}`));
+  app.get('/{*path}', (_req,res)=>res.sendFile(path.join(repositoryRoot,'apps/web/dist/index.html')));
   await new Promise((resolve,reject)=> {
+    const server = app.listen(4179,'127.0.0.1', error => {
+      if (error) { reject(error); return; }
+      console.log(`Synthetic test server ${TEST_ORIGIN}`);
+    });
     stop = ()=>{server.closeAllConnections();server.close(resolve);};
     server.once('error',reject);
     for (const signal of ['SIGINT','SIGTERM']) process.once(signal,stop);

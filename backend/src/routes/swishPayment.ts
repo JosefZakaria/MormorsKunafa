@@ -19,6 +19,7 @@ import { requireOrderStatusToken } from '../middleware/orderStatusToken.js';
 import { createRateLimiter, getTrustedClientIp, hashRateLimitIdentifier } from '../middleware/rateLimit.js';
 import { isCanonicalUuidV4 } from '../utils/resourceId.js';
 import { logUnexpectedError } from '../utils/safeErrorMetadata.js';
+import { singleRouteParam } from '../utils/routeParam.js';
 
 const router = Router();
 
@@ -77,7 +78,7 @@ router.post('/:orderId', swishStartLimiter, async (req: Request, res: Response) 
       return;
     }
 
-    const orderId = req.params.orderId;
+    const orderId = singleRouteParam(req.params.orderId);
     if (!await requireOrderStatusToken(req, res, orderId)) return;
     const order = await fetchOrderRow(orderId);
     if (!order) {
@@ -175,7 +176,7 @@ router.post('/:orderId', swishStartLimiter, async (req: Request, res: Response) 
 
 router.get('/:orderId/status', swishStatusLimiter, async (req: Request, res: Response) => {
   try {
-    const orderId = req.params.orderId;
+    const orderId = singleRouteParam(req.params.orderId);
     if (!await requireOrderStatusToken(req, res, orderId)) return;
     const order = await fetchOrderRow(orderId);
     if (!order) {

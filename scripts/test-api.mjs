@@ -27,6 +27,30 @@ await withTestDatabase(async db => {
     phone:'+4670000'+String(customerNumber++).padStart(4,'0'), email:`buyer${customerNumber}@example.test`}},
     {...checkoutContractHeader,'Idempotency-Key':randomUUID()});
   try {
+    const emptyJson = await call('/api/admin/login',undefined,{},'POST');
+    assert.equal(emptyJson.status,400,JSON.stringify(emptyJson.data));
+    const wrongType = await nativeFetch(origin+'/api/admin/login',{
+      method:'POST',headers:{'content-type':'text/plain'},body:'not parsed as credentials',
+    });
+    assert.equal(wrongType.status,400);
+    await wrongType.text();
+    const malformedJson = await nativeFetch(origin+'/api/admin/login',{
+      method:'POST',headers:{'content-type':'application/json'},body:'{',
+    });
+    assert.equal(malformedJson.status,400);
+    assert.deepEqual(await malformedJson.json(),{error:'Invalid JSON body'});
+    const oversizedJson = await nativeFetch(origin+'/api/admin/login',{
+      method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({email:'a'.repeat(70*1024),password:'irrelevant'}),
+    });
+    assert.equal(oversizedJson.status,413);
+    assert.deepEqual(await oversizedJson.json(),{error:'Request body is too large'});
+
+    const baselineProducts = await call('/api/products');
+    const nestedQuery = await call('/api/products?locationId%5Bconstructor%5D%5BisBuffer%5D=x');
+    assert.equal(nestedQuery.status,200);
+    assert.deepEqual(nestedQuery.data,baselineProducts.data,'Nested keys must not enter scalar query fields');
+
     const orderCountBeforeStaleClients = await db.sql('SELECT count(*) FROM orders');
     for (let attempt=0; attempt<16; attempt++) {
       const stale = await call('/api/orders',orderBody,{'Idempotency-Key':randomUUID()});

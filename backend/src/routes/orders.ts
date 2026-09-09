@@ -84,6 +84,7 @@ import {
 } from '../middleware/orderIdempotency.js';
 import { requireCurrentCheckoutContract } from '../middleware/checkoutContract.js';
 import { CHECKOUT_CONTRACT_VERSION } from '../shared/constants/checkoutContract.js';
+import { singleRouteParam } from '../utils/routeParam.js';
 
 const orderLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000, // 15 min window
@@ -451,7 +452,7 @@ router.post('/checkout-session/:orderId', requireCurrentCheckoutContract, checko
       return;
     }
 
-    const orderId = req.params.orderId;
+    const orderId = singleRouteParam(req.params.orderId);
     if (!await requireOrderStatusToken(req, res, orderId)) return;
     const result = await getOrderById(orderId);
     if (!result) {
@@ -648,7 +649,7 @@ router.patch('/admin/:id/accept', requireAdmin, async (req: Request, res: Respon
       return;
     }
 
-    const result = await getOrderById(req.params.id);
+    const result = await getOrderById(singleRouteParam(req.params.id));
     if (!result) {
       res.status(404).json({ error: 'Order not found' });
       return;
@@ -670,7 +671,7 @@ router.patch('/admin/:id/accept', requireAdmin, async (req: Request, res: Respon
     const totalMinutes = defaultPrep + (extraMinutes ?? 0);
     const estimatedReady = new Date(Date.now() + totalMinutes * 60 * 1000);
 
-    const accepted = await compareAndUpdateOrder(req.params.id, 'ny', {
+    const accepted = await compareAndUpdateOrder(singleRouteParam(req.params.id), 'ny', {
       status: 'mottagen',
       estimated_ready_at: estimatedReady.toISOString(),
     });
@@ -679,7 +680,7 @@ router.patch('/admin/:id/accept', requireAdmin, async (req: Request, res: Respon
       return;
     }
 
-    const updated = await getOrderById(req.params.id);
+    const updated = await getOrderById(singleRouteParam(req.params.id));
     if (!updated) {
       res.status(500).json({ error: 'Accept succeeded but fetch failed' });
       return;
@@ -838,14 +839,14 @@ router.post('/admin/:id/delete', requireAdmin, async (req: Request, res: Respons
       return;
     }
 
-    const existing = await getOrderById(req.params.id);
+    const existing = await getOrderById(singleRouteParam(req.params.id));
     if (!existing) {
       res.status(404).json({ error: 'Order not found' });
       return;
     }
     if (!(await assertOrderVisible(req, res, existing.order))) return;
 
-    const { error } = await supabase.from('orders').delete().eq('id', req.params.id);
+    const { error } = await supabase.from('orders').delete().eq('id', singleRouteParam(req.params.id));
     if (error) {
       logSupabaseError('DELETE /admin/:id', error);
       res.status(500).json({ error: 'Failed to delete order' });
@@ -882,7 +883,7 @@ router.post('/admin/:id/cancel', requireAdmin, async (req: Request, res: Respons
       return;
     }
 
-    const existing = await getOrderById(req.params.id);
+    const existing = await getOrderById(singleRouteParam(req.params.id));
     if (!existing) {
       res.status(404).json({ error: 'Order not found' });
       return;
@@ -900,7 +901,7 @@ router.post('/admin/:id/cancel', requireAdmin, async (req: Request, res: Respons
       return;
     }
 
-    const cancelled = await compareAndUpdateOrder(req.params.id, currentStatus, {
+    const cancelled = await compareAndUpdateOrder(singleRouteParam(req.params.id), currentStatus, {
       status: 'avbruten',
       cancelled_at: existing.order.cancelled_at
         ? String(existing.order.cancelled_at)
@@ -912,7 +913,7 @@ router.post('/admin/:id/cancel', requireAdmin, async (req: Request, res: Respons
       return;
     }
 
-    const result = await getOrderById(req.params.id);
+    const result = await getOrderById(singleRouteParam(req.params.id));
     if (!result) {
       res.status(404).json({ error: 'Order not found' });
       return;
@@ -933,7 +934,7 @@ router.post('/admin/:id/revoke-status-token', requireAdmin, requireOrderAccess, 
         order_status_token_expires_at: null,
         updated_at: nowIso(),
       })
-      .eq('id', req.params.id)
+      .eq('id', singleRouteParam(req.params.id))
       .select('id')
       .maybeSingle();
     if (error) {
@@ -964,7 +965,7 @@ router.patch('/admin/:id/status', requireAdmin, requireOrderAccess, async (req: 
       return;
     }
 
-    const existing = await getOrderById(req.params.id);
+    const existing = await getOrderById(singleRouteParam(req.params.id));
     if (!existing) {
       res.status(404).json({ error: 'Order not found' });
       return;
@@ -986,13 +987,13 @@ router.patch('/admin/:id/status', requireAdmin, requireOrderAccess, async (req: 
         ? String(existing.order.completed_at)
         : nowIso();
     }
-    const updated = await compareAndUpdateOrder(req.params.id, currentStatus, patch);
+    const updated = await compareAndUpdateOrder(singleRouteParam(req.params.id), currentStatus, patch);
     if (!updated) {
       res.status(409).json({ error: 'Order status changed before it could be updated' });
       return;
     }
 
-    const result = await getOrderById(req.params.id);
+    const result = await getOrderById(singleRouteParam(req.params.id));
     if (!result) {
       res.status(404).json({ error: 'Order not found' });
       return;
@@ -1022,15 +1023,15 @@ router.patch('/admin/:id/time', requireAdmin, async (req: Request, res: Response
       res.status(400).json({ error: 'estimatedReadyTime or preparationTime required' });
       return;
     }
-    const existing = await getOrderById(req.params.id);
+    const existing = await getOrderById(singleRouteParam(req.params.id));
     if (!existing) {
       res.status(404).json({ error: 'Order not found' });
       return;
     }
     if (!(await assertOrderVisible(req, res, existing.order))) return;
-    await updateOrder(req.params.id, patch);
+    await updateOrder(singleRouteParam(req.params.id), patch);
 
-    const result = await getOrderById(req.params.id);
+    const result = await getOrderById(singleRouteParam(req.params.id));
     if (!result) {
       res.status(404).json({ error: 'Order not found' });
       return;
@@ -1051,17 +1052,17 @@ router.patch('/admin/:id/notes', requireAdmin, async (req: Request, res: Respons
   try {
     const { internalNotes } = req.body as { internalNotes?: string };
     const notes = parseInternalNotes(internalNotes);
-    const existing = await getOrderById(req.params.id);
+    const existing = await getOrderById(singleRouteParam(req.params.id));
     if (!existing) {
       res.status(404).json({ error: 'Order not found' });
       return;
     }
     if (!(await assertOrderVisible(req, res, existing.order))) return;
-    await updateOrder(req.params.id, {
+    await updateOrder(singleRouteParam(req.params.id), {
       internal_notes: notes,
     });
 
-    const result = await getOrderById(req.params.id);
+    const result = await getOrderById(singleRouteParam(req.params.id));
     if (!result) {
       res.status(404).json({ error: 'Order not found' });
       return;
@@ -1080,7 +1081,7 @@ router.patch('/admin/:id/notes', requireAdmin, async (req: Request, res: Respons
 // Admin: print receipt
 router.post('/admin/:id/print', requireAdmin, async (req: Request, res: Response) => {
   try {
-    const result = await getOrderById(req.params.id);
+    const result = await getOrderById(singleRouteParam(req.params.id));
     if (!result) {
       res.status(404).json({ error: 'Order not found' });
       return;
@@ -1132,8 +1133,9 @@ router.get('/settings', async (_req: Request, res: Response) => {
 
 router.get('/:id', orderStatusLimiter, async (req: Request, res: Response) => {
   try {
-    if (!await requireOrderStatusToken(req, res, req.params.id)) return;
-    const order = await fetchOrderRow(req.params.id);
+    const orderId = singleRouteParam(req.params.id);
+    if (!await requireOrderStatusToken(req, res, orderId)) return;
+    const order = await fetchOrderRow(orderId);
     if (!order) {
       res.status(404).json({ error: 'Order not found' });
       return;

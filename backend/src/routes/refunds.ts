@@ -39,6 +39,7 @@ import {
 } from '../utils/refundAuthorization.js';
 import { isCanonicalUuidV4 } from '../utils/resourceId.js';
 import { logUnexpectedError } from '../utils/safeErrorMetadata.js';
+import { singleRouteParam } from '../utils/routeParam.js';
 
 const router = Router();
 
@@ -115,7 +116,7 @@ async function callProvider(
 
 router.get('/:id/refunds', requireAdmin, requireOrderAccess, async (req: Request, res: Response) => {
   try {
-    const overview = await getAdminRefundOverview(req.params.id);
+    const overview = await getAdminRefundOverview(singleRouteParam(req.params.id));
     if (!overview) {
       res.status(404).json({ error: 'Order not found' });
       return;
@@ -134,7 +135,7 @@ router.post('/:id/refunds', refundLimiter, requireAdmin, requireOrderAccess, asy
       res.status(503).json({ error: 'Återbetalningslösenord är inte konfigurerat.' });
       return;
     }
-    const before = await getAdminRefundOverview(req.params.id);
+    const before = await getAdminRefundOverview(singleRouteParam(req.params.id));
     if (!before) {
       res.status(404).json({ error: 'Order not found' });
       return;
@@ -230,7 +231,7 @@ router.post('/:id/refunds/:refundId/reconcile', refundLimiter, requireAdmin, req
       res.status(503).json({ error: 'Återbetalningslösenord är inte konfigurerat.' });
       return;
     }
-    const overview = await getAdminRefundOverview(req.params.id);
+    const overview = await getAdminRefundOverview(singleRouteParam(req.params.id));
     if (!overview) {
       res.status(404).json({ error: 'Order not found' });
       return;
@@ -245,7 +246,7 @@ router.post('/:id/refunds/:refundId/reconcile', refundLimiter, requireAdmin, req
       res.status(401).json({ error: 'Felaktigt återbetalningslösenord.' });
       return;
     }
-    const record = await getRefundRecord(req.params.refundId);
+    const record = await getRefundRecord(singleRouteParam(req.params.refundId));
     if (!record || record.orderId !== overview.orderId) {
       res.status(404).json({ error: 'Återbetalningen hittades inte för ordern.' });
       return;
