@@ -2,11 +2,14 @@ import assert from 'node:assert/strict';
 import { PRODUCT, TEST_PASSWORD } from './synthetic-api.mjs';
 
 export async function verifyLargeStatistics({db,call,owner,staff}) {
+  // The live allocator intentionally replaces supplied numeric display numbers.
+  // A nonnumeric fixture namespace keeps the bulk rows addressable without
+  // disabling the same trigger used in production.
   await db.sql(`INSERT INTO orders(id,order_number,status,payment_status,total_ore,customer_phone)
-    SELECT gen_random_uuid(),'#'||(20000+n),'klar','paid',200,'0700000099' FROM generate_series(1,1007) n;
+    SELECT gen_random_uuid(),'STATS-'||n,'klar','paid',200,'0700000099' FROM generate_series(1,1007) n;
     INSERT INTO order_items(id,order_id,product_id,product_name_snapshot,quantity,price_ore)
     SELECT gen_random_uuid(),o.id,'${PRODUCT}','Syntetisk baklawa',1,100 FROM orders o CROSS JOIN generate_series(1,2)
-    WHERE substring(o.order_number FROM 2)::bigint BETWEEN 20001 AND 21007;`);
+    WHERE o.order_number LIKE 'STATS-%';`);
   assert.equal((await call('/api/admin/statistics',{password:TEST_PASSWORD},staff)).status,403);
   assert.equal((await call('/api/admin/statistics',{password:'incorrect'},owner)).status,401);
   const result=await call('/api/admin/statistics',{password:TEST_PASSWORD},owner);
