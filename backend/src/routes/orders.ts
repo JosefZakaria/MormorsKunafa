@@ -802,61 +802,23 @@ router.get('/admin/history', requireAdmin, async (req: Request, res: Response) =
   }
 });
 
-// Admin: delete all history (completed/cancelled orders only) — must be before :id route.
-// Uses POST so a password can be supplied in the body.
-router.post('/admin/history/all/delete', requireAdmin, requireOwner, async (req: Request, res: Response) => {
-  try {
-    const { password } = req.body as { password?: string };
-    const deletePassword = process.env.DELETE_PASSWORD;
-    if (!deletePassword || !password || !safeCompareStrings(password, deletePassword)) {
-      res.status(401).json({ error: 'Felaktigt lösenord' });
-      return;
-    }
-    const { error } = await supabase
-      .from('orders')
-      .delete()
-      .in('status', ['klar', 'avbruten', 'uthämtad', 'levererad']);
+function rejectAccountingHistoryDeletion(res: Response): void {
+  res.status(409).json({
+    code: 'ACCOUNTING_HISTORY_PROTECTED',
+    error: 'Orderhistorik får inte raderas. Använd avbokning och den granskade anonymiseringsprocessen.',
+  });
+}
 
-    if (error) {
-      logSupabaseError('DELETE /admin/history/all', error);
-      res.status(500).json({ error: 'Failed to clear history' });
-      return;
-    }
-    res.status(204).end();
-  } catch (e) {
-    logUnexpectedError('DELETE /admin/history', e);
-    res.status(500).json({ error: 'Failed to clear history' });
-  }
+// Compatibility endpoints for older admin clients. Physical deletion could
+// remove the only receipt/payment evidence, so every authenticated request is
+// rejected. The database trigger provides a second boundary for paid or
+// operational orders while still permitting guarded abandoned-draft cleanup.
+router.post('/admin/history/all/delete', requireAdmin, requireOwner, (_req: Request, res: Response) => {
+  rejectAccountingHistoryDeletion(res);
 });
 
-// Admin: delete single order. Uses POST so a password can be supplied in the body.
-router.post('/admin/:id/delete', requireAdmin, async (req: Request, res: Response) => {
-  try {
-    const { password } = req.body as { password?: string };
-    const deletePassword = process.env.DELETE_PASSWORD;
-    if (!deletePassword || !password || !safeCompareStrings(password, deletePassword)) {
-      res.status(401).json({ error: 'Felaktigt lösenord' });
-      return;
-    }
-
-    const existing = await getOrderById(singleRouteParam(req.params.id));
-    if (!existing) {
-      res.status(404).json({ error: 'Order not found' });
-      return;
-    }
-    if (!(await assertOrderVisible(req, res, existing.order))) return;
-
-    const { error } = await supabase.from('orders').delete().eq('id', singleRouteParam(req.params.id));
-    if (error) {
-      logSupabaseError('DELETE /admin/:id', error);
-      res.status(500).json({ error: 'Failed to delete order' });
-      return;
-    }
-    res.status(204).end();
-  } catch (e) {
-    logUnexpectedError('DELETE /admin/:id', e);
-    res.status(500).json({ error: 'Failed to delete order' });
-  }
+router.post('/admin/:id/delete', requireAdmin, (_req: Request, res: Response) => {
+  rejectAccountingHistoryDeletion(res);
 });
 
 // Admin: cancel order (password protected).

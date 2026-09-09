@@ -433,28 +433,6 @@ export const orderApi = {
     });
   },
 
-  deleteOrder: async (id: string, password: string): Promise<void> => {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
-
-    return authenticatedRequest<void>(`/orders/admin/${id}/delete`, {
-      method: 'POST',
-      body: JSON.stringify({ password }),
-      token,
-    });
-  },
-
-  deleteAllHistory: async (password: string): Promise<void> => {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
-
-    return authenticatedRequest<void>('/orders/admin/history/all/delete', {
-      method: 'POST',
-      body: JSON.stringify({ password }),
-      token,
-    });
-  },
-
   updateStatus: async (id: string, data: UpdateOrderStatusRequest): Promise<Order> => {
     const token = getToken();
     if (!token) throw new Error('Not authenticated');

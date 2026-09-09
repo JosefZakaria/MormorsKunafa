@@ -142,6 +142,22 @@ await withTestDatabase(async db => {
     assert.equal(ownerLogin.status,200);
     const ownerCookies=ownerLogin.headers.getSetCookie().map(s=>s.split(';')[0]).join('; ');
     const ownerHeaders={cookie:ownerCookies,'x-csrf-token':decodeURIComponent(ownerCookies.match(/mk_csrf=([^;]+)/)[1])};
+    for (const integrationKey of ['RESEND_API_KEY','SINCH_PROJECT_ID','WEB_PUSH_VAPID_PRIVATE_KEY']) {
+      assert.equal(process.env[integrationKey],undefined,`${integrationKey} must stay disabled in the synthetic run`);
+    }
+    const ownerPreorders=await call('/api/orders/admin/pre-orders',undefined,ownerHeaders);
+    assert.equal(ownerPreorders.status,200,JSON.stringify(ownerPreorders.data));
+    assert(ownerPreorders.data.some(order=>order.id===id),'A paid order must remain in the durable owner queue when notifications are unavailable');
+    const otherLocationPreorders=await call('/api/orders/admin/pre-orders',undefined,adminHeaders);
+    assert.equal(otherLocationPreorders.status,200,JSON.stringify(otherLocationPreorders.data));
+    assert(!otherLocationPreorders.data.some(order=>order.id===id),'A different location must not see the paid order');
+    const protectedOrderCount=await db.sql('SELECT count(*) FROM orders');
+    for (const route of [`/api/orders/admin/${id}/delete`,'/api/orders/admin/history/all/delete']) {
+      const blocked=await call(route,{password:TEST_PASSWORD},ownerHeaders);
+      assert.equal(blocked.status,409,JSON.stringify(blocked.data));
+      assert.equal(blocked.data.code,'ACCOUNTING_HISTORY_PROTECTED');
+    }
+    assert.equal(await db.sql('SELECT count(*) FROM orders'),protectedOrderCount,'Legacy delete routes must not remove order history');
     const pushBody={subscription:{endpoint:'https://fcm.googleapis.com/fcm/send/synthetic-test',keys:{
       p256dh:Buffer.alloc(65,1).toString('base64url'),auth:Buffer.alloc(16,2).toString('base64url')}},deviceLabel:'Synthetic tablet'};
     assert.equal((await call('/api/admin/push-subscriptions',pushBody,{cookie:cookies})).status,403);

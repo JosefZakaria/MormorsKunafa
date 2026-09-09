@@ -44,10 +44,15 @@ BEGIN
 END;
 $$;
 INSERT INTO orders(id,order_number,customer_phone,customer_name,customer_email,internal_notes,
-  status,payment_status,refund_status,completed_at,operational_pii_legal_hold)
+  status,order_type,payment_method,payment_status,stripe_checkout_session_id,total_ore,
+  refund_status,completed_at,operational_pii_legal_hold)
 SELECT gen_random_uuid(),'retention-'||kind,'+46700000000','Synthetic','example@example.test','Private note',
   CASE WHEN kind='active' THEN 'ny' ELSE 'levererad' END,
+  CASE WHEN kind='eligible' THEN 'eat-here' ELSE 'takeaway' END,
+  'card',
   CASE WHEN kind='unsettled' THEN 'pending' ELSE 'paid' END,
+  CASE WHEN kind='eligible' THEN 'cs_test_retention_receipt' ELSE NULL END,
+  CASE WHEN kind='eligible' THEN 11200 ELSE 100 END,
   CASE WHEN kind='refund' THEN 'pending' ELSE 'none' END,
   now()-interval '1200 days', kind='hold'
 FROM unnest(ARRAY['eligible','active','unsettled','refund','duplicate','alert','hold']) kind;
@@ -63,7 +68,27 @@ SELECT 'stripe','evt_test_unresolved_alert','checkout.session.completed',false,'
   'alert_paid_session_validation_failed' FROM orders WHERE order_number='retention-alert';
 SET LOCAL ROLE service_role;
 INSERT INTO order_items(id,order_id,product_name_snapshot,quantity,price_ore,modifications_json)
-SELECT gen_random_uuid(),id,'Synthetic cake',1,100,'{"notes":"Private note"}' FROM orders WHERE order_number LIKE 'retention-%';
+SELECT gen_random_uuid(),id,'Synthetic cake',1,total_ore::integer,'{"notes":"Private note"}'
+FROM orders WHERE order_number LIKE 'retention-%';
+RESET ROLE;
+INSERT INTO security_audit_log(event_id,action,resource_type,resource_id,outcome,created_at)
+SELECT gen_random_uuid(),'stripe_payment_confirmed','order',id::text,'succeeded',now()-interval '1201 days'
+FROM orders WHERE order_number='retention-eligible';
+INSERT INTO order_refunds(id,order_id,provider,amount_ore,status,idempotency_key,selection_json,
+  provider_refund_id,requested_by_admin_id,created_at,updated_at,completed_at)
+SELECT gen_random_uuid(),id,'stripe',5600,'succeeded','retention-accounting-refund',
+  '[{"quantity":1,"amountOre":5600}]'::jsonb,'re_test_retention_accounting','synthetic-owner',
+  now()-interval '1100 days',now()-interval '1100 days',now()-interval '1100 days'
+FROM orders WHERE order_number='retention-eligible';
+INSERT INTO order_refund_items(refund_id,order_item_id,quantity,amount_ore)
+SELECT r.id,i.id,1,5600
+FROM order_refunds r
+JOIN orders o ON o.id=r.order_id
+JOIN order_items i ON i.order_id=o.id
+WHERE o.order_number='retention-eligible';
+UPDATE orders SET refunded_amount_ore=5600,refund_status='partially_refunded'
+WHERE order_number='retention-eligible';
+SET LOCAL ROLE service_role;
 DO $$
 BEGIN
   IF (SELECT count(*) FROM preview_operational_order_pii_retention(now()-interval '90 days','operational_details',100)) <> 1 THEN
@@ -74,7 +99,11 @@ BEGIN
     RAISE EXCEPTION 'retention removed the wrong set of orders';
   END IF;
   IF NOT EXISTS(SELECT 1 FROM orders WHERE order_number='retention-eligible' AND customer_phone=''
-    AND customer_name IS NULL AND internal_notes IS NULL AND total_ore=100 AND payment_status='paid') THEN
+    AND customer_name IS NULL AND customer_email IS NULL AND internal_notes IS NULL
+    AND order_type='eat-here' AND payment_method='card' AND payment_status='paid'
+    AND stripe_checkout_session_id='cs_test_retention_receipt'
+    AND total_ore=11200 AND refunded_amount_ore=5600 AND refund_status='partially_refunded'
+    AND round((total_ore::numeric * 12) / 112)=1200 AND completed_at IS NOT NULL) THEN
     RAISE EXCEPTION 'retention did not preserve financial data while removing contact data';
   END IF;
   IF (SELECT count(*) FROM orders WHERE order_number IN
@@ -83,8 +112,35 @@ BEGIN
     RAISE EXCEPTION 'retention destroyed evidence for an unresolved or held order';
   END IF;
   IF (SELECT count(*) FROM order_items i JOIN orders o ON o.id=i.order_id
-    WHERE o.order_number='retention-eligible' AND i.price_ore=100 AND i.quantity=1 AND i.modifications_json IS NULL) <> 1 THEN
+    WHERE o.order_number='retention-eligible' AND i.product_name_snapshot='Synthetic cake'
+      AND i.price_ore=11200 AND i.quantity=1 AND i.modifications_json IS NULL) <> 1 THEN
     RAISE EXCEPTION 'retention damaged accounting items';
+  END IF;
+  IF NOT EXISTS(SELECT 1 FROM order_refunds r JOIN orders o ON o.id=r.order_id
+    WHERE o.order_number='retention-eligible' AND r.provider='stripe' AND r.amount_ore=5600
+      AND r.status='succeeded' AND r.provider_refund_id='re_test_retention_accounting'
+      AND r.requested_by_admin_id='synthetic-owner' AND r.completed_at IS NOT NULL
+      AND r.selection_json='[{"quantity":1,"amountOre":5600}]'::jsonb) THEN
+    RAISE EXCEPTION 'retention damaged the provider refund ledger';
+  END IF;
+  IF NOT EXISTS(SELECT 1 FROM order_refund_items ri
+    JOIN order_refunds r ON r.id=ri.refund_id JOIN orders o ON o.id=r.order_id
+    WHERE o.order_number='retention-eligible' AND ri.quantity=1 AND ri.amount_ore=5600) THEN
+    RAISE EXCEPTION 'retention damaged refund item allocation';
+  END IF;
+  IF NOT EXISTS(SELECT 1 FROM security_audit_log a JOIN orders o ON o.id::text=a.resource_id
+    WHERE o.order_number='retention-eligible' AND a.action='stripe_payment_confirmed'
+      AND a.outcome='succeeded') THEN
+    RAISE EXCEPTION 'retention damaged the verified payment timestamp';
+  END IF;
+  BEGIN
+    DELETE FROM orders WHERE order_number='retention-eligible';
+    RAISE EXCEPTION 'paid accounting history was physically deleted';
+  EXCEPTION WHEN check_violation THEN
+    NULL;
+  END;
+  IF NOT EXISTS(SELECT 1 FROM orders WHERE order_number='retention-eligible') THEN
+    RAISE EXCEPTION 'protected accounting order disappeared';
   END IF;
 END;
 $$;
