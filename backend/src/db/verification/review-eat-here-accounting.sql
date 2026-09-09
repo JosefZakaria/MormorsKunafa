@@ -18,6 +18,8 @@ WITH payment_events AS (
     orders.payment_method,
     orders.payment_status,
     orders.total_ore,
+    orders.receipt_vat_rate_percent,
+    orders.receipt_vat_ore,
     coalesce(payment_events.verified_paid_at, orders.updated_at, orders.created_at) AS accounting_time,
     round((orders.total_ore::numeric * 12) / 112)::bigint AS expected_included_vat_ore
   FROM public.orders AS orders
@@ -31,6 +33,13 @@ SELECT
   count(*) AS affected_paid_eat_here_orders,
   coalesce(sum(total_ore), 0) AS gross_ore,
   coalesce(sum(expected_included_vat_ore), 0) AS expected_included_vat_ore_12_percent,
+  count(*) FILTER (
+    WHERE receipt_vat_rate_percent IS NULL OR receipt_vat_ore IS NULL
+  ) AS legacy_rows_without_snapshot,
+  count(*) FILTER (
+    WHERE receipt_vat_rate_percent IS NOT NULL
+      AND (receipt_vat_rate_percent <> 12 OR receipt_vat_ore <> expected_included_vat_ore)
+  ) AS stored_snapshot_mismatches,
   min(accounting_time) AS first_affected_time,
   max(accounting_time) AS last_affected_time
 FROM affected;
@@ -47,6 +56,8 @@ WITH payment_events AS (
     orders.order_number,
     orders.payment_method,
     orders.total_ore,
+    orders.receipt_vat_rate_percent,
+    orders.receipt_vat_ore,
     coalesce(payment_events.verified_paid_at, orders.updated_at, orders.created_at) AS accounting_time,
     round((orders.total_ore::numeric * 12) / 112)::bigint AS expected_included_vat_ore
   FROM public.orders AS orders
@@ -60,6 +71,8 @@ SELECT
   order_number,
   payment_method,
   total_ore,
+  receipt_vat_rate_percent,
+  receipt_vat_ore,
   expected_included_vat_ore,
   accounting_time
 FROM affected

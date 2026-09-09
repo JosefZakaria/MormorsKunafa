@@ -50,7 +50,7 @@ SELECT gen_random_uuid(),'retention-'||kind,'+46700000000','Synthetic','example@
   CASE WHEN kind='active' THEN 'ny' ELSE 'levererad' END,
   CASE WHEN kind='eligible' THEN 'eat-here' ELSE 'takeaway' END,
   'card',
-  CASE WHEN kind='unsettled' THEN 'pending' ELSE 'paid' END,
+  CASE WHEN kind IN ('unsettled','eligible') THEN 'pending' ELSE 'paid' END,
   CASE WHEN kind='eligible' THEN 'cs_test_retention_receipt' ELSE NULL END,
   CASE WHEN kind='eligible' THEN 11200 ELSE 100 END,
   CASE WHEN kind='refund' THEN 'pending' ELSE 'none' END,
@@ -70,10 +70,16 @@ SET LOCAL ROLE service_role;
 INSERT INTO order_items(id,order_id,product_name_snapshot,quantity,price_ore,modifications_json)
 SELECT gen_random_uuid(),id,'Synthetic cake',1,total_ore::integer,'{"notes":"Private note"}'
 FROM orders WHERE order_number LIKE 'retention-%';
+DO $$
+DECLARE v_order_id uuid;
+BEGIN
+  SELECT id INTO v_order_id FROM orders WHERE order_number='retention-eligible';
+  IF NOT mark_order_paid_with_audit(v_order_id,now()-interval '1201 days',gen_random_uuid()) THEN
+    RAISE EXCEPTION 'eligible accounting order could not capture its paid VAT snapshot';
+  END IF;
+END;
+$$;
 RESET ROLE;
-INSERT INTO security_audit_log(event_id,action,resource_type,resource_id,outcome,created_at)
-SELECT gen_random_uuid(),'stripe_payment_confirmed','order',id::text,'succeeded',now()-interval '1201 days'
-FROM orders WHERE order_number='retention-eligible';
 INSERT INTO order_refunds(id,order_id,provider,amount_ore,status,idempotency_key,selection_json,
   provider_refund_id,requested_by_admin_id,created_at,updated_at,completed_at)
 SELECT gen_random_uuid(),id,'stripe',5600,'succeeded','retention-accounting-refund',
@@ -103,7 +109,7 @@ BEGIN
     AND order_type='eat-here' AND payment_method='card' AND payment_status='paid'
     AND stripe_checkout_session_id='cs_test_retention_receipt'
     AND total_ore=11200 AND refunded_amount_ore=5600 AND refund_status='partially_refunded'
-    AND round((total_ore::numeric * 12) / 112)=1200 AND completed_at IS NOT NULL) THEN
+    AND receipt_vat_rate_percent=12 AND receipt_vat_ore=1200 AND completed_at IS NOT NULL) THEN
     RAISE EXCEPTION 'retention did not preserve financial data while removing contact data';
   END IF;
   IF (SELECT count(*) FROM orders WHERE order_number IN

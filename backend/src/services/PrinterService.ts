@@ -1,6 +1,6 @@
 import { CharacterSet, ThermalPrinter, PrinterTypes, BreakLine } from 'node-thermal-printer';
 import { safePrinterText } from '../shared/utils/safePrinterText.js';
-import { includedVatFromGrossOre } from '../shared/utils/vat.js';
+import { includedVatForReceipt } from '../shared/utils/vat.js';
 import { logUnexpectedError } from '../utils/safeErrorMetadata.js';
 
 export class PrinterService {
@@ -206,7 +206,12 @@ export class PrinterService {
       this.printer.bold(true);
       this.printer.leftRight("Totalt:", `${order.totalPrice / 100 || 0} kr`);
       this.printer.bold(false);
-      const { rate: vatRate, vatOre } = includedVatFromGrossOre(order.totalPrice, order.orderType);
+      const { rate: vatRate, vatOre } = includedVatForReceipt(
+        order.totalPrice,
+        order.orderType,
+        order.receiptVatRate,
+        order.receiptVatAmount
+      );
       this.printer.leftRight(`Varav ${vatRate}% moms:`, `${(vatOre / 100).toFixed(2)} kr`);
       this.printer.newLine();
       this.printer.newLine();

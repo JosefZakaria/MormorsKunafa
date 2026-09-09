@@ -1,6 +1,6 @@
 import type { Order } from '@shared/types';
 import { safePrinterText } from '@shared/utils/safePrinterText';
-import { includedVatFromGrossOre } from '@shared/utils/vat';
+import { includedVatForReceipt } from '@shared/utils/vat';
 import {
   readPersistentValue,
   STORAGE_KEYS,
@@ -266,7 +266,12 @@ export async function printReceipt(order: Order): Promise<{ success: boolean; er
   xml += separator();
   const total = ((order.totalPrice || 0) / 100).toFixed(2);
   xml += textLine(`Totalt: ${total} kr`);
-  const { rate: vatRate, vatOre } = includedVatFromGrossOre(order.totalPrice, order.orderType);
+  const { rate: vatRate, vatOre } = includedVatForReceipt(
+    order.totalPrice,
+    order.orderType,
+    order.receiptVatRate,
+    order.receiptVatAmount
+  );
   xml += textLine(`Varav ${vatRate}% moms: ${(vatOre / 100).toFixed(2)} kr`);
   xml += `<feed unit="24"/>`;
   xml += textLine('Mormors Kunafa Aktiebolag', 'center');

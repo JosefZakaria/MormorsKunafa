@@ -98,6 +98,7 @@ await withTestDatabase(async db => {
     const confirmations=await Promise.all([call('/api/orders/stripe-confirm',confirmBody,tokenHeader),call('/api/orders/stripe-confirm',confirmBody,tokenHeader)]);
     assert.equal(confirmations[0].status,200,JSON.stringify(confirmations[0].data));
     assert.equal(await db.sql(`SELECT count(*) FROM security_audit_log WHERE resource_id='${id}' AND action='stripe_payment_confirmed'`),'1');
+    assert.equal(await db.sql(`SELECT receipt_vat_rate_percent::text || ':' || receipt_vat_ore::text FROM orders WHERE id='${id}'`),'6:1121');
     const event={id:'evt_test_'+randomUUID().replaceAll('-',''),type:'checkout.session.completed',livemode:false,data:{object:session}};
     const payload=JSON.stringify(event);
     const signature=stripe.webhooks.generateTestHeaderString({payload,secret:process.env.STRIPE_WEBHOOK_SECRET});
@@ -148,6 +149,8 @@ await withTestDatabase(async db => {
     const ownerPreorders=await call('/api/orders/admin/pre-orders',undefined,ownerHeaders);
     assert.equal(ownerPreorders.status,200,JSON.stringify(ownerPreorders.data));
     assert(ownerPreorders.data.some(order=>order.id===id),'A paid order must remain in the durable owner queue when notifications are unavailable');
+    const paidQueueOrder=ownerPreorders.data.find(order=>order.id===id);
+    assert.equal(`${paidQueueOrder.receiptVatRate}:${paidQueueOrder.receiptVatAmount}`,'6:1121');
     const otherLocationPreorders=await call('/api/orders/admin/pre-orders',undefined,adminHeaders);
     assert.equal(otherLocationPreorders.status,200,JSON.stringify(otherLocationPreorders.data));
     assert(!otherLocationPreorders.data.some(order=>order.id===id),'A different location must not see the paid order');

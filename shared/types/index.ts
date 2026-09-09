@@ -233,6 +233,9 @@ export interface Order {
   internalNotes?: string;
   paymentMethod: PaymentMethod;
   paymentStatus: 'pending' | 'paid';
+  /** Immutable VAT values captured by the verified payment transition. */
+  receiptVatRate?: 6 | 12;
+  receiptVatAmount?: number;
   /** Set for eat-here / takeaway. Null for delivery. */
   locationId?: string | null;
 }

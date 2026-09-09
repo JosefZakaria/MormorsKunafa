@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { includedVatFromGrossOre, receiptVatRate } from './vat.js';
+import { includedVatForReceipt, includedVatFromGrossOre, receiptVatRate } from './vat.js';
 
 test('uses 12 percent for restaurant service eaten on site', () => {
   assert.equal(receiptVatRate('eat-here'), 12);
@@ -15,4 +15,22 @@ test('uses 6 percent for takeaway and delivery food', () => {
 
 test('never emits negative included VAT for malformed legacy totals', () => {
   assert.deepEqual(includedVatFromGrossOre(-100, 'delivery'), { rate: 6, vatOre: 0 });
+});
+
+test('preserves a valid historical VAT snapshot instead of recalculating it', () => {
+  assert.deepEqual(includedVatForReceipt(11_200, 'takeaway', 12, 1_200), {
+    rate: 12,
+    vatOre: 1_200,
+  });
+});
+
+test('falls back for legacy or malformed VAT snapshots', () => {
+  assert.deepEqual(includedVatForReceipt(10_600, 'takeaway', null, null), {
+    rate: 6,
+    vatOre: 600,
+  });
+  assert.deepEqual(includedVatForReceipt(10_600, 'takeaway', 12, 99_999), {
+    rate: 6,
+    vatOre: 600,
+  });
 });

@@ -1,7 +1,7 @@
 import { Resend } from 'resend';
 import type { Row } from '../db/connection.js';
 import { formatStockholmDateTime } from '../utils/stockholmWallTime.js';
-import { includedVatFromGrossOre } from '../shared/utils/vat.js';
+import { includedVatForReceipt } from '../shared/utils/vat.js';
 import { formatVerifiedReceiptDate } from '../utils/receiptDate.js';
 import {
   getPublicWebAppUrl,
@@ -92,9 +92,11 @@ export async function sendOrderConfirmationEmail(ctx: OrderConfirmationRowContex
   const imgSrc = logoUrl();
 
   // Förenklad faktura (kvitto): priserna inkluderar moms, så momsen räknas ut baklänges.
-  const { rate: vatRate, vatOre } = includedVatFromGrossOre(
+  const { rate: vatRate, vatOre } = includedVatForReceipt(
     totalOre,
-    ctx.order.order_type
+    ctx.order.order_type,
+    ctx.order.receipt_vat_rate_percent,
+    ctx.order.receipt_vat_ore
   );
 
   // A receipt must use the verified payment instant, never the pending-order creation time.

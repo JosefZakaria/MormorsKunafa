@@ -70,6 +70,8 @@ export function orderRowToOrder(r: Row, items: Row[]): Record<string, unknown> {
     orderType: r.order_type,
     paymentMethod: r.payment_method,
     paymentStatus: r.payment_status,
+    receiptVatRate: r.receipt_vat_rate_percent ?? undefined,
+    receiptVatAmount: r.receipt_vat_ore ?? undefined,
     totalPrice: r.total_ore,
     defaultPreparationTime: r.default_preparation_time_minutes,
     estimatedReadyTime: dbTimestampToIso(r.estimated_ready_at),
