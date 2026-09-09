@@ -1,11 +1,112 @@
 import { readFile } from 'node:fs/promises';
+import assert from 'node:assert/strict';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+import {
+  APPROVED_PREVIEW_API_ORIGINS,
+  PRODUCTION_API_ORIGIN,
+  createWebVercelConfig,
+} from '../apps/web/config/vercel-config.mjs';
 
 const root = process.cwd();
 const webRoot = path.join(root, 'apps', 'web');
 const fail = (message) => { throw new Error(`[web deployment] ${message}`); };
 
-const config = JSON.parse(await readFile(path.join(webRoot, 'vercel.json'), 'utf8'));
+let configImportCounter = 0;
+const deploymentKeys = ['VERCEL_ENV', 'PREVIEW_API_ORIGIN', 'PRODUCTION_API_ORIGINS'];
+async function loadDeploymentConfig(overrides) {
+  const previous = new Map(deploymentKeys.map((key) => [key, process.env[key]]));
+  for (const key of deploymentKeys) delete process.env[key];
+  for (const [key, value] of Object.entries(overrides)) process.env[key] = value;
+
+  try {
+    const configUrl = pathToFileURL(path.join(webRoot, 'vercel.mjs'));
+    configUrl.searchParams.set('verification', String(configImportCounter++));
+    return (await import(configUrl.href)).config;
+  } finally {
+    for (const [key, value] of previous) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+}
+
+const config = await loadDeploymentConfig({ VERCEL_ENV: 'production' });
+const previewOrigin = 'https://mormors-kunafa-test-api.example.test';
+const previewConfig = createWebVercelConfig(
+  {
+    VERCEL_ENV: 'preview',
+    PREVIEW_API_ORIGIN: previewOrigin,
+  },
+  [previewOrigin]
+);
+const developmentConfig = await loadDeploymentConfig({ VERCEL_ENV: 'development' });
+
+await assert.rejects(
+  loadDeploymentConfig({ VERCEL_ENV: 'preview' }),
+  /PREVIEW_API_ORIGIN must be an explicit HTTPS origin/
+);
+await assert.rejects(
+  loadDeploymentConfig({
+    VERCEL_ENV: 'preview',
+    PREVIEW_API_ORIGIN: previewOrigin,
+  }),
+  /not present in the committed approved Preview API origin allowlist/
+);
+assert.equal(APPROVED_PREVIEW_API_ORIGINS.length, 0, 'Preview must remain blocked until an isolated origin is reviewed');
+for (const productionOrigin of [
+  PRODUCTION_API_ORIGIN,
+  'https://api.mormorskunafa.se',
+]) {
+  await assert.rejects(
+    loadDeploymentConfig({
+      VERCEL_ENV: 'preview',
+      PREVIEW_API_ORIGIN: productionOrigin,
+    }),
+    /must not target a known Production API origin/
+  );
+}
+await assert.rejects(
+  async () => createWebVercelConfig(
+    {
+      VERCEL_ENV: 'preview',
+      PREVIEW_API_ORIGIN: 'https://legacy-production-api.example.se',
+      PRODUCTION_API_ORIGINS: 'https://legacy-production-api.example.se',
+    },
+    ['https://legacy-production-api.example.se']
+  ),
+  /must not target a known Production API origin/
+);
+await assert.rejects(
+  async () => createWebVercelConfig(
+    {
+      VERCEL_ENV: 'preview',
+      PREVIEW_API_ORIGIN: 'https://mormors-kunafa-backend-git-main-example.vercel.app',
+    },
+    [previewOrigin]
+  ),
+  /not present in the committed approved Preview API origin allowlist/
+);
+for (const invalidOrigin of [
+  'http://preview-api.example.test',
+  'https://user:password@preview-api.example.test',
+  'https://preview-api.example.test/api',
+  'https://preview-api.example.test?environment=test',
+  'https://127.0.0.1',
+]) {
+  await assert.rejects(
+    loadDeploymentConfig({
+      VERCEL_ENV: 'preview',
+      PREVIEW_API_ORIGIN: invalidOrigin,
+    }),
+    /PREVIEW_API_ORIGIN must/
+  );
+}
+await assert.rejects(
+  loadDeploymentConfig({ VERCEL_ENV: 'staging' }),
+  /VERCEL_ENV must be exactly production, preview, or development/
+);
+
 const rewrites = Array.isArray(config.rewrites) ? config.rewrites : [];
 const apiIndex = rewrites.findIndex((rule) => rule.source === '/api/:path*');
 const spaIndex = rewrites.findIndex(
@@ -14,6 +115,20 @@ const spaIndex = rewrites.findIndex(
 if (apiIndex < 0 || spaIndex < 0 || apiIndex >= spaIndex || spaIndex !== rewrites.length - 1) {
   fail('API proxy must precede a final SPA fallback to /index.html');
 }
+if (rewrites[apiIndex].destination !== `${PRODUCTION_API_ORIGIN}/api/:path*`) {
+  fail('Production /api must use the approved Production API origin');
+}
+
+const previewRewrite = previewConfig.rewrites.find((rule) => rule.source === '/api/:path*');
+if (previewRewrite?.destination !== `${previewOrigin}/api/:path*`) {
+  fail('Preview /api must use the explicitly configured isolated API origin');
+}
+const developmentRewrite = developmentConfig.rewrites.find((rule) => rule.source === '/api/:path*');
+if (developmentRewrite?.destination !== 'http://127.0.0.1:3001/api/:path*') {
+  fail('Development /api must stay on the loopback backend');
+}
+
+assert.deepEqual(config, createWebVercelConfig({ VERCEL_ENV: 'production' }));
 
 const globalHeaders = (config.headers ?? []).find((rule) => rule.source === '/(.*)')?.headers ?? [];
 const headerMap = new Map(globalHeaders.map((header) => [header.key.toLowerCase(), header.value]));
@@ -52,6 +167,11 @@ for (const route of ['terms', 'privacy']) {
   }
 }
 
+const sharedApiSource = await readFile(path.join(root, 'shared', 'api', 'index.ts'), 'utf8');
+if (!/baseUrl:\s*viteProd\s*\?\s*['"]\/api['"]/.test(sharedApiSource)) {
+  fail('Production browser API traffic must remain on same-origin /api');
+}
+
 const publicRoot = path.join(webRoot, 'public');
 const [securityText, robotsText, sitemapText] = await Promise.all([
   readFile(path.join(publicRoot, '.well-known', 'security.txt'), 'utf8'),
@@ -70,4 +190,4 @@ for (const route of ['/terms', '/privacy']) {
   }
 }
 
-console.log('Verified Vercel rewrites, security headers, sensitive cache policy, legal routes and static security files.');
+console.log('Verified fail-closed Vercel environment rewrites, same-origin API, security headers, sensitive cache policy, legal routes and static security files.');

@@ -4,12 +4,25 @@ Status 2026-09-08: future operator instructions. No deployment or live verificat
 
 ## Origins and environment isolation
 
-The production web bundle uses same-origin `/api`. `apps/web/vercel.json` proxies that path to the backend. A cross-origin `VITE_API_BASE_URL` is not the production API switch; the cookie/CSRF contract depends on the same-origin proxy. The current rewrite names the production backend and also applies to ordinary Preview deployments. **Do not deploy or use a Preview until its rewrite and all backend integrations point exclusively at isolated test resources.** Do not copy a local `.env` or Production values into Preview.
+The web bundle always uses same-origin `/api`; a cross-origin `VITE_API_BASE_URL` is not the production API switch because the cookie/CSRF and SSE contracts depend on the proxy. [`apps/web/vercel.mjs`](../apps/web/vercel.mjs) now generates that rewrite from Vercel's deployment environment. Production remains pinned to the reviewed Production backend. Development remains pinned to `127.0.0.1`. Preview has no fallback: configuration evaluation fails unless its target is both an explicit clean HTTPS origin and an exact member of the committed Preview allowlist.
+
+The committed Preview allowlist is intentionally empty. No isolated test backend was available to approve during this local work, so **every Preview build is currently expected to fail closed**. Vercel supports programmatic configuration and environment-specific variables, but those controls do not prove what database or providers are behind a hostname. See Vercel's [programmatic configuration](https://vercel.com/docs/project-configuration/vercel-ts), [environment-variable scoping](https://vercel.com/docs/environment-variables/manage-across-environments), and [deployment environments](https://vercel.com/docs/deployments/environments).
 
 | App | Vercel root | Output |
 | --- | --- | --- |
 | Web | `apps/web` | `dist` |
 | Backend | `backend` | Leave output override off; use `backend/vercel.json` |
+
+Before enabling one exact Preview origin:
+
+1. Provision a backend that uses only a separate synthetic/test database, separate Upstash, test merchant/provider resources and non-Production notification settings. Do not copy `.env` or Production values.
+2. Record evidence for the backend project/deployment identity and every resource binding. Confirm that none of its aliases or redirects reaches the Production backend.
+3. Add only that exact clean HTTPS origin to `APPROVED_PREVIEW_API_ORIGINS` in `apps/web/config/vercel-config.mjs` and review the code change. The value must be an origin only, without `/api`, credentials, query or fragment.
+4. Set the same value as `PREVIEW_API_ORIGIN` in the web project's **Preview environment only**. Populate Preview-scoped `PRODUCTION_API_ORIGINS` with every current Production API alias as an additional denylist; the repository already denies the known Vercel and custom API aliases.
+5. Configure the isolated backend's `PUBLIC_WEB_APP_URL`, `FRONTEND_URL`/`FRONTEND_URLS`, secrets and provider modes for the exact Preview web origin. A payment return to the Production site is not an acceptable Preview configuration.
+6. Run `npm run verify:web-deployment`, then use a pinned current Vercel CLI to compile both Production and Preview configuration locally and inspect the generated `/api` destination before any authorized deployment.
+
+Vercel Git integration can create a Preview from a push to a non-Production branch or from a pull request. Treat the first push/PR as a possible deployment trigger: inspect the project's Git/deployment settings and complete the steps above first. Do not promote a Preview artifact to Production; the external rewrite is generated when that artifact's config is compiled, so create and inspect a fresh Production build from the same reviewed commit instead.
 
 For local integrated verification use [LOCAL_SECURITY_TESTS.md](LOCAL_SECURITY_TESTS.md). The harness discards inherited credentials, starts its own localhost database and simulates providers. Ordinary `dev` commands load local configuration and are not substitutes for the isolated harness.
 
@@ -36,4 +49,4 @@ Old `MAX` order-number writers cannot overlap the sequence-based writer. Old cus
 
 Follow the branch report's forward-repair/compatible-build procedure. Never restore a pre-cutover full backup over a database receiving real orders. Preserve new order, payment, refund, provider-event and audit records; keep reconciliation running. Reverting blindly to old main can break numbering and the new authentication/status contract.
 
-`npm run verify:web-deployment`, `npm run verify:web-build` and `npm run check` verify repository/build behavior only. They do not authorize deployment, prove hosted configuration, or discharge the remaining provider/operational gates.
+`npm run verify:web-deployment`, `npm run verify:web-build` and `npm run check` verify repository/build behavior only. The deployment verifier executes allowed and denied environment/target combinations, including the currently empty committed Preview allowlist. These checks do not authorize deployment, prove hosted resource ownership, or discharge the remaining provider/operational gates.

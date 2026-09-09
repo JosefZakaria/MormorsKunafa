@@ -4,7 +4,7 @@ Status 2026-09-08: future authorized operator work. The branch work used simulat
 
 The customer first creates an order with an `Idempotency-Key`. The server selects authoritative product/variant prices, location stock and delivery fee. It returns an order-bound status capability. Starting Checkout and reading customer status require that capability; a UUID alone does not grant access. The backend reserves one Checkout attempt and verifies amount, currency, order, method, mode and stored session identity before recording payment.
 
-Configure Production secrets only in Production. Preview requires an independent backend/database/merchant test environment and isolated same-origin API rewrite; the checked-in web rewrite otherwise reaches the production backend. Do not copy `.env` or production credentials into Preview. See [VERCEL_DEPLOY.md](VERCEL_DEPLOY.md).
+Configure Production secrets only in Production. Preview requires an independent backend/database/merchant test environment and an isolated same-origin API rewrite. The web deployment config now rejects missing, malformed, unapproved and known-Production Preview targets; its committed Preview allowlist remains empty until an isolated backend has been provisioned and evidenced. Do not copy `.env` or Production credentials into Preview. See [VERCEL_DEPLOY.md](VERCEL_DEPLOY.md).
 
 The production web client uses `/api` through its proxy. Set backend `PUBLIC_WEB_APP_URL` explicitly to the matching web origin; `VITE_API_BASE_URL` is not a production cross-origin switch and `VITE_STRIPE_PUBLIC_KEY` is unused for hosted Checkout. Refunds require a bcrypt `REFUND_PASSWORD_HASH` with cost at least 10, scoped authorization and order-bound confirmation.
 

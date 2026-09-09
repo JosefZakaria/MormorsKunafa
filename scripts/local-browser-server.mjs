@@ -1,9 +1,10 @@
 import express from 'express';
 import path from 'node:path';
-import { readFile, writeFile } from 'node:fs/promises';
+import { writeFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import { withTestDatabase, repositoryRoot } from './lib/local-test-database.mjs';
 import { initializeSyntheticDatabase, createSyntheticApp, TEST_ORIGIN } from './lib/synthetic-api.mjs';
+import { createWebVercelConfig } from '../apps/web/config/vercel-config.mjs';
 
 const runId = process.env.MK_BROWSER_RUN_ID;
 assert.match(runId ?? '', /^[a-f0-9-]{36}$/);
@@ -12,7 +13,7 @@ await withTestDatabase(async db => {
   const { app: backend, sessions } = await createSyntheticApp(db);
   const app=express();
   app.use((req,res,next)=>req.path.startsWith('/api/') ? backend(req,res,next) : next());
-  const webConfig=JSON.parse(await readFile(path.join(repositoryRoot,'apps/web/vercel.json'),'utf8'));
+  const webConfig=createWebVercelConfig({VERCEL_ENV:'production'});
   app.use((_req,res,next)=> {
     for (const {key,value} of webConfig.headers[0].headers) res.setHeader(key,value);
     next();

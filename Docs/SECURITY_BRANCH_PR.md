@@ -17,7 +17,7 @@ Checkout now retains server-authoritative pricing and order-bound status access 
 ## Blocking review and rollout conditions
 
 - Old clients lack the capability/idempotency/location contract, and old MAX order writers cannot coexist with the sequence writer. A usable compatible cutover is still required; weakening auth or exposing customer data is not acceptable.
-- The checked-in web rewrite also sends ordinary Preview traffic to the production API. Preview resources/rewrite must be isolated first.
+- The web config now fails closed for missing, malformed, unapproved or known-Production Preview API origins while retaining same-origin `/api`. Its committed Preview allowlist is deliberately empty; an independently isolated backend/database/Upstash/provider set and hosted verification are still required before any Preview can build.
 - Actual Supabase schema/migration history/grants/Storage and provider sandbox/merchant/webhook behavior remain unverified.
 - npm audit still reports 9 high and 20 moderate package entries; see the scoped dependency report. No blanket dependency or release approval is claimed.
 - Notification delivery, Upstash customer-data retention, operational ownership and legal/provider checks remain separate gates. Rotation belongs to the owner later.
