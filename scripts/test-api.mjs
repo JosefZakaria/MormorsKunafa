@@ -64,10 +64,13 @@ await withTestDatabase(async db => {
     assert.equal(first.status,201,JSON.stringify(first.data));
     assert.equal(first.data.checkoutContract,'order-v2');
     const id = first.data.id, token = first.data.statusToken;
+    for (const privateField of ['customerInfo','deliveryInfo','items','internalNotes','refunds','paymentStatus']) {
+      assert(!(privateField in first.data),`Create response exposed ${privateField}`);
+    }
     assert.equal(await db.sql(`SELECT total_ore FROM orders WHERE id='${id}'`),'19800');
     assert.equal(first.data.locationId,HOJA);
     const replay = await call('/api/orders',orderBody,{...checkoutContractHeader,'Idempotency-Key':key});
-    assert.equal(replay.data.id,id);
+    assert.deepEqual(replay.data,first.data);
     assert.equal((await call(`/api/orders/${id}`)).status,401);
     const tokenHeader = {...checkoutContractHeader,'x-order-status-token':token};
     const status = await call(`/api/orders/${id}`,undefined,tokenHeader);

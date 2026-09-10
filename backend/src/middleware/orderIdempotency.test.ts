@@ -4,15 +4,18 @@ import {
   abandonOrderIdempotency,
   beginOrderIdempotency,
   completeOrderIdempotency,
+  decodeOrderIdempotencyResponse,
   hashOrderPayload,
   ORDER_IDEMPOTENCY_COMPLETE_TTL_SECONDS,
   ORDER_IDEMPOTENCY_PROCESSING_TTL_SECONDS,
   parseOrderIdempotencyKey,
+  sealOrderIdempotencyResponse,
 } from './orderIdempotency.js';
 
 // Always exercise the isolated development fallback; tests must not contact Redis.
 delete process.env.UPSTASH_REDIS_REST_URL;
 delete process.env.UPSTASH_REDIS_REST_TOKEN;
+process.env.JWT_SECRET = 'test-only-order-replay-secret-that-is-at-least-thirty-two-bytes';
 
 test('requires a bounded opaque idempotency key', () => {
   assert.equal(parseOrderIdempotencyKey('12345678-1234-4234-8234-123456789abc'), '12345678-1234-4234-8234-123456789abc');
@@ -40,7 +43,29 @@ test('replays a completed local request and rejects key reuse with new input', a
   await abandonOrderIdempotency(first.context);
 });
 
-test('retains the complete customer response and bearer status capability for exactly the declared TTL', async () => {
+test('seals external replay values and binds them to the key and payload', () => {
+  const context = { storageKey: 'cache-key-a', payloadHash: 'payload-hash-a' };
+  const response = {
+    id: 'order-3',
+    statusToken: 'synthetic-bearer-status-capability',
+    customerInfo: { name: 'Synthetic Customer', phone: '+46700000000' },
+  };
+  const sealedResponse = sealOrderIdempotencyResponse(context, response);
+  assert(!sealedResponse.includes('Synthetic Customer'));
+  assert(!sealedResponse.includes('+46700000000'));
+  assert(!sealedResponse.includes('synthetic-bearer-status-capability'));
+  assert.deepEqual(decodeOrderIdempotencyResponse(context, { sealedResponse }), response);
+  assert.throws(() => decodeOrderIdempotencyResponse(
+    { ...context, storageKey: 'cache-key-b' },
+    { sealedResponse }
+  ));
+  const parts = sealedResponse.split('.');
+  parts[2] = `${parts[2][0] === 'A' ? 'B' : 'A'}${parts[2].slice(1)}`;
+  assert.throws(() => decodeOrderIdempotencyResponse(context, { sealedResponse: parts.join('.') }));
+  assert.deepEqual(decodeOrderIdempotencyResponse(context, { response }), response);
+});
+
+test('replays a sealed response for exactly the declared TTL', async () => {
   const key = 'sensitive-response-contract-0001';
   const createdAt = 10_000;
   const first = await beginOrderIdempotency(key, { order: 3 }, createdAt);
@@ -51,8 +76,7 @@ test('retains the complete customer response and bearer status capability for ex
   const completeResponse = {
     id: 'order-3',
     statusToken: 'synthetic-bearer-status-capability',
-    customerInfo: { name: 'Synthetic Customer', phone: '+46700000000' },
-    deliveryInfo: { address: 'Synthetic address' },
+    checkoutContract: 'order-v2',
   };
   await completeOrderIdempotency(first.context, completeResponse, createdAt);
   assert.deepEqual(await beginOrderIdempotency(key, { order: 3 }, createdAt), {

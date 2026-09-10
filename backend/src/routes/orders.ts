@@ -403,7 +403,10 @@ router.post('/', requireCurrentCheckoutContract, orderLimiter, orderContactLimit
     }
 
     const responseBody = {
-      ...orderRowToOrder(result.order, result.items),
+      id: String(result.order.id),
+      orderNumber: String(result.order.order_number),
+      totalPrice: Number(result.order.total_ore),
+      locationId: result.order.location_id == null ? null : String(result.order.location_id),
       checkoutContract: CHECKOUT_CONTRACT_VERSION,
       statusToken: statusAccess.token,
     };

@@ -17,6 +17,7 @@ import type {
   DuplicatePaymentAlertDetail,
   VerifiedFoodInformationUpdate,
   CheckoutPaymentChoice,
+  CreateOrderResponse,
 } from '@shared/types';
 import {
   CHECKOUT_CONTRACT_HEADER,
@@ -315,10 +316,7 @@ export const locationApi = {
 
 // Orders API
 export const orderApi = {
-  create: async (data: CreateOrderRequest, idempotencyKey: string): Promise<Order & {
-    checkoutContract?: string;
-    statusToken?: string;
-  }> => {
+  create: async (data: CreateOrderRequest, idempotencyKey: string): Promise<CreateOrderResponse> => {
     return apiRequest('/orders', {
       method: 'POST',
       headers: { ...currentCheckoutHeaders(), 'Idempotency-Key': idempotencyKey },

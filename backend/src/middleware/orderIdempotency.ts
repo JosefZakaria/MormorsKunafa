@@ -1,17 +1,27 @@
-import { createHash } from 'node:crypto';
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHash,
+  createHmac,
+  randomBytes,
+} from 'node:crypto';
 import { Redis } from '@upstash/redis';
 
 type StoredRequest = {
   payloadHash: string;
   state: 'processing' | 'complete';
   expiresAt: number;
+  /** Read compatibility for entries created before sealed replay values shipped. */
   response?: unknown;
+  sealedResponse?: string;
 };
 
 export const ORDER_IDEMPOTENCY_PROCESSING_TTL_SECONDS = 10 * 60;
 export const ORDER_IDEMPOTENCY_COMPLETE_TTL_SECONDS = 24 * 60 * 60;
 const PROCESSING_TTL_MS = ORDER_IDEMPOTENCY_PROCESSING_TTL_SECONDS * 1000;
 const COMPLETE_TTL_MS = ORDER_IDEMPOTENCY_COMPLETE_TTL_SECONDS * 1000;
+const SEALED_RESPONSE_VERSION = 'v1';
+const SEALED_RESPONSE_KEY_CONTEXT = 'mormors-kunafa/order-idempotency-response/v1';
 
 export type OrderIdempotencyContext = {
   storageKey: string;
@@ -63,6 +73,82 @@ export function hashOrderPayload(payload: unknown): string {
   return createHash('sha256').update(stableJson(payload)).digest('base64url');
 }
 
+function sealedResponseKey(): Buffer {
+  const secret = process.env.JWT_SECRET?.trim() ?? '';
+  if (Buffer.byteLength(secret, 'utf8') < 32) {
+    throw new Error('[SECURITY FATAL] JWT_SECRET must be at least 32 bytes for order replay sealing');
+  }
+  return createHmac('sha256', secret).update(SEALED_RESPONSE_KEY_CONTEXT).digest();
+}
+
+function sealedResponseAad(context: OrderIdempotencyContext): Buffer {
+  return Buffer.from(`${context.storageKey}\0${context.payloadHash}`, 'utf8');
+}
+
+function replayIntegrityError(): Error {
+  return new Error('Order idempotency replay failed integrity verification');
+}
+
+/** Encrypt a replay value before it crosses the external Redis boundary. */
+export function sealOrderIdempotencyResponse(
+  context: OrderIdempotencyContext,
+  response: unknown
+): string {
+  const json = JSON.stringify(response);
+  if (json === undefined) throw replayIntegrityError();
+  const iv = randomBytes(12);
+  const cipher = createCipheriv('aes-256-gcm', sealedResponseKey(), iv);
+  cipher.setAAD(sealedResponseAad(context));
+  const ciphertext = Buffer.concat([cipher.update(json, 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return [
+    SEALED_RESPONSE_VERSION,
+    iv.toString('base64url'),
+    ciphertext.toString('base64url'),
+    tag.toString('base64url'),
+  ].join('.');
+}
+
+/** Decode sealed values, with a bounded compatibility path for pre-change entries. */
+export function decodeOrderIdempotencyResponse(
+  context: OrderIdempotencyContext,
+  stored: Pick<StoredRequest, 'response' | 'sealedResponse'>
+): unknown {
+  if (stored.sealedResponse != null) {
+    try {
+      const [version, encodedIv, encodedCiphertext, encodedTag, extra] =
+        stored.sealedResponse.split('.');
+      if (
+        version !== SEALED_RESPONSE_VERSION
+        || !encodedIv
+        || !encodedCiphertext
+        || !encodedTag
+        || extra != null
+        || !/^[A-Za-z0-9_-]+$/.test(encodedIv)
+        || !/^[A-Za-z0-9_-]+$/.test(encodedCiphertext)
+        || !/^[A-Za-z0-9_-]+$/.test(encodedTag)
+      ) {
+        throw replayIntegrityError();
+      }
+      const iv = Buffer.from(encodedIv, 'base64url');
+      const ciphertext = Buffer.from(encodedCiphertext, 'base64url');
+      const tag = Buffer.from(encodedTag, 'base64url');
+      if (iv.length !== 12 || ciphertext.length === 0 || tag.length !== 16) {
+        throw replayIntegrityError();
+      }
+      const decipher = createDecipheriv('aes-256-gcm', sealedResponseKey(), iv);
+      decipher.setAAD(sealedResponseAad(context));
+      decipher.setAuthTag(tag);
+      const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+      return JSON.parse(plaintext.toString('utf8')) as unknown;
+    } catch {
+      throw replayIntegrityError();
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(stored, 'response')) return stored.response;
+  throw replayIntegrityError();
+}
+
 export async function beginOrderIdempotency(
   rawKey: unknown,
   payload: unknown,
@@ -101,7 +187,12 @@ export async function beginOrderIdempotency(
   if (acquired) return { kind: 'acquired', context: { storageKey, payloadHash } };
   if (!existing) return { kind: 'processing' };
   if (existing.payloadHash !== payloadHash) return { kind: 'conflict' };
-  if (existing.state === 'complete') return { kind: 'replay', response: existing.response };
+  if (existing.state === 'complete') {
+    return {
+      kind: 'replay',
+      response: decodeOrderIdempotencyResponse({ storageKey, payloadHash }, existing),
+    };
+  }
   return { kind: 'processing' };
 }
 
@@ -114,7 +205,7 @@ export async function completeOrderIdempotency(
     payloadHash: context.payloadHash,
     state: 'complete',
     expiresAt: now + COMPLETE_TTL_MS,
-    response,
+    sealedResponse: sealOrderIdempotencyResponse(context, response),
   };
   if (hasRedis()) {
     const stored = await Redis.fromEnv().set(context.storageKey, complete, {

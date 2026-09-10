@@ -307,6 +307,16 @@ export interface CreateOrderRequest {
   locationId?: string;
 }
 
+/** Minimal replay-safe result from the public order creation endpoint. */
+export interface CreateOrderResponse {
+  id: string;
+  orderNumber: string;
+  totalPrice: number;
+  locationId: string | null;
+  checkoutContract: string;
+  statusToken: string;
+}
+
 // Update Order Status Request
 export interface UpdateOrderStatusRequest {
   status: OrderStatus;
