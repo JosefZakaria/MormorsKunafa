@@ -10,6 +10,7 @@
   "2026-08-19-duplicate-stripe-refunds.sql",
   "2026-08-19-abandoned-checkout-cleanup.sql",
   "2026-08-19-initiated-checkout-reconciliation.sql",
+  "2026-09-10-checkout-reconciliation-fairness.sql",
   "2026-08-19-operational-pii-retention.sql",
   "2026-08-19-menu-sort-and-hero.sql",
   "2026-08-19-site-media-bucket.sql",

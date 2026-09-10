@@ -93,6 +93,9 @@ await withTestDatabase(async ({ sql, file }) => {
     VALUES ('${randomUUID()}','${legacyWriterId}','Legacy synthetic cake',1,1234)`);
   await sql(`UPDATE orders SET total_ore=1234 WHERE id='${legacyWriterId}'`);
 
+  // Queue fairness is required during Phase 3, before the Phase 4 constraints.
+  await file(path.join(repositoryRoot,'backend/test/fixtures/checkout-retention.sql'));
+
   const staleCandidate = allocatedLegacyNumber;
   const mixedNumbers = await Promise.all([
     ...Array.from({length: 6}, () => sql(createOrder(randomUUID()))),
@@ -122,7 +125,6 @@ await withTestDatabase(async ({ sql, file }) => {
   await file(path.join(migrations, legacyFinal[0]));
   assert.equal(await sql(createOrder(randomUUID())), '#10031');
   assert.equal(await apply([...legacyPhase1, ...legacyFinal]), 0);
-  await file(path.join(repositoryRoot,'backend/test/fixtures/checkout-retention.sql'));
   for (const role of ['anon', 'authenticated']) {
     for (const table of ['orders', 'order_items', 'admin_users', 'locations', 'product_location_stock']) {
       await assert.rejects(sql(`SET ROLE ${role}; SELECT * FROM ${table}`));
