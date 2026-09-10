@@ -94,7 +94,10 @@ export async function withTestDatabase(callback) {
       query.then(()=>pendingQueries.delete(query),()=>pendingQueries.delete(query));
       return query;
     };
-    const file = (filename) => psql(['--file', path.resolve(filename)]);
+    const file = (filename, variables = {}) => psql([
+      ...Object.entries(variables).flatMap(([name, value]) => ['--set', `${name}=${value}`]),
+      '--file', path.resolve(filename),
+    ]);
     await callback({ sql, file, host, port, database });
   } catch (error) {
     if (!started) {

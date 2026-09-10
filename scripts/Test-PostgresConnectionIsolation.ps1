@@ -27,6 +27,8 @@ $global:mkBackupTestState.identityDatabase = 'restore_test'
 $global:mkBackupTestState.commandFailure = $false
 $global:mkBackupTestState.verificationFailure = $false
 $global:mkBackupTestState.expectedHost = 'source.example.test'
+$global:mkBackupTestState.catalogTables = @('admin_settings','admin_users','order_items','orders','products')
+$global:mkBackupTestState.verifiedAccountingProfile = $null
 function Get-Command([string]$Name) {
   # Never fall back to a real executable in this test.
   switch ($Name) {
@@ -37,6 +39,9 @@ function Get-Command([string]$Name) {
       if ($args -contains '--command') {
         return (@{database=$global:mkBackupTestState.identityDatabase;sessionUser='synthetic_user'} | ConvertTo-Json -Compress)
       }
+      $profileArgument = @($args | Where-Object { [string]$_ -like 'expected_accounting_profile=*' })
+      Assert-Condition ($profileArgument.Count -eq 1) 'Restore verification did not receive exactly one accounting profile'
+      $global:mkBackupTestState.verifiedAccountingProfile = ([string]$profileArgument[0]).Split('=', 2)[1]
       if ($global:mkBackupTestState.verificationFailure) { $global:LASTEXITCODE = 1 }
     }} }
     'pg_dump' { return @{Source={
@@ -51,7 +56,7 @@ function Get-Command([string]$Name) {
       Assert-IsolatedEnvironment
       $global:LASTEXITCODE = 0
       if ($args -contains '--list') {
-        return @('admin_settings','admin_users','order_items','orders','products') | ForEach-Object { 'TABLE public ' + $_ }
+        return $global:mkBackupTestState.catalogTables | ForEach-Object { '123; 1259 456 TABLE public ' + $_ + ' synthetic_user' }
       }
       Assert-Condition ($env:PGHOST -ceq 'target.example.test') 'Restore target was redirected'
       Assert-Condition (($args -contains '--single-transaction') -and ($args -contains '--exit-on-error')) 'Restore lost atomic failure options'
@@ -87,20 +92,31 @@ try {
   Assert-Condition ($env:PGHOSTADDR -ceq '192.0.2.1') 'Backup leaked isolated environment'
   $archive=(Get-ChildItem -LiteralPath $testDirectory -Filter '*.dump').FullName
   $manifest=(Get-ChildItem -LiteralPath $testDirectory -Filter '*.manifest.json').FullName
+  $manifestData=Get-Content -LiteralPath $manifest -Raw -Encoding utf8 | ConvertFrom-Json
+  Assert-Condition ($manifestData.formatVersion -eq 3) 'Backup manifest format was not upgraded'
+  Assert-Condition ($manifestData.accountingProfile -ceq 'legacy-core') 'Core backup received the wrong accounting profile'
+  Assert-Condition (@($manifestData.publicTables).Count -eq 5) 'Backup manifest omitted public tables'
   $env:RESTORE_PGHOST='target.example.test'; $env:RESTORE_PGDATABASE='restore_test'
   $env:RESTORE_PGUSER='synthetic_user'; $env:RESTORE_PGPASSWORD='synthetic-restore-password'
   $global:mkBackupTestState.expectedHost='target.example.test'
   $restoreScript=Join-Path $PSScriptRoot 'Test-SupabaseBackupRestore.ps1'
-  $restoreArguments=@{ArchivePath=$archive;ManifestPath=$manifest;ExpectedDisposableDatabase='restore_test';ConfirmDisposableTarget=$true;Confirm=$false}
+  $restoreArguments=@{ArchivePath=$archive;ManifestPath=$manifest;ExpectedDisposableDatabase='restore_test';ExpectedAccountingProfile='legacy-core';ConfirmDisposableTarget=$true;Confirm=$false}
   $env:RESTORE_PGDATABASE='Restore_Test'; Assert-Rejected { & $restoreScript @restoreArguments }
   $env:RESTORE_PGDATABASE='restore_test'
   $global:mkBackupTestState.identityDatabase='Restore_Test'; Assert-Rejected { & $restoreScript @restoreArguments }
   $global:mkBackupTestState.identityDatabase='restore_test'
   Assert-Condition ($global:mkBackupTestState.restoreCalls -eq 0) 'A failed preflight reached destructive restore'
+  $securedArguments=$restoreArguments.Clone(); $securedArguments.ExpectedAccountingProfile='secured-ledgers'
+  Assert-Rejected { & $restoreScript @securedArguments }
+  $global:mkBackupTestState.catalogTables += 'payment_provider_events'
+  Assert-Rejected { & $restoreScript @restoreArguments }
+  $global:mkBackupTestState.catalogTables = @('admin_settings','admin_users','order_items','orders','products')
+  Assert-Condition ($global:mkBackupTestState.restoreCalls -eq 0) 'A catalog/profile mismatch reached destructive restore'
   & $restoreScript @restoreArguments -WhatIf | Out-Null
   Assert-Condition ($global:mkBackupTestState.restoreCalls -eq 0) 'WhatIf restored the database'
   & $restoreScript @restoreArguments | Out-Null
   Assert-Condition ($global:mkBackupTestState.restoreCalls -eq 1) 'Restore was not exercised'
+  Assert-Condition ($global:mkBackupTestState.verifiedAccountingProfile -ceq 'legacy-core') 'Restore verified the wrong accounting profile'
   $global:mkBackupTestState.commandFailure=$true; Assert-Rejected { & $restoreScript @restoreArguments }; $global:mkBackupTestState.commandFailure=$false
   $global:mkBackupTestState.verificationFailure=$true; Assert-Rejected { & $restoreScript @restoreArguments }; $global:mkBackupTestState.verificationFailure=$false
   Assert-Condition ($env:PGHOSTADDR -ceq '192.0.2.1') 'Failure did not restore the original environment'

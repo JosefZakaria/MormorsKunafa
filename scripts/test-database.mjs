@@ -51,8 +51,10 @@ await withTestDatabase(async ({ sql, file }) => {
   await apply(mainNames);
   const location = '2f1a9c4e-6b7d-4e8f-a901-b2c3d4e5f602';
   const legacyId = randomUUID();
-  await sql(`INSERT INTO orders(id, order_number, customer_phone, location_id, stripe_checkout_session_id)
-    VALUES ('${legacyId}', '#9998', '+46700000000', '${location}', 'cs_test_before_upgrade')`);
+  await sql(`INSERT INTO orders(id, order_number, customer_phone, location_id, stripe_checkout_session_id, total_ore)
+    VALUES ('${legacyId}', '#9998', '+46700000000', '${location}', 'cs_test_before_upgrade', 1234);
+    INSERT INTO order_items(id, order_id, product_name_snapshot, quantity, price_ore)
+    VALUES ('${randomUUID()}', '${legacyId}', 'Pre-upgrade synthetic cake', 1, 1234)`);
   const ownershipMigration = '2026-09-08-stripe-event-ownership.sql';
   await apply(legacyPhase1.filter(name => name !== ownershipMigration));
   await sql(`INSERT INTO payment_provider_events(provider,event_id,event_type,livemode,status,attempts,lease_expires_at,outcome)
@@ -62,6 +64,9 @@ await withTestDatabase(async ({ sql, file }) => {
   await apply(legacyPhase1);
   await file(path.join(repositoryRoot,'backend/test/fixtures/stripe-event-ownership.sql'));
   await file(path.join(repositoryRoot,'backend/test/fixtures/online-cancellation-boundary.sql'));
+  await file(path.join(repositoryRoot,'backend/src/db/verification/verify-restored-database.sql'), {
+    expected_accounting_profile: 'secured-ledgers',
+  });
   assert.equal(await sql(`SELECT order_number || ':' || stripe_checkout_session_id || ':' || location_id::text
     FROM orders WHERE id='${legacyId}'`), '#9998:cs_test_before_upgrade:' + location);
   assert.equal(await apply(legacyPhase1), 0, 'already applied Phase 1 migrations must not run again');
@@ -141,6 +146,20 @@ await withTestDatabase(async ({ sql, file }) => {
   const migrations = path.join(repositoryRoot, 'backend/src/db/migrations');
   const order = JSON.parse(await readFile(path.join(migrations, 'migration-order.json'), 'utf8'));
   for (const name of order) await file(path.join(migrations, name));
+  await file(path.join(repositoryRoot,'backend/src/db/verification/verify-restored-database.sql'), {
+    expected_accounting_profile: 'secured-ledgers',
+  });
+  const inconsistentReceiptId = randomUUID();
+  await sql(`INSERT INTO orders(
+      id, order_number, customer_phone, total_ore, receipt_vat_rate_percent, receipt_vat_ore
+    ) VALUES ('${inconsistentReceiptId}', '#receipt-check', '+46700000000', 100, 6, 1);
+    INSERT INTO order_items(id, order_id, product_name_snapshot, quantity, price_ore)
+    VALUES ('${randomUUID()}', '${inconsistentReceiptId}', 'Receipt verifier probe', 1, 100)`);
+  await assert.rejects(file(
+    path.join(repositoryRoot,'backend/src/db/verification/verify-restored-database.sql'),
+    { expected_accounting_profile: 'secured-ledgers' },
+  ));
+  await sql(`DELETE FROM orders WHERE id='${inconsistentReceiptId}'`);
   assert.equal(await sql(`SELECT count(*) FROM pg_trigger WHERE tgrelid='orders'::regclass
     AND tgname='assign_order_number_from_sequence' AND NOT tgisinternal AND tgenabled <> 'D'`), '1');
   assert.equal(await sql(`SELECT count(*) FROM pg_constraint WHERE conrelid='orders'::regclass

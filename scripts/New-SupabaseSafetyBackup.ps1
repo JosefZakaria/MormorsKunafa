@@ -20,6 +20,20 @@ function Get-TextSha256([string]$Value) {
   }
 }
 
+function Get-PublicTablesFromArchiveCatalog([object[]]$Catalog) {
+  return @($Catalog | ForEach-Object {
+    $match = [regex]::Match([string]$_, '(?:^|\s)TABLE\s+public\s+([a-z_][a-z0-9_$]*)(?:\s|$)')
+    if ($match.Success) { $match.Groups[1].Value }
+  } | Sort-Object -Unique)
+}
+
+function Get-AccountingProfile([string[]]$PublicTables, [string[]]$SecuredLedgerTables) {
+  $present = @($SecuredLedgerTables | Where-Object { $PublicTables -ccontains $_ }).Count
+  if ($present -eq 0) { return 'legacy-core' }
+  if ($present -eq $SecuredLedgerTables.Count) { return 'secured-ledgers' }
+  return 'partial-investigation'
+}
+
 if (-not $AcknowledgeRestrictedDestination) {
   throw 'AcknowledgeRestrictedDestination is required. The dump contains production personal and accounting data.'
 }
@@ -63,19 +77,27 @@ try {
     throw 'pg_restore could not read the archive catalog.'
   }
 
+  $publicTables = Get-PublicTablesFromArchiveCatalog $catalog
   $requiredTables = @('admin_settings', 'admin_users', 'order_items', 'orders', 'products')
   $missingTables = @($requiredTables | Where-Object {
-    $table = $_
-    -not ($catalog | Where-Object { $_ -match "\bTABLE public $([regex]::Escape($table))\b" })
+    $publicTables -cnotcontains $_
   })
   if ($missingTables.Count -gt 0) {
     throw ('Backup archive is missing required public tables: ' + ($missingTables -join ', '))
   }
+  $securedLedgerTables = @(
+    'duplicate_stripe_refunds',
+    'order_refund_items',
+    'order_refunds',
+    'payment_provider_events',
+    'security_audit_log'
+  )
+  $accountingProfile = Get-AccountingProfile $publicTables $securedLedgerTables
 
   Move-Item -LiteralPath $partialPath -Destination $archivePath
   $file = Get-Item -LiteralPath $archivePath
   $manifest = [ordered]@{
-    formatVersion = 2
+    formatVersion = 3
     createdUtc = [DateTime]::UtcNow.ToString('o')
     archiveFile = $file.Name
     archiveBytes = $file.Length
@@ -84,6 +106,8 @@ try {
     sourceDatabase = $sourceIdentity.database
     sourceConnectionIsolated = $true
     requiredTables = $requiredTables
+    publicTables = $publicTables
+    accountingProfile = $accountingProfile
     restoreTested = $false
   }
   $manifest | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $manifestPath -Encoding utf8
@@ -93,6 +117,7 @@ try {
   Write-Output ('sha256=' + $manifest.archiveSha256)
   Write-Output ('bytes=' + $manifest.archiveBytes)
   Write-Output 'archive_catalog=verified'
+  Write-Output ('accounting_profile=' + $manifest.accountingProfile)
   Write-Output 'restore_tested=false'
   Write-Output 'Keep both files encrypted and restricted. Do not add them to Git or an ordinary cloud-synced folder.'
 } catch {
