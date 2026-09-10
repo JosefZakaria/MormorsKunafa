@@ -140,6 +140,18 @@ BEGIN
     RAISE EXCEPTION 'retention damaged the verified payment timestamp';
   END IF;
   BEGIN
+    UPDATE orders
+    SET receipt_vat_rate_percent=6,receipt_vat_ore=634
+    WHERE order_number='retention-eligible';
+    RAISE EXCEPTION 'verified receipt VAT was rewritten';
+  EXCEPTION WHEN check_violation THEN
+    NULL;
+  END;
+  IF NOT EXISTS(SELECT 1 FROM orders WHERE order_number='retention-eligible'
+    AND receipt_vat_rate_percent=12 AND receipt_vat_ore=1200) THEN
+    RAISE EXCEPTION 'blocked VAT rewrite changed the historical snapshot';
+  END IF;
+  BEGIN
     DELETE FROM orders WHERE order_number='retention-eligible';
     RAISE EXCEPTION 'paid accounting history was physically deleted';
   EXCEPTION WHEN check_violation THEN
@@ -147,6 +159,22 @@ BEGIN
   END;
   IF NOT EXISTS(SELECT 1 FROM orders WHERE order_number='retention-eligible') THEN
     RAISE EXCEPTION 'protected accounting order disappeared';
+  END IF;
+END;
+$$;
+-- Exercise the trigger as the disposable database owner. service_role is
+-- already denied TRUNCATE on the protected refund ledgers before triggers run.
+RESET ROLE;
+DO $$
+BEGIN
+  BEGIN
+    TRUNCATE TABLE public.orders CASCADE;
+    RAISE EXCEPTION 'order accounting history was truncated';
+  EXCEPTION WHEN check_violation THEN
+    NULL;
+  END;
+  IF NOT EXISTS(SELECT 1 FROM orders WHERE order_number='retention-eligible') THEN
+    RAISE EXCEPTION 'blocked truncate removed protected accounting history';
   END IF;
 END;
 $$;
