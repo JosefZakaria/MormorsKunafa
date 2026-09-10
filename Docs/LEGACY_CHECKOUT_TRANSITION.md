@@ -61,47 +61,49 @@ After Phase 1, prove on the isolated restore and then on the authorized target:
 If the five-second lock cannot be acquired, the migration aborts. Do not extend
 the timeout blindly; measure and retry only under an approved operator plan.
 
-## Phase 2 — web bridge before backend
+## Phase 2 — guarded backend with a fail-closed checkout window
 
-Deploy the reviewed web build while the old backend remains active. Its create
-request retains the legacy composite product ID/name/price fields but also sends
-`X-Checkout-Contract: order-v2` and an idempotency key. Old main ignores the new headers;
-the new backend ignores client price/name and resolves the composite ID against
-its own catalogue. There is no health/capability preflight and no weaker request
-chosen from a cached response.
+Deploy the new backend only after Phase 1. While the old or a cached web build
+is still active, its customer purchase mutations lack the current contract and
+receive HTTP 426 with stable code `CLIENT_UPGRADE_REQUIRED`. The rejection
+happens before rate limits, idempotency storage, database access or provider
+calls, so the cart remains local and no new order or payment starts. Treat this
+as a short, monitored checkout maintenance window; do not weaken the gate to
+avoid the window.
 
-The create response is the only transition signal. The exact `order-v2`
-response marker together with a structurally valid status capability means the
-new contract; absence of both means that the already-created order belongs to
-the legacy flow. A partial or unfamiliar signal is ambiguous and never starts a
-payment. Before the create request, the browser records a non-PII random key and
-timestamp in `pending-checkout-create`. It replaces that marker with the order
-ID, payment method, contract class, start flag and timestamp in
-`pending-checkout-order` only after validating the response. A lost create
-response therefore blocks another create after reload. The pre-create marker is
-cleared without an order only for the backend's explicit 426 pre-write upgrade
-rejection. If legacy payment initiation has an ambiguous/lost response, it also
-cannot be resubmitted. Both ambiguous paths show the staffed
-contact/reconciliation message instead.
-
-## Phase 3 — guarded backend and drain
-
-Deploy the new backend only after the bridge web is the active Production web
-artifact. The backend requires the exact checkout-contract header before rate
-limits, idempotency storage, database access or provider calls on customer
-purchase mutations. A missing or wrong value returns HTTP 426 with stable code
-`CLIENT_UPGRADE_REQUIRED` and asks the customer to reload; a rejected create has
-not written an order and the local cart remains available.
+Prove server-side catalogue pricing on the active API origin. Inventory and
+disconnect every old backend deployment, function instance, custom domain and
+alias before Phase 3. A hostname list by itself is not evidence that an old
+writer is gone. If any origin can still reach locked main, keep checkout closed:
+that server accepts client-supplied prices and is not an approved payment path.
 
 Stripe and Swish webhooks/callbacks are not browser-version gated. Continue
 settling and reconciling payments that started on the old backend. A status URL
 without the new order capability displays only a local help page—never public
 order/customer data and never a claim that payment succeeded or failed.
 
-Inventory and disconnect every old backend deployment, function instance,
-custom domain and alias. Observe the stable rejection code and current-contract
-traffic for a reviewed drain period. A hostname list by itself is not evidence
-that an old writer is gone.
+## Phase 3 — current web and drain
+
+Deploy the reviewed web build only after every API origin it can reach runs the
+guarded backend. Its create request sends `X-Checkout-Contract: order-v2` and an
+idempotency key. The backend ignores compatibility name/price fields and resolves
+the product and variant against its own catalogue. There is no health/capability
+preflight and no weaker request selected from a cached response.
+
+The create response is the only transition signal. The exact `order-v2`
+response marker together with a structurally valid status capability means the
+new contract. Absence of both means an old backend may already have created a
+draft; a partial or unfamiliar signal is equally ambiguous. The browser records
+either case for staffed reconciliation and never initiates Stripe or Swish.
+
+Before the create request, the browser records a non-PII random key and timestamp
+in `pending-checkout-create`. It replaces that marker with the order ID, payment
+method, contract class, start flag and timestamp in `pending-checkout-order` only
+after validating the response. A lost create response therefore blocks another
+create after reload. The pre-create marker is cleared without an order only for
+the backend's explicit 426 pre-write rejection. Observe the stable rejection
+code, current-contract traffic and reconciliation queue for a reviewed drain
+period before Phase 4.
 
 ## Phase 4 — constraints after the drain
 
@@ -118,9 +120,10 @@ over orders or payments accepted after the backup boundary.
 
 ## Recovery boundaries
 
-- Before Phase 4, the allocator remains compatible with the locked main writer,
-  so a reviewed web/backend rollback can keep unique numbering. Reconcile every
-  payment accepted during the attempt.
+- Before Phase 4, the allocator remains structurally compatible with the locked
+  main writer, but locked main is not an approved payment rollback because it
+  trusts client prices. Keep checkout fail-closed during any emergency rollback
+  and reconcile every order/payment accepted during the attempt.
 - After Phase 4, raw main is not a valid rollback because its zero-total parent
   insert is rejected. Use the reviewed bridge web/backend or a forward repair.
 - Never promote a Preview artifact, point Preview at Production resources, rotate

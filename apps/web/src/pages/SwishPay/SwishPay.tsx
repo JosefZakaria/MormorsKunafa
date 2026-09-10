@@ -43,17 +43,11 @@ export const SwishPay: React.FC = () => {
       setLoading(false);
       return;
     }
-    if (pending.contract === 'unknown') {
+    if (pending.contract !== 'current') {
       setError(SWISH_RECONCILIATION_MESSAGE);
       setLoading(false);
       return;
     }
-    if (pending.contract === 'legacy' && pending.paymentStarted) {
-      setError(SWISH_RECONCILIATION_MESSAGE);
-      setLoading(false);
-      return;
-    }
-    const checkoutContract = pending.contract === 'current' ? 'current' : 'legacy';
 
     let cancelled = false;
 
@@ -66,7 +60,7 @@ export const SwishPay: React.FC = () => {
         if (!markPendingCheckoutPaymentStarted(orderId)) {
           throw new Error('Beställningsförsöket kunde inte bevaras lokalt.');
         }
-        const created = await orderApi.createSwishPayment(orderId, checkoutContract);
+        const created = await orderApi.createSwishPayment(orderId);
         if (cancelled) return;
         if (!Number.isSafeInteger(created.amountOre) || created.amountOre <= 0) {
           throw new Error('Swish returnerade ett ogiltigt belopp.');
@@ -87,7 +81,7 @@ export const SwishPay: React.FC = () => {
           err && typeof err === 'object' && 'data' in err
             ? String((err as { data?: { error?: string } }).data?.error ?? SWISH_RECONCILIATION_MESSAGE)
             : SWISH_RECONCILIATION_MESSAGE;
-        setError(pending.contract === 'legacy' ? SWISH_RECONCILIATION_MESSAGE : msg);
+        setError(msg);
         setLoading(false);
       }
     };
@@ -96,7 +90,7 @@ export const SwishPay: React.FC = () => {
 
     const poll = setInterval(async () => {
       try {
-        const st = await orderApi.getSwishPaymentStatus(orderId, checkoutContract);
+        const st = await orderApi.getSwishPaymentStatus(orderId);
         if (st.paymentStatus === 'paid') {
           clearInterval(poll);
           clearPendingCheckoutOrder(orderId);

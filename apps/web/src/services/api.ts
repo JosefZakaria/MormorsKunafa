@@ -193,13 +193,8 @@ function currentCheckoutHeaders(): Record<string, string> {
   return { [CHECKOUT_CONTRACT_HEADER]: CHECKOUT_CONTRACT_VERSION };
 }
 
-function paymentMutationHeaders(
-  orderId: string,
-  contract: Exclude<CheckoutBackendContract, 'unknown'>
-): Record<string, string> {
-  return contract === 'current'
-    ? { ...currentCheckoutHeaders(), ...orderStatusHeaders(orderId) }
-    : {};
+function paymentMutationHeaders(orderId: string): Record<string, string> {
+  return { ...currentCheckoutHeaders(), ...orderStatusHeaders(orderId) };
 }
 
 // Products API
@@ -324,13 +319,10 @@ export const orderApi = {
     });
   },
 
-  createCheckoutSession: async (
-    orderId: string,
-    contract: Exclude<CheckoutBackendContract, 'unknown'>
-  ): Promise<{ url: string }> => {
+  createCheckoutSession: async (orderId: string): Promise<{ url: string }> => {
     return apiRequest<{ url: string }>(`/orders/checkout-session/${orderId}`, {
       method: 'POST',
-      headers: paymentMutationHeaders(orderId, contract),
+      headers: paymentMutationHeaders(orderId),
     });
   },
 
@@ -338,15 +330,12 @@ export const orderApi = {
   confirmStripeCheckout: async (orderId: string, sessionId: string): Promise<PublicOrderStatus> => {
     return apiRequest<PublicOrderStatus>('/orders/stripe-confirm', {
       method: 'POST',
-      headers: paymentMutationHeaders(orderId, 'current'),
+      headers: paymentMutationHeaders(orderId),
       body: JSON.stringify({ orderId, sessionId }),
     });
   },
 
-  createSwishPayment: async (
-    orderId: string,
-    contract: Exclude<CheckoutBackendContract, 'unknown'>
-  ): Promise<{
+  createSwishPayment: async (orderId: string): Promise<{
     instructionId: string;
     status: string;
     paymentPageUrl?: string;
@@ -355,20 +344,17 @@ export const orderApi = {
   }> => {
     return apiRequest(`/orders/swish-payment/${orderId}`, {
       method: 'POST',
-      headers: paymentMutationHeaders(orderId, contract),
+      headers: paymentMutationHeaders(orderId),
     });
   },
 
-  getSwishPaymentStatus: async (
-    orderId: string,
-    contract: Exclude<CheckoutBackendContract, 'unknown'>
-  ): Promise<{
+  getSwishPaymentStatus: async (orderId: string): Promise<{
     paymentStatus: string;
     swishStatus: string | null;
     paymentPageUrl?: string;
   }> => {
     return apiRequest(`/orders/swish-payment/${orderId}/status`, {
-      headers: paymentMutationHeaders(orderId, contract),
+      headers: paymentMutationHeaders(orderId),
     });
   },
 

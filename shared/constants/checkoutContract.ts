@@ -15,8 +15,8 @@ export function isOrderStatusCapability(value: unknown): value is string {
 
 /**
  * The create response is the only rollout signal. A response with neither
- * field came from locked main. Any partial or unfamiliar signal is ambiguous
- * and must not start a payment automatically.
+ * field came from locked main. Legacy, partial and unfamiliar signals are kept
+ * for staffed reconciliation and must never start a payment.
  */
 export function classifyCheckoutCreateResponse(value: {
   checkoutContract?: unknown;

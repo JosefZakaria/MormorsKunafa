@@ -456,20 +456,16 @@ export const Cart: React.FC = () => {
     };
 
     const continuePendingCheckout = async (pending: PendingCheckoutOrder) => {
-        if (pending.contract === 'unknown') throw new Error(CREATED_ORDER_RECONCILIATION_MESSAGE);
+        if (pending.contract !== 'current') throw new Error(CREATED_ORDER_RECONCILIATION_MESSAGE);
 
         if (pending.paymentMethod === 'swish') {
             navigate(`/pay/swish?orderId=${encodeURIComponent(pending.orderId)}`);
             return;
         }
-        if (pending.contract === 'legacy' && pending.paymentStarted) {
-            throw new Error(CREATED_ORDER_RECONCILIATION_MESSAGE);
-        }
-
         if (!markPendingCheckoutPaymentStarted(pending.orderId)) {
             throw new Error('Beställningsförsöket kunde inte bevaras lokalt.');
         }
-        const { url } = await orderApi.createCheckoutSession(pending.orderId, pending.contract);
+        const { url } = await orderApi.createCheckoutSession(pending.orderId);
         const checkoutUrl = safePaymentRedirectUrl(url, 'stripe');
         if (!checkoutUrl) throw new Error('Betaltjänsten returnerade en ogiltig adress.');
 

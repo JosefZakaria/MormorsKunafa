@@ -214,7 +214,7 @@ test('a committed order with a lost response cannot be created again after reloa
   expect(committedOrderId).toBeTruthy();
 });
 
-test('a lost legacy payment response cannot be resubmitted',async({page})=>{
+test('a legacy create response never starts payment or submits again',async({page})=>{
   const legacyOrderId='9f0e4b27-30f1-4eee-9f18-004766115555';
   let creates=0, paymentStarts=0;
   await page.route('**/api/orders',route=>{
@@ -254,11 +254,11 @@ test('a lost legacy payment response cannot be resubmitted',async({page})=>{
   await expect(page.getByText('Betala eller beställ inte igen',{exact:false})).toBeVisible();
   await expect(page.locator('.cart-item')).toHaveCount(1);
   await expect(checkoutButton).toBeEnabled();
-  expect({creates,paymentStarts}).toEqual({creates:1,paymentStarts:1});
+  expect({creates,paymentStarts}).toEqual({creates:1,paymentStarts:0});
 
   await submitCheckout(page,checkoutButton);
   await page.waitForTimeout(200);
-  expect({creates,paymentStarts}).toEqual({creates:1,paymentStarts:1});
+  expect({creates,paymentStarts}).toEqual({creates:1,paymentStarts:0});
   expect(await page.evaluate(()=>localStorage.getItem('mormors-kunafa-cart'))).toBeTruthy();
 });
 
