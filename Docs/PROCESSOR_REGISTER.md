@@ -1,6 +1,6 @@
 # Provider and recipient register
 
-Status: operational draft based on current code, 2026-08-19  
+Status: operational draft based on current code, 2026-09-10
 Owner, contract evidence and annual review date: **must be assigned manually**
 
 This is the working vendor register. A service must not be marked contractually
@@ -16,7 +16,7 @@ not what is enabled or contractually applicable to the production accounts.
 | --- | --- | --- | --- |
 | Supabase | Primary application database: orders/contact/address, products, admins, push subscriptions, audit/payment/refund metadata | Processor | Project region, DPA, backup/log retention, subprocessor list, production RLS verification |
 | Vercel | Hosts web/backend and receives network/runtime metadata | Processor | Commercial plan, DPA, EU execution region, training opt-out, log retention, subprocessors |
-| Upstash | Hashed rate-limit identifiers, short-lived admin SSE tickets, and completed order idempotency responses containing customer data and status capabilities for up to 24 hours | Processor | Region, DPA, access controls, retention/eviction/deletion and subprocessors; values are not anonymized by hashing their keys |
+| Upstash | Hashed rate-limit identifiers, short-lived admin SSE tickets, and AES-256-GCM-sealed minimal checkout replays (order metadata plus status capability, no customer/contact/delivery/items) for up to 24 hours. A pre-change readable value can survive only its existing TTL | Processor | Region, DPA, access controls, retention/eviction/deletion, backups/logs, subprocessors and observed expiry; application-secret holders can decrypt new replay values |
 | Resend | Recipient email, customer name, order/receipt content | Processor | DPA, sending/log region, message/log retention, subprocessors, transfer mechanism |
 | Google Gmail | Customer-service, complaint, privacy-request and private security-report email sent to the public contact address | Account type and controller/processor role must be verified | Confirm consumer Gmail vs managed Workspace, applicable terms/DPA, transfers, retention/deletion, recovery owner and two-step verification; do not assume the Workspace DPA applies to an `@gmail.com` account |
 | Sinch | Phone number, bounded transactional SMS text | Processor for instructed activity; public DPA states independent-controller activity for parts of communications delivery | DPA, contracting entity, confirmed EU Conversation API project/region, role split, log retention, subprocessors |

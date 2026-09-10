@@ -54,10 +54,11 @@ file, and rejects external HTTP/HTTPS. Browser requests outside loopback are
 blocked; the hosted Stripe page is simulated. No email, SMS, push or live payment
 credentials are configured. These checks do not verify provider sandboxes,
 Supabase Storage, actual hosted PostgREST limits, physical printers or production.
-The Upstash unit contract verifies hashed raw idempotency keys, the complete
-readable response value and the declared 600-second lock/86,400-second result
-TTLs; hosted access, backups, multi-instance behavior and observed expiry remain
-external checks.
+The Upstash unit contract verifies hashed raw idempotency keys, AES-256-GCM
+sealing of the minimized replay, key/payload binding, tamper and cross-key
+rejection, transitional legacy reads and the declared 600-second lock/86,400-
+second result TTLs. Hosted access, backups, multi-instance behavior and observed
+expiry remain external checks.
 
 Run build/check first, then integration tests. Do not run another backend build
 while API or browser tests are active: the build deliberately cleans `dist`.
@@ -88,5 +89,7 @@ That test replaces every `psql`, `pg_dump` and `pg_restore` command with a test
 script block. It tests hostile inherited settings, exact database identity,
 `WhatIf`, failures and environment restoration without contacting a database.
 `npm run test:db` separately runs the real integrity SQL against synthetic valid
-and invalid records. Neither test is evidence that a production backup was taken
-or that a real provider database can be restored successfully.
+and invalid records. It verifies both `legacy-core` and `secured-ledgers`
+profiles, rejects a partial ledger set, and checks refund relations and immutable
+VAT snapshots. Neither test is evidence that a production backup was taken or
+that a real provider database can be restored successfully.

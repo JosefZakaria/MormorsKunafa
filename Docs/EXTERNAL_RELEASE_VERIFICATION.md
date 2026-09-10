@@ -88,12 +88,15 @@ denied; historical financial fields and the new VAT snapshots remain readable.
 
 - [ ] From the disposable source only, run the guarded safety-backup script to an
   encrypted, access-restricted location outside Git/cloud-sync. Record source
-  fingerprint, archive SHA-256, tool versions and row-count aggregates.
+  fingerprint, archive SHA-256, manifest format 3, exact public-table catalog,
+  declared accounting profile, tool versions and row-count aggregates.
 - [ ] Independently confirm the restore target is another disposable server or
   project with a different hostname, database, user and credential. DNS aliases
   or a different database name on the source server do not prove isolation.
-- [ ] Restore with the guarded restore script and run
-  `verify-restored-database.sql`, `verify-security-posture.sql` and the VAT review.
+- [ ] Restore with the guarded restore script and explicitly supply the expected
+  `legacy-core` or `secured-ledgers` accounting profile. Confirm the script emits
+  `restore=verified_against_source_profile`; a partial ledger set must fail before
+  restore. Then run `verify-security-posture.sql` and the VAT review.
 - [ ] Reconcile counts and aggregates for orders, items, paid gross, VAT snapshots,
   payment events, security audit, ordinary refunds, refund allocations and
   duplicate-payment refunds.
@@ -154,8 +157,12 @@ uncertainty is visible and never converted into a second money movement.
   created and both clients recover the same response; reuse with changed payload
   must conflict.
 - [ ] Inspect only the synthetic value. Confirm the raw idempotency key is absent
-  from the Redis key while the value contains the full order response, customer/
-  delivery fields, items and bearer-like status capability in readable form.
+  from the Redis key and the completed value is authenticated ciphertext. After
+  replay, confirm the result contains only order ID/number, total, location,
+  checkout marker and status capability—not customer/contact/delivery/items.
+- [ ] During a controlled upgrade rehearsal, seed a pre-change readable replay
+  and confirm it remains replayable only for its already-running TTL while every
+  newly completed record uses the sealed format.
 - [ ] Confirm the processing lock TTL is 600 seconds and a completed response TTL
   is 86,400 seconds on the hosted record. Confirm an expired lock can be acquired.
 - [ ] After the full 24-hour boundary, prove the completed record is no longer
@@ -167,8 +174,9 @@ uncertainty is visible and never converted into a second money movement.
 - [ ] Confirm region, encryption, eviction/persistence policy, DPA/subprocessors,
   incident contact and account deletion behavior with account-specific evidence.
 
-Expected result: cross-instance safety works, sensitive values have least-
-privilege access and observed hosted expiry matches the code contract.
+Expected result: cross-instance safety works, plaintext customer/order details
+are absent from new replay values, sensitive capabilities have least-privilege
+access and observed hosted expiry matches the code contract.
 
 ## 7. Notification failure and staffed queue
 

@@ -1,6 +1,6 @@
 # Privacy data map
 
-Status: code-verified inventory updated 2026-09-09; provider/account evidence remains unverified
+Status: code-verified inventory updated 2026-09-10; provider/account evidence remains unverified
 Scope: current web, backend, database and kitchen-print flows
 
 This inventory describes what the current code sends. It does not prove a
@@ -35,7 +35,7 @@ region, accepted version or configured retention.
 | Admin session | First-party cookies | Authenticated administration | HttpOnly session cookie, SameSite Strict, CSRF cookie, 30-minute lifetime |
 | Push endpoint, encryption keys, user agent | Supabase and the endpoint's push provider | Deliver paid-order alerts to enrolled admin devices | Authenticated registration; origin/IP checks; bounded fields; removable/disableable subscription |
 | IP-derived abuse key | Upstash | Distributed rate limiting | Contact values and compound identifiers are HMAC-hashed before use; no request body is used as a key |
-| Completed order idempotency response | Upstash (production); process memory in isolated tests | Recover an identical checkout request; code TTL is 86,400 seconds (processing lock: 600 seconds) | Contains the full created-order response, including customer/delivery fields, items and the bearer-like status capability. Hashing the request key does not anonymize this readable value. Hosted access, region, backups/logs and actual expiry remain external checks |
+| Completed order idempotency response | Upstash (production); process memory in isolated tests | Recover an identical checkout request; code TTL is 86,400 seconds (processing lock: 600 seconds) | New records contain only order ID/number, total, location, checkout marker and the status capability, sealed with AES-256-GCM under a domain-separated key and bound to the Redis key/payload hash. Customer/contact/delivery/item fields are excluded. A legacy readable response can be consumed only during its existing maximum 24-hour TTL; hosted access, region, backups/logs and observed expiry remain external checks |
 | Realtime admission tickets | Upstash | Short-lived single-use SSE admission | Bound to the current admin/session; authenticated consumption and expiry |
 | Admin/security events | Supabase immutable audit log | Accountability and incident investigation | Route template and internal resource ID only; no request body; login email is HMAC-hashed |
 | Provider webhook events | Supabase | Replay protection and reconciliation | Event ID/type/mode/outcome/order ID only; no provider payload |

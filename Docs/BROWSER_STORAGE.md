@@ -1,7 +1,7 @@
 # Browser storage register
 
 Policy version: 1  
-Last code review: 2026-09-09
+Last code review: 2026-09-10
 
 The public application does not load analytics, advertising tags, remote fonts
 or embedded maps. Google Maps is an ordinary external link activated by the
@@ -41,9 +41,8 @@ never written by the current application.
 The pending checkout records contain no name, contact data, address, cart
 contents or price. `pending-checkout-create` contains only a random idempotency
 key and timestamp. Malformed, future-dated and expired values are deleted on
-read. An order creation with an ambiguous response and a legacy payment whose
-response was lost are not resubmitted; the customer is sent to the staffed
-reconciliation path instead.
+read. An ambiguous or legacy create response never starts payment and is not
+resubmitted; the customer is sent to the staffed reconciliation path instead.
 
 ## Strictly necessary admin cookies
 

@@ -20,7 +20,9 @@ excluded from the existing-main track. Phase 4 uses the complementary checkout
 finalization only after old processes and aliases are proven drained. Its index
 is concurrent; its short metadata/sequence transaction uses the same lock order
 as trigger-backed inserts and aborts after five seconds of lock contention.
-No shop pause is authorized by this document.
+This document authorizes no production change by itself. An approved rollout
+must use the short fail-closed checkout window in the transition runbook rather
+than exposing the old backend's client-priced payment path.
 
 `2026-09-08-unsettled-payment-retention.sql` preserves the existing retention RPC
 signatures and periods. Unresolved online payments, pending refunds, legal holds
@@ -28,6 +30,9 @@ and non-terminal fulfillment retain their evidence. Bounded initiated-payment
 listing rotates inconclusive attempts instead of repeatedly starving later rows;
 listing never authorizes deletion. Provider identity and terminal unpaid state
 must still be verified before the conditional delete RPC is called.
+`2026-09-10-checkout-reconciliation-fairness.sql` adds the rotation timestamp and
+partial index without deleting or settling any row; two bounded calls cover rows
+beyond the first batch even before Phase 4.
 
 ### Free-plan backup and restore gate
 
@@ -37,7 +42,9 @@ production migration, set `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`,
 `scripts/New-SupabaseSafetyBackup.ps1`. The destination must be encrypted,
 access-restricted and outside both Git and ordinary cloud-synced folders. The
 script creates a custom-format archive plus a SHA-256 manifest and rejects an
-archive missing the core accounting/order tables.
+archive missing the core accounting/order tables. Manifest format 3 records the
+exact public-table catalog and classifies the source as `legacy-core`,
+`secured-ledgers` or `partial-investigation`.
 
 Both operator scripts capture one validated connection and remove every inherited
 `PG*` override while their commands run, restoring the original environment on
@@ -53,18 +60,23 @@ Restore that exact archive into a separate disposable PostgreSQL database with
 `scripts/Test-SupabaseBackupRestore.ps1`. Restore credentials use the
 `RESTORE_PG*` environment-variable prefix. The script rejects the source host,
 requires the exact disposable database name, uses a single transaction and runs
-`../verification/verify-restored-database.sql`. Never use production as the
-restore target. Retain only the manifest, timestamps, aggregate verification
-result and operator approval in the restricted migration journal.
+`../verification/verify-restored-database.sql`. The operator must pass the
+expected `legacy-core` or `secured-ledgers` profile; the archive catalog,
+manifest and restored schema must agree exactly, and a partial secured-ledger
+set cannot receive verified status. Never use production as the restore target.
+Retain only the manifest, timestamps, aggregate verification result and operator
+approval in the restricted migration journal.
 
-Retake archives whose manifests predate format version 2: their claimed source
-may have been affected by inherited connection overrides. Host fingerprints and
-database/user checks verify the declared connection, not physical separation
-against DNS aliases, tunnels or an incorrectly selected project. Independently
-verify the disposable server/project and credentials before approving a restore.
-The read-only verification SQL raises an error for inconsistent totals, missing
-items, orphaned items, duplicate order numbers, and null/nonpositive amounts or
-quantities; printed aggregate counts alone never establish success.
+Retake archives whose manifests predate format version 3: version 1 could be
+affected by inherited connection overrides, and version 2 did not bind the
+financial-ledger profile. Host fingerprints and database/user checks verify the
+declared connection, not physical separation against DNS aliases, tunnels or an
+incorrectly selected project. Independently verify the disposable server/project
+and credentials before approving a restore. The read-only verification SQL
+raises an error for inconsistent totals, missing/orphaned items, duplicate order
+numbers, null/nonpositive amounts or quantities, missing/partial financial
+ledgers, broken refund relations and inconsistent VAT snapshots; printed
+aggregate counts alone never establish success.
 
 Once an explicit compatible cutover strategy is approved, take and restore-test
 a fresh archive and record the last accepted order number and paid gross
@@ -304,6 +316,13 @@ Existing paid rows deliberately remain null. The migration performs no guessed
 backfill, and the current 6%/12% application formula is not an accounting ruling.
 Review legacy rows and legal edge cases from original receipts with an accountant
 before any correction.
+
+Apply `2026-09-10-receipt-history-immutability.sql` immediately after the VAT
+snapshot migration. It permits only the exact null→snapshot write in the atomic
+pending→paid transition, rejects later VAT rewrites and blocks `TRUNCATE` on
+`orders`. A necessary historical correction therefore requires a separately
+reviewed forward migration and original accounting evidence; do not disable the
+guard ad hoc.
 
 ## 2026-08-19 provider refunds
 
