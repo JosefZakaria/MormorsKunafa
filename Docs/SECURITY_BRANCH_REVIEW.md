@@ -1,4 +1,49 @@
-# Säkerhetsbranchens lokala granskningsrapport — 2026-09-10
+# Säkerhetsbranchens lokala granskningsrapport — 2026-09-11
+
+**Aktuell etapp: lokal förberedelse pågår.** Ägarens nya instruktion efter pausen
+ersätter det äldre målets externa tillstånd. Ingen Vercel-/providerkontoåtkomst,
+push, PR-publicering, Preview-/Production-deployment, merge, main-integration
+eller produktionsåtkomst får göras nu. Pågående köp och den levande databasen
+berörs inte. Se [uppdaterad måltext](LOCAL_GOAL_OBJECTIVE.md) och
+[releasejournalen](RELEASE_JOURNAL_2026-09-11.md).
+
+Arbetet startade från `2183660` med ren arbetskatalog. Main-baslinjen
+`33602a4417a4a1d15e44040c2acf5187d5a547d7` kontrollerades före pausen och
+behålls fryst lokalt. Ingen ny main har integrerats.
+
+SDK 55 (`e278e86`) har passerat Doctor, typer, båda exporter och browserprov.
+SDK 56 (`344cb20`) har passerat typer/exporter/webb och 22 browserfall men
+behåller det dokumenterade upstream-Hermes-felet i mellansteget. SDK 57
+(`e90597a`) passerar ren installation, Doctor 21/21, typer, Android-/iOS-export,
+webbbygge och 193 backendtester. Alla installerade native-paket följer Expos
+matris. Ny audit visar 0 critical/high och 14 moderate, individuellt analyserade
+utan ägarens riskgodkännande. Den revisionsbundna slutmatrisen återstår.
+
+`2abedcf` förstärker Stripe-testläge/Preview-origins, avstängd ny Swish-checkout
+och separata v2-statusnycklar med bevarad v1-åtkomst. Dess lokala underlag är
+193 backendtester, API-/betalningssimulering och 22 browserfall.
+
+`eb2cd50` behåller public-arkivets ACL och kräver säkerhetsmetadatahash, inklusive
+kolumnbehörigheter. Verklig obehörig refundmutation genom kolumngrant reproducerades
+och verifieraren rättades. En ny kompletterande migration rättar funktionsdefault;
+gamla migrationsfiler är oförändrade. Antalet är nu 30 Phase 1-steg plus separat
+Phase 4, och 33 fresh-filer. Hela lokala databasregressionen passerar.
+
+`47dc852` lägger till ett riktigt lokalt tvåklusterprov i Windows-CI. Testet
+passerade på 85,8 sekunder och kontrollerar 1 order/1 rad/100 öre/1 auditpost,
+bevarade kolumn-ACL/grant options och separat Storage-markör i målklustret.
+Detta är varken produktionsbackup eller full hosted ekonomisk A/B-avstämning.
+
+Tre CI-jobb är konfigurerade med exakt Node 24.18.1/npm 11.6.2 och ren `npm ci`.
+Faktisk GitHub-körning och alla externa releasekontroller är avsiktligt inaktiva.
+Slutkandidatens kompletta lokala testmatris och nya fullständiga säkerhetsdiffscan
+återstår. Ingen slutlig release- eller säkerhetsbedömning dras från mellanresultat.
+
+## Historisk rapport från 2026-09-10
+
+Resten av dokumentet bevarar det tidigare underlaget vid `da48e8e`, inklusive
+dess dåvarande versioner, testantal och externa procedurer. Det ger inga nya
+åtgärdstillstånd och ersätter inte ovanstående aktuella etapp eller dess slutprov.
 
 **Status: lokalt förberedd för mänsklig PR-granskning; inte godkänd för merge eller driftsättning.** Inga bekräftade olösta kritiska/höga kodfynd får finnas vid slutgranskningen. Externa miljö-, ekonomi-, integritets- och ägarspärrar nedan är fortfarande öppna. Ingen push, PR-publicering, merge till main, produktionsändring, verklig betalning eller nyckelrotation har gjorts. Nyckelrotation hanteras senare av ägaren.
 

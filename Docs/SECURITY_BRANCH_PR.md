@@ -1,82 +1,128 @@
-# Proposed PR: Preserve storefront behavior while hardening payments and accounting history
+# Local PR text: Harden checkout and preserve accounting history
 
-**Prepared for human PR review; not approved for merge or deployment.** No PR
-has been published. The tested application baseline is
-`da48e8ec427832b89ed062faffc888e0b709f49b`; reviewed `origin/main` is
-`33602a4417a4a1d15e44040c2acf5187d5a547d7`. The final documentation-only commit
-is identified in the handoff because a commit cannot contain its own hash.
+**Local preparation only; no push, PR publication, provider access or deployment.**
+No PR has been published. [LOCAL_GOAL_OBJECTIVE.md](LOCAL_GOAL_OBJECTIVE.md)
+supersedes the earlier external authorization: no account access, login attempt,
+hosted resource creation, Preview/Production deployment, merge, changed-main
+integration or Production access is permitted. The owner receives the local
+results and risks first. Any external step needs a new explicit owner instruction
+after its purpose and consequences have been explained; no login is requested.
 
-The branch incorporates the 68 formerly missing main commits while preserving
-both locations, scoped administrators, per-location stock, editable variant
-prices, hidden products, scheduled orders, menu editing and the current
-dashboard. A phased database/backend/web cutover keeps legacy writers structurally
-compatible during the database bridge, then deliberately rejects old purchase
-clients before writes. The current web refuses to start payment from an old or
-ambiguous backend response; hosted cutover evidence is still required.
+Work continues from `2183660e81330f7c66144c8490b4aec19341ea5a` on `security-checks`.
+The main baseline checked before the pause and now frozen locally is
+`33602a4417a4a1d15e44040c2acf5187d5a547d7`; no remote refresh or main integration
+is part of this stage.
+The [release journal](RELEASE_JOURNAL_2026-09-11.md) records new commits, evidence,
+external prerequisites and pending human decisions.
 
-Checkout uses server-authoritative pricing, order-bound status access and safe
-replay. Payment/event claims, cancellation races, ordinary and duplicate refunds,
-Swish identities, session logout, preview isolation and operator database
-connections are hardened. Paid/operational orders are protected from physical
-deletion. New verified payments atomically snapshot the VAT values shown on the
-receipt; a database guard blocks later rewrites and broad truncation. Legacy paid
-rows remain null for evidence-based accountant review. Backup manifest v3 binds
-the source table catalog and accounting-ledger profile to restore verification.
+The branch preserves both locations, scoped administrators, location stock,
+editable variant prices, hidden products, scheduled orders and the dashboard.
+Checkout uses server prices, order-bound status access and encrypted minimized
+idempotency replay. Payment and refund transitions preserve provider, audit and
+accounting history. Verified payments atomically save the receipt VAT snapshot;
+legacy paid rows remain unchanged for review against original evidence.
 
-## Local validation
+A future separately authorized phased database/backend/web cutover supports
+concurrent legacy and atomic order-number writers, then rejects old purchase clients before writes. The
+guarded backend precedes the current web during an explicit fail-closed checkout
+window. Old writers must be demonstrably drained before final constraints.
 
-- Node 24.18.1/npm 11.6.2; `npm run check` passes 179 tests, web/shared/backend
-  builds and mobile/maintenance typechecks.
-- Isolated PostgreSQL 17.11 validates the 32-file fresh track and 30-step phased
-  legacy track, rollback, concurrent numbering, RLS/RPC, retention, accounting
-  deletion/truncation protection, fair reconciliation, refund/provider history,
-  receipt VAT immutability and both declared restore profiles.
-- All three API suites pass against real local SQL and simulated Stripe/Swish,
-  including replay, amount/identity checks, timeout recovery, concurrent refunds,
-  notifier failure with a durable scoped staff queue, and 1,007 paid orders/
-  2,014 lines in statistics.
-- 22/22 Chromium cases pass on Desktop Chrome and Pixel 7, covering both pickup
-  locations, legacy/current checkout responses, ambiguous response recovery,
-  private status, cart, admin and logout.
-- The PowerShell connection-isolation contract passes. CI now runs database, API
-  and PowerShell integration checks in a separate Windows job. No production
-  resource, customer record or real payment was used.
-- Sealed Codex Security scan `5cca3392-1dfc-42ee-b5b5-fa2bdfaed882` reviewed all
-  260 compact inventory items at baseline `71dbc2b`; its two low findings were
-  remediated by `6896b99` and `ed1faa1`. The scanner still labelled aggregate
-  coverage partial after a token-record warning, so no blanket audit claim is made.
+This candidate enables card payments only. Preview requires Stripe test keys,
+test events and test checkout sessions; explicit HTTPS frontend origins cannot
+fall back to known Production origins. New status capabilities use an independent
+v2 key while existing v1 capabilities remain valid against their stored hash and
+expiry. New Swish checkout defaults off without disabling historical callbacks,
+reconciliation or refunds. Email, SMS and push are outside the candidate; the
+persistent location-scoped staff queue and reconnect behavior remain release gates.
 
-## Blocking merge and rollout conditions
+Backup/restore retains public application ACLs and excludes managed auth/storage
+objects and bytes. Manifest v3 binds archive scope and a security metadata hash,
+including column ACLs and grant options.
+A complementary migration fixes future PUBLIC function execution without
+rewriting earlier migration files. Restore success requires the source accounting
+profile, internal integrity and matching security metadata. Independent financial
+aggregates at the backup boundary must still be compared separately in hosted A/B.
 
-- Rehearse the phased legacy cutover against a separate Supabase test project;
-  prove real ledger/checksums, lock behavior, old-writer drain and preservation
-  before Phase 4. Do not use Production or a copied customer database.
-- Keep Preview blocked until its backend, database, Upstash and payment resources
-  are independently isolated and the exact API origin is approved.
-- Verify hosted Supabase grants/RLS/RPC/Storage, an independently restored backup,
-  Stripe test mode, an official Swish sandbox/simulator, Upstash multi-instance
-  behavior/region/access/24-hour expiry and notification/staffing recovery. New
-  Upstash replays are sealed/minimized locally; hosted behavior remains unverified.
-- `npm audit` still reports 26 dependency entries (9 high, 17 moderate, 0
-  critical), limited by this review to four unresolved mobile build/tooling
-  chains. No clean-audit or blanket risk-acceptance claim is made.
-- The accountant must approve the preservation matrix, legacy VAT treatment and
-  archive boundaries. The privacy owner must approve the field selection and
-  intervals before either unscheduled retention mutation can run. Current
-  90/1,095-day code boundaries are not legal approval.
-- Credential rotation, incident response, provider agreements, staffing,
-  accessibility/device testing and the final human release decision remain owner
-  actions. Nothing here authorizes merge, deploy or Production access.
+## Current local evidence
 
-Use the exact open-item procedure in
-[the external verification checklist](EXTERNAL_RELEASE_VERIFICATION.md), the
-[accounting preservation matrix](ACCOUNTING_DATA_PRESERVATION.md), the
-[full review and commit list](SECURITY_BRANCH_REVIEW.md), the
-[dependency review](DEPENDENCY_REVIEW_2026-09-08.md) and the
-[local reproduction guide](LOCAL_SECURITY_TESTS.md). The ignored local master
-checklist is not part of Git.
+- Pinned Node 24.18.1/npm 11.6.2. The committed CI configuration has three
+  independent jobs on exact PR-HEAD: build/mobile/audit, Windows
+  database/API/isolation and Ubuntu browser. All jobs use ordinary clean `npm ci`;
+  hosted GitHub runs remain inactive until a later explicit authorization.
+- SDK 55 is separately committed as `e278e86`: Doctor 20/20, mobile types,
+  Android/iOS exports, web build and 22 browser cases passed. Audit fell from
+  9 high/17 moderate to 0 high/18 moderate.
+- SDK 56 is separately committed as `344cb20`: mobile types, Android/iOS exports,
+  web build and 22 browser cases passed; audit has 0 critical/high and 14 moderate.
+  Doctor 21/22 exposed the known Hermes regression without suppressing its check.
+  SDK 57 is committed as `e90597a`: clean install, Doctor 21/21, mobile types,
+  Android/iOS exports, web build and 193 backend tests pass. Audit remains
+  0 critical/high and 14 individually reviewed moderate entries. The complete
+  revision-bound final matrix remains pending.
+  See the [dependency review](DEPENDENCY_REVIEW_2026-09-08.md) for current evidence.
+- Preview/payment commit `2abedcf` passed 193 backend tests, local API/Stripe
+  simulation, Swish simulation with disabled checkout and 22 Chromium cases
+  across desktop and Pixel 7. No external provider or real payment was used.
+- Backup/security commit `eb2cd50` contains nine files (+485/-12). The reproduced
+  column-only refund mutation bypass is fixed: the gate checks effective column
+  privileges and the fingerprint retains column ACLs/grant options. Its regression
+  checks pass. The migration adds a 30th Phase 1 step, followed by separate Phase 4;
+  the fresh track contains 33 files.
+- The new 146-line `scripts/test-backup-restore.mjs` passed in 85.8 seconds using
+  two independent newly created local PostgreSQL clusters and the real operator
+  scripts. Source/target orders=1, items=1, paid gross=100 öre and audit=1 matched;
+  column SELECT/grant option and expected role denials were retained, as was the
+  target's distinct Storage sentinel. The operator's verified status covers the
+  archive/profile, internal consistency and selected security metadata. This
+  bounded fixture does not establish full VAT/provider/refund A=B equality or
+  verify any hosted/Production backup or recovery.
+- A new complete Codex Security diff scan against the locally frozen main baseline is
+  required after code/configuration freezes. The earlier scan's documented
+  partial coverage is historical evidence and does not satisfy this final gate.
 
-Rollback must preserve every new order, item, VAT snapshot, provider identifier,
-payment/refund/event/audit row and sequence state. Use a forward fix or tested
-compatible build; never overwrite an active database with a pre-release backup
-or blindly redeploy raw old main after Phase 4.
+## Remaining local completion requirements
+
+- Finish the SDK sequence and run the clean final candidate matrix: builds,
+  security/dependency checks, backend/mobile/Doctor/exports, synthetic database,
+  API/payment and real local A/B restore checks, and all 22 browser cases.
+- Require 0 critical/high audit, document each remaining moderate entry and
+  complete the independent security diff review after code/configuration freezes.
+- Save reviewable commits, leave a clean worktree and provide a Swedish report
+  of results, remaining risks and external checks not performed. Keep all six
+  formal human decisions open; the report is not release or merge approval.
+
+## Inactive future external checklist
+
+The following are unperformed future procedures. They require a new explicit
+owner instruction and are not required to finish the current local report.
+
+- GitHub PR/protection/ruleset/Actions inspection and Vercel Git-link verification
+  before any separately authorized normal branch push or Draft PR publication;
+  either action may trigger deployment. No account login is requested now.
+- Verified isolated backend/web Preview, Supabase A/B, Upstash and Stripe test
+  resources, with public IDs, regions and exact origins recorded without secrets.
+- Only with separate explicit permission, metadata-only Production access through
+  a restricted role; no application,
+  auth or Storage row reads. Hosted synthetic legacy rehearsal, checksum/lock
+  evidence, writer drain, RLS/RPC/Storage checks and independent A/B recovery.
+- Hosted card purchases, webhook ordering/retries, timeout recovery, refunds,
+  identity/amount/currency/mode rejection and payment across the version boundary.
+- Upstash two-instance replay/conflict/privacy checks, 600/86,400-second TTLs
+  and an observed expiry after at least 24 hours. No expiry clock has started.
+- Three green GitHub CI jobs on the exact future PR HEAD; local runs do not
+  certify hosted Actions results.
+- Six explicit owner/accounting/privacy decisions in the journal. None is
+  approved merely by this document or a passing technical check.
+
+Use the [external checklist](EXTERNAL_RELEASE_VERIFICATION.md),
+[accounting preservation matrix](ACCOUNTING_DATA_PRESERVATION.md),
+[review report](SECURITY_BRANCH_REVIEW.md) and
+[local reproduction guide](LOCAL_SECURITY_TESTS.md). The locally ignored master
+checklist is updated separately and is not part of Git.
+
+Recovery preserves every new order, item, VAT snapshot, provider identifier,
+payment/refund/event/audit row and sequence state. Use forward repair or a tested
+compatible build; never replace an active database with a pre-release backup.
+This remains local PR text for the owner's next decision. Nothing is published,
+pushed, deployed or merged in this stage, and no provider or Production access
+is authorized by this document.
