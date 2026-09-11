@@ -16,17 +16,31 @@ concurrency:
 
 jobs:
   build-and-test:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CI: 'true'
+      EXPO_NO_DOTENV: '1'
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Use pinned Node.js
         uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
           cache: npm
+
+      - name: Install and verify pinned npm and Node.js
+        shell: bash
+        run: |
+          npm install --global npm@11.6.2 --ignore-scripts --no-audit --no-fund
+          test "$(node --version)" = 'v24.18.1'
+          test "$(npm --version)" = '11.6.2'
+          node --version
+          npm --version
 
       - name: Install locked dependencies
         run: npm ci
@@ -34,12 +48,26 @@ jobs:
       - name: Build and test all workspaces
         run: npm run check
 
+      - name: Verify Expo SDK compatibility
+        run: npm run doctor:mobile
+
+      - name: Export Android bundle
+        run: npm run export:mobile:android
+
+      - name: Export iOS bundle
+        run: npm run export:mobile:ios
+
+      - name: Reject high and critical dependency advisories
+        run: npm audit --audit-level=high
+
   integration-windows:
     runs-on: windows-latest
     timeout-minutes: 35
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Use pinned Node.js
         uses: actions/setup-node@v6
@@ -47,8 +75,17 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
 
-      - name: Install locked dependencies without lifecycle scripts
-        run: npm ci --ignore-scripts
+      - name: Install and verify pinned npm and Node.js
+        shell: bash
+        run: |
+          npm install --global npm@11.6.2 --ignore-scripts --no-audit --no-fund
+          test "$(node --version)" = 'v24.18.1'
+          test "$(npm --version)" = '11.6.2'
+          node --version
+          npm --version
+
+      - name: Install locked dependencies
+        run: npm ci
 
       - name: Install verified local PostgreSQL runtime
         shell: powershell
@@ -63,3 +100,46 @@ jobs:
       - name: Verify operator connection isolation
         shell: powershell
         run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Test-PostgresConnectionIsolation.ps1
+
+  browser-ubuntu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CI: 'true'
+      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.cache/playwright
+      MK_TEST_PG_BIN: /usr/lib/postgresql/17/bin
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Use pinned Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install and verify pinned npm and Node.js
+        shell: bash
+        run: |
+          npm install --global npm@11.6.2 --ignore-scripts --no-audit --no-fund
+          test "$(node --version)" = 'v24.18.1'
+          test "$(npm --version)" = '11.6.2'
+          node --version
+          npm --version
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Install signed and pinned PostgreSQL runtime
+        run: bash scripts/setup-ci-postgres.sh
+
+      - name: Build web and backend for browser tests
+        run: npm run build
+
+      - name: Install locked Chromium and browser system dependencies
+        run: npx --no-install playwright install --with-deps chromium
+
+      - name: Verify desktop and mobile browser flows
+        run: npm run test:browser
