@@ -20,6 +20,16 @@ excluded from the existing-main track. Phase 4 uses the complementary checkout
 finalization only after old processes and aliases are proven drained. Its index
 is concurrent; its short metadata/sequence transaction uses the same lock order
 as trigger-backed inserts and aborts after five seconds of lock contention.
+
+The previous Phase 1 baseline contained 29 files. The independently verified
+`2026-09-11-private-function-defaults.sql` adds one pending safety step, making
+30 Phase 1 files plus the separate Phase 4 finalization (33 fresh-install files).
+It runs as the verified application object owner and revokes the global implicit
+PUBLIC function-execution default; a schema-scoped REVOKE alone cannot do that.
+It changes future-object defaults and makes the private ACLs on the two existing
+financial/audit trigger helpers explicit, with no changes to managed auth/storage
+objects or historical migration checksums. New application RPCs
+must receive their deliberate service-role grant when created.
 This document authorizes no production change by itself. An approved rollout
 must use the short fail-closed checkout window in the transition runbook rather
 than exposing the old backend's client-priced payment path.
@@ -41,10 +51,29 @@ production migration, set `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`,
 `PGPASSWORD` and `PGSSLMODE=require` in the operator's private shell and run
 `scripts/New-SupabaseSafetyBackup.ps1`. The destination must be encrypted,
 access-restricted and outside both Git and ordinary cloud-synced folders. The
-script creates a custom-format archive plus a SHA-256 manifest and rejects an
+script creates a public-schema custom-format archive plus a SHA-256 manifest and rejects an
 archive missing the core accounting/order tables. Manifest format 3 records the
 exact public-table catalog and classifies the source as `legacy-core`,
 `secured-ledgers` or `partial-investigation`.
+
+The archive preserves public GRANT/REVOKE and default ACLs and excludes managed
+auth/storage schemas and Storage bytes. Manifest v3 now also requires
+`archiveScope=public-schema-only`, `privilegesIncluded=true` and a normalized
+security-metadata SHA-256. Retake older v3 archives lacking these fields.
+During restore, broad API-role defaults for the secured target operator are
+removed before object creation; otherwise an inherited UPDATE grant can survive
+an archived GRANT SELECT. The archive then restores its explicit public ACLs and
+defaults. The global private function default is established explicitly because
+schema-filtered pg_dump excludes global default ACLs. No existing managed object
+is changed, and the target's public schema/owner is preserved. After restoration, both
+accounting integrity and exact public catalog/ACL/RLS/RPC/default/policy/trigger
+metadata must match the source before verified status is emitted. A legacy
+profile preserves legacy metadata; it is not a secured-release approval.
+
+`../verification/verify-security-metadata.sql` reads only PostgreSQL catalogs
+and can run under a metadata-only role. The older `verify-security-posture.sql`,
+the accounting review and restore-integrity SQL also read application rows and
+must not be used against Production under a metadata-only authorization.
 
 Both operator scripts capture one validated connection and remove every inherited
 `PG*` override while their commands run, restoring the original environment on

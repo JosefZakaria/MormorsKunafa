@@ -25,6 +25,7 @@ await withTestDatabase(async ({ sql, file }) => {
   const legacyFinal = legacyPlan.phase4AfterLegacyDrain;
   assert.deepEqual([...order].sort(), (await readdir(migrations)).filter(name => name.endsWith('.sql')).sort());
   assert(Array.isArray(legacyPhase1) && Array.isArray(legacyFinal));
+  assert.equal(legacyPhase1.length, 30, '29 existing Phase 1 steps plus the new private-defaults migration');
   assert(!legacyPhase1.includes('2026-08-19-atomic-order-creation.sql'));
   assert(!legacyPhase1.includes('2026-09-08-checkout-rollout.sql'));
   assert.deepEqual(legacyFinal, ['2026-09-09-checkout-contract-finalization.sql']);
@@ -145,7 +146,87 @@ await withTestDatabase(async ({ sql, file }) => {
   await file(path.join(repositoryRoot, 'backend/test/fixtures/base-schema.sql'));
   const migrations = path.join(repositoryRoot, 'backend/src/db/migrations');
   const order = JSON.parse(await readFile(path.join(migrations, 'migration-order.json'), 'utf8'));
-  for (const name of order) await file(path.join(migrations, name));
+  const privateDefaults = '2026-09-11-private-function-defaults.sql';
+  for (const name of order) if (name !== privateDefaults) await file(path.join(migrations, name));
+  await sql('CREATE FUNCTION public.synthetic_default_acl_probe() RETURNS integer LANGUAGE sql AS $$ SELECT 1 $$');
+  assert.equal(await sql('SET ROLE anon; SELECT public.synthetic_default_acl_probe()'), '1',
+    'The historical schema-scoped REVOKE cannot cancel the global PUBLIC function default');
+  await sql('DROP FUNCTION public.synthetic_default_acl_probe()');
+  await file(path.join(migrations, privateDefaults));
+  for (const helper of ['reject_security_audit_mutation','protect_order_financial_history']) {
+    for (const role of ['anon','authenticated']) {
+      assert.equal(await sql(`SELECT has_function_privilege('${role}','public.${helper}()','EXECUTE')`),'f');
+    }
+  }
+  await sql('CREATE FUNCTION public.synthetic_default_acl_probe() RETURNS integer LANGUAGE sql AS $$ SELECT 1 $$');
+  for (const role of ['anon','authenticated','service_role']) {
+    await assert.rejects(sql(`SET ROLE ${role}; SELECT public.synthetic_default_acl_probe()`));
+  }
+  await sql('GRANT EXECUTE ON FUNCTION public.synthetic_default_acl_probe() TO service_role');
+  assert.equal(await sql('SET ROLE service_role; SELECT public.synthetic_default_acl_probe()'), '1');
+  await sql('DROP FUNCTION public.synthetic_default_acl_probe(); CREATE ROLE synthetic_metadata_reader NOLOGIN');
+  const metadataSql = await readFile(path.join(repositoryRoot,
+    'backend/src/db/verification/verify-security-metadata.sql'),'utf8');
+  assert.equal(await sql("SELECT has_table_privilege('synthetic_metadata_reader','public.orders','SELECT')"), 'f');
+  assert.match(await sql('SET ROLE synthetic_metadata_reader;\n'+metadataSql), /security_metadata_sha256=[a-f0-9]{64}/,
+    'The metadata gate must not need SELECT on order/customer/auth/Storage tables');
+  await sql('GRANT EXECUTE ON FUNCTION public.create_order_atomic(jsonb,jsonb) TO anon');
+  await assert.rejects(sql('SET ROLE synthetic_metadata_reader;\n'+metadataSql));
+  await sql('REVOKE EXECUTE ON FUNCTION public.create_order_atomic(jsonb,jsonb) FROM anon');
+  await sql('ALTER TABLE public.locations NO FORCE ROW LEVEL SECURITY');
+  await assert.rejects(sql('SET ROLE synthetic_metadata_reader;\n'+metadataSql));
+  await sql('ALTER TABLE public.locations FORCE ROW LEVEL SECURITY');
+
+  // A column-only grant can mutate a refund even while has_table_privilege is
+  // false. The acceptance gate must reject it and the source fingerprint must
+  // record it. Legacy mode is used only to inspect the otherwise rejected hash.
+  const metadataAsReader = (profile = 'secured-ledgers') => sql(
+    `SET ROLE synthetic_metadata_reader;\n\\set expected_accounting_profile ${profile}\n`+metadataSql,
+  );
+  const fingerprint = async (profile = 'secured-ledgers') => (await metadataAsReader(profile))
+    .match(/security_metadata_sha256=[a-f0-9]{64}/)[0];
+  const cleanColumnFingerprint = await fingerprint('legacy-core');
+  const columnOrderId=randomUUID(), columnItemId=randomUUID(), columnRefundId=randomUUID();
+  await sql(`INSERT INTO public.orders(id,order_number,total_ore,customer_phone)
+    VALUES ('${columnOrderId}','#column-acl-probe',100,'synthetic');
+    INSERT INTO public.order_items(id,order_id,product_name_snapshot,quantity,price_ore)
+    VALUES ('${columnItemId}','${columnOrderId}','Synthetic column ACL probe',1,100);
+    INSERT INTO public.order_refunds(id,order_id,provider,amount_ore,idempotency_key,selection_json,requested_by_admin_id)
+    VALUES ('${columnRefundId}','${columnOrderId}','stripe',25,'synthetic-column-acl-key','[]','synthetic-admin')`);
+  for (const table of ['order_refunds','order_refund_items','duplicate_stripe_refunds']) {
+    for (const privilege of ['INSERT','UPDATE']) {
+      await sql(`GRANT ${privilege}(amount_ore) ON public.${table} TO service_role`);
+      assert.equal(await sql(`SELECT has_table_privilege('service_role','public.${table}','${privilege}')`),'f');
+      assert.equal(await sql(`SELECT has_any_column_privilege('service_role','public.${table}','${privilege}')`),'t');
+      if (table==='order_refunds' && privilege==='UPDATE') {
+        assert.equal(await sql(`SET ROLE service_role; UPDATE public.order_refunds SET amount_ore=30
+          WHERE id='${columnRefundId}' RETURNING amount_ore`),'30');
+      }
+      await assert.rejects(metadataAsReader(), /Refund ledger allows direct service-role mutation/);
+      assert.notEqual(await fingerprint('legacy-core'),cleanColumnFingerprint);
+      await sql(`REVOKE ${privilege}(amount_ore) ON public.${table} FROM service_role`);
+    }
+  }
+  await assert.rejects(sql(`SET ROLE service_role; UPDATE public.order_refunds SET amount_ore=35
+    WHERE id='${columnRefundId}'`));
+  for (const role of ['anon','authenticated']) {
+    await sql(`GRANT SELECT(customer_email) ON public.orders TO ${role}`);
+    assert.equal(await sql(`SELECT has_table_privilege('${role}','public.orders','SELECT')`),'f');
+    await assert.rejects(metadataAsReader(), /Unsafe application table privileges/);
+    assert.notEqual(await fingerprint('legacy-core'),cleanColumnFingerprint);
+    await sql(`REVOKE SELECT(customer_email) ON public.orders FROM ${role}`);
+  }
+  // Also retain a reviewed operator's column privilege and its grant option in
+  // the fingerprint; neither is a forbidden anon/refund grant above.
+  await sql('CREATE ROLE synthetic_column_reader NOLOGIN; GRANT SELECT(amount_ore) ON public.order_refunds TO synthetic_column_reader');
+  const restrictedColumnFingerprint=await fingerprint();
+  assert.notEqual(restrictedColumnFingerprint,cleanColumnFingerprint);
+  await sql('GRANT SELECT(amount_ore) ON public.order_refunds TO synthetic_column_reader WITH GRANT OPTION');
+  assert.notEqual(await fingerprint(),restrictedColumnFingerprint);
+  await sql('REVOKE SELECT(amount_ore) ON public.order_refunds FROM synthetic_column_reader');
+  assert.equal(await fingerprint(),cleanColumnFingerprint,'Revoked column ACLs must normalize back to the unchanged metadata');
+  await sql(`DELETE FROM public.order_refunds WHERE id='${columnRefundId}'; DELETE FROM public.orders WHERE id='${columnOrderId}'`);
+  console.log('Verified column-only refund mutation is rejected by the metadata gate, client column grants are denied, and column ACL/grant-option fingerprints are preserved.');
   await file(path.join(repositoryRoot,'backend/src/db/verification/verify-restored-database.sql'), {
     expected_accounting_profile: 'secured-ledgers',
   });

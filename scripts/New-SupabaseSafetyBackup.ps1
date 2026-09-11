@@ -34,8 +34,28 @@ function Get-AccountingProfile([string[]]$PublicTables, [string[]]$SecuredLedger
   return 'partial-investigation'
 }
 
+function Assert-PublicArchiveScope([object[]]$Catalog) {
+  foreach ($line in $Catalog) {
+    $entry = ([string]$line).Trim()
+    if (-not $entry -or $entry.StartsWith(';')) { continue }
+    if ($entry -notmatch '^\d+;\s+\d+\s+\d+\s+(?:SCHEMA - public(?:\s|$)|(?:COMMENT|ACL) - SCHEMA public(?:\s|$)|(?:TABLE DATA|TABLE|SEQUENCE SET|SEQUENCE OWNED BY|SEQUENCE|FUNCTION|PROCEDURE|CHECK CONSTRAINT|CONSTRAINT|FK CONSTRAINT|INDEX|TRIGGER|POLICY|ROW SECURITY|DEFAULT ACL|ACL|COMMENT|DEFAULT|TYPE|DOMAIN|MATERIALIZED VIEW DATA|MATERIALIZED VIEW|VIEW) public\s)') {
+      throw 'Archive contains an unsupported or non-public object. No managed schema may be restored.'
+    }
+  }
+}
+
+function Get-SecurityMetadataHash($PsqlCommand, [string]$Profile) {
+  $verificationSql = Join-Path $PSScriptRoot '..\backend\src\db\verification\verify-security-metadata.sql'
+  $report = @(& $PsqlCommand '--no-psqlrc' '--no-password' '--quiet' '--tuples-only' '--no-align' `
+    '--set' 'ON_ERROR_STOP=1' '--set' "expected_accounting_profile=$Profile" '--file' $verificationSql)
+  if ($LASTEXITCODE -ne 0) { throw 'Source security metadata verification failed.' }
+  $hashes = @($report | Where-Object { [string]$_ -cmatch '^security_metadata_sha256=[a-f0-9]{64}$' })
+  if ($hashes.Count -ne 1) { throw 'Source security metadata fingerprint is missing or ambiguous.' }
+  return ([string]$hashes[0]).Substring('security_metadata_sha256='.Length)
+}
+
 if (-not $AcknowledgeRestrictedDestination) {
-  throw 'AcknowledgeRestrictedDestination is required. The dump contains production personal and accounting data.'
+  throw 'AcknowledgeRestrictedDestination is required. The dump contains personal and accounting data from the explicitly selected source.'
 }
 
 $workspace = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path.TrimEnd('\', '/')
@@ -67,7 +87,10 @@ $savedPgEnvironment = Enter-IsolatedPgEnvironment $connection
 
 try {
   $sourceIdentity = Assert-PgDatabase $psql.Source $connection.PGDATABASE
-  & $pgDump.Source '--no-password' '--format=custom' '--blobs' '--no-owner' '--no-privileges' '--file' $partialPath
+  $metadataBefore = Get-SecurityMetadataHash $psql.Source 'legacy-core'
+  # Keep application ACLs and default privileges. Managed auth/storage schemas
+  # and object bytes are outside this accounting archive and remain untouched.
+  & $pgDump.Source '--no-password' '--format=custom' '--schema=public' '--no-owner' '--file' $partialPath
   if ($LASTEXITCODE -ne 0) {
     throw 'pg_dump failed. No backup was accepted.'
   }
@@ -85,6 +108,7 @@ try {
   if ($missingTables.Count -gt 0) {
     throw ('Backup archive is missing required public tables: ' + ($missingTables -join ', '))
   }
+  Assert-PublicArchiveScope $catalog
   $securedLedgerTables = @(
     'duplicate_stripe_refunds',
     'order_refund_items',
@@ -93,6 +117,11 @@ try {
     'security_audit_log'
   )
   $accountingProfile = Get-AccountingProfile $publicTables $securedLedgerTables
+  $metadataProfile = if ($accountingProfile -eq 'secured-ledgers') { 'secured-ledgers' } else { 'legacy-core' }
+  $securityMetadataHash = Get-SecurityMetadataHash $psql.Source $metadataProfile
+  if ($securityMetadataHash -cne $metadataBefore) {
+    throw 'Source security metadata changed during backup. Quiesce schema changes and retake the archive.'
+  }
 
   Move-Item -LiteralPath $partialPath -Destination $archivePath
   $file = Get-Item -LiteralPath $archivePath
@@ -105,6 +134,9 @@ try {
     sourceHostFingerprint = Get-TextSha256 $connection.PGHOST
     sourceDatabase = $sourceIdentity.database
     sourceConnectionIsolated = $true
+    archiveScope = 'public-schema-only'
+    privilegesIncluded = $true
+    securityMetadataSha256 = $securityMetadataHash
     requiredTables = $requiredTables
     publicTables = $publicTables
     accountingProfile = $accountingProfile

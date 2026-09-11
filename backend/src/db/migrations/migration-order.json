@@ -30,5 +30,6 @@
   "2026-09-09-accounting-history-protection.sql",
   "2026-09-09-receipt-vat-snapshot.sql",
   "2026-09-10-receipt-history-immutability.sql",
+  "2026-09-11-private-function-defaults.sql",
   "2026-09-09-checkout-contract-finalization.sql"
 ]
