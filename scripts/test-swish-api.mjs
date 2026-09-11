@@ -35,6 +35,18 @@ await withTestDatabase(async db => {
   const putCount = () => swish.calls.filter(call=>call.method==='PUT').length;
   try {
     const first=await create();
+    process.env.SWISH_CHECKOUT_ENABLED='false';
+    const beforeDisabled=await db.sql('SELECT count(*) FROM orders');
+    const blockedCreate=await call('/api/orders',{
+      items:[{productId:PRODUCT,variantId:'250 gram',quantity:2}],orderType:'takeaway',
+      locationId:HOJA,paymentMethod:'swish',customerInfo:{name:'Synthetic Disabled Swish',phone:'0700000099',email:'disabled@example.test'},
+    },{...checkoutContractHeader,'Idempotency-Key':randomUUID()});
+    assert.equal(blockedCreate.status,503);
+    assert.equal((await first.start()).status,503,'Configured Swish cannot start a payment while checkout is disabled');
+    assert.equal(await db.sql('SELECT count(*) FROM orders'),beforeDisabled);
+    assert.equal(await storedId(first.order),'');
+    assert.equal(putCount(),0,'Disabled checkout must not initiate a provider payment');
+    process.env.SWISH_CHECKOUT_ENABLED='true';
     for (let attempt=0; attempt<11; attempt++) {
       const stale=await call(`/api/orders/swish-payment/${first.order.id}`,{},
         {'x-order-status-token':first.order.statusToken});
@@ -54,11 +66,14 @@ await withTestDatabase(async db => {
       payment[field]=original;
     }
     payment.status='PAID';
+    process.env.SWISH_CHECKOUT_ENABLED='false';
     assert.equal((await callback(id)).status,200);
     assert.equal((await callback(id)).status,200);
+    assert.equal((await first.status()).status,200,'Historical status/reconciliation remains available with checkout disabled');
     assert.equal(await paymentStatus(first.order),'paid');
     assert.equal(putCount(),1);
 
+    process.env.SWISH_CHECKOUT_ENABLED='true';
     const timeout=await create(); swish.faults.acceptedTimeout=true;
     assert.equal((await timeout.start()).status,500);
     const reserved=await storedId(timeout.order), beforeRetry=putCount();
@@ -78,12 +93,13 @@ await withTestDatabase(async db => {
     const legacy=await create(), dashed=randomUUID(), compact=dashed.replaceAll('-','').toUpperCase();
     await db.sql(`UPDATE orders SET swish_instruction_id=${literal(dashed)} WHERE id=${literal(legacy.order.id)}`);
     swish.payments.set(compact,{...accepted,id:compact,payeePaymentReference:legacy.order.id.slice(0,35),status:'PAID'});
+    process.env.SWISH_CHECKOUT_ENABLED='false';
     assert.equal((await callback(compact)).status,200);
     assert.equal(await paymentStatus(legacy.order),'paid','Compact callbacks must resolve an existing hyphenated reservation');
     assert.equal(await storedId(legacy.order),dashed,'Do not rewrite references needed for atomic reconciliation');
     assert.equal(putCount(),beforeRetry);
     await verifySwishRefundRecovery({db,call,swish,order:first.order,legacy:legacy.order,nativeFetch,origin});
-    console.log('Verified Swish wire identity, concurrent starts, accepted timeout recovery, immutable fields, canonical callbacks and legacy reservations without external HTTPS.');
+    console.log('Verified disabled Swish checkout without new orders/payments, preserved historical status/callbacks/refunds, wire identity, concurrent starts, accepted timeout recovery and legacy reservations without external HTTPS.');
   } finally {
     server.closeAllConnections(); await new Promise(resolve=>server.close(resolve)); swish.close();
   }

@@ -7,7 +7,7 @@ export const CLIENT_UPGRADE_REQUIRED_MESSAGE =
 export type CheckoutBackendContract = 'current' | 'legacy' | 'unknown';
 
 const ORDER_STATUS_TOKEN_PATTERN =
-  /^v1\.\d{10}\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}$/;
+  /^v[12]\.\d{10}\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}$/;
 
 export function isOrderStatusCapability(value: unknown): value is string {
   return typeof value === 'string' && ORDER_STATUS_TOKEN_PATTERN.test(value);

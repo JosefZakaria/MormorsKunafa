@@ -59,9 +59,14 @@ await withTestDatabase(async db => {
       assert.match(stale.headers.get('cache-control'),/private.*no-store/);
     }
     assert.equal(await db.sql('SELECT count(*) FROM orders'),orderCountBeforeStaleClients);
+    const dedicatedStatusSecret = process.env.ORDER_STATUS_TOKEN_SECRET;
+    assert(dedicatedStatusSecret && dedicatedStatusSecret.length >= 32);
+    delete process.env.ORDER_STATUS_TOKEN_SECRET;
     const key = randomUUID();
     const first = await call('/api/orders',orderBody,{...checkoutContractHeader,'Idempotency-Key':key});
+    process.env.ORDER_STATUS_TOKEN_SECRET = dedicatedStatusSecret;
     assert.equal(first.status,201,JSON.stringify(first.data));
+    assert.match(first.data.statusToken,/^v1\./,'The pre-activation order models a legacy token');
     assert.equal(first.data.checkoutContract,'order-v2');
     const id = first.data.id, token = first.data.statusToken;
     for (const privateField of ['customerInfo','deliveryInfo','items','internalNotes','refunds','paymentStatus']) {
@@ -103,6 +108,14 @@ await withTestDatabase(async db => {
     assert.equal(await db.sql(`SELECT count(*) FROM security_audit_log WHERE resource_id='${id}' AND action='stripe_payment_confirmed'`),'1');
     assert.equal(await db.sql(`SELECT receipt_vat_rate_percent::text || ':' || receipt_vat_ore::text FROM orders WHERE id='${id}'`),'6:1121');
     const event={id:'evt_test_'+randomUUID().replaceAll('-',''),type:'checkout.session.completed',livemode:false,data:{object:session}};
+    const wrongModeEvent={...event,id:'evt_test_'+randomUUID().replaceAll('-',''),livemode:true};
+    const wrongModePayload=JSON.stringify(wrongModeEvent);
+    const wrongModeSignature=stripe.webhooks.generateTestHeaderString({payload:wrongModePayload,secret:process.env.STRIPE_WEBHOOK_SECRET});
+    const wrongModeReply=await nativeFetch(origin+'/api/stripe/webhook',{method:'POST',
+      headers:{'content-type':'application/json','stripe-signature':wrongModeSignature},body:wrongModePayload});
+    assert.equal(wrongModeReply.status,400,'A signed live event must fail closed in the synthetic test deployment');
+    assert.equal(await wrongModeReply.text(),'Webhook mode mismatch');
+    assert.equal(await db.sql(`SELECT count(*) FROM payment_provider_events WHERE event_id='${wrongModeEvent.id}'`),'0');
     const payload=JSON.stringify(event);
     const signature=stripe.webhooks.generateTestHeaderString({payload,secret:process.env.STRIPE_WEBHOOK_SECRET});
     const webhook=()=>nativeFetch(origin+'/api/stripe/webhook',{method:'POST',headers:{'content-type':'application/json','stripe-signature':signature},body:payload});
@@ -182,6 +195,7 @@ await withTestDatabase(async db => {
     assert.equal((await call(`/api/orders/admin/${id}/cancel`,cancelBody,ownerHeaders)).status,409);
     const pending=await newOrder(orderBody);
     assert.equal(pending.status,201);
+    assert.match(pending.data.statusToken,/^v2\./,'Post-activation orders use the separate signing key');
     const pendingId=pending.data.id, pendingHeader={...checkoutContractHeader,'x-order-status-token':pending.data.statusToken};
     for (const method of ['card','app','swish']) {
       await db.sql(`UPDATE orders SET payment_method='${method}' WHERE id='${pendingId}'`);

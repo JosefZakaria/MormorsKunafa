@@ -1,4 +1,5 @@
 const PRODUCTION_SITE_DEFAULT = 'https://mormorskunafa.se';
+const PRODUCTION_WEB_ORIGINS = [PRODUCTION_SITE_DEFAULT, 'https://www.mormorskunafa.se'];
 
 function isLocalhostUrl(url: string): boolean {
   try {
@@ -10,7 +11,7 @@ function isLocalhostUrl(url: string): boolean {
 }
 
 function isProductionRuntime(): boolean {
-  return process.env.VERCEL === '1' || process.env.NODE_ENV === 'production';
+  return Boolean(process.env.VERCEL_ENV) || process.env.VERCEL === '1' || process.env.NODE_ENV === 'production';
 }
 
 export function normalizePublicWebAppOrigin(
@@ -22,6 +23,7 @@ export function normalizePublicWebAppOrigin(
   try {
     const url = new URL(raw);
     const local = ['localhost', '127.0.0.1', '::1'].includes(url.hostname.toLowerCase());
+    if (url.hostname.endsWith('.')) return null;
     if (url.protocol !== 'https:' && !(url.protocol === 'http:' && local && !production)) return null;
     if (url.username || url.password || url.search || url.hash) return null;
     if (url.pathname !== '/' && url.pathname !== '') return null;
@@ -46,6 +48,19 @@ export function normalizePublicHttpsAssetUrl(value: unknown): string | null {
 export function assertPublicUrlConfiguration(): void {
   if (!isProductionRuntime()) return;
 
+  const preview = process.env.VERCEL_ENV === 'preview';
+  const productionOrigins = new Set(PRODUCTION_WEB_ORIGINS);
+  if (preview) {
+    if (!normalizePublicWebAppOrigin(process.env.PUBLIC_WEB_APP_URL, true)) {
+      throw new Error('Preview requires an explicit clean HTTPS PUBLIC_WEB_APP_URL');
+    }
+    for (const value of String(process.env.PRODUCTION_WEB_ORIGINS ?? '').split(',').filter(value => value.trim())) {
+      const origin = normalizePublicWebAppOrigin(value, true);
+      if (!origin) throw new Error('PRODUCTION_WEB_ORIGINS must contain only clean HTTPS origins');
+      productionOrigins.add(origin);
+    }
+  }
+
   const originValues = [
     ['PUBLIC_WEB_APP_URL', process.env.PUBLIC_WEB_APP_URL],
     ['FRONTEND_URL', process.env.FRONTEND_URL],
@@ -59,6 +74,9 @@ export function assertPublicUrlConfiguration(): void {
     if (String(value ?? '').trim() && !normalizePublicWebAppOrigin(value, true)) {
       throw new Error(`${label} must be a clean HTTPS origin without credentials, path, query or fragment`);
     }
+    if (preview && productionOrigins.has(normalizePublicWebAppOrigin(value, true) ?? '')) {
+      throw new Error(`${label} must not target a known Production web origin in Preview`);
+    }
   }
 
   const logoUrl = process.env.ORDER_EMAIL_LOGO_URL;
@@ -67,11 +85,28 @@ export function assertPublicUrlConfiguration(): void {
   }
 }
 
+/** Preview CORS is restricted to its explicit isolated frontend configuration. */
+export function getAllowedFrontendOrigins(): string[] {
+  const preview = process.env.VERCEL_ENV === 'preview';
+  if (preview) assertPublicUrlConfiguration();
+  const origins = new Set<string>(preview ? [] : PRODUCTION_WEB_ORIGINS);
+  const values = [process.env.FRONTEND_URL, process.env.FRONTEND_URLS, process.env.PUBLIC_WEB_APP_URL];
+  for (const value of values.filter(Boolean).join(',').split(',')) {
+    const origin = normalizePublicWebAppOrigin(value);
+    if (origin) origins.add(origin);
+  }
+  return [...origins];
+}
+
 /**
  * Public frontend base URL for Stripe redirects, emails, etc.
  * Priority: PUBLIC_WEB_APP_URL → FRONTEND_URL → SITE_PUBLIC_URL → dev localhost.
  */
 export function getPublicWebAppUrl(): string {
+  if (process.env.VERCEL_ENV === 'preview') {
+    assertPublicUrlConfiguration();
+    return normalizePublicWebAppOrigin(process.env.PUBLIC_WEB_APP_URL, true)!;
+  }
   const candidates = [
     { key: 'PUBLIC_WEB_APP_URL', value: process.env.PUBLIC_WEB_APP_URL },
     { key: 'FRONTEND_URL', value: process.env.FRONTEND_URL },

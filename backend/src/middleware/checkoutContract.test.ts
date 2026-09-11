@@ -26,3 +26,21 @@ test('classifies only a complete status capability as the current response', () 
     checkoutContract: 'order-v2', statusToken: 'undefined',
   }), 'unknown');
 });
+
+test('shared clients accept v1 and v2 status capabilities while unknown formats fail closed', () => {
+  const suffix = `9999999999.${'a'.repeat(22)}.${'b'.repeat(43)}`;
+  for (const version of ['v1', 'v2']) {
+    const token = `${version}.${suffix}`;
+    assert.equal(isOrderStatusCapability(token), true);
+    assert.equal(classifyCheckoutCreateResponse({ checkoutContract: 'order-v2', statusToken: token }), 'current');
+  }
+  for (const token of [
+    `v0.${suffix}`, `v3.${suffix}`, `v12.${suffix}`, `V2.${suffix}`, `v2.${suffix}.extra`,
+    `v2.999999999.${'a'.repeat(22)}.${'b'.repeat(43)}`,
+    `v2.9999999999.${'a'.repeat(21)}.${'b'.repeat(43)}`,
+    `v2.9999999999.${'a'.repeat(22)}.${'b'.repeat(42)}`,
+  ]) {
+    assert.equal(isOrderStatusCapability(token), false);
+    assert.equal(classifyCheckoutCreateResponse({ checkoutContract: 'order-v2', statusToken: token }), 'unknown');
+  }
+});

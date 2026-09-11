@@ -236,6 +236,11 @@ export function resolveSwishInstructionId(value?: unknown): string {
   return instructionId;
 }
 
+/** Gates new checkout only; historical status, callbacks and refunds stay available. */
+export function isSwishCheckoutEnabled(value = process.env.SWISH_CHECKOUT_ENABLED): boolean {
+  return value === 'true';
+}
+
 export function isSwishConfigured(): boolean {
   const payee = process.env.SWISH_PAYEE_ALIAS?.trim();
   const cert = process.env.SWISH_CERT_PATH?.trim();

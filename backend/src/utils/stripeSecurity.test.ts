@@ -21,6 +21,16 @@ test('validates webhook secret shape and event deployment mode', () => {
   assert.equal(isExpectedStripeEventMode(true, 'production'), true);
   assert.equal(isExpectedStripeEventMode(false, 'production'), false);
   assert.equal(isExpectedStripeEventMode(false, 'production', 'preview'), true);
+  assert.equal(isExpectedStripeEventMode(true, 'production', 'preview'), false);
+  assert.equal(isExpectedStripeEventMode(true, 'development'), false);
+});
+
+test('Preview accepts only test server keys even when NODE_ENV is production', () => {
+  for (const prefix of ['sk', 'rk']) {
+    assert.doesNotThrow(() => assertStripeServerKey(`${prefix}_test_1234567890`, 'production', 'preview'));
+    assert.throws(() => assertStripeServerKey(`${prefix}_live_1234567890`, 'production', 'preview'), /test Stripe server key/);
+    assert.throws(() => assertStripeServerKey(`${prefix}_live_1234567890`, 'development'), /test Stripe server key/);
+  }
 });
 
 test('never returns provider error messages for signature failures', () => {

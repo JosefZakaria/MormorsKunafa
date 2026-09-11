@@ -31,7 +31,7 @@ import {
   isOnlinePayment,
   isPublicPaymentMethodAvailable,
 } from '../utils/paymentMethod.js';
-import { isSwishConfigured } from '../services/swishClient.js';
+import { isSwishConfigured, isSwishCheckoutEnabled } from '../services/swishClient.js';
 import {
   DELIVERY_FEE_ORE,
   DELIVERY_FEE_LINE_NAME,
@@ -225,7 +225,7 @@ router.post('/', requireCurrentCheckoutContract, orderLimiter, orderContactLimit
     }
     if (!isPublicPaymentMethodAvailable(paymentMethod, {
       stripe: isStripeConfigured(),
-      swish: isSwishConfigured(),
+      swish: isSwishCheckoutEnabled() && isSwishConfigured(),
     })) {
       res.status(503).json({ error: 'Den valda betalningsmetoden är inte tillgänglig.' });
       return;

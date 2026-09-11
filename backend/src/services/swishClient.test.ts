@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  isSwishCheckoutEnabled,
   parseSwishAmountToOre,
   parseSwishInstructionId,
   parseSwishRefundId,
@@ -21,6 +22,13 @@ const expected = {
   payeeAlias: '1231181189',
   payeePaymentReference: 'a96c113d-9c7b-4e93-b247-2a3baf0',
 };
+
+test('new Swish checkout requires an explicit true flag', () => {
+  assert.equal(isSwishCheckoutEnabled('true'), true);
+  for (const value of ['', 'false', 'TRUE', '1', ' true ', 'enabled']) {
+    assert.equal(isSwishCheckoutEnabled(value), false);
+  }
+});
 
 function payment(overrides: Partial<SwishPaymentRequestResponse> = {}): SwishPaymentRequestResponse {
   return {

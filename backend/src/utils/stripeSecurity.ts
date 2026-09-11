@@ -21,6 +21,9 @@ export function assertStripeServerKey(
   if (requiresLiveStripeMode(nodeEnv, vercelEnv) && !STRIPE_LIVE_KEY_PATTERN.test(key)) {
     throw new Error('A live Stripe server key is required in production');
   }
+  if (!requiresLiveStripeMode(nodeEnv, vercelEnv) && STRIPE_LIVE_KEY_PATTERN.test(key)) {
+    throw new Error('A test Stripe server key is required outside production');
+  }
 }
 
 export function assertStripeWebhookSecret(secret: string): void {
@@ -34,7 +37,7 @@ export function isExpectedStripeEventMode(
   nodeEnv = process.env.NODE_ENV,
   vercelEnv = process.env.VERCEL_ENV
 ): boolean {
-  return !requiresLiveStripeMode(nodeEnv, vercelEnv) || livemode;
+  return livemode === requiresLiveStripeMode(nodeEnv, vercelEnv);
 }
 
 export function safeStripeVerificationError(error: unknown): string {

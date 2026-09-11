@@ -176,7 +176,7 @@ export async function handleStripeWebhook(req: Request, res: Response): Promise<
   }
 
   if (!isExpectedStripeEventMode(event.livemode)) {
-    console.error('[stripe webhook] rejected non-live event in production', {
+    console.error('[stripe webhook] rejected event deployment mode mismatch', {
       eventId: event.id,
       eventType: event.type,
     });

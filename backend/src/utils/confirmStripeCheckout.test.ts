@@ -20,6 +20,7 @@ function session(overrides: Partial<Stripe.Checkout.Session> = {}): Stripe.Check
   return {
     id: sessionId,
     object: 'checkout.session',
+    livemode: false,
     metadata: { orderId },
     mode: 'payment',
     currency: 'sek',
@@ -36,6 +37,23 @@ test('accepts an exact Stripe Checkout match', () => {
     ok: true,
     paidAmountOre: 17_900,
   });
+});
+
+test('Preview rejects live or unspecified modes through fulfillment and reconciliation', () => {
+  const previous = process.env.VERCEL_ENV;
+  try {
+    process.env.VERCEL_ENV = 'preview';
+    assert.equal(validateStripeCheckoutSession(order, session()).ok, true);
+    for (const livemode of [true, undefined]) {
+      const candidate = session({ livemode });
+      assert.equal(validateStripeCheckoutSession(order, candidate).ok, false);
+      assert.equal(validateStripeCheckoutSessionIdentity(order, candidate).ok, false);
+      assert.equal(validateStripeCheckoutSessionOrderFields(order, candidate).ok, false);
+    }
+  } finally {
+    if (previous === undefined) delete process.env.VERCEL_ENV;
+    else process.env.VERCEL_ENV = previous;
+  }
 });
 
 test('accepts immutable identity for an expired unpaid Stripe session without treating it as paid', () => {

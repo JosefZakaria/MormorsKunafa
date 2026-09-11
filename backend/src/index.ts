@@ -15,10 +15,11 @@ import { handleSwishRefundCallback } from './routes/swishRefundCallback.js';
 import {
   assertPublicUrlConfiguration,
   getPublicWebAppUrlDiagnostics,
-  normalizePublicWebAppOrigin,
+  getAllowedFrontendOrigins,
 } from './utils/publicWebAppUrl.js';
 import { configureWebPush, isWebPushConfigured } from './services/pushNotifications.js';
 import { assertJwtConfiguration, requireCsrfProtection } from './middleware/auth.js';
+import { assertOrderStatusTokenConfiguration } from './middleware/orderStatusToken.js';
 import { assertRateLimitConfiguration, createRateLimiter } from './middleware/rateLimit.js';
 import { applyApiSecurityHeaders } from './middleware/securityHeaders.js';
 import { assertOperationalSecretsConfiguration } from './utils/operationalSecrets.js';
@@ -30,6 +31,7 @@ app.set('query parser', 'simple');
 // Vercel overwrites the forwarding chain; use exactly its nearest proxy hop.
 app.set('trust proxy', process.env.VERCEL ? 1 : false);
 assertJwtConfiguration();
+assertOrderStatusTokenConfiguration();
 assertRateLimitConfiguration();
 assertOperationalSecretsConfiguration();
 assertPublicUrlConfiguration();
@@ -41,25 +43,7 @@ const paymentCallbackLimiter = createRateLimiter({
   prefix: 'payment-callback',
 });
 
-function allowedFrontendOrigins(): string[] {
-  const defaults = ['https://mormorskunafa.se', 'https://www.mormorskunafa.se'];
-  const fromEnv = [
-    process.env.FRONTEND_URL,
-    process.env.FRONTEND_URLS,
-    process.env.PUBLIC_WEB_APP_URL,
-  ]
-    .filter(Boolean)
-    .join(',');
-
-  const origins = new Set<string>(defaults);
-  for (const part of fromEnv.split(',')) {
-    const origin = normalizePublicWebAppOrigin(part);
-    if (origin) origins.add(origin);
-  }
-  return [...origins];
-}
-
-const frontendOrigins = allowedFrontendOrigins();
+const frontendOrigins = getAllowedFrontendOrigins();
 
 app.use(applyApiSecurityHeaders);
 

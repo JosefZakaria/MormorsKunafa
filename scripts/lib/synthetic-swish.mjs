@@ -6,7 +6,7 @@ import { EventEmitter } from 'node:events';
 export function installSyntheticSwish() {
   const original = { request:https.request, read:fs.readFileSync, exists:fs.existsSync };
   const cert='synthetic-swish-cert.invalid', key='synthetic-swish-key.invalid';
-  Object.assign(process.env,{SWISH_ENV:'test',SWISH_PAYEE_ALIAS:'1231181189',SWISH_CERT_PATH:cert,SWISH_KEY_PATH:key,SWISH_CALLBACK_BASE_URL:'https://callback.example.test'});
+  Object.assign(process.env,{SWISH_CHECKOUT_ENABLED:'true',SWISH_ENV:'test',SWISH_PAYEE_ALIAS:'1231181189',SWISH_CERT_PATH:cert,SWISH_KEY_PATH:key,SWISH_CALLBACK_BASE_URL:'https://callback.example.test'});
   fs.readFileSync = (file,...args) => [cert,key].includes(file) ? Buffer.from('SYNTHETIC-NOT-A-CERTIFICATE') : original.read(file,...args);
   fs.existsSync = file => [cert,key].includes(file) || original.exists(file);
   const payments=new Map(), refunds=new Map(), calls=[], faults={acceptedTimeout:false,refundAcceptedTimeout:false,getStatus:0,hideRefunds:false};

@@ -90,6 +90,9 @@ export function validateStripeCheckoutSessionOrderFields(
   order: Row,
   session: Stripe.Checkout.Session
 ): { ok: true; paidAmountOre: number } | { ok: false; error: string } {
+  if (process.env.VERCEL_ENV === 'preview' && session.livemode !== false) {
+    return { ok: false, error: 'Preview requires a test-mode checkout session' };
+  }
   const orderId = String(order.id ?? '').trim();
   if (!orderId || session.metadata?.orderId?.trim() !== orderId) {
     return { ok: false, error: 'Session does not match order' };

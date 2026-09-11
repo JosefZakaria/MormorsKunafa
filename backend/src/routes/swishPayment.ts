@@ -7,6 +7,7 @@ import {
   createSwishPaymentRequest,
   getSwishPaymentRequest,
   isSwishConfigured,
+  isSwishCheckoutEnabled,
   parseSwishInstructionId,
   resolveSwishInstructionId,
   SwishHttpError,
@@ -73,6 +74,10 @@ async function sendExistingPayment(
 
 router.post('/:orderId', swishStartLimiter, async (req: Request, res: Response) => {
   try {
+    if (!isSwishCheckoutEnabled()) {
+      res.status(503).json({ error: 'Swish-betalning är avstängd.' });
+      return;
+    }
     if (!isSwishConfigured()) {
       res.status(503).json({ error: 'Swish-betalning är inte konfigurerad.' });
       return;

@@ -45,6 +45,10 @@ export function hashRateLimitIdentifier(value: string): string {
   return createHash('sha256').update(value.trim().toLowerCase()).digest('base64url');
 }
 
+export function getClientIpRateLimitIdentifier(req: Request): string {
+  return hashRateLimitIdentifier(getTrustedClientIp(req));
+}
+
 export function createRateLimiter(options: {
   windowMs: number;
   max: number;
@@ -57,7 +61,7 @@ export function createRateLimiter(options: {
     max,
     message = 'Too many requests, please try again later.',
     prefix = 'global',
-    keyGenerator = getTrustedClientIp,
+    keyGenerator = getClientIpRateLimitIdentifier,
   } = options;
 
   const localStore = new Map<string, LocalEntry>();
