@@ -19,30 +19,30 @@ assert.equal(packageVersion('express'),'5.2.1','Express must stay on the reviewe
 assert.equal(packageVersion('body-parser'),'2.3.0','Express must use the reviewed body parser');
 assert.equal(packageVersion('qs'),'6.16.0','qs must include both reviewed DoS fixes');
 assert.deepEqual([...new Set(lockedVersions('qs'))],['6.16.0']);
-assert.equal(packageVersion('undici'),'6.28.1','Expo CLI must use the reviewed undici patch');
-assert.deepEqual([...new Set(lockedVersions('undici'))],['6.28.1']);
+assert.deepEqual(lockedVersions('undici'), [], 'SDK 55 removed the old Expo CLI undici dependency; review any reintroduction');
 
 for (const [name, version] of Object.entries({
   '@react-navigation/native':'7.3.18',
-  expo:'54.0.37',
-  'expo-constants':'18.0.14',
-  'expo-font':'14.0.12',
-  'expo-linear-gradient':'15.0.8',
-  'expo-linking':'8.0.12',
-  'expo-router':'6.0.24',
-  'expo-splash-screen':'31.0.13',
-  'expo-status-bar':'3.0.9',
-  'expo-web-browser':'15.0.11',
-  react:'19.1.0',
-  'react-dom':'19.1.0',
+  expo:'55.0.31',
+  'expo-constants':'55.0.17',
+  'expo-font':'55.0.8',
+  'expo-linear-gradient':'55.0.18',
+  'expo-linking':'55.0.17',
+  'expo-router':'55.0.18',
+  'expo-splash-screen':'55.0.25',
+  'expo-status-bar':'55.0.6',
+  'expo-web-browser':'55.0.20',
+  'react-native':'0.83.10',
+  react:'19.2.0',
+  'react-dom':'19.2.0',
 })) {
-  assert.equal(packageVersion(name,mobileRequire),version,`${name} must stay on the reviewed Expo SDK 54 patch`);
+  assert.equal(packageVersion(name,mobileRequire),version,`${name} must stay on the reviewed Expo SDK 55 patch`);
 }
 
 for (const [name, version] of Object.entries({
   '@react-navigation/native':'7.3.18',
-  react:'19.1.0',
-  'react-dom':'19.1.0',
+  react:'19.2.0',
+  'react-dom':'19.2.0',
 })) {
   assert.deepEqual(
     [...new Set(lockedVersions(name))],
@@ -81,4 +81,4 @@ assert.doesNotThrow(
   'parse/stringify must tolerate an attacker-controlled constructor.isBuffer value'
 );
 
-console.log('Verified reviewed Express, qs, undici, Expo and js-yaml versions plus advisory regressions.');
+console.log('Verified reviewed Express, qs, Expo and js-yaml versions, removed undici, and advisory regressions.');

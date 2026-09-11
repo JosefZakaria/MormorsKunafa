@@ -28,6 +28,9 @@
     "test:browser": "playwright test",
     "test:backend": "npm run test --workspace=@mormors-kunafa/backend",
     "typecheck:mobile": "npm exec --workspace=@mormors-kunafa/mobile -- tsc --noEmit",
+    "doctor:mobile": "npm exec --workspace=@mormors-kunafa/mobile -- expo-doctor",
+    "export:mobile:android": "npm exec --workspace=@mormors-kunafa/mobile -- expo export --platform android --output-dir ../../.cache/security-test/mobile-export-android",
+    "export:mobile:ios": "npm exec --workspace=@mormors-kunafa/mobile -- expo export --platform ios --output-dir ../../.cache/security-test/mobile-export-ios",
     "check": "npm run verify:dependencies && npm run verify:mobile-links && npm run verify:browser-storage && npm run verify:web-deployment && npm run build:web && npm run verify:web-build && npm test",
     "verify:dependencies": "node scripts/verify-dependency-security.mjs",
     "verify:mobile-links": "node scripts/verify-mobile-deep-links.mjs",
@@ -48,17 +51,15 @@
     "js-yaml@^4": "4.3.2",
     "postcss": "8.5.28",
     "qs": "6.16.0",
-    "react": "19.1.0",
-    "react-dom": "19.1.0",
     "shell-quote": "1.10.0",
     "socket.io-parser": "4.2.7",
-    "tar": "7.5.22",
-    "undici": "6.28.1"
+    "tar": "7.5.22"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",
-    "react": "19.1.0",
-    "react-dom": "19.1.0",
+    "expo-doctor": "1.20.4",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
     "typescript": "~5.6.2"
   }
 }
