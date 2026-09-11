@@ -1,11 +1,14 @@
 # Local security verification
 
-The final branch run used Node 24.18.1 and npm 11.6.2, matching `.nvmrc` and
-`packageManager`. Use those versions, then `npm ci --ignore-scripts`. If an npm
+Use Node 24.18.1 and npm 11.6.2, matching `.nvmrc` and
+`packageManager`, then ordinary `npm ci` as required by the candidate's CI. If an npm
 cache fails integrity validation, retry with a new isolated cache; never disable
 integrity checks. Cached tools and synthetic artifacts must remain ignored.
 
 Run `npm run check` for the application builds, unit tests and mobile typecheck.
+Use `EXPO_NO_DOTENV=1` and `CI=1` for mobile checks. Run `npm run doctor:mobile`,
+`npm run export:mobile:android` and `npm run export:mobile:ios` for SDK validation
+and bundles. Exports do not replace native build or physical-device verification.
 Run `npm run test:db` for the isolated PostgreSQL checks after running
 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Setup-LocalTestDatabase.ps1`
 once on Windows (the execution-policy override affects only this process).
@@ -68,11 +71,14 @@ the final verification did this while the browser and database suites used their
 own isolated clusters. Browser coverage is 22 Chromium cases across desktop and
 Pixel 7; it is not a complete Safari/mobile-app/accessibility test matrix.
 
-CI has a separate Windows integration job. It sets up the pinned PostgreSQL
-runtime and runs `test:db`, `test:api` and the PowerShell connection-isolation
-contract after the portable build/unit job. This mirrors the required sequencing;
-CI still uses synthetic local resources and cannot replace the separate hosted
-verification checklist in `EXTERNAL_RELEASE_VERIFICATION.md`.
+CI has three independent jobs on exact PR-HEAD, each verifying Node 24.18.1,
+npm 11.6.2 and a clean `npm ci`. Ubuntu build/unit runs the security verifiers,
+mobile Doctor/exports and high/critical audit gate. Windows runs `test:db`,
+`test:api`, the PowerShell connection-isolation contract and `test:backup-restore`.
+A separate Ubuntu job installs signed PostgreSQL 17.11 and Chromium under the
+configured `PLAYWRIGHT_BROWSERS_PATH`, builds once and runs all 22 browser cases.
+These jobs use synthetic local resources; actual CI results and hosted verification
+are recorded separately in `EXTERNAL_RELEASE_VERIFICATION.md` and the release journal.
 
 Statistics/export pagination rejects bounds or later-page errors rather than
 returning partial success. It is not a transaction-consistent backup or ledger
@@ -93,3 +99,19 @@ and invalid records. It verifies both `legacy-core` and `secured-ledgers`
 profiles, rejects a partial ledger set, and checks refund relations and immutable
 VAT snapshots. Neither test is evidence that a production backup was taken or
 that a real provider database can be restored successfully.
+
+On Windows, `npm run test:backup-restore` additionally exercises the real operator
+scripts, `pg_dump` and `pg_restore` between two independently created loopback
+clusters. It asserts archive scope, profile, ACLs including column grant options,
+security metadata equality and fixed synthetic order/item/gross/audit counts.
+Distinct Storage sentinels prove that the public archive leaves target Storage
+untouched. Both clusters and temporary archives are removed after the test.
+This bounded local fixture is not the full hosted financial A/B matrix. The
+operator manifest has no source financial fingerprint: operators must separately
+compare source and target orders, items, paid gross, VAT, provider events, audit
+and refund ledgers at the backup boundary. `restore=verified_against_source_profile`
+alone is not evidence of that full financial equality.
+
+`backend/src/db/verification/verify-security-metadata.sql` uses only system
+catalogs in a read-only transaction. The older `verify-security-posture.sql`
+reads application rows and may only run against synthetic databases in this task.

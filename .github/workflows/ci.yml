@@ -101,6 +101,9 @@ jobs:
         shell: powershell
         run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Test-PostgresConnectionIsolation.ps1
 
+      - name: Verify real independent backup and restore
+        run: npm run test:backup-restore
+
   browser-ubuntu:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
