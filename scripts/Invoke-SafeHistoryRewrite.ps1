@@ -28,7 +28,7 @@ if ($LASTEXITCODE -ne 0 -or $isBare -ne 'true') {
 
 $actualOrigin = (& git -C $mirror remote get-url origin 2>$null)
 if ($LASTEXITCODE -ne 0 -or $actualOrigin -ne $ExpectedOrigin) {
-  throw "Mirror origin does not exactly match ExpectedOrigin. Actual: $actualOrigin"
+  throw 'Mirror origin does not exactly match ExpectedOrigin.'
 }
 
 $refsBefore = @(& git -C $mirror for-each-ref '--format=%(refname)' | Sort-Object)
@@ -43,7 +43,7 @@ if ($LASTEXITCODE -ne 0 -or $commitCountBefore -le 0 -or $rootCountBefore -le 0)
 }
 
 Write-Output ('mirror=' + $mirror)
-Write-Output ('origin=' + $actualOrigin)
+Write-Output 'origin_verified=true'
 Write-Output ('ref_count=' + $refsBefore.Count)
 Write-Output ('commit_count=' + $commitCountBefore)
 Write-Output ('merge_count=' + $mergeCountBefore)
