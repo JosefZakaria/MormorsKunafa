@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises';
 const require = createRequire(import.meta.url);
 const repositoryRoot = new URL('../', import.meta.url);
 const mobileRequire = createRequire(new URL('apps/mobile/package.json',repositoryRoot));
+const semver = mobileRequire('semver');
 
 function packageVersion(name,resolver = require) {
   return resolver(`${name}/package.json`).version;
@@ -22,27 +23,40 @@ assert.deepEqual([...new Set(lockedVersions('qs'))],['6.16.0']);
 assert.deepEqual(lockedVersions('undici'), [], 'SDK 55 removed the old Expo CLI undici dependency; review any reintroduction');
 
 for (const [name, version] of Object.entries({
-  expo:'56.0.21',
-  'expo-constants':'56.0.25',
-  'expo-font':'56.0.7',
-  'expo-linear-gradient':'56.0.4',
-  'expo-linking':'56.0.17',
-  'expo-router':'56.2.20',
-  'expo-splash-screen':'56.0.15',
-  'expo-status-bar':'56.0.4',
-  'expo-web-browser':'56.0.6',
-  'react-native':'0.85.3',
+  expo:'57.0.22',
+  'expo-constants':'57.0.18',
+  'expo-font':'57.0.4',
+  'expo-linear-gradient':'57.0.2',
+  'expo-linking':'57.0.10',
+  'expo-router':'57.0.21',
+  'expo-splash-screen':'57.0.9',
+  'expo-status-bar':'57.0.1',
+  'expo-web-browser':'57.0.3',
+  'react-native':'0.86.3',
   react:'19.2.3',
   'react-dom':'19.2.3',
 })) {
-  assert.equal(packageVersion(name,mobileRequire),version,`${name} must stay on the reviewed Expo SDK 56 patch`);
+  assert.equal(packageVersion(name,mobileRequire),version,`${name} must stay on the reviewed Expo SDK 57 patch`);
 }
 
-assert.deepEqual(lockedVersions('@react-navigation/native'), [], 'SDK 56 Router owns its navigation fork');
+assert.deepEqual(lockedVersions('@react-navigation/native'), [], 'SDK 57 Router owns its navigation fork');
+
+// Native peers can be installed transitively without appearing in the app's
+// manifest. Check every locked copy against Expo's own supported matrix.
+const nativeMatrix = mobileRequire('expo/bundledNativeModules.json');
+for (const [name, supportedRange] of Object.entries(nativeMatrix)) {
+  for (const version of lockedVersions(name)) {
+    assert.ok(semver.satisfies(version, supportedRange),
+      `${name}@${version} must satisfy the installed Expo native matrix ${supportedRange}`);
+  }
+}
 
 for (const [name, version] of Object.entries({
   react:'19.2.3',
   'react-dom':'19.2.3',
+  'react-native':'0.86.3',
+  'react-native-reanimated':'4.5.1',
+  'react-native-worklets':'0.10.1',
 })) {
   assert.deepEqual(
     [...new Set(lockedVersions(name))],
