@@ -114,6 +114,6 @@ export async function withTestDatabase(callback) {
     // Only delete the exact newly-created directory whose ownership marker we wrote.
     assert.equal(path.dirname(cluster), clusterRoot);
     assert.equal(await readFile(path.join(cluster, 'test-cluster-owner'), 'utf8'), marker);
-    await rm(cluster, { recursive: true });
+    await rm(cluster, { recursive: true, maxRetries: 3, retryDelay: 100 });
   }
 }
