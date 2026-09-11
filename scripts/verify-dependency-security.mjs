@@ -22,27 +22,27 @@ assert.deepEqual([...new Set(lockedVersions('qs'))],['6.16.0']);
 assert.deepEqual(lockedVersions('undici'), [], 'SDK 55 removed the old Expo CLI undici dependency; review any reintroduction');
 
 for (const [name, version] of Object.entries({
-  '@react-navigation/native':'7.3.18',
-  expo:'55.0.31',
-  'expo-constants':'55.0.17',
-  'expo-font':'55.0.8',
-  'expo-linear-gradient':'55.0.18',
-  'expo-linking':'55.0.17',
-  'expo-router':'55.0.18',
-  'expo-splash-screen':'55.0.25',
-  'expo-status-bar':'55.0.6',
-  'expo-web-browser':'55.0.20',
-  'react-native':'0.83.10',
-  react:'19.2.0',
-  'react-dom':'19.2.0',
+  expo:'56.0.21',
+  'expo-constants':'56.0.25',
+  'expo-font':'56.0.7',
+  'expo-linear-gradient':'56.0.4',
+  'expo-linking':'56.0.17',
+  'expo-router':'56.2.20',
+  'expo-splash-screen':'56.0.15',
+  'expo-status-bar':'56.0.4',
+  'expo-web-browser':'56.0.6',
+  'react-native':'0.85.3',
+  react:'19.2.3',
+  'react-dom':'19.2.3',
 })) {
-  assert.equal(packageVersion(name,mobileRequire),version,`${name} must stay on the reviewed Expo SDK 55 patch`);
+  assert.equal(packageVersion(name,mobileRequire),version,`${name} must stay on the reviewed Expo SDK 56 patch`);
 }
 
+assert.deepEqual(lockedVersions('@react-navigation/native'), [], 'SDK 56 Router owns its navigation fork');
+
 for (const [name, version] of Object.entries({
-  '@react-navigation/native':'7.3.18',
-  react:'19.2.0',
-  'react-dom':'19.2.0',
+  react:'19.2.3',
+  'react-dom':'19.2.3',
 })) {
   assert.deepEqual(
     [...new Set(lockedVersions(name))],
@@ -53,21 +53,18 @@ for (const [name, version] of Object.entries({
 
 assert.deepEqual(
   [...new Set(lockedVersions('js-yaml'))].sort(),
-  ['3.15.2','4.3.2'],
+  ['4.3.2'],
   'Every installed js-yaml major must include GHSA-2883-xcg3-v3hh fixes'
 );
 
-const yaml3 = require('js-yaml');
 const expoToolRequire = createRequire(new URL('node_modules/@expo/xcpretty/package.json',repositoryRoot));
-const yaml4 = expoToolRequire('js-yaml');
+const yaml = expoToolRequire('js-yaml');
 const emptyMergeSources = 'sources: &sources [{},{}]\ntarget:\n  <<: *sources\n';
-for (const yaml of [yaml3,yaml4]) {
-  assert.throws(
-    () => yaml.load(emptyMergeSources,{maxTotalMergeKeys:1}),
-    /merge keys exceeded maxTotalMergeKeys/,
-    'Empty merge sources must consume the configured merge-key budget'
-  );
-}
+assert.throws(
+  () => yaml.load(emptyMergeSources,{maxTotalMergeKeys:1}),
+  /merge keys exceeded maxTotalMergeKeys/,
+  'Empty merge sources must consume the configured merge-key budget'
+);
 
 const qs = require('qs');
 assert.throws(

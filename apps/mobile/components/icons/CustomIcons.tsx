@@ -1,9 +1,10 @@
 import React from 'react';
+import type { ColorValue } from 'react-native';
 import Svg, { Path, Circle, Rect, G } from 'react-native-svg';
 
 interface IconProps {
   size?: number;
-  color?: string;
+  color?: ColorValue;
 }
 
 /**
