@@ -1,5 +1,10 @@
 # Stripe rollout verification
 
+**Inactive future procedure.** Current work is local only under
+[LOCAL_GOAL_OBJECTIVE.md](LOCAL_GOAL_OBJECTIVE.md). No provider access, push,
+history rewrite, credential rotation, merge or deployment is authorized now.
+A new explicit owner instruction is required before any external step.
+
 Status 2026-09-08: future authorized operator work. The branch work used simulated Stripe responses only; it did not make a real payment, publish a webhook or change a merchant account.
 
 The customer first creates an order with an `Idempotency-Key`. The server selects authoritative product/variant prices, location stock and delivery fee. It returns an order-bound status capability. Starting Checkout and reading customer status require that capability; a UUID alone does not grant access. The backend reserves one Checkout attempt and verifies amount, currency, order, method, mode and stored session identity before recording payment.

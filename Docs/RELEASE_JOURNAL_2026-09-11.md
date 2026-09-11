@@ -1,6 +1,6 @@
 # Releasejournal — 2026-09-11
 
-Status: endast lokal förberedelse är återupptagen efter ägarens paus.
+Status: den lokala förberedelsen efter ägarens paus är slutförd.
 Ägarens nya instruktion ersätter målfilens tidigare tillstånd till externa steg.
 Ingen Vercel-åtkomst, providerinloggning, resursskapning, push, PR-publicering,
 Preview-/Production-deployment eller merge får göras innan ägaren uttryckligen
@@ -26,7 +26,7 @@ för den slutrevisionen. Nya kod-/konfigurationsändringar verifieras separat.
 
 ## Aktuellt genomförande
 
-- Expo uppgraderas i ordningen 54 → 55 → 56 → 57, med separat commit efter
+- Expo uppgraderades i ordningen 54 → 55 → 56 → 57, med separat commit efter
   varje stabilt steg. Ingen force-installation eller osupportad major-override.
 - SDK 55: officiell `expo@55.0.31`, React 19.2.0 och React Native 0.83.10.
   `expo install --fix` genomförd. Audit: 0 critical, 0 high, 18 moderate.
@@ -62,7 +62,7 @@ Expo Doctor 21/21, mobil-/backendtyper, 193 backendtester, Android-export
 Ny audit: 0 critical/high, 14 moderate från två grundadvisories; varje paketpost
 är verifierad mot lock och installation. Kvarstående moderate, uuid-deprecation,
 Vites 500 kB-varning och NO_COLOR/FORCE_COLOR-varningen hålls synliga.
-Den frysta slutkandidatens fulla lokala matris och säkerhetsgranskning återstår.
+Den fulla slutmatrisen och källgranskningen är klara; verktygets partial-flagga förklaras nedan.
 
 Preview-/betalningsändringen har lokalt passerat 193 backendtester,
 API-/Stripe-simulering, Swish-simulering med avstängd ny checkout och 22
@@ -74,6 +74,77 @@ sekunder: 1 syntetisk order, 1 rad, 100 öre betald brutto och 1 auditpost i kä
 och mål; olika Storage-markörer bevarades och kolumn-ACL med grant option
 återställdes. Detta är ett avgränsat test. Full ekonomisk A/B-avstämning och en
 backup av verklig produktion har inte utförts eller verifierats.
+
+## Slutlig lokal överlämning
+
+Slutlig lokal kodkandidat: `ec04965833c8a6667e6886d3509757dc2e3b55e6`. Hela den lokala matrisen passerar
+med Node 24.18.1/npm 11.6.2: vanlig ren `npm ci`, säkerhetsverifierare, webbbygge,
+193 backendtester (0 fel/överhoppade), mobiltyper, Doctor 21/21,
+Android-/iOS-export, PostgreSQL, anslutningsisolering, API-/betalningssimulering,
+verklig oberoende lokal backup/restore och 22/22 browserfall. Audit: 0 critical,
+0 high, 14 individuellt analyserade moderate-poster utan ägarens riskgodkännande.
+Råbevis och tidsstämplar finns i ignorerade `.cache/security-test/verified-*`
+och `final-local-matrix-results.json`. Dokumentationsändringar efter denna
+kodkandidat kräver inte omkörning av oförändrad kod.
+
+Den nya förseglade Codex Security-granskningen `eab014d1-3da0-4ed5-a3e0-fe8e67e5b403` omfattar den
+oföränderliga diffen `33602a4417a4a1d15e44040c2acf5187d5a547d7..2d200f0c45b5a37cf53d8edf480437454cf54868`: **315 ändrade paths**,
+271 kompakta inventeringsobjekt plus 44 kompletterande paths. Alla paths är
+genomgångna inom uttryckliga undantag och inga rapporterade sårbarheter återstår.
+Den förseglade rapportens täckningsflagga är dock **partial**: slutverktyget
+behöll två gamla checkpointposter om ej färdig discovery/validering. Sista
+accepterade slututkastet hade complete och tom deferred-lista; kandidatens
+validering och attackbeslut ignore var redan registrerade. De gamla posterna
+motsvarar inte kvarvarande granskningsarbete. Rapporten ändras inte i efterhand;
+detta påstås inte vara en förseglad complete-status. Tre oberoende granskare täckte klient, runtime/CI
+och databas; huvudgranskaren täckte återstående filer. En separat granskare
+reproducerade hjälpskriptets råa adressutskrift med syntetiska värden. Kandidaten
+undertrycktes uttryckligen i attackanalysen: endast operatörens skyddade lokala
+Git-konfiguration, utan visad lägre behörighetsnivå eller privilegieökning.
+Utskriften togs ändå bort som försiktighetsåtgärd efter skanningen.
+
+Det borttagna `backend/backend.zip` granskades endast som Git-metadata; dess
+innehåll är uttryckligen undantaget. Historiska dump-/arkivblobbar är fortfarande
+nåbara i Git-historiken. Ingen rådata, historikomskrivning eller nyckelrotation
+ingick. Full täckning av denna diff är inte ett bevis att produktionen är säker.
+De efterföljande två små skripträttningarna har separat oberoende diffgranskning
+och ovanstående fulla lokala matris på `ec04965`. Skanningens låsta hash ändras inte.
+
+Skannerns slutmetadata redovisar mätt användning (coverage=complete):
+25 432 799 totalTokens, 25 317 214 inputTokens och 24 029 184 cachedInputTokens,
+från codex_rollout över sju tasks. Detta är verktygets tokenmått inklusive
+cachad kontext, inte ett kostnadsestimat eller ett påstående om complete-kodtäckning.
+
+Dokumentationscommit `2d200f0` föregår den förseglade skanningen.
+Efterföljande lokala kodcommits:
+
+- `40e73d5 fix(test): retry transient Windows cluster cleanup locks`
+- `ec04965 fix(ops): omit remote URLs from history preflight output`
+
+Ändringsstatistik från start `2183660` till `ec04965`: 55 files changed, 6128 insertions(+), 5562 deletions(-).
+Relation till fryst main: 0 saknade och 205 egna commits.
+Fjärrstatus har inte uppdaterats under den lokala etappen. Dokumentationscommitten
+som innehåller denna överlämning tillkommer efter testad kod och anges i slutmeddelandet.
+
+Första slutmatrisen vid `2d200f0` hade godkända restoredata men exit1 vid
+Windows-städning (`EBUSY`). Den körningen bevaras som misslyckad i
+`final-candidate-results.json`. Tre begränsade återförsök rättar den reproducerade
+transienta fillåssituationen; permanent lås är fortsatt ett fel. Ny full matris
+passerar även restore/städning. Den äldre restkatalogen utan ägarmarkör lämnas orörd.
+
+**Beslut: lokal etapp klar; NO-GO för merge/deployment.** Externa checklistan
+har 0/71 avprickat, och sex ägarbeslut är öppna. Ingen PR eller hosted CI-länk
+finns. Ingen Preview, ingen push eller produktionstestning. Fysisk skrivare är
+inte verifierad: webbläsarens CSP kan blockera HTTP till LAN-skrivare, och backendens
+standard-IP gör att saknad PRINTER_IP inte ensam bevisar avstängning. Den framtida
+övergångens fail-closed-fönster är inte godkänt och ger inget nollavbrottslöfte.
+
+Under slutmatrisen kunde Node-startad Windows PowerShell först inte hitta
+Get-FileHash eftersom pwsh 7:s PSModulePath följde med. Endast den ignorerade
+körarens ärvda modulsökväg rensades; kod/konfiguration/lock var oförändrade.
+Redan godkända kontroller på samma commit återanvändes, medan den felande
+isoleringskontrollen och återstående steg kördes med korrekt miljö. Första
+felet och omprovets resultat behålls separat i loggar och previousAttempts.
 
 ## Externa förutsättningar
 

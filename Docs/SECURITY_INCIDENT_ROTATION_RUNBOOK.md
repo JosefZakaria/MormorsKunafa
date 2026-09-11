@@ -1,5 +1,10 @@
 # Security incident rotation and deployment runbook
 
+**Inactive future procedure.** Current work is local only under
+[LOCAL_GOAL_OBJECTIVE.md](LOCAL_GOAL_OBJECTIVE.md). No provider access, push,
+history rewrite, credential rotation, merge or deployment is authorized now.
+A new explicit owner instruction is required before any external step.
+
 Use this runbook with a named incident lead and the restricted incident journal.
 Never paste secret values, leaked payloads or personal data into Git, tickets or
 ordinary chat. Record only timestamps, owners, provider-side identifiers and

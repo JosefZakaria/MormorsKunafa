@@ -1,12 +1,18 @@
-# File inventory for the security branch review
+# File inventory for the final local security review
 
-The exact frozen main → merge diff contains 242 paths (139 A, 74 M, 29 D). This is the path inventory, not a statement that every file has a dedicated runtime test. Review treatment and test evidence are in [the branch report](SECURITY_BRANCH_REVIEW.md).
+Immutable base `33602a4417a4a1d15e44040c2acf5187d5a547d7` to head `2d200f0c45b5a37cf53d8edf480437454cf54868`: **315 paths**
+(203 added, 82 modified, 30 deleted). The compact workbench inventory
+contains 271 items; 44 supplemental paths were separately assigned and reviewed.
+UI file estimates are not the authoritative Git diff count. All paths are accounted
+for, with the deleted sensitive ZIP limited to metadata by explicit instruction.
+Three independent discovery reviewers plus the parent reviewed actual changes;
+deleted source was inspected at base. No historical dump/ZIP bytes were read.
+Source test files are review evidence, not a claim each has a dedicated runtime test.
 
-Routes, services, shared/frontend code, SQL and direct callers were reviewed for boundary and compatibility behavior. Tests/configuration/docs were reviewed for coverage, drift and deployment assumptions. Deletions were reviewed for lost callers, replacement behavior and packaging: old credential-bearing extracted backend copies and the removed ZIP are not runtime dependencies; archive contents are excluded from content scanning and were not restored. Generated declarations/JavaScript and the mobile lock deletion are checked against current source/build and the root workspace lock. No historical credential or customer payload is reproduced here.
-
-## Frozen discovery diff
-
-Base: `33602a4417a4a1d15e44040c2acf5187d5a547d7`; merge: `8b29d32befc3cfd2ca6511e0779be286758ee68a`.
+See [the branch report](SECURITY_BRANCH_REVIEW.md) for candidate closure and
+[the journal](RELEASE_JOURNAL_2026-09-11.md) for post-scan script commits and final
+local tests at `ec04965`. Subsequent documentation updates do not change the
+sealed scan's scope or constitute a second complete scan.
 
 | Status | Path |
 | --- | --- |
@@ -16,24 +22,41 @@ Base: `33602a4417a4a1d15e44040c2acf5187d5a547d7`; merge: `8b29d32befc3cfd2ca6511
 | A | `.nvmrc` |
 | A | `.vercelignore` |
 | A | `Docs/ACCESSIBILITY_REVIEW_2026-08-19.md` |
+| A | `Docs/ACCOUNTING_DATA_PRESERVATION.md` |
 | A | `Docs/BROWSER_STORAGE.md` |
 | A | `Docs/CONTRIBUTOR_HISTORY_REWRITE.md` |
+| A | `Docs/DEPENDENCY_REVIEW_2026-09-08.md` |
+| A | `Docs/EXTERNAL_RELEASE_VERIFICATION.md` |
 | A | `Docs/FOOD_INFORMATION_OPERATIONS.md` |
 | A | `Docs/GITHUB_INCIDENT_EVIDENCE.md` |
+| A | `Docs/LEGACY_CHECKOUT_TRANSITION.md` |
 | A | `Docs/LEGACY_PRODUCT_SCRIPT_REVIEW.md` |
 | A | `Docs/LIVE_SECURITY_VERIFICATION_2026-08-19.md` |
+| A | `Docs/LOCAL_GOAL_OBJECTIVE.md` |
 | A | `Docs/LOCAL_SECURITY_TESTS.md` |
 | A | `Docs/PRIVACY_DATA_MAP.md` |
 | A | `Docs/PRIVACY_OPERATIONS_RUNBOOK.md` |
 | A | `Docs/PROCESSOR_EVIDENCE_2026-08-19.md` |
 | A | `Docs/PROCESSOR_REGISTER.md` |
 | A | `Docs/PRODUCTION_SERVICE_INVENTORY_2026-08-20.md` |
+| A | `Docs/RELEASE_JOURNAL_2026-09-11.md` |
+| A | `Docs/SECURITY_BRANCH_PR.md` |
+| A | `Docs/SECURITY_BRANCH_REVIEW.md` |
 | A | `Docs/SECURITY_INCIDENT_ROTATION_RUNBOOK.md` |
+| A | `Docs/SECURITY_REVIEW_FILES.md` |
 | M | `Docs/STRIPE_GO_LIVE.md` |
 | M | `Docs/VERCEL_DEPLOY.md` |
 | A | `SECURITY.md` |
+| M | `apps/mobile/app.json` |
+| M | `apps/mobile/app/_layout.tsx` |
 | M | `apps/mobile/components/ExternalLink.tsx` |
+| M | `apps/mobile/components/Themed.tsx` |
+| M | `apps/mobile/components/icons/CustomIcons.tsx` |
+| M | `apps/mobile/components/ui/HeroSection.tsx` |
+| A | `apps/mobile/index.js` |
 | D | `apps/mobile/package-lock.json` |
+| M | `apps/mobile/package.json` |
+| A | `apps/web/config/vercel-config.mjs` |
 | M | `apps/web/index.html` |
 | M | `apps/web/package.json` |
 | M | `apps/web/public/sw.js` |
@@ -58,6 +81,7 @@ Base: `33602a4417a4a1d15e44040c2acf5187d5a547d7`; merge: `8b29d32befc3cfd2ca6511
 | M | `apps/web/src/pages/Menu/Menu.css` |
 | M | `apps/web/src/pages/Menu/Menu.tsx` |
 | M | `apps/web/src/pages/OrderStatus/OrderStatus.tsx` |
+| M | `apps/web/src/pages/Privacy/Privacy.tsx` |
 | M | `apps/web/src/pages/SwishPay/SwishPay.tsx` |
 | M | `apps/web/src/services/api.ts` |
 | M | `apps/web/src/services/printer.ts` |
@@ -65,7 +89,8 @@ Base: `33602a4417a4a1d15e44040c2acf5187d5a547d7`; merge: `8b29d32befc3cfd2ca6511
 | M | `apps/web/src/styles/global.css` |
 | M | `apps/web/src/translations/translations.ts` |
 | A | `apps/web/src/utils/browserStorage.ts` |
-| M | `apps/web/vercel.json` |
+| D | `apps/web/vercel.json` |
+| A | `apps/web/vercel.mjs` |
 | M | `apps/web/vite.config.ts` |
 | M | `backend/.env.example` |
 | M | `backend/README.md` |
@@ -100,23 +125,41 @@ Base: `33602a4417a4a1d15e44040c2acf5187d5a547d7`; merge: `8b29d32befc3cfd2ca6511
 | A | `backend/src/db/migrations/2026-08-19-row-level-security.sql` |
 | A | `backend/src/db/migrations/2026-08-19-stripe-event-idempotency.sql` |
 | A | `backend/src/db/migrations/2026-08-19-structured-food-information.sql` |
+| A | `backend/src/db/migrations/2026-09-08-checkout-rollout.sql` |
+| A | `backend/src/db/migrations/2026-09-08-online-cancellation-boundary.sql` |
 | A | `backend/src/db/migrations/2026-09-08-security-location-compatibility.sql` |
+| A | `backend/src/db/migrations/2026-09-08-stripe-event-ownership.sql` |
+| A | `backend/src/db/migrations/2026-09-08-unsettled-payment-retention.sql` |
+| A | `backend/src/db/migrations/2026-09-09-accounting-history-protection.sql` |
+| A | `backend/src/db/migrations/2026-09-09-checkout-contract-finalization.sql` |
+| A | `backend/src/db/migrations/2026-09-09-legacy-order-writer-bridge.sql` |
+| A | `backend/src/db/migrations/2026-09-09-receipt-vat-snapshot.sql` |
+| A | `backend/src/db/migrations/2026-09-09-shared-order-number-allocation.sql` |
+| A | `backend/src/db/migrations/2026-09-10-checkout-reconciliation-fairness.sql` |
+| A | `backend/src/db/migrations/2026-09-10-receipt-history-immutability.sql` |
+| A | `backend/src/db/migrations/2026-09-11-private-function-defaults.sql` |
 | A | `backend/src/db/migrations/README.md` |
+| A | `backend/src/db/migrations/legacy-transition-order.json` |
 | A | `backend/src/db/migrations/migration-order.json` |
 | A | `backend/src/db/orderPiiRetentionRepository.test.ts` |
 | A | `backend/src/db/orderPiiRetentionRepository.ts` |
 | M | `backend/src/db/orderRepository.ts` |
 | M | `backend/src/db/ordersList.ts` |
+| A | `backend/src/db/pagination.test.ts` |
+| A | `backend/src/db/pagination.ts` |
 | A | `backend/src/db/paymentEventRepository.test.ts` |
 | A | `backend/src/db/paymentEventRepository.ts` |
 | A | `backend/src/db/refundRepository.ts` |
 | D | `backend/src/db/schema.sql` |
 | A | `backend/src/db/verification/review-eat-here-accounting.sql` |
 | A | `backend/src/db/verification/verify-restored-database.sql` |
+| A | `backend/src/db/verification/verify-security-metadata.sql` |
 | A | `backend/src/db/verification/verify-security-posture.sql` |
 | M | `backend/src/index.ts` |
 | A | `backend/src/middleware/auth.test.ts` |
 | M | `backend/src/middleware/auth.ts` |
+| A | `backend/src/middleware/checkoutContract.test.ts` |
+| A | `backend/src/middleware/checkoutContract.ts` |
 | A | `backend/src/middleware/maintenanceAuth.test.ts` |
 | A | `backend/src/middleware/maintenanceAuth.ts` |
 | A | `backend/src/middleware/orderAccess.ts` |
@@ -132,6 +175,7 @@ Base: `33602a4417a4a1d15e44040c2acf5187d5a547d7`; merge: `8b29d32befc3cfd2ca6511
 | A | `backend/src/middleware/securityHeaders.ts` |
 | M | `backend/src/routes/admin.ts` |
 | M | `backend/src/routes/adminMedia.ts` |
+| M | `backend/src/routes/locations.ts` |
 | A | `backend/src/routes/maintenance.ts` |
 | A | `backend/src/routes/media.ts` |
 | M | `backend/src/routes/orders.ts` |
@@ -168,6 +212,7 @@ Base: `33602a4417a4a1d15e44040c2acf5187d5a547d7`; merge: `8b29d32befc3cfd2ca6511
 | A | `backend/src/services/locationIntegration.test.ts` |
 | M | `backend/src/services/locationScope.ts` |
 | M | `backend/src/services/markOrderPaid.ts` |
+| A | `backend/src/services/orderNotifications.test.ts` |
 | A | `backend/src/services/orderNotifications.ts` |
 | A | `backend/src/services/orderPricing.test.ts` |
 | A | `backend/src/services/orderPricing.ts` |
@@ -194,10 +239,15 @@ Base: `33602a4417a4a1d15e44040c2acf5187d5a547d7`; merge: `8b29d32befc3cfd2ca6511
 | A | `backend/src/utils/foodInformationInput.ts` |
 | A | `backend/src/utils/operationalSecrets.test.ts` |
 | A | `backend/src/utils/operationalSecrets.ts` |
+| A | `backend/src/utils/orderPaymentState.test.ts` |
+| A | `backend/src/utils/orderPaymentState.ts` |
 | A | `backend/src/utils/orderPiiRetention.test.ts` |
 | A | `backend/src/utils/orderPiiRetention.ts` |
+| A | `backend/src/utils/orderSchedule.test.ts` |
+| A | `backend/src/utils/orderSchedule.ts` |
 | A | `backend/src/utils/orderStateMachine.test.ts` |
 | A | `backend/src/utils/orderStateMachine.ts` |
+| A | `backend/src/utils/orderStatusPresentation.test.ts` |
 | A | `backend/src/utils/paymentMethod.test.ts` |
 | M | `backend/src/utils/paymentMethod.ts` |
 | D | `backend/src/utils/productImage.ts` |
@@ -213,6 +263,8 @@ Base: `33602a4417a4a1d15e44040c2acf5187d5a547d7`; merge: `8b29d32befc3cfd2ca6511
 | A | `backend/src/utils/refundSelection.ts` |
 | A | `backend/src/utils/resourceId.test.ts` |
 | A | `backend/src/utils/resourceId.ts` |
+| A | `backend/src/utils/routeParam.test.ts` |
+| A | `backend/src/utils/routeParam.ts` |
 | A | `backend/src/utils/safeErrorMetadata.test.ts` |
 | A | `backend/src/utils/safeErrorMetadata.ts` |
 | A | `backend/src/utils/siteMediaUrl.ts` |
@@ -223,24 +275,49 @@ Base: `33602a4417a4a1d15e44040c2acf5187d5a547d7`; merge: `8b29d32befc3cfd2ca6511
 | A | `backend/src/utils/webPushSecurity.test.ts` |
 | A | `backend/src/utils/webPushSecurity.ts` |
 | A | `backend/test/fixtures/base-schema.sql` |
+| A | `backend/test/fixtures/checkout-retention.sql` |
+| A | `backend/test/fixtures/online-cancellation-boundary.sql` |
+| A | `backend/test/fixtures/stripe-event-ownership.sql` |
+| A | `backend/tsconfig.maintenance.json` |
 | M | `backend/vercel.json` |
 | M | `package-lock.json` |
 | M | `package.json` |
+| A | `playwright.config.mjs` |
 | A | `scripts/Invoke-SafeHistoryRewrite.ps1` |
 | A | `scripts/New-SupabaseSafetyBackup.ps1` |
 | A | `scripts/Setup-LocalTestDatabase.ps1` |
 | A | `scripts/Test-GitHistorySanitization.ps1` |
+| A | `scripts/Test-PostgresConnectionIsolation.ps1` |
 | A | `scripts/Test-SupabaseBackupRestore.ps1` |
+| A | `scripts/browser-teardown.mjs` |
 | A | `scripts/collect-git-incident-evidence.ps1` |
+| A | `scripts/lib/PostgresConnection.ps1` |
 | A | `scripts/lib/local-test-database.mjs` |
+| A | `scripts/lib/synthetic-api.mjs` |
+| A | `scripts/lib/synthetic-swish.mjs` |
+| A | `scripts/lib/test-duplicate-refunds.mjs` |
+| A | `scripts/lib/test-large-statistics.mjs` |
+| A | `scripts/lib/test-restore-integrity.mjs` |
+| A | `scripts/lib/test-swish-refunds.mjs` |
+| A | `scripts/local-browser-server.mjs` |
+| A | `scripts/setup-ci-postgres.sh` |
+| A | `scripts/test-api.mjs` |
+| A | `scripts/test-backup-restore.mjs` |
+| A | `scripts/test-catalog-api.mjs` |
 | A | `scripts/test-database.mjs` |
+| A | `scripts/test-swish-api.mjs` |
 | A | `scripts/verify-browser-storage.mjs` |
+| A | `scripts/verify-dependency-security.mjs` |
+| A | `scripts/verify-mobile-deep-links.mjs` |
 | A | `scripts/verify-web-build-security.mjs` |
 | A | `scripts/verify-web-deployment-config.mjs` |
 | M | `shared/api/index.ts` |
+| A | `shared/constants/checkoutContract.ts` |
 | A | `shared/constants/productPricing.ts` |
 | M | `shared/package.json` |
 | M | `shared/types/index.ts` |
+| A | `shared/utils/cartOrderLine.ts` |
+| A | `shared/utils/orderStatusPresentation.ts` |
 | A | `shared/utils/paymentRedirect.test.ts` |
 | A | `shared/utils/paymentRedirect.ts` |
 | D | `shared/utils/productImage.d.ts` |
@@ -250,103 +327,7 @@ Base: `33602a4417a4a1d15e44040c2acf5187d5a547d7`; merge: `8b29d32befc3cfd2ca6511
 | M | `shared/utils/productImage.ts` |
 | A | `shared/utils/safePrinterText.test.ts` |
 | A | `shared/utils/safePrinterText.ts` |
+| M | `shared/utils/scheduledTime.ts` |
 | A | `shared/utils/vat.test.ts` |
 | A | `shared/utils/vat.ts` |
-
-## Subsequent remediation and verification files
-
-Merge → tested code `cf12824f708b453275add1d62e2d68799ef0c62e`. These changes are reviewed/tested separately; they do not silently change the frozen discovery target.
-
-| Status | Path |
-| --- | --- |
-| A | `Docs/DEPENDENCY_REVIEW_2026-09-08.md` |
-| M | `Docs/LOCAL_SECURITY_TESTS.md` |
-| M | `apps/web/src/contexts/AuthContext.tsx` |
-| M | `apps/web/src/contexts/CartContext.tsx` |
-| M | `apps/web/src/pages/Admin/Admin.css` |
-| M | `apps/web/src/pages/Admin/Dashboard/AdminDashboard.tsx` |
-| M | `apps/web/src/pages/Admin/Dashboard/DuplicatePaymentRefundModal.tsx` |
-| M | `apps/web/src/pages/Cart/Cart.tsx` |
-| M | `apps/web/src/pages/OrderStatus/OrderStatus.tsx` |
-| M | `backend/package.json` |
-| M | `backend/src/db/duplicateStripeRefundRepository.ts` |
-| A | `backend/src/db/migrations/2026-09-08-checkout-rollout.sql` |
-| A | `backend/src/db/migrations/2026-09-08-online-cancellation-boundary.sql` |
-| A | `backend/src/db/migrations/2026-09-08-stripe-event-ownership.sql` |
-| A | `backend/src/db/migrations/2026-09-08-unsettled-payment-retention.sql` |
-| M | `backend/src/db/migrations/README.md` |
-| M | `backend/src/db/migrations/migration-order.json` |
-| M | `backend/src/db/orderRepository.ts` |
-| M | `backend/src/db/ordersList.ts` |
-| A | `backend/src/db/pagination.test.ts` |
-| A | `backend/src/db/pagination.ts` |
-| M | `backend/src/db/paymentEventRepository.test.ts` |
-| M | `backend/src/db/paymentEventRepository.ts` |
-| M | `backend/src/db/refundRepository.ts` |
-| M | `backend/src/db/verification/verify-restored-database.sql` |
-| M | `backend/src/index.ts` |
-| M | `backend/src/middleware/auth.ts` |
-| M | `backend/src/middleware/orderStatusToken.test.ts` |
-| M | `backend/src/middleware/orderStatusToken.ts` |
-| M | `backend/src/routes/admin.ts` |
-| M | `backend/src/routes/adminMedia.ts` |
-| M | `backend/src/routes/locations.ts` |
-| M | `backend/src/routes/orders.ts` |
-| M | `backend/src/routes/paymentAlerts.ts` |
-| M | `backend/src/routes/products.ts` |
-| M | `backend/src/routes/refunds.ts` |
-| M | `backend/src/routes/stripeWebhook.ts` |
-| M | `backend/src/routes/swishPayment.ts` |
-| M | `backend/src/routes/swishRefundCallback.ts` |
-| M | `backend/src/scripts/check-menu.ts` |
-| M | `backend/src/scripts/check-stats.ts` |
-| M | `backend/src/scripts/export-order-items.ts` |
-| M | `backend/src/scripts/export-products.ts` |
-| M | `backend/src/services/duplicatePaymentRefunds.test.ts` |
-| M | `backend/src/services/duplicatePaymentRefunds.ts` |
-| M | `backend/src/services/markOrderPaid.ts` |
-| M | `backend/src/services/orderPricing.test.ts` |
-| M | `backend/src/services/orderPricing.ts` |
-| M | `backend/src/services/refundProviders.test.ts` |
-| M | `backend/src/services/refundProviders.ts` |
-| M | `backend/src/services/refundReconciliation.ts` |
-| M | `backend/src/services/swishClient.test.ts` |
-| M | `backend/src/services/swishClient.ts` |
-| A | `backend/src/utils/orderPaymentState.test.ts` |
-| A | `backend/src/utils/orderPaymentState.ts` |
-| A | `backend/src/utils/orderSchedule.test.ts` |
-| A | `backend/src/utils/orderSchedule.ts` |
-| A | `backend/src/utils/orderStatusPresentation.test.ts` |
-| M | `backend/src/utils/webPushSecurity.test.ts` |
-| M | `backend/src/utils/webPushSecurity.ts` |
-| A | `backend/test/fixtures/checkout-retention.sql` |
-| A | `backend/test/fixtures/online-cancellation-boundary.sql` |
-| A | `backend/test/fixtures/stripe-event-ownership.sql` |
-| A | `backend/tsconfig.maintenance.json` |
-| M | `package-lock.json` |
-| M | `package.json` |
-| A | `playwright.config.mjs` |
-| M | `scripts/New-SupabaseSafetyBackup.ps1` |
-| A | `scripts/Test-PostgresConnectionIsolation.ps1` |
-| M | `scripts/Test-SupabaseBackupRestore.ps1` |
-| A | `scripts/browser-teardown.mjs` |
-| A | `scripts/lib/PostgresConnection.ps1` |
-| M | `scripts/lib/local-test-database.mjs` |
-| A | `scripts/lib/synthetic-api.mjs` |
-| A | `scripts/lib/synthetic-swish.mjs` |
-| A | `scripts/lib/test-duplicate-refunds.mjs` |
-| A | `scripts/lib/test-large-statistics.mjs` |
-| A | `scripts/lib/test-restore-integrity.mjs` |
-| A | `scripts/lib/test-swish-refunds.mjs` |
-| A | `scripts/local-browser-server.mjs` |
-| A | `scripts/test-api.mjs` |
-| A | `scripts/test-catalog-api.mjs` |
-| M | `scripts/test-database.mjs` |
-| A | `scripts/test-swish-api.mjs` |
-| M | `shared/types/index.ts` |
-| A | `shared/utils/cartOrderLine.ts` |
-| A | `shared/utils/orderStatusPresentation.ts` |
-| M | `shared/utils/scheduledTime.ts` |
 | A | `tests/browser/checkout.spec.mjs` |
-
-The delivery documentation changes after this code revision are listed in the final documentation commit. Production configuration, external merchant accounts and opaque removed archive contents are explicit exclusions from local runtime verification.

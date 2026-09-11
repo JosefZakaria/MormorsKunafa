@@ -1,6 +1,6 @@
 # Accounting and payment-data preservation matrix
 
-Status: intermediate local code evidence, 2026-09-11. **No legal, accounting or
+Status: final local code evidence, 2026-09-11. **No legal, accounting or
 owner approval is recorded for this candidate.** The resumed task is local only;
 [LOCAL_GOAL_OBJECTIVE.md](LOCAL_GOAL_OBJECTIVE.md) supersedes earlier external
 authorization. No provider account access, login, hosted resource creation,
@@ -17,11 +17,11 @@ new checkout does not remove historical provider references or reconciliation
 code. Before any future release, staff must approve and rehearse handling orders
 from the durable database queue while external notifications are disabled.
 
-The latest intermediate local results are 193 backend tests and 22 desktop/mobile
-browser cases, plus synthetic API/provider checks. These results support code
-behavior only. The final candidate still requires its complete local matrix,
-complete security review and clean committed worktree. Three green hosted CI jobs
-on exact PR HEAD and the checks in
+The final local candidate `ec04965833c8a6667e6886d3509757dc2e3b55e6` passed its complete
+matrix: 193 backend tests, 22 browser cases, database/API/provider simulation,
+connection isolation and real independent local restore. The sealed 315-path
+source review and independent subsequent script review are finished; sealed coverage remains partial due to stale checkpoint entries, documented in the branch report. These results
+support local behavior only. Three green hosted CI jobs on exact PR HEAD and the checks in
 [EXTERNAL_RELEASE_VERIFICATION.md](EXTERNAL_RELEASE_VERIFICATION.md) are future
 external evidence, not work authorized or required to finish this local stage.
 
@@ -164,7 +164,7 @@ each decision below. These are proposed decision subjects, **not approvals**.
 | 90/1,095-day retention | Approve exact fields, purposes, intervals, legal holds and archive handling before either non-dry-run scrub pass is enabled | Pending privacy/accounting/owner decision |
 | Backup and rollback | Approve public-only ACL-preserving A→B rehearsal, independent managed-resource recovery duties and forward recovery without overwriting later payments | Pending owner/accounting decision |
 | Staffing without notifications | Approve staffing hours, receipt handling, queue polling/reload, maximum detection time and escalation owner after hosted rehearsal | Pending operations/owner decision |
-| Remaining moderate advisories | Review each final moderate dependency advisory and its documented exposure; critical/high findings must still be zero | Pending owner decision after final audit |
+| Remaining moderate advisories | Review each final moderate dependency advisory and its documented exposure; critical/high findings must still be zero | Pending owner decision on the final audit |
 | Excluded features | Accept that Swish activation and external email/SMS/push delivery are outside this card-only candidate and are not claimed verified | Pending owner decision |
 
 All six decisions remain pending. The agent may prepare local evidence and PR

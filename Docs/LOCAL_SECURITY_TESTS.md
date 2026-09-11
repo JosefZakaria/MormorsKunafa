@@ -67,8 +67,8 @@ Run build/check first, then integration tests. Do not run another backend build
 while API or browser tests are active: the build deliberately cleans `dist`.
 `npm run test:api` builds first and runs the three API scripts sequentially. When
 reusing an already verified build, those scripts can instead be run directly;
-the final verification did this while the browser and database suites used their
-own isolated clusters. Browser coverage is 22 Chromium cases across desktop and
+this is safe only when those processes use their own isolated clusters. The final
+local matrix ran API build/tests before starting the browser suite. Browser coverage is 22 Chromium cases across desktop and
 Pixel 7; it is not a complete Safari/mobile-app/accessibility test matrix.
 
 CI has three independent jobs on exact PR-HEAD, each verifying Node 24.18.1,
@@ -105,7 +105,11 @@ scripts, `pg_dump` and `pg_restore` between two independently created loopback
 clusters. It asserts archive scope, profile, ACLs including column grant options,
 security metadata equality and fixed synthetic order/item/gross/audit counts.
 Distinct Storage sentinels prove that the public archive leaves target Storage
-untouched. Both clusters and temporary archives are removed after the test.
+untouched. Successful runs remove both clusters and temporary archives; failed cleanup
+may leave remnants. Owned-cluster removal retries transient Windows file locks
+three times after the server has stopped and the ownership marker has matched;
+persistent errors still fail. A partially removed old cluster without its marker
+must not be manually treated as owned or deleted by this procedure.
 This bounded local fixture is not the full hosted financial A/B matrix. The
 operator manifest has no source financial fingerprint: operators must separately
 compare source and target orders, items, paid gross, VAT, provider events, audit

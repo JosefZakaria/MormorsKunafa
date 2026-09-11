@@ -130,7 +130,7 @@ test configuration. A production `VITE_API_BASE_URL` does not override `/api`.
 |--------|-------------|
 | `npm run dev` | Start with `tsx watch` (development) |
 | `npm run build` | Remove the verified backend `dist/` target, then compile current TypeScript so deleted files cannot survive into tests or deployment |
-| `npm run start` | Run `node dist/index.js` (production) |
+| `npm run start` | Run `node dist/index.js`; the standalone listener starts only outside production/test. Production uses the exported app through `api/index.ts` or a separately configured HTTP launcher. |
 
 ## API overview
 

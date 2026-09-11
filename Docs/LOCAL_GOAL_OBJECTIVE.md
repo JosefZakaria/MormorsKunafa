@@ -1,5 +1,11 @@
 # Uppdaterat mål — lokal förberedelse av security-checks
 
+Status 2026-09-11: den lokala etappen är genomförd på `ec04965`.
+Utgå från releasejournalens sparade resultat; kör inte om oförändrade tester.
+Den förseglade skannerns partial-flagga och dess två gamla checkpointposter
+förklaras i granskningsrapporten. Inga externa steg är godkända.
+Det pausade målobjektet har inte återupptagits eller ändrats automatiskt.
+
 Fortsätt i C:\Users\alper\MormorsKunafa på branchen security-checks med endast
 lokal teknisk förberedelse. Detta ersätter det tidigare målets tillstånd till
 provideråtkomst, resursskapning, Preview-deployment, push och Draft PR.

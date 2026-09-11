@@ -1,6 +1,6 @@
 # Beroendegranskning — 2026-09-08, uppdaterad 2026-09-11
 
-**Pågående rapport. SDK 55, SDK 56 och SDK 57 är separat committade. SDK 56:s kända Hermes-fel är dokumenterat utan undantag. SDK 57 (`e90597a`) passerar ren installation, Expo Doctor 21/21, typer, Android-/iOS-export, webbbygge och 193 backendtester. Audit visar 0 high/critical och 14 moderate. Hela den revisionsbundna slutmatrisen och säkerhetsgranskningen återstår.** Ett rent high/critical-resultat är inte ett releasegodkännande. Kvarvarande moderate-risker är analyserade men inte godkända av ägaren.
+**Slutlig lokal rapport. SDK 55, SDK 56 och SDK 57 är separat committade. SDK 56:s kända Hermes-fel är dokumenterat utan undantag. SDK 57 (`e90597a`) passerar ren installation, Expo Doctor 21/21, typer, Android-/iOS-export, webbbygge och 193 backendtester. Audit visar 0 high/critical och 14 moderate. Hela den lokala slutmatrisen på `ec04965` passerar; den nya fullständiga diffgranskningen och separata efterföljande skriptgranskningen är klara.** Ett rent high/critical-resultat är inte ett releasegodkännande. Kvarvarande moderate-risker är analyserade men inte godkända av ägaren.
 
 Omfattningen är monorepots npm-workspaces, root-lockfilen och de faktiskt installerade webb-, backend- och mobilberoendena. Uppgraderingen görs sekventiellt på `security-checks`, med en separat commit efter varje stabilt SDK-steg. Ingen `npm audit fix --force`, `--legacy-peer-deps`, produktionsinstallation eller ostödd transitive major-override ingår. Råa audit- och testartefakter hålls i den ignorerade projektcachen. Den återupptagna uppgiften är endast lokal förberedelse: inga providerinloggningar eller externa resurser, ingen push/PR, deployment, merge eller produktionsåtkomst ingår. GitHub CI-resultat eller native-byggen får därför inte tillskrivas lokala kontroller.
 
@@ -26,7 +26,7 @@ SDK 55-commiten uppdaterar React/React DOM i root, webb och mobil till samma st�
 | Android- och iOS-export | Båda Metro-exporterna passerar; detta är inte kompilerade eller enhetstestade native-appar |
 | Playwright | 22/22 passerar på Desktop Chrome och Pixel 7-profil; avser webbflöden, inte mobilappen |
 | `npm audit --json` | `.cache/security-test/sdk55-audit.json`: 18 moderate, 0 high, 0 critical; tabellen nedan dokumenterar just denna snapshot |
-| Slutlig ren installation och full test-/CI-matris på kandidatcommitten | **Inväntas efter SDK 57; mellanliggande resultat ersätter inte slutkörningen** |
+| Slutlig ren installation och full test-/CI-matris på kandidatcommitten | Slutlig lokal matris på `ec04965` passerar. Hosted CI är inte körd. |
 
 Den sparade SDK 55-auditen skapades före SDK-stegets commit. Den ska inte beskrivas som en separat audit körd på exakt slutligt PR-HEAD. Senare deduplicering och SDK-steg kräver ett nytt resultat för den slutliga lockfilen.
 
@@ -49,7 +49,7 @@ Identiska dubbletter i native-modulerna löstes med riktad, kompatibel deduplice
 
 Den första Doctor-körningen gav 19/22. De lokala splash-/dubblettproblemen rättades; det återstående Hermes-felet lämnades synligt utan undantag eller undertryckt kontroll. SDK 56 är ett mellanled som inte rekommenderas för release i detta skick. SDK 57 måste bevisligen installera den rättade React Native/Hermes-versionen och få en godkänd Doctor-körning.
 
-## SDK 57: ren installation och verifierat delresultat
+## SDK 57: ren installation och slutlig lokal verifiering
 
 Den första installationen placerade React Native 0.86.3, Reanimated 4.5.1 och Worklets 0.10.1 i mobilens workspace men behöll SDK 56-gruppen 0.85.3/4.3.1/0.8.3 i root. Gruppens egna peer-intervall höll kvar den, bland annat versionsbundna virtualized-lists och Reanimated/Worklets-intervall som slutar vid RN 0.85. Riktade installationer och uppdateringar gav inget installationsfel men avlägsnade inte gruppen. Doctor-felet lämnades synligt.
 
@@ -82,7 +82,7 @@ Lösningen innehåller 879 lockposter mot 912 före omupplösningen. Av 62 ändr
 | Mobil-/backendtyper och backendtester | Pass; 193 tester, 0 fel, 0 överhoppade |
 | Android-/iOS-export | Pass; 1 732 respektive 1 648 moduler |
 | SDK 57-commit | `e90597a`, 4 filer, +2 464/-2 522 |
-| Revisionsbunden slutmatris inklusive webbläsartester | **Inväntas** |
+| Revisionsbunden slutmatris inklusive webbläsartester | Pass på `ec04965`, inklusive 22/22 browserfall och verklig lokal restore |
 
 ## Tidigare rättningar som bevaras
 
@@ -95,13 +95,13 @@ Lösningen innehåller 879 lockposter mot 912 före omupplösningen. Av 62 ändr
 | `postcss` | SDK 54 hade en separat berörd 8.4.49-kopia. SDK 55:s Metro Config accepterar `^8.5.14`; den granskade SDK 55-lockfilen innehåller endast 8.5.28. Det är en faktiskt installerad kompatibel lösning, inte enbart en override-deklaration. |
 | `image-size` | SDK 54:s Metro-kedja installerade 1.2.1. SDK 55 använder `@expo/metro@55.1.2` / `metro@0.83.8`, och `image-size` finns inte längre i den granskade lockfilen. Den berörda kedjan har därmed tagits bort; detta påstår inte att gamla image-size-versioner är rättade. |
 
-Äldre auditresultat var 29 poster den 8 september och 30 före Express/js-yaml-rättningarna den 9 september. Därefter återstod 26 poster i SDK 54. SDK 55:s sparade audit visar att high-kedjorna har försvunnit. Den sparade SDK 57-auditen behåller 0 high/critical. Slutkandidatens exakta revisionsbundna resultat inväntas fortfarande.
+Äldre auditresultat var 29 poster den 8 september och 30 före Express/js-yaml-rättningarna den 9 september. Därefter återstod 26 poster i SDK 54. SDK 55:s sparade audit visar att high-kedjorna har försvunnit. Den sparade SDK 57-auditen behåller 0 high/critical. Slutkandidatens revisionsbundna audit på `ec04965` bekräftar 0 critical/high och 14 moderate.
 
 En override ensam bevisar ingen rättning; se även [npm:s workspace-problem](https://github.com/npm/cli/issues/9659). `scripts/verify-dependency-security.mjs` jämför därför faktisk paketupplösning och lockfil samt behåller qs/js-yaml-regressionskontrollerna.
 
 ## Individuell genomgång av moderate-paketposterna
 
-Detta är **två grundadvisories som sprids genom beroendegrafen**. SDK 55 har 18 paketposter: åtta via `decode-uri-component`, tio via `uuid`. SDK 56 och SDK 57:s nya audit efter ren installation har vardera 14: tre via `decode-uri-component`, elva via `uuid`. Fem externa React Navigation-poster försvann och inline-modules tillkom som verktygsförälder. Varje rad har kontrollerats mot respektive audits `via` och källkoden; överordnade paket har ingen ytterligare egen advisory i dessa snapshots. SDK 57-kolumnen kommer från den nya `.cache/security-test/sdk57-audit.json` efter ren `npm ci`. Alla dess paketnoder har jämförts med både det antagna root-locket och respektive installerat package.json. Commit och separat revisionsbunden slutkontroll inväntas. `—` betyder att paketet inte är en auditpost i det SDK-steget.
+Detta är **två grundadvisories som sprids genom beroendegrafen**. SDK 55 har 18 paketposter: åtta via `decode-uri-component`, tio via `uuid`. SDK 56 och SDK 57:s nya audit efter ren installation har vardera 14: tre via `decode-uri-component`, elva via `uuid`. Fem externa React Navigation-poster försvann och inline-modules tillkom som verktygsförälder. Varje rad har kontrollerats mot respektive audits `via` och källkoden; överordnade paket har ingen ytterligare egen advisory i dessa snapshots. SDK 57-kolumnen kommer från den nya `.cache/security-test/sdk57-audit.json` efter ren `npm ci`. Alla dess paketnoder har jämförts med både det antagna root-locket och respektive installerat package.json. SDK-commit `e90597a` och separat slutkontroll på `ec04965` är klara. `—` betyder att paketet inte är en auditpost i det SDK-steget.
 
 | Paket | SDK 55 | SDK 56 | SDK 57 efter ren installation | Grundadvisory och faktisk roll |
 | --- | --- | --- | --- | --- |
@@ -157,10 +157,20 @@ SDK 56 höjer även TypeScript till 6.0.3 via `expo install --fix`, iOS-minimum 
 
 Lokala kontroller använder Node 24.18.1 och npm 11.6.2. Expo Doctor, TypeScript och Android-/iOS-export kontrollerar beroenden, typer och JavaScript-/assetbundling. De bevisar inte Xcode-/Gradle-kompilering, signering, installationsstart, faktisk native-modulkompatibilitet, minnesbeteende, deep links eller fysisk enhetsfunktion. Native iOS-bygge kräver en kompatibel macOS/Xcode-miljö eller EAS; någon sådan slutförd verifiering påstås inte här. Playwrights mobilprofil provar webbappen i Chromium och ersätter inte native-testning.
 
-## Kvar till rapportens slutversion
+## Slutläge och återstående externa beslut
 
-- Bevara SDK 56:s verkliga 21/22-resultat. SDK 57:s rena träds Doctor 21/21 löser versionskontrollen; fysisk native-/minnesverifiering är separat.
-- SDK 57-stegets kontroller och commit är klara. Separat slutkontroll på den frysta kandidatens revision, inklusive webbläsartester, återstår.
-- Ren `npm ci` och full lokal testmatris på slutkandidatens exakta revision. GitHub CI är separat och får inte påstås vara körd; push/PR ingår inte i den nuvarande lokala omfattningen.
-- Exakt avgränsning av kvarstående native-/enhetsverifiering.
-- Mänskligt beslut om kvarstående moderate-poster. **Inget sådant godkännande är dokumenterat i denna rapport.**
+Slutlig lokal kodkandidat: `ec04965833c8a6667e6886d3509757dc2e3b55e6`. Hela den lokala matrisen passerar
+med Node 24.18.1/npm 11.6.2: vanlig ren `npm ci`, säkerhetsverifierare, webbbygge,
+193 backendtester (0 fel/överhoppade), mobiltyper, Doctor 21/21,
+Android-/iOS-export, PostgreSQL, anslutningsisolering, API-/betalningssimulering,
+verklig oberoende lokal backup/restore och 22/22 browserfall. Audit: 0 critical,
+0 high, 14 individuellt analyserade moderate-poster utan ägarens riskgodkännande.
+Råbevis och tidsstämplar finns i ignorerade `.cache/security-test/verified-*`
+och `final-local-matrix-results.json`. Dokumentationsändringar efter denna
+kodkandidat kräver inte omkörning av oförändrad kod.
+
+SDK 56:s verkliga 21/22-resultat bevaras. SDK 57:s rena träd passerar Doctor
+21/21; fysisk native-/minnesverifiering är separat och inte utförd. Inga
+paketvarningar har dolts. De 14 moderate-posterna är inte rättade eller godkända
+bara för att high/critical-grinden passerar. GitHub CI, signering och enhetstest
+är framtida separat verifiering. Ägarens moderate-beslut är fortfarande öppet.

@@ -17,15 +17,16 @@ The candidate is **card-only**. New Swish checkout and external email/SMS/push
 delivery are outside its scope and must remain disabled. Their disabled state
 and the staffed PostgreSQL order queue still require hosted verification.
 
-The latest intermediate local candidate passed 193 backend tests and 22 browser
-cases on desktop/mobile Chromium, including status-token v1/v2 compatibility.
-Local API/provider simulations passed; these are not hosted provider evidence.
-Repeat the required matrix on the final candidate and record its exact commit.
+The full final local matrix passed on `ec04965833c8a6667e6886d3509757dc2e3b55e6`: 193 backend
+tests, 22 desktop/mobile browser cases, Doctor21/21, exports, audit0critical/high
+and 14 moderate, database/API/isolation and real local backup/restore. The sealed
+315-path source review and independent post-scan delta review are finished. The sealed flag is partial due to stale checkpoint entries, as explained in the branch report. None
+of these local results closes a hosted checkbox or proves Production backups.
 
 Local backup/security correction `eb2cd50` changes nine files (+485/-12). Its
 metadata gate and fingerprint now include column ACLs and grant options; the
 reproduced column-only refund mutation bypass is fixed and regression-tested.
-The new 146-line `scripts/test-backup-restore.mjs` passed in 85.8 seconds using
+The final local `scripts/test-backup-restore.mjs` run passed in 80.9 seconds using
 two newly created independent local PostgreSQL clusters. It checks real operator
 backup/restore, source/target orders=1, items=1, paid gross=100 öre, audit=1,
 retained column SELECT/grant option, role denials and the untouched target Storage

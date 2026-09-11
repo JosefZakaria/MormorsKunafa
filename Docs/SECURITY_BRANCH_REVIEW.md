@@ -1,43 +1,62 @@
 # Säkerhetsbranchens lokala granskningsrapport — 2026-09-11
 
-**Aktuell etapp: lokal förberedelse pågår.** Ägarens nya instruktion efter pausen
-ersätter det äldre målets externa tillstånd. Ingen Vercel-/providerkontoåtkomst,
-push, PR-publicering, Preview-/Production-deployment, merge, main-integration
-eller produktionsåtkomst får göras nu. Pågående köp och den levande databasen
-berörs inte. Se [uppdaterad måltext](LOCAL_GOAL_OBJECTIVE.md) och
-[releasejournalen](RELEASE_JOURNAL_2026-09-11.md).
+**Den lokala etappen är klar. Ingen merge eller deployment rekommenderas nu.**
+Ägarens senare instruktion gäller: ingen Vercel-/providerkontoåtkomst, inloggning,
+extern resurs, push, PR-publicering, deployment, main-integration eller
+produktionsåtkomst. Butikens drift har inte ändrats genom detta arbete.
+Se [måltexten](LOCAL_GOAL_OBJECTIVE.md) och [releasejournalen](RELEASE_JOURNAL_2026-09-11.md).
 
-Arbetet startade från `2183660` med ren arbetskatalog. Main-baslinjen
-`33602a4417a4a1d15e44040c2acf5187d5a547d7` kontrollerades före pausen och
-behålls fryst lokalt. Ingen ny main har integrerats.
+Slutlig lokal kodkandidat: `ec04965833c8a6667e6886d3509757dc2e3b55e6`. Hela den lokala matrisen passerar
+med Node 24.18.1/npm 11.6.2: vanlig ren `npm ci`, säkerhetsverifierare, webbbygge,
+193 backendtester (0 fel/överhoppade), mobiltyper, Doctor 21/21,
+Android-/iOS-export, PostgreSQL, anslutningsisolering, API-/betalningssimulering,
+verklig oberoende lokal backup/restore och 22/22 browserfall. Audit: 0 critical,
+0 high, 14 individuellt analyserade moderate-poster utan ägarens riskgodkännande.
+Råbevis och tidsstämplar finns i ignorerade `.cache/security-test/verified-*`
+och `final-local-matrix-results.json`. Dokumentationsändringar efter denna
+kodkandidat kräver inte omkörning av oförändrad kod.
 
-SDK 55 (`e278e86`) har passerat Doctor, typer, båda exporter och browserprov.
-SDK 56 (`344cb20`) har passerat typer/exporter/webb och 22 browserfall men
-behåller det dokumenterade upstream-Hermes-felet i mellansteget. SDK 57
-(`e90597a`) passerar ren installation, Doctor 21/21, typer, Android-/iOS-export,
-webbbygge och 193 backendtester. Alla installerade native-paket följer Expos
-matris. Ny audit visar 0 critical/high och 14 moderate, individuellt analyserade
-utan ägarens riskgodkännande. Den revisionsbundna slutmatrisen återstår.
+Den nya förseglade Codex Security-granskningen `eab014d1-3da0-4ed5-a3e0-fe8e67e5b403` omfattar den
+oföränderliga diffen `33602a4417a4a1d15e44040c2acf5187d5a547d7..2d200f0c45b5a37cf53d8edf480437454cf54868`: **315 ändrade paths**,
+271 kompakta inventeringsobjekt plus 44 kompletterande paths. Alla paths är
+genomgångna inom uttryckliga undantag och inga rapporterade sårbarheter återstår.
+Den förseglade rapportens täckningsflagga är dock **partial**: slutverktyget
+behöll två gamla checkpointposter om ej färdig discovery/validering. Sista
+accepterade slututkastet hade complete och tom deferred-lista; kandidatens
+validering och attackbeslut ignore var redan registrerade. De gamla posterna
+motsvarar inte kvarvarande granskningsarbete. Rapporten ändras inte i efterhand;
+detta påstås inte vara en förseglad complete-status. Tre oberoende granskare täckte klient, runtime/CI
+och databas; huvudgranskaren täckte återstående filer. En separat granskare
+reproducerade hjälpskriptets råa adressutskrift med syntetiska värden. Kandidaten
+undertrycktes uttryckligen i attackanalysen: endast operatörens skyddade lokala
+Git-konfiguration, utan visad lägre behörighetsnivå eller privilegieökning.
+Utskriften togs ändå bort som försiktighetsåtgärd efter skanningen.
 
-`2abedcf` förstärker Stripe-testläge/Preview-origins, avstängd ny Swish-checkout
-och separata v2-statusnycklar med bevarad v1-åtkomst. Dess lokala underlag är
-193 backendtester, API-/betalningssimulering och 22 browserfall.
+Det borttagna `backend/backend.zip` granskades endast som Git-metadata; dess
+innehåll är uttryckligen undantaget. Historiska dump-/arkivblobbar är fortfarande
+nåbara i Git-historiken. Ingen rådata, historikomskrivning eller nyckelrotation
+ingick. Full täckning av denna diff är inte ett bevis att produktionen är säker.
+De efterföljande två små skripträttningarna har separat oberoende diffgranskning
+och ovanstående fulla lokala matris på `ec04965`. Skanningens låsta hash ändras inte.
 
-`eb2cd50` behåller public-arkivets ACL och kräver säkerhetsmetadatahash, inklusive
-kolumnbehörigheter. Verklig obehörig refundmutation genom kolumngrant reproducerades
-och verifieraren rättades. En ny kompletterande migration rättar funktionsdefault;
-gamla migrationsfiler är oförändrade. Antalet är nu 30 Phase 1-steg plus separat
-Phase 4, och 33 fresh-filer. Hela lokala databasregressionen passerar.
+Expo 54 → 55 → 56 → 57 är separat committat. SDK 56:s verkliga Doctor-fel
+bevaras som ett mellanresultat; SDK 57 passerar alla 21 versionskontroller.
+Preview-/betalningsskydd, separata v2-statusnycklar med v1-bevarande,
+avstängd ny Swish-checkout samt starkare backup-/RPC-behörighetskontroller
+ingår. CI har tre jobb på exakt framtida PR-HEAD, men inga hosted CI-resultat.
 
-`47dc852` lägger till ett riktigt lokalt tvåklusterprov i Windows-CI. Testet
-passerade på 85,8 sekunder och kontrollerar 1 order/1 rad/100 öre/1 auditpost,
-bevarade kolumn-ACL/grant options och separat Storage-markör i målklustret.
-Detta är varken produktionsbackup eller full hosted ekonomisk A/B-avstämning.
+Slutprovet på `2d200f0` hade godkända restoredata men misslyckad Windows-städning
+(`EBUSY` på postgres.log). Felet behålls i evidensen. Den efterföljande rättningen
+lägger till tre begränsade återförsök efter stopp av det egna klustret och dess
+ägarkontroll. Det nya slutprovet passerar även städningen. Kvarlämnad rest från
+den äldre misslyckade körningen saknade ägarmarkör och lämnades orörd.
 
-Tre CI-jobb är konfigurerade med exakt Node 24.18.1/npm 11.6.2 och ren `npm ci`.
-Faktisk GitHub-körning och alla externa releasekontroller är avsiktligt inaktiva.
-Slutkandidatens kompletta lokala testmatris och nya fullständiga säkerhetsdiffscan
-återstår. Ingen slutlig release- eller säkerhetsbedömning dras från mellanresultat.
+Backup/restoreprovet kontrollerar 1 syntetisk order, 1 rad, 100 öre och
+1 auditpost, public-ACL inklusive kolumngrants samt separat Storage-markör.
+Det är inte produktionsbackup eller full ekonomisk A/B-avstämning. Full hosted
+verifiering, native-kompilering/enhetsprov, fysisk skrivare och samtliga sex
+ägarbeslut återstår. Externa checklistan har 0/71 avprickat. Den framtida
+fail-closed-övergången har inget godkännande för driftstopp eller nollavbrottslöfte.
 
 ## Historisk rapport från 2026-09-10
 

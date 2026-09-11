@@ -1,5 +1,10 @@
 # Contributor procedure for the targeted history rewrite
 
+**Inactive future procedure.** Current work is local only under
+[LOCAL_GOAL_OBJECTIVE.md](LOCAL_GOAL_OBJECTIVE.md). No provider access, push,
+history rewrite, credential rotation, merge or deployment is authorized now.
+A new explicit owner instruction is required before any external step.
+
 This procedure is for Alper and Josef. The repository remains public by owner
 decision, so the sensitive SQL dump, ZIP and extracted ZIP paths must be removed
 from every affected ref as soon as credential rotation and the matching secure

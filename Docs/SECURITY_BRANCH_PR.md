@@ -8,7 +8,7 @@ integration or Production access is permitted. The owner receives the local
 results and risks first. Any external step needs a new explicit owner instruction
 after its purpose and consequences have been explained; no login is requested.
 
-Work continues from `2183660e81330f7c66144c8490b4aec19341ea5a` on `security-checks`.
+Local work started from `2183660e81330f7c66144c8490b4aec19341ea5a` on `security-checks`.
 The main baseline checked before the pause and now frozen locally is
 `33602a4417a4a1d15e44040c2acf5187d5a547d7`; no remote refresh or main integration
 is part of this stage.
@@ -57,8 +57,9 @@ aggregates at the backup boundary must still be compared separately in hosted A/
   Doctor 21/22 exposed the known Hermes regression without suppressing its check.
   SDK 57 is committed as `e90597a`: clean install, Doctor 21/21, mobile types,
   Android/iOS exports, web build and 193 backend tests pass. Audit remains
-  0 critical/high and 14 individually reviewed moderate entries. The complete
-  revision-bound final matrix remains pending.
+  0 critical/high and 14 individually reviewed moderate entries. The full local
+  matrix passed on `ec04965833c8a6667e6886d3509757dc2e3b55e6`, including 22 browser cases and real
+  independent local restore. Hosted CI has not run.
   See the [dependency review](DEPENDENCY_REVIEW_2026-09-08.md) for current evidence.
 - Preview/payment commit `2abedcf` passed 193 backend tests, local API/Stripe
   simulation, Swish simulation with disabled checkout and 22 Chromium cases
@@ -68,7 +69,7 @@ aggregates at the backup boundary must still be compared separately in hosted A/
   privileges and the fingerprint retains column ACLs/grant options. Its regression
   checks pass. The migration adds a 30th Phase 1 step, followed by separate Phase 4;
   the fresh track contains 33 files.
-- The new 146-line `scripts/test-backup-restore.mjs` passed in 85.8 seconds using
+- The final local `scripts/test-backup-restore.mjs` run passed in 80.9 seconds using
   two independent newly created local PostgreSQL clusters and the real operator
   scripts. Source/target orders=1, items=1, paid gross=100 öre and audit=1 matched;
   column SELECT/grant option and expected role denials were retained, as was the
@@ -76,20 +77,22 @@ aggregates at the backup boundary must still be compared separately in hosted A/
   archive/profile, internal consistency and selected security metadata. This
   bounded fixture does not establish full VAT/provider/refund A=B equality or
   verify any hosted/Production backup or recovery.
-- A new complete Codex Security diff scan against the locally frozen main baseline is
-  required after code/configuration freezes. The earlier scan's documented
-  partial coverage is historical evidence and does not satisfy this final gate.
+- The final source review and its sealed partial-coverage checkpoint discrepancy
+  are documented below; the earlier scan remains historical evidence.
 
-## Remaining local completion requirements
+## Final local completion
 
-- Finish the SDK sequence and run the clean final candidate matrix: builds,
-  security/dependency checks, backend/mobile/Doctor/exports, synthetic database,
-  API/payment and real local A/B restore checks, and all 22 browser cases.
-- Require 0 critical/high audit, document each remaining moderate entry and
-  complete the independent security diff review after code/configuration freezes.
-- Save reviewable commits, leave a clean worktree and provide a Swedish report
-  of results, remaining risks and external checks not performed. Keep all six
-  formal human decisions open; the report is not release or merge approval.
+Final local review: sealed scan `eab014d1-3da0-4ed5-a3e0-fe8e67e5b403` covered all 315 frozen diff paths
+at `2d200f0c45b5a37cf53d8edf480437454cf54868`, with no unresolved candidates and no reportable vulnerabilities.
+The sealed coverage flag is partial because two stale checkpoint deferred entries
+survived the accepted complete final draft. Discovery, validation and attack
+analysis did finish; the sealed artifact is preserved without amendment.
+Deleted sensitive archive content was excluded;
+Git metadata was reviewed. An operator-only raw-origin logging observation was
+reproduced, explicitly suppressed under the attacker-scope policy, and hardened
+after sealing. Two tiny post-scan script changes received independent delta review.
+The final local matrix passed on `ec04965`; the prior restore-cleanup EBUSY failure
+is preserved in the journal rather than described as a passing run.
 
 ## Inactive future external checklist
 

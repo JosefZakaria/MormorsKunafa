@@ -31,7 +31,7 @@ IPv4 address and a bounded device identifier.
 | `orderType` | Carry the selected fulfillment method into checkout | Current browser tab |
 | `locationId` | Carry the selected bakery into checkout and filter stock | Current browser tab |
 | `locationSlug` | Preserve the selected bakery label for navigation | Current browser tab |
-| `order-status-token:<order UUID>` | Authorize access to the matching customer's minimized order status | Current browser tab; server token expires after seven days and is revocable |
+| `order-status-token:<order UUID>` | Authorize access to the matching customer's minimized order status | Current browser tab; server token expires seven days after the later of issuance or the scheduled order time, and is revocable |
 | `pending-checkout-create` | Record a non-PII idempotency key before order creation so an ambiguous response cannot lead to a second order | Current browser tab; rejected after 24 hours and removed only after a validated order response or a definitive pre-write upgrade rejection |
 | `pending-checkout-order` | Preserve the non-PII order ID, payment method, backend-contract generation and whether payment initiation started, so a lost response cannot create a second order/payment automatically | Current browser tab; rejected after 24 hours and deleted after a safe redirect/confirmed payment |
 
