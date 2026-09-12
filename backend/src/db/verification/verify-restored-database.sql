@@ -71,6 +71,26 @@ FROM public.order_items AS items
 LEFT JOIN public.orders AS orders ON orders.id = items.order_id
 WHERE orders.id IS NULL;
 
+DO $$
+DECLARE invalid_jobs bigint;
+BEGIN
+  IF to_regclass('public.outbound_message_jobs') IS NULL THEN RETURN; END IF;
+  EXECUTE $check$
+    SELECT count(*)
+    FROM public.outbound_message_jobs jobs
+    LEFT JOIN public.orders orders ON orders.id=jobs.order_id
+    WHERE orders.id IS NULL
+      OR jobs.attempt_count < 0
+      OR jobs.attempt_count > jobs.max_attempts
+      OR (jobs.status='processing') IS DISTINCT FROM
+         (jobs.lease_token IS NOT NULL AND jobs.lease_expires_at IS NOT NULL)
+  $check$ INTO invalid_jobs;
+  IF invalid_jobs <> 0 THEN
+    RAISE EXCEPTION 'Outbound-message outbox integrity check failed: % invalid rows', invalid_jobs;
+  END IF;
+END
+$$;
+
 SELECT count(*) AS duplicate_order_numbers
 FROM (
   SELECT order_number

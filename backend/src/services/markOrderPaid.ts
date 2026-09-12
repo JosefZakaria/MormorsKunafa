@@ -1,13 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { supabase, type Row, logSupabaseError, nowIso } from '../db/connection.js';
 import { getOrderById } from '../db/orderRepository.js';
-import { sendOrderConfirmationEmail } from './OrderConfirmationEmail.js';
-import { sendSms } from './SmsService.js';
-import { formatStockholmDateTime } from '../utils/stockholmWallTime.js';
 import { isOnlinePayment } from '../utils/paymentMethod.js';
 import { dispatchPaidOrderCreatedEvent } from './orderNotifications.js';
-import { logUnexpectedError } from '../utils/safeErrorMetadata.js';
-import { inStorePickupSmsSuffix } from '../db/locations.js';
 import { swishInstructionIdCandidates } from './swishClient.js';
 
 export type MarkOrderPaidOptions = {
@@ -16,7 +11,7 @@ export type MarkOrderPaidOptions = {
 };
 
 /**
- * Sets payment_status to paid (idempotent) and sends confirmation email/SMS when applicable.
+ * Sets payment_status to paid and creates durable customer-message jobs atomically.
  * @returns true if the order was newly marked paid
  */
 export async function markOrderPaid(orderId: string, options?: MarkOrderPaidOptions): Promise<boolean> {
@@ -46,7 +41,7 @@ export async function markOrderPaid(orderId: string, options?: MarkOrderPaidOpti
   }
 
   const paidAt = nowIso();
-  const { data, error } = await supabase.rpc('mark_order_paid_with_audit', {
+  const { data, error } = await supabase.rpc('mark_order_paid_with_audit_and_messages', {
     p_order_id: orderId,
     p_paid_at: paidAt,
     p_event_id: randomUUID(),
@@ -67,33 +62,6 @@ export async function markOrderPaid(orderId: string, options?: MarkOrderPaidOpti
     String(refreshed.order.order_number ?? ''),
     refreshed.order
   );
-
-  // Historical checkout links can settle after cancellation. Record the money
-  // and notify administrators, but do not promise fulfillment to the customer.
-  if (refreshed.order.status === 'avbruten') return true;
-
-  const emailOut = String(refreshed.order.customer_email ?? '').trim();
-  if (emailOut) {
-    void sendOrderConfirmationEmail({
-      order: refreshed.order,
-      items: refreshed.items,
-      paidAt,
-    }).catch((err) =>
-      logUnexpectedError('order confirmation email after payment', err)
-    );
-  }
-
-  const phoneOut = String(refreshed.order.customer_phone ?? '').trim();
-  const smsCustomerName = String(refreshed.order.customer_name ?? '').trim();
-  // Hemleverans får inga SMS – endast "Ta med" och "Äta här".
-  if (phoneOut && String(refreshed.order.order_type ?? '') !== 'delivery') {
-    const schedStr = refreshed.order.scheduled_at ? formatStockholmDateTime(refreshed.order.scheduled_at as string) : '';
-    const schedSuffix = schedStr ? ` Planerad upphämtning: ${schedStr}.` : '';
-    const placeSuffix = await inStorePickupSmsSuffix(refreshed.order);
-    void sendSms(phoneOut, `Tack för din beställning från Mormors Kunafa${smsCustomerName ? ', ' + smsCustomerName : ''}! Vi tar snart emot din beställning.${placeSuffix}${schedSuffix}`).catch((err) =>
-      logUnexpectedError('order confirmation sms after payment', err)
-    );
-  }
 
   return true;
 }

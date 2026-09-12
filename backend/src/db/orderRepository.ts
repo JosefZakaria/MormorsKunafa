@@ -110,3 +110,21 @@ export async function compareAndUpdateOrder(
 
   return Array.isArray(data) && data.length === 1;
 }
+
+export async function acceptOrderWithMessages(
+  id: string,
+  estimatedReadyAt: string | null,
+  acceptedAt: string
+): Promise<boolean> {
+  const { data, error } = await supabase.rpc('accept_order_with_messages', {
+    p_order_id: id,
+    p_estimated_ready_at: estimatedReadyAt,
+    p_accepted_at: acceptedAt,
+  });
+  if (error) {
+    logSupabaseError('acceptOrderWithMessages', error);
+    throw error;
+  }
+  if (typeof data !== 'boolean') throw new Error('Invalid accept-order RPC result');
+  return data;
+}

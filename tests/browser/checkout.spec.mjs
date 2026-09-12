@@ -1,5 +1,8 @@
 import { test, expect } from '@playwright/test';
+import { randomUUID } from 'node:crypto';
 const origin='http://127.0.0.1:4179';
+const syntheticProductId='1ae3fd7a-0042-4220-b330-b27b3147a0a6';
+const hojaLocationId='2f1a9c4e-6b7d-4e8f-a901-b2c3d4e5f601';
 
 async function submitCheckout(page,button=page.getByRole('button',{name:'Gå till betalning'})) {
   await button.click();
@@ -7,6 +10,61 @@ async function submitCheckout(page,button=page.getByRole('button',{name:'Gå til
   if (await closedHoursConfirmation.isVisible()) {
     await closedHoursConfirmation.click();
   }
+}
+
+async function acceptEveryVisibleAlarm(page) {
+  const acceptButton=page.getByRole('button',{name:'Ta emot ordern',exact:true});
+  const orderNumber=page.locator('.alarm-overlay .alarm-order-number');
+  let accepted=0;
+  while (await acceptButton.isVisible()) {
+    const before=await orderNumber.textContent();
+    const response=page.waitForResponse(candidate=>
+      candidate.request().method()==='PATCH'
+      && /\/api\/orders\/admin\/[^/]+\/accept$/.test(new URL(candidate.url()).pathname)
+    );
+    await acceptButton.click();
+    expect((await response).status()).toBe(200);
+    accepted++;
+    expect(accepted).toBeLessThanOrEqual(20);
+    await expect.poll(async()=>await acceptButton.isVisible()
+      ? await orderNumber.textContent()
+      : null).not.toBe(before);
+  }
+  return accepted;
+}
+
+async function createPaidOrderForAlarm(context) {
+  const checkoutHeaders={'x-checkout-contract':'order-v2'};
+  const createdResponse=await context.request.post('/api/orders',{
+    headers:{...checkoutHeaders,'idempotency-key':randomUUID()},
+    data:{
+      items:[{productId:syntheticProductId,variantId:'250 gram',quantity:1,price:1,name:'FORGED'}],
+      orderType:'takeaway',
+      locationId:hojaLocationId,
+      paymentMethod:'card',
+      scheduledTime:new Date(Date.now()+86_400_000).toISOString().slice(0,10)+'T14:00',
+      customerInfo:{name:'Synthetic Alarm',phone:'070'+String(Math.floor(Math.random()*10_000_000)).padStart(7,'0'),email:`alarm-${randomUUID()}@example.test`},
+    },
+  });
+  expect(createdResponse.status()).toBe(201);
+  const created=await createdResponse.json();
+  const protectedHeaders={...checkoutHeaders,'x-order-status-token':created.statusToken};
+  const checkoutResponse=await context.request.post(`/api/orders/checkout-session/${created.id}`,{
+    headers:protectedHeaders,
+    data:{},
+  });
+  expect(checkoutResponse.status()).toBe(200);
+  const checkout=await checkoutResponse.json();
+  const sessionId=new URL(checkout.url).pathname.split('/').pop();
+  expect(sessionId).toBeTruthy();
+  const paid=await context.request.post(`/__test/pay/${sessionId}`);
+  expect(paid.status()).toBe(200);
+  const confirmed=await context.request.post('/api/orders/stripe-confirm',{
+    headers:protectedHeaders,
+    data:{orderId:created.id,sessionId},
+  });
+  expect(confirmed.status()).toBe(200);
+  return created;
 }
 
 test.beforeEach(async ({context}) => {
@@ -263,6 +321,7 @@ test('a legacy create response never starts payment or submits again',async({pag
 });
 
 test('admin cookie login, current dashboard and logout', async ({page,context})=> {
+  await createPaidOrderForAlarm(context);
   const active = page.waitForResponse(r=>r.url().includes('/api/orders/admin/active'));
   const preorders = page.waitForResponse(r=>r.url().includes('/api/orders/admin/pre-orders'));
   await page.goto('/admin/login');
@@ -274,6 +333,13 @@ test('admin cookie login, current dashboard and logout', async ({page,context})=
   expect((await active).status()).toBe(200);
   expect((await preorders).status()).toBe(200);
   await page.screenshot({path:`.cache/security-test/admin-${test.info().project.name}.png`,fullPage:true});
+  const durableAlarmNumber=await page.locator('.alarm-overlay .alarm-order-number').textContent();
+  expect(durableAlarmNumber).toBeTruthy();
+  await page.reload();
+  await expect(page.getByRole('button',{name:'Ta emot ordern',exact:true})).toBeVisible();
+  await expect(page.locator('.alarm-overlay .alarm-order-number')).toHaveText(durableAlarmNumber);
+  expect(await acceptEveryVisibleAlarm(page)).toBeGreaterThan(0);
+  await expect(page.getByRole('button',{name:'Ta emot ordern',exact:true})).toBeHidden();
   const cookies=await context.cookies();
   expect(cookies.find(c=>c.name==='mk_admin_session').httpOnly).toBeTruthy();
   expect(await page.evaluate(()=>Object.keys(localStorage).some(k=>/token|admin_info/.test(k)))).toBeFalsy();

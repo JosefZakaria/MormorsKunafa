@@ -16,6 +16,7 @@ import {
   parseOperationalPiiRetentionRequest,
   retentionDaysForScope,
 } from '../utils/orderPiiRetention.js';
+import { processOutboundMessageJobs } from '../services/outboundMessageWorker.js';
 
 const router = Router();
 // The cron runs daily, so a 24-hour cutoff removes drafts after 24–48 hours.
@@ -24,6 +25,7 @@ const BATCH_SIZE = 500;
 const MAX_BATCHES = 10;
 const MAX_PROVIDER_RECONCILIATIONS = 40;
 const PROVIDER_CONCURRENCY = 4;
+const OUTBOUND_MESSAGE_BATCH_SIZE = 20;
 
 type MaintenanceCounts = Record<CheckoutDraftReconciliationOutcome | 'errors', number>;
 
@@ -101,6 +103,21 @@ router.get(
     } catch (error) {
       logUnexpectedError('cleanup uninitiated checkout drafts failed', error);
       res.status(500).json({ error: 'Cleanup failed' });
+    }
+  }
+);
+
+router.post(
+  '/process-outbound-messages',
+  requireMaintenanceAuthorization,
+  async (_req: Request, res: Response) => {
+    res.setHeader('Cache-Control', 'private, no-store');
+    try {
+      const result = await processOutboundMessageJobs(OUTBOUND_MESSAGE_BATCH_SIZE);
+      res.json({ ok: true, ...result });
+    } catch (error) {
+      logUnexpectedError('outbound-message worker failed', error);
+      res.status(503).json({ error: 'Outbound-message processing unavailable' });
     }
   }
 );

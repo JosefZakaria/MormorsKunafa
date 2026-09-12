@@ -44,6 +44,7 @@ import { logUnexpectedError } from '../utils/safeErrorMetadata.js';
 import { consumeRealtimeTicket, issueRealtimeTicket } from '../middleware/realtimeTicket.js';
 import { hashAuditSubject, recordSecurityAuditEvent } from '../services/securityAudit.js';
 import { listPaymentSecurityAlerts } from '../db/paymentEventRepository.js';
+import { listOutboundMessageFailureAlerts } from '../db/outboundMessageAlertsRepository.js';
 
 const loginLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000, // 15 min window
@@ -565,12 +566,39 @@ router.patch('/locations/:id', requireAdmin, async (req: Request, res: Response)
   }
 });
 
-router.get('/notifications', requireAdmin, async (_req: Request, res: Response) => {
-  res.json([]);
+router.get('/notifications', requireAdmin, async (req: Request, res: Response) => {
+  res.setHeader('Cache-Control', 'private, no-store');
+  try {
+    const rawLimit = req.query.limit;
+    if (rawLimit != null && (typeof rawLimit !== 'string' || !/^[1-9][0-9]{0,2}$/.test(rawLimit))) {
+      res.status(400).json({ error: 'limit must be an integer between 1 and 100' });
+      return;
+    }
+    const limit = rawLimit == null ? 50 : Number(rawLimit);
+    if (limit > 100) {
+      res.status(400).json({ error: 'limit must be an integer between 1 and 100' });
+      return;
+    }
+    const admin = getRequestAdmin(req);
+    if (!admin) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    const scope = await loadAdminScope(admin.adminId);
+    const alerts = await listOutboundMessageFailureAlerts(scope, limit);
+    res.json(alerts);
+  } catch (error) {
+    logUnexpectedError('GET /admin/notifications failed', error);
+    res.status(503).json({ error: 'Message delivery alerts unavailable' });
+  }
 });
 
 router.patch('/notifications/:id/read', requireAdmin, async (_req: Request, res: Response) => {
-  res.status(204).send();
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.status(409).json({
+    code: 'OUTBOUND_MESSAGE_FAILURE_CANNOT_BE_DISMISSED',
+    error: 'Olösta meddelandefel kan inte döljas. Åtgärda leveransen eller dess osäkra status.',
+  });
 });
 
 router.post('/statistics', requireAdmin, requireOwner, async (req: Request, res: Response) => {

@@ -901,6 +901,44 @@ select.stats-modal-input {
   gap: 0.75rem;
   margin: 0.5rem 0;
 }
+
+.outbound-message-alert {
+    margin-bottom: 1rem;
+    padding: 1rem;
+    border: 2px solid #c2410c;
+    border-radius: 12px;
+    background: #fff7ed;
+    color: #7c2d12;
+    box-shadow: 0 8px 20px rgba(124, 45, 18, 0.12);
+}
+
+.outbound-message-alert h2 {
+    margin: 0 0 0.5rem;
+    font-size: 1.1rem;
+}
+
+.outbound-message-alert p { margin: 0.4rem 0; }
+.outbound-message-alert ul { margin: 0.75rem 0 0; padding: 0; list-style: none; }
+.outbound-message-alert li {
+    display: grid;
+    grid-template-columns: minmax(5rem, 0.7fr) repeat(4, minmax(7rem, 1fr)) minmax(10rem, 1.2fr);
+    gap: 0.5rem;
+    align-items: center;
+    padding: 0.65rem 0;
+    border-top: 1px solid rgba(194, 65, 12, 0.28);
+}
+
+.outbound-message-alert code {
+    overflow-wrap: anywhere;
+    color: #7c2d12;
+    font-weight: 700;
+}
+
+.outbound-message-alert__unavailable { font-weight: 700; }
+
+@media (max-width: 900px) {
+    .outbound-message-alert li { grid-template-columns: 1fr 1fr; }
+}
 .duplicate-refund-modal { border: 2px solid #b91c1c; }
 .duplicate-refund-event {
   display: block;
@@ -1465,7 +1503,7 @@ select.stats-modal-input {
     padding-top: 0.25rem;
 }
 
-.alarm-silence-btn {
+.alarm-accept-btn {
     background: linear-gradient(135deg, #dc2626, #b91c1c) !important;
     color: #ffffff !important;
     border: none !important;
@@ -1482,13 +1520,13 @@ select.stats-modal-input {
     display: block;
 }
 
-.alarm-silence-btn:hover {
+.alarm-accept-btn:hover {
     transform: scale(1.02);
     filter: brightness(1.1);
     box-shadow: 0 12px 20px -3px rgba(220, 38, 38, 0.6) !important;
 }
 
-.alarm-silence-btn:active {
+.alarm-accept-btn:active {
     transform: scale(0.98);
 }
 

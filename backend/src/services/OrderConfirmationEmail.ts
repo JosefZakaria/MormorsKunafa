@@ -7,8 +7,8 @@ import {
   getPublicWebAppUrl,
   normalizePublicHttpsAssetUrl,
 } from '../utils/publicWebAppUrl.js';
-import { safeErrorMetadata } from '../utils/safeErrorMetadata.js';
 import { getLocationById, pickupPlaceLabel } from '../db/locations.js';
+import { OutboundDeliveryError } from './outboundDeliveryError.js';
 
 /** Same asset as `apps/web/public/images/logo.png` (must resolve to an absolute public URL in email). */
 const ORDER_EMAIL_LOGO_PUBLIC_PATH = '/images/logo.png';
@@ -74,15 +74,35 @@ export type OrderConfirmationRowContext = {
   items: Row[];
   /** Server timestamp captured by the verified payment transition. */
   paidAt?: string;
+  /** Stable across retries for this one order/event/channel job. */
+  idempotencyKey: string;
 };
 
-/** Fire-and-forget from order router; logs errors, never throws. */
-export async function sendOrderConfirmationEmail(ctx: OrderConfirmationRowContext): Promise<void> {
+export function classifyResendFailure(statusCode: number | null | undefined): OutboundDeliveryError {
+  // Resend represents transport failures as an error with statusCode=null.
+  // The stable per-job idempotency key makes retrying that unknown response safe.
+  if (statusCode == null) {
+    return new OutboundDeliveryError('retryable', 'provider_network_error');
+  }
+  if (statusCode === 429 || (statusCode != null && statusCode >= 500)) {
+    return new OutboundDeliveryError('retryable', statusCode === 429 ? 'provider_rate_limited' : 'provider_unavailable', statusCode ?? undefined);
+  }
+  return new OutboundDeliveryError('permanent', 'provider_rejected', statusCode ?? undefined);
+}
+
+export async function sendOrderConfirmationEmail(
+  ctx: OrderConfirmationRowContext
+): Promise<{ providerMessageId: string }> {
   const apiKey = process.env.RESEND_API_KEY?.trim();
-  if (!apiKey) return;
+  if (!apiKey) throw new OutboundDeliveryError('permanent', 'provider_not_configured');
 
   const to = String(ctx.order.customer_email ?? '').trim();
-  if (!to || !isValidEmail(to)) return;
+  if (!to || !isValidEmail(to)) {
+    throw new OutboundDeliveryError('permanent', 'invalid_recipient');
+  }
+  if (!/^[A-Za-z0-9_./:-]{16,255}$/.test(ctx.idempotencyKey)) {
+    throw new OutboundDeliveryError('permanent', 'invalid_idempotency_key');
+  }
 
   const from = process.env.RESEND_FROM_EMAIL?.trim() || 'onboarding@resend.dev';
   const customerName = String(ctx.order.customer_name ?? '').trim();
@@ -200,15 +220,23 @@ export async function sendOrderConfirmationEmail(ctx: OrderConfirmationRowContex
 </body>
 </html>`.trim();
 
-  const resend = new Resend(apiKey);
-  const { error } = await resend.emails.send({
-    from,
-    to: [to],
-    subject: `Tack för din beställning ${orderNumber} – Mormors Kunafa`,
-    html,
-  });
+  try {
+    const resend = new Resend(apiKey);
+    const { data, error } = await resend.emails.send({
+      from,
+      to: [to],
+      subject: `Tack för din beställning ${orderNumber} – Mormors Kunafa`,
+      html,
+    }, { idempotencyKey: ctx.idempotencyKey });
 
-  if (error) {
-    console.error('[order confirmation email] Resend error:', safeErrorMetadata(error));
+    if (error) throw classifyResendFailure(error.statusCode);
+    if (!data?.id || data.id.length > 255) {
+      throw new OutboundDeliveryError('retryable', 'provider_invalid_response');
+    }
+    return { providerMessageId: data.id };
+  } catch (error) {
+    if (error instanceof OutboundDeliveryError) throw error;
+    // The stable Resend idempotency key makes retrying a lost response safe.
+    throw new OutboundDeliveryError('retryable', 'provider_network_error');
   }
 }

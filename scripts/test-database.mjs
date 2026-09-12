@@ -25,7 +25,7 @@ await withTestDatabase(async ({ sql, file }) => {
   const legacyFinal = legacyPlan.phase4AfterLegacyDrain;
   assert.deepEqual([...order].sort(), (await readdir(migrations)).filter(name => name.endsWith('.sql')).sort());
   assert(Array.isArray(legacyPhase1) && Array.isArray(legacyFinal));
-  assert.equal(legacyPhase1.length, 30, '29 existing Phase 1 steps plus the new private-defaults migration');
+  assert.equal(legacyPhase1.length, 31, 'Phase 1 includes the additive private-defaults and outbound-message migrations');
   assert(!legacyPhase1.includes('2026-08-19-atomic-order-creation.sql'));
   assert(!legacyPhase1.includes('2026-09-08-checkout-rollout.sql'));
   assert.deepEqual(legacyFinal, ['2026-09-09-checkout-contract-finalization.sql']);
@@ -153,6 +153,7 @@ await withTestDatabase(async ({ sql, file }) => {
     'The historical schema-scoped REVOKE cannot cancel the global PUBLIC function default');
   await sql('DROP FUNCTION public.synthetic_default_acl_probe()');
   await file(path.join(migrations, privateDefaults));
+  await file(path.join(repositoryRoot,'backend/test/fixtures/outbound-message-jobs.sql'));
   for (const helper of ['reject_security_audit_mutation','protect_order_financial_history']) {
     for (const role of ['anon','authenticated']) {
       assert.equal(await sql(`SELECT has_function_privilege('${role}','public.${helper}()','EXECUTE')`),'f');

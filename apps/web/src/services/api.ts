@@ -18,6 +18,7 @@ import type {
   VerifiedFoodInformationUpdate,
   CheckoutPaymentChoice,
   CreateOrderResponse,
+  OutboundMessageFailureAlert,
 } from '@shared/types';
 import {
   CHECKOUT_CONTRACT_HEADER,
@@ -375,7 +376,7 @@ export const orderApi = {
 
     return authenticatedRequest<Order>(`/orders/admin/${id}/accept`, {
       method: 'PATCH',
-      body: JSON.stringify({ extraMinutes: extraMinutes ?? 0 }),
+      body: JSON.stringify(extraMinutes == null ? {} : { extraMinutes }),
       token,
     });
   },
@@ -578,12 +579,12 @@ export const adminApi = {
     });
   },
 
-  getNotifications: async (limit?: number): Promise<any[]> => {
+  getNotifications: async (limit?: number): Promise<OutboundMessageFailureAlert[]> => {
     const token = getToken();
     if (!token) throw new Error('Not authenticated');
     
     const params = limit ? `?limit=${limit}` : '';
-    return authenticatedRequest<any[]>(`/admin/notifications${params}`, { token });
+    return authenticatedRequest<OutboundMessageFailureAlert[]>(`/admin/notifications${params}`, { token });
   },
 
   markNotificationAsRead: async (id: string): Promise<void> => {
@@ -600,6 +601,12 @@ export const adminApi = {
     const token = getToken();
     if (!token) throw new Error('Not authenticated');
     return authenticatedRequest<PushSubscriptionRecord[]>('/admin/push-subscriptions', { token });
+  },
+
+  getNotificationHealth: async (): Promise<{ webPushConfigured: boolean }> => {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+    return authenticatedRequest<{ webPushConfigured: boolean }>('/admin/notifications/health', { token });
   },
 
   savePushSubscription: async (

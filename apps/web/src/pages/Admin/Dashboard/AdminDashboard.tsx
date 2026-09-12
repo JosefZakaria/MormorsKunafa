@@ -14,6 +14,7 @@ import type {
     OrderCreatedRealtimeEvent,
     PaymentSecurityAlert,
     Location,
+    OutboundMessageFailureAlert,
 } from '@shared/types';
 import { HOJA_LOCATION_ID, MOLLEVANGEN_LOCATION_ID } from '@shared/types';
 import { parseApiTimestamp } from '@shared/utils/parseApiTimestamp';
@@ -31,6 +32,7 @@ import {
     writePersistentValue,
 } from '../../../utils/browserStorage';
 import { MenuTab } from './MenuTab';
+import { enableAdminPush, getAdminPushState, type AdminPushState } from '../../../services/pwa';
 
 // --- Helper: countdown string from ISO time ---
 function getCountdown(isoTime: string | undefined): string {
@@ -177,6 +179,20 @@ function playForegroundAttentionSound(): void {
     } catch {
         // Best effort only; iOS can block audio when no user gesture exists.
     }
+}
+
+function outboundChannelLabel(channel: OutboundMessageFailureAlert['channel']): string {
+    return channel === 'email' ? 'E-post' : 'SMS';
+}
+
+function outboundEventLabel(event: OutboundMessageFailureAlert['event']): string {
+    return event === 'order_confirmation' ? 'Orderbekräftelse' : 'Order mottagen';
+}
+
+function outboundStatusLabel(status: OutboundMessageFailureAlert['status']): string {
+    if (status === 'retryable') return 'Återförsök väntar';
+    if (status === 'uncertain') return 'Leverans osäker';
+    return 'Permanent misslyckad';
 }
 
 function PrinterSettings() {
@@ -422,11 +438,17 @@ function PendingOrderCard({ order, locations, defaultPrepTime, onAccept, onRefun
     order: Order;
     locations: Location[];
     defaultPrepTime: number;
-    onAccept: (orderId: string, extraMinutes: number) => void;
+    onAccept: (orderId: string, extraMinutes?: number) => void;
     onRefund: (order: Order) => void;
 }) {
     const [extraMinutes, setExtraMinutes] = useState(0);
-    const totalMinutes = defaultPrepTime + extraMinutes;
+    const readyTimeMs = order.estimatedReadyTime ? new Date(order.estimatedReadyTime).getTime() : Number.NaN;
+    const fallbackMinutes = order.defaultPreparationTime || defaultPrepTime;
+    const remainingMinutes = Number.isFinite(readyTimeMs)
+        ? Math.max(0, Math.ceil((readyTimeMs - Date.now()) / 60_000))
+        : fallbackMinutes;
+    const totalMinutes = Math.max(5, remainingMinutes + extraMinutes);
+    const minimumAdjustment = 5 - remainingMinutes;
 
     return (
         <div className="admin-order-card pending-order-card">
@@ -455,15 +477,15 @@ function PendingOrderCard({ order, locations, defaultPrepTime, onAccept, onRefun
             <div className="pending-actions">
                 <div className="pending-time-display">
                     <span className="pending-time-value">{totalMinutes}</span>
-                    <span className="pending-time-unit">min</span>
+                    <span className="pending-time-unit">min kvar</span>
                 </div>
                 <div className="pending-time-buttons">
-                    <Button size="sm" variant="ghost" onClick={() => setExtraMinutes(prev => Math.max(-defaultPrepTime + 5, prev - 5))}>−5</Button>
+                    <Button size="sm" variant="ghost" onClick={() => setExtraMinutes(prev => Math.max(minimumAdjustment, prev - 5))}>−5</Button>
                     <Button size="sm" variant="ghost" onClick={() => setExtraMinutes(prev => prev + 5)}>+5</Button>
                     <Button size="sm" variant="ghost" onClick={() => setExtraMinutes(prev => prev + 10)}>+10</Button>
                 </div>
-                <Button size="sm" variant="primary" onClick={() => onAccept(order.id, extraMinutes)}>
-                    Acceptera
+                <Button size="sm" variant="primary" onClick={() => onAccept(order.id, extraMinutes === 0 ? undefined : extraMinutes)}>
+                    Ta emot
                 </Button>
                 {canRefundOrder(order) && <Button size="sm" variant="ghost" style={{ color: '#B91C1C' }} onClick={() => onRefund(order)}>Återbetala</Button>}
             </div>
@@ -772,6 +794,8 @@ export const AdminDashboard: React.FC = () => {
     const [notesSubmitting, setNotesSubmitting] = useState(false);
     const [refundOrder, setRefundOrder] = useState<Order | null>(null);
     const [paymentAlerts, setPaymentAlerts] = useState<PaymentSecurityAlert[]>([]);
+    const [outboundMessageFailures, setOutboundMessageFailures] = useState<OutboundMessageFailureAlert[]>([]);
+    const [outboundMessageFailuresUnavailable, setOutboundMessageFailuresUnavailable] = useState(false);
     const [selectedPaymentAlertId, setSelectedPaymentAlertId] = useState<string | null>(null);
     const [foodInformationProduct, setFoodInformationProduct] = useState<Product | null>(null);
 
@@ -808,15 +832,9 @@ export const AdminDashboard: React.FC = () => {
         ) ?? 0.8;
     });
     const [audioLocked, setAudioLocked] = useState<boolean>(true);
-
-    const alarmSeedDoneRef = useRef(false);
-    const seenOrderIdsRef = useRef<Set<string>>(new Set());
-
-    // Mute helper
-    const handleSilenceAlarm = () => {
-        stopAlarm();
-        setActiveAlarmOrder(null);
-    };
+    const [pushState, setPushState] = useState<AdminPushState>('available');
+    const [pushBusy, setPushBusy] = useState(false);
+    const [pushError, setPushError] = useState<string | null>(null);
 
     // --- Fetch pending + active + pre-orders ---
     const fetchOrders = useCallback(async () => {
@@ -977,6 +995,45 @@ export const AdminDashboard: React.FC = () => {
         };
     }, []);
 
+    useEffect(() => {
+        let active = true;
+        void adminApi.getNotificationHealth()
+            .then(async (health) => {
+                if (!health.webPushConfigured) return 'unconfigured' as AdminPushState;
+                return getAdminPushState();
+            })
+            .then(async (state) => {
+                if (!active) return;
+                setPushState(state);
+                if (state === 'enabled') {
+                    const subscription = await enableAdminPush();
+                    await adminApi.savePushSubscription(subscription, 'Orderenhet');
+                }
+            })
+            .catch(() => {
+                if (active) setPushError('Pushregistreringen kunde inte verifieras.');
+            });
+        return () => { active = false; };
+    }, []);
+
+    useEffect(() => {
+        let active = true;
+        const refreshOutboundMessageFailures = async () => {
+            try {
+                const failures = await adminApi.getNotifications(100);
+                if (active) {
+                    setOutboundMessageFailures(failures);
+                    setOutboundMessageFailuresUnavailable(false);
+                }
+            } catch {
+                if (active) setOutboundMessageFailuresUnavailable(true);
+            }
+        };
+        void refreshOutboundMessageFailures();
+        const id = setInterval(() => { void refreshOutboundMessageFailures(); }, 30_000);
+        return () => { active = false; clearInterval(id); };
+    }, []);
+
     // Check if audio context is locked by the browser
     useEffect(() => {
         const checkAudioLock = () => {
@@ -1008,28 +1065,14 @@ export const AdminDashboard: React.FC = () => {
     useEffect(() => {
         if (loadingOrders) return;
 
-        // Första gången: seeda nuvarande inkommande ordrar så att de inte sätter igång larmet
-        if (!alarmSeedDoneRef.current) {
-            for (const o of pendingOrders) {
-                seenOrderIdsRef.current.add(o.id);
-            }
-            alarmSeedDoneRef.current = true;
-            return;
-        }
+        const nextUnreceivedOrder = pendingOrders[0] ?? null;
+        setActiveAlarmOrder(nextUnreceivedOrder);
 
-        let newOrderToAlert: Order | null = null;
-        for (const order of pendingOrders) {
-            if (seenOrderIdsRef.current.has(order.id)) continue;
-            seenOrderIdsRef.current.add(order.id);
-            newOrderToAlert = order;
-        }
-
-        if (newOrderToAlert) {
-            setActiveAlarmOrder(newOrderToAlert);
-            // Apply volume setting
+        if (nextUnreceivedOrder) {
             setAlarmVolume(alarmVolume);
-            // Start the looping sound
-            startAlarm(alarmType);
+            if (!isAlarmActive()) startAlarm(alarmType);
+        } else {
+            stopAlarm();
         }
     }, [pendingOrders, loadingOrders, alarmType, alarmVolume]);
 
@@ -1106,6 +1149,27 @@ export const AdminDashboard: React.FC = () => {
             // "inkommande" (se auto-print-effekten ovan), inte vid accept.
         } catch {
             setError('Kunde inte acceptera ordern.');
+        }
+    };
+
+    const handleEnablePush = async () => {
+        setPushBusy(true);
+        setPushError(null);
+        try {
+            const health = await adminApi.getNotificationHealth();
+            if (!health.webPushConfigured) {
+                setPushState('unconfigured');
+                setPushError('Push är inte konfigurerat i backendmiljön.');
+                return;
+            }
+            const subscription = await enableAdminPush();
+            await adminApi.savePushSubscription(subscription, 'Orderenhet');
+            setPushState('enabled');
+        } catch (pushFailure) {
+            setPushState(await getAdminPushState().catch((): AdminPushState => 'available'));
+            setPushError(pushFailure instanceof Error ? pushFailure.message : 'Push kunde inte aktiveras.');
+        } finally {
+            setPushBusy(false);
         }
     };
 
@@ -1442,6 +1506,37 @@ export const AdminDashboard: React.FC = () => {
                             Använd inte den vanliga returknappen för en andra okänd Stripe-session;
                             den är bunden till orderns sparade originalbetalning.
                         </p>
+                    </section>
+                )}
+
+                {(outboundMessageFailures.length > 0 || outboundMessageFailuresUnavailable) && (
+                    <section className="outbound-message-alert" role="alert" aria-live="assertive">
+                        <h2>⚠ Kundmeddelanden behöver åtgärd</h2>
+                        {outboundMessageFailuresUnavailable && (
+                            <p className="outbound-message-alert__unavailable">
+                                Listan över meddelandefel kunde inte hämtas. Varningen ligger kvar tills kontrollen fungerar igen.
+                            </p>
+                        )}
+                        {outboundMessageFailures.length > 0 && (
+                            <>
+                                <p>
+                                    {outboundMessageFailures.length} utskick har inte en säker, slutförd leverans.
+                                    Osäkra utskick får inte skickas om blint.
+                                </p>
+                                <ul>
+                                    {outboundMessageFailures.map((failure) => (
+                                        <li key={failure.id}>
+                                            <strong>{failure.orderNumber}</strong>
+                                            <span>{outboundChannelLabel(failure.channel)}</span>
+                                            <span>{outboundEventLabel(failure.event)}</span>
+                                            <span>{outboundStatusLabel(failure.status)}</span>
+                                            <span>Försök {failure.attemptCount}/{failure.maxAttempts}</span>
+                                            <code>{failure.errorCode}</code>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </>
+                        )}
                     </section>
                 )}
 
@@ -2130,11 +2225,33 @@ export const AdminDashboard: React.FC = () => {
                                             variant="ghost"
                                             size="sm"
                                             style={{ color: '#DC2626', borderColor: '#DC2626' }}
-                                            onClick={handleSilenceAlarm}
+                                            onClick={stopAlarm}
                                         >
                                             ⏹ Stoppa test
                                         </Button>
                                     )}
+                                </div>
+                                <div className="alarm-settings-row" style={{ marginTop: '1.25rem' }}>
+                                    <div>
+                                        <strong>Push på denna enhet</strong>
+                                        <p style={{ fontSize: '0.85rem', color: '#666', margin: '0.25rem 0 0' }}>
+                                            {pushState === 'enabled' && 'Aktiverad och registrerad för det inloggade butikskontot.'}
+                                            {pushState === 'available' && 'Inte aktiverad. Behövs för prov i annan app och på låst skärm.'}
+                                            {pushState === 'denied' && 'Blockerad i webbläsarens eller Androids aviseringsinställningar.'}
+                                            {pushState === 'unconfigured' && 'Publik VAPID-nyckel saknas i webbkonfigurationen.'}
+                                            {pushState === 'unsupported' && 'Den här webbläsaren stöder inte Web Push.'}
+                                        </p>
+                                        {pushError && <p role="alert" style={{ color: '#b91c1c', margin: '0.4rem 0 0' }}>{pushError}</p>}
+                                    </div>
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="ghost"
+                                        disabled={pushBusy || pushState === 'unsupported' || pushState === 'unconfigured' || pushState === 'denied'}
+                                        onClick={() => void handleEnablePush()}
+                                    >
+                                        {pushBusy ? 'Aktiverar…' : pushState === 'enabled' ? 'Verifiera registrering' : 'Aktivera push'}
+                                    </Button>
                                 </div>
                             </div>
                         </div>
@@ -2169,8 +2286,8 @@ export const AdminDashboard: React.FC = () => {
                                 Summa: {(activeAlarmOrder.totalPrice / 100).toFixed(0)} kr
                             </div>
                         </div>
-                        <button className="alarm-silence-btn" onClick={handleSilenceAlarm}>
-                            Tysta larm
+                        <button className="alarm-accept-btn" onClick={() => void handleAcceptOrder(activeAlarmOrder.id)}>
+                            Ta emot ordern
                         </button>
                     </div>
                 </div>

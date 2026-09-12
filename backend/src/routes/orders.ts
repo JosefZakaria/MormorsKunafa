@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { canCancelOrderPayment, canStartOrderPayment } from '../utils/orderPaymentState.js';
 import { supabase, generateId, type Row, logSupabaseError, nowIso } from '../db/connection.js';
 import {
+  acceptOrderWithMessages,
   compareAndUpdateOrder,
   createOrderAtomic,
   fetchOrderRow,
@@ -18,14 +19,11 @@ import {
   hashRateLimitIdentifier,
 } from '../middleware/rateLimit.js';
 import { PrinterService } from '../services/PrinterService.js';
-import { sendOrderConfirmationEmail } from '../services/OrderConfirmationEmail.js';
-import { sendSms } from '../services/SmsService.js';
 import { getStripe, isStripeConfigured } from '../services/stripeClient.js';
 import { loadAdminScope, orderRowVisibleToScope } from '../services/locationScope.js';
-import { resolveOrderLocationId, locationOrderTypeError, inStorePickupSmsSuffix } from '../db/locations.js';
+import { resolveOrderLocationId, locationOrderTypeError } from '../db/locations.js';
 import { outOfStockProductNames, stockLocationIdForOrder } from '../db/productLocationStock.js';
-import { formatStockholmDateTime } from '../utils/stockholmWallTime.js';
-import { validateOrderSchedule } from '../utils/orderSchedule.js';
+import { resolveAcceptedReadyTime, validateOrderSchedule } from '../utils/orderSchedule.js';
 import {
   isCardPayment,
   isOnlinePayment,
@@ -383,25 +381,6 @@ router.post('/', requireCurrentCheckoutContract, orderLimiter, orderContactLimit
       res.status(500).json({ error: 'Order created but fetch failed' });
       return;
     }
-    const emailOut = String(result.order.customer_email ?? '').trim();
-    if (emailOut && !isOnlinePayment(paymentMethod)) {
-      void sendOrderConfirmationEmail({ order: result.order, items: result.items }).catch((err) =>
-        logUnexpectedError('order confirmation email', err)
-      );
-    }
-
-    const phoneOut = String(result.order.customer_phone ?? '').trim();
-    const smsCustomerName = String(result.order.customer_name ?? '').trim();
-    // Hemleverans får inga SMS – endast "Ta med" och "Äta här".
-    if (phoneOut && !isOnlinePayment(paymentMethod) && !isDelivery) {
-      const schedStr = result.order.scheduled_at ? formatStockholmDateTime(result.order.scheduled_at as string) : '';
-      const schedSuffix = schedStr ? ` Planerad upphämtning: ${schedStr}.` : '';
-      const placeSuffix = await inStorePickupSmsSuffix(result.order);
-      void sendSms(phoneOut, `Tack för din beställning från Mormors Kunafa${smsCustomerName ? ', ' + smsCustomerName : ''}! Vi tar snart emot din beställning.${placeSuffix}${schedSuffix}`).catch((err) =>
-        logUnexpectedError('order confirmation sms', err)
-      );
-    }
-
     const responseBody = {
       id: String(result.order.id),
       orderNumber: String(result.order.order_number),
@@ -610,8 +589,7 @@ router.post('/stripe-confirm', requireCurrentCheckoutContract, paymentConfirmLim
 
 // Admin routes must be before /:id so /admin/active is not matched as id=admin
 
-// Admin: pending orders (status 'ny', waiting for acceptance).
-// Excludes pre-orders scheduled for a future date (in Europe/Stockholm time).
+// Admin: every paid order still waiting for acceptance, including pre-orders.
 router.get('/admin/pending', requireAdmin, async (req: Request, res: Response) => {
   try {
     const { data, error } = await supabase
@@ -627,12 +605,7 @@ router.get('/admin/pending', requireAdmin, async (req: Request, res: Response) =
       return;
     }
 
-    const today = todayInStockholm();
-    const sameDay = (data ?? []).filter((r) => {
-      const schedDate = toStockholmDateString((r as Row).scheduled_at as Date | string | null);
-      return schedDate == null || schedDate <= today;
-    });
-    res.json(await rowsToOrders(await ordersVisibleToRequest(req, sameDay as Row[])));
+    res.json(await rowsToOrders(await ordersVisibleToRequest(req, (data ?? []) as Row[])));
   } catch (e) {
     logUnexpectedError('GET /admin/pending', e);
     res.status(500).json({ error: 'Failed to fetch pending orders' });
@@ -646,9 +619,9 @@ router.patch('/admin/:id/accept', requireAdmin, async (req: Request, res: Respon
 
     if (
       extraMinutes != null &&
-      (!Number.isInteger(extraMinutes) || extraMinutes < 0 || extraMinutes > 180)
+      (!Number.isInteger(extraMinutes) || extraMinutes < -180 || extraMinutes > 180)
     ) {
-      res.status(400).json({ error: 'extraMinutes must be an integer between 0 and 180' });
+      res.status(400).json({ error: 'extraMinutes must be an integer between -180 and 180' });
       return;
     }
 
@@ -670,14 +643,29 @@ router.patch('/admin/:id/accept', requireAdmin, async (req: Request, res: Respon
       return;
     }
 
-    const defaultPrep = Number(result.order.default_preparation_time_minutes) || 30;
-    const totalMinutes = defaultPrep + (extraMinutes ?? 0);
-    const estimatedReady = new Date(Date.now() + totalMinutes * 60 * 1000);
+    const storedReadyTime = typeof result.order.estimated_ready_at === 'string'
+      ? new Date(result.order.estimated_ready_at)
+      : null;
+    const hasStoredReadyTime = storedReadyTime != null && !Number.isNaN(storedReadyTime.getTime());
+    const shouldAdjustReadyTime = extraMinutes != null && extraMinutes !== 0;
+    const estimatedReady = resolveAcceptedReadyTime(
+      result.order.estimated_ready_at,
+      result.order.default_preparation_time_minutes,
+      extraMinutes ?? 0
+    );
+    if (shouldAdjustReadyTime && estimatedReady.getTime() <= Date.now()) {
+      res.status(400).json({ error: 'Den justerade klartiden måste ligga i framtiden.' });
+      return;
+    }
 
-    const accepted = await compareAndUpdateOrder(singleRouteParam(req.params.id), 'ny', {
-      status: 'mottagen',
-      estimated_ready_at: estimatedReady.toISOString(),
-    });
+    const persistedReadyTime = shouldAdjustReadyTime || !hasStoredReadyTime
+      ? estimatedReady.toISOString()
+      : null;
+    const accepted = await acceptOrderWithMessages(
+      singleRouteParam(req.params.id),
+      persistedReadyTime,
+      nowIso()
+    );
     if (!accepted) {
       res.status(409).json({ error: 'Order status changed before it could be accepted' });
       return;
@@ -689,23 +677,8 @@ router.patch('/admin/:id/accept', requireAdmin, async (req: Request, res: Respon
       return;
     }
 
-    const phoneOut = String(updated.order.customer_phone ?? '').trim();
-    const customerName = String(updated.order.customer_name ?? '').trim();
-    // Hemleverans får inga SMS – endast "Ta med" och "Äta här".
-    if (phoneOut && String(updated.order.order_type ?? '') !== 'delivery') {
-      const readyTimeStr = estimatedReady.toLocaleTimeString('sv-SE', {
-        timeZone: 'Europe/Stockholm',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-      const placeSuffix = await inStorePickupSmsSuffix(updated.order);
-      void sendSms(phoneOut, `Hej${customerName ? ', ' + customerName : ''}! Din order är mottagen och beräknas vara klar kl ${readyTimeStr}.${placeSuffix}`).catch((err) =>
-        logUnexpectedError('order accepted sms', err)
-      );
-    }
-
     const payload = orderRowToOrder(updated.order, updated.items);
-    payload.estimatedReadyTime = estimatedReady.toISOString();
+    payload.estimatedReadyTime = new Date(String(updated.order.estimated_ready_at)).toISOString();
     res.json(payload);
   } catch (e) {
     logUnexpectedError('POST /admin/:id/accept', e);

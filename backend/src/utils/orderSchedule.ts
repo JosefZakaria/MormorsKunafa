@@ -21,3 +21,29 @@ export function validateOrderSchedule(input: string | undefined, leadMinutes: nu
   const hours = validateScheduledOrderTime(stockholmInput, leadMinutes, now);
   return hours.valid ? { valid: true, scheduledAt } : hours;
 }
+
+/**
+ * Preserve the ready time promised when the order was created. Accepting an
+ * order must not restart its preparation clock. A staff-selected adjustment is
+ * applied to that stored promise; legacy rows without a usable timestamp fall
+ * back to a new preparation window.
+ */
+export function resolveAcceptedReadyTime(
+  storedReadyTime: unknown,
+  defaultPreparationMinutes: unknown,
+  adjustmentMinutes = 0,
+  now: Date = new Date()
+): Date {
+  const parsedStored = typeof storedReadyTime === 'string' || storedReadyTime instanceof Date
+    ? new Date(storedReadyTime)
+    : null;
+  const defaultMinutes = Number(defaultPreparationMinutes);
+  const boundedDefault = Number.isFinite(defaultMinutes) && defaultMinutes >= 1 && defaultMinutes <= 1440
+    ? defaultMinutes
+    : 30;
+  const baseMs = parsedStored && !Number.isNaN(parsedStored.getTime())
+    ? parsedStored.getTime()
+    : now.getTime() + boundedDefault * 60_000;
+
+  return new Date(baseMs + adjustmentMinutes * 60_000);
+}

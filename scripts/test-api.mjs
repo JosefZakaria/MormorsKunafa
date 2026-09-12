@@ -26,6 +26,15 @@ await withTestDatabase(async db => {
   const newOrder = body => call('/api/orders',{...body, customerInfo:{...body.customerInfo,
     phone:'+4670000'+String(customerNumber++).padStart(4,'0'), email:`buyer${customerNumber}@example.test`}},
     {...checkoutContractHeader,'Idempotency-Key':randomUUID()});
+  const markSyntheticOrderPaid = async orderId => {
+    const marked = await db.sql(`SELECT public.mark_order_paid_with_audit(
+      ${literal(orderId)}::uuid, now(), ${literal(randomUUID())}::uuid)`);
+    assert.equal(marked,'t',`Synthetic order ${orderId} should be marked paid exactly once`);
+  };
+  const readOrderTimes = async orderId => ({
+    estimatedReadyAt: await db.sql(`SELECT estimated_ready_at::text FROM orders WHERE id=${literal(orderId)}`),
+    scheduledAt: await db.sql(`SELECT scheduled_at::text FROM orders WHERE id=${literal(orderId)}`),
+  });
   try {
     const emptyJson = await call('/api/admin/login',undefined,{},'POST');
     assert.equal(emptyJson.status,400,JSON.stringify(emptyJson.data));
@@ -106,6 +115,12 @@ await withTestDatabase(async db => {
     const confirmations=await Promise.all([call('/api/orders/stripe-confirm',confirmBody,tokenHeader),call('/api/orders/stripe-confirm',confirmBody,tokenHeader)]);
     assert.equal(confirmations[0].status,200,JSON.stringify(confirmations[0].data));
     assert.equal(await db.sql(`SELECT count(*) FROM security_audit_log WHERE resource_id='${id}' AND action='stripe_payment_confirmed'`),'1');
+    assert.equal(
+      await db.sql(`SELECT string_agg(event_key || ':' || channel, ',' ORDER BY channel)
+        FROM outbound_message_jobs WHERE order_id=${literal(id)}`),
+      'order_confirmation:email,order_confirmation:sms',
+      'Concurrent payment confirmation must atomically create one job per customer channel'
+    );
     assert.equal(await db.sql(`SELECT receipt_vat_rate_percent::text || ':' || receipt_vat_ore::text FROM orders WHERE id='${id}'`),'6:1121');
     const event={id:'evt_test_'+randomUUID().replaceAll('-',''),type:'checkout.session.completed',livemode:false,data:{object:session}};
     const wrongModeEvent={...event,id:'evt_test_'+randomUUID().replaceAll('-',''),livemode:true};
@@ -133,14 +148,20 @@ await withTestDatabase(async db => {
     assert.equal(duplicate.status,200);
     assert.equal((await duplicate.json()).duplicate,true);
     assert.equal(await db.sql(`SELECT count(*) FROM security_audit_log WHERE resource_id='${id}' AND action='stripe_payment_confirmed'`),'1');
+    const createdLocationOrders=[];
     for (const locationId of [HOJA,MOLLEVANGEN]) {
-      for (const orderType of ['eat-here','takeaway']) assert.equal((await newOrder({...orderBody,locationId,orderType})).status,201);
+      for (const orderType of ['eat-here','takeaway']) {
+        const created=await newOrder({...orderBody,locationId,orderType});
+        assert.equal(created.status,201,JSON.stringify(created.data));
+        createdLocationOrders.push({locationId,orderType,response:created});
+      }
     }
     await db.sql(`UPDATE locations SET is_paused=true WHERE id='${MOLLEVANGEN}'`);
     assert.equal((await newOrder({...orderBody,locationId:MOLLEVANGEN})).status,403);
     await db.sql(`UPDATE locations SET is_paused=false WHERE id='${MOLLEVANGEN}'; UPDATE product_location_stock SET in_stock=false WHERE location_id='${MOLLEVANGEN}'`);
     assert.equal((await newOrder({...orderBody,locationId:MOLLEVANGEN})).status,403);
-    assert.equal((await newOrder({...orderBody,locationId:HOJA})).status,201);
+    const hojaStockOrder=await newOrder({...orderBody,locationId:HOJA});
+    assert.equal(hojaStockOrder.status,201,JSON.stringify(hojaStockOrder.data));
     await db.sql(`UPDATE products SET hidden=true WHERE id='${PRODUCT}'`);
     assert.equal((await newOrder(orderBody)).status,409);
     await db.sql(`UPDATE products SET hidden=false WHERE id='${PRODUCT}'`);
@@ -159,9 +180,153 @@ await withTestDatabase(async db => {
     assert.equal(ownerLogin.status,200);
     const ownerCookies=ownerLogin.headers.getSetCookie().map(s=>s.split(';')[0]).join('; ');
     const ownerHeaders={cookie:ownerCookies,'x-csrf-token':decodeURIComponent(ownerCookies.match(/mk_csrf=([^;]+)/)[1])};
+    const hojaLogin = await call('/api/admin/login',{email:'hoja@example.test',password:TEST_PASSWORD});
+    assert.equal(hojaLogin.status,200,JSON.stringify(hojaLogin.data));
+    const hojaCookies=hojaLogin.headers.getSetCookie().map(s=>s.split(';')[0]).join('; ');
+    const hojaHeaders={cookie:hojaCookies,'x-csrf-token':decodeURIComponent(hojaCookies.match(/mk_csrf=([^;]+)/)[1])};
     for (const integrationKey of ['RESEND_API_KEY','SINCH_PROJECT_ID','WEB_PUSH_VAPID_PRIVATE_KEY']) {
       assert.equal(process.env[integrationKey],undefined,`${integrationKey} must stay disabled in the synthetic run`);
     }
+    const maintenanceSecret='synthetic-maintenance-secret-with-32-bytes';
+    process.env.CRON_SECRET=maintenanceSecret;
+    const deniedOutboundRun=await call('/api/internal/maintenance/process-outbound-messages',{});
+    assert.equal(deniedOutboundRun.status,401,JSON.stringify(deniedOutboundRun.data));
+    assert.match(deniedOutboundRun.headers.get('cache-control'),/private.*no-store/);
+    const outboundRun=await call('/api/internal/maintenance/process-outbound-messages',{}, {
+      authorization:`Bearer ${maintenanceSecret}`,
+    });
+    assert.equal(outboundRun.status,200,JSON.stringify(outboundRun.data));
+    assert.equal(outboundRun.data.claimed,2);
+    assert.equal(outboundRun.data.outcomes.permanent_failed,2);
+    assert.equal(
+      await db.sql(`SELECT count(*) FROM outbound_message_jobs
+        WHERE order_id=${literal(id)} AND status='permanent_failed'
+          AND attempt_count=1 AND last_error_code='provider_not_configured'`),
+      '2',
+      'Provider downtime/configuration must remain visible without rolling back the paid order'
+    );
+    assert.equal(
+      await db.sql(`SELECT payment_status FROM orders WHERE id=${literal(id)}`),
+      'paid',
+      'Message provider failure must not affect the order transition'
+    );
+
+    const preservedPreorder=hojaStockOrder;
+    await db.sql(`UPDATE orders SET estimated_ready_at=estimated_ready_at+interval '0.123456 seconds'
+      WHERE id=${literal(preservedPreorder.data.id)}`);
+    await markSyntheticOrderPaid(preservedPreorder.data.id);
+    const preservedBefore=await readOrderTimes(preservedPreorder.data.id);
+    const hojaPendingBefore=await call('/api/orders/admin/pending',undefined,hojaHeaders);
+    assert.equal(hojaPendingBefore.status,200,JSON.stringify(hojaPendingBefore.data));
+    assert(
+      hojaPendingBefore.data.some(order=>order.id===preservedPreorder.data.id),
+      'A future paid preorder must be available in its location acceptance queue'
+    );
+    const wrongLocationPending=await call('/api/orders/admin/pending',undefined,adminHeaders);
+    assert.equal(wrongLocationPending.status,200,JSON.stringify(wrongLocationPending.data));
+    assert(
+      !wrongLocationPending.data.some(order=>order.id===preservedPreorder.data.id),
+      'A future paid preorder must not leak into another location queue'
+    );
+    const deniedAccept=await call(
+      `/api/orders/admin/${preservedPreorder.data.id}/accept`,{},adminHeaders,'PATCH'
+    );
+    assert.equal(deniedAccept.status,403,JSON.stringify(deniedAccept.data));
+    assert.equal(
+      await db.sql(`SELECT status FROM orders WHERE id=${literal(preservedPreorder.data.id)}`),
+      'ny',
+      'A different location must not acknowledge the preorder'
+    );
+    assert.deepEqual(await readOrderTimes(preservedPreorder.data.id),preservedBefore);
+
+    const acceptedWithoutAdjustment=await call(
+      `/api/orders/admin/${preservedPreorder.data.id}/accept`,{},hojaHeaders,'PATCH'
+    );
+    assert.equal(acceptedWithoutAdjustment.status,200,JSON.stringify(acceptedWithoutAdjustment.data));
+    assert.equal(acceptedWithoutAdjustment.data.status,'mottagen');
+    assert.equal(
+      await db.sql(`SELECT count(*) FROM outbound_message_jobs
+        WHERE order_id=${literal(preservedPreorder.data.id)}
+          AND event_key='order_accepted' AND channel='sms'`),
+      '1'
+    );
+    assert.deepEqual(
+      await readOrderTimes(preservedPreorder.data.id),
+      preservedBefore,
+      'Accepting without a staff adjustment must not rewrite either promised timestamp'
+    );
+    const publicAccepted=await call(`/api/orders/${preservedPreorder.data.id}`,undefined,{
+      'x-order-status-token':preservedPreorder.data.statusToken,
+    });
+    assert.equal(publicAccepted.status,200,JSON.stringify(publicAccepted.data));
+    assert.equal(publicAccepted.data.estimatedReadyTime,new Date(preservedBefore.estimatedReadyAt).toISOString());
+    assert.equal(publicAccepted.data.scheduledTime,new Date(preservedBefore.scheduledAt).toISOString());
+
+    const [hojaPendingAfter,hojaActiveAfter,hojaPreordersAfter,otherActiveAfter,otherPreordersAfter]=await Promise.all([
+      call('/api/orders/admin/pending',undefined,hojaHeaders),
+      call('/api/orders/admin/active',undefined,hojaHeaders),
+      call('/api/orders/admin/pre-orders',undefined,hojaHeaders),
+      call('/api/orders/admin/active',undefined,adminHeaders),
+      call('/api/orders/admin/pre-orders',undefined,adminHeaders),
+    ]);
+    for (const response of [hojaPendingAfter,hojaActiveAfter,hojaPreordersAfter,otherActiveAfter,otherPreordersAfter]) {
+      assert.equal(response.status,200,JSON.stringify(response.data));
+    }
+    assert(!hojaPendingAfter.data.some(order=>order.id===preservedPreorder.data.id));
+    assert(hojaActiveAfter.data.some(order=>order.id===preservedPreorder.data.id && order.status==='mottagen'));
+    assert(hojaPreordersAfter.data.some(order=>order.id===preservedPreorder.data.id && order.status==='mottagen'));
+    assert(!otherActiveAfter.data.some(order=>order.id===preservedPreorder.data.id));
+    assert(!otherPreordersAfter.data.some(order=>order.id===preservedPreorder.data.id));
+
+    const adjustedPreorder=createdLocationOrders.find(order=>order.locationId===HOJA && order.orderType==='takeaway')?.response;
+    assert(adjustedPreorder,'The setup must provide a future Höja takeaway preorder');
+    await markSyntheticOrderPaid(adjustedPreorder.data.id);
+    const adjustedBefore=await readOrderTimes(adjustedPreorder.data.id);
+    const explicitAdjustment=await call(
+      `/api/orders/admin/${adjustedPreorder.data.id}/accept`,{extraMinutes:5},hojaHeaders,'PATCH'
+    );
+    assert.equal(explicitAdjustment.status,200,JSON.stringify(explicitAdjustment.data));
+    const adjustedAfter=await readOrderTimes(adjustedPreorder.data.id);
+    assert.equal(
+      new Date(adjustedAfter.estimatedReadyAt).getTime()-new Date(adjustedBefore.estimatedReadyAt).getTime(),
+      5*60_000,
+      'An explicit adjustment must move the stored ready time by exactly the requested amount'
+    );
+    assert.equal(adjustedAfter.scheduledAt,adjustedBefore.scheduledAt);
+    assert.equal(explicitAdjustment.data.estimatedReadyTime,new Date(adjustedAfter.estimatedReadyAt).toISOString());
+    assert.equal(
+      await db.sql(`SELECT count(*) FROM outbound_message_jobs
+        WHERE order_id=${literal(adjustedPreorder.data.id)}
+          AND event_key='order_accepted' AND channel='sms'`),
+      '1'
+    );
+
+    const concurrentPreorder=createdLocationOrders.find(order=>order.locationId===HOJA && order.orderType==='eat-here')?.response;
+    assert(concurrentPreorder,'The setup must provide a second future Höja preorder');
+    await markSyntheticOrderPaid(concurrentPreorder.data.id);
+    const concurrentBefore=await readOrderTimes(concurrentPreorder.data.id);
+    const concurrentAccepts=await Promise.all([
+      call(`/api/orders/admin/${concurrentPreorder.data.id}/accept`,{},hojaHeaders,'PATCH'),
+      call(`/api/orders/admin/${concurrentPreorder.data.id}/accept`,{},hojaHeaders,'PATCH'),
+    ]);
+    assert.equal(concurrentAccepts.filter(response=>response.status===200).length,1,JSON.stringify(concurrentAccepts));
+    assert(
+      concurrentAccepts.filter(response=>response.status!==200).every(response=>[400,409].includes(response.status)),
+      JSON.stringify(concurrentAccepts)
+    );
+    assert.equal(
+      await db.sql(`SELECT status FROM orders WHERE id=${literal(concurrentPreorder.data.id)}`),
+      'mottagen'
+    );
+    assert.equal(
+      await db.sql(`SELECT count(*) FROM outbound_message_jobs
+        WHERE order_id=${literal(concurrentPreorder.data.id)}
+          AND event_key='order_accepted' AND channel='sms'`),
+      '1',
+      'Concurrent acceptance must create exactly one acceptance-message job'
+    );
+    assert.deepEqual(await readOrderTimes(concurrentPreorder.data.id),concurrentBefore);
+
     const ownerPreorders=await call('/api/orders/admin/pre-orders',undefined,ownerHeaders);
     assert.equal(ownerPreorders.status,200,JSON.stringify(ownerPreorders.data));
     assert(ownerPreorders.data.some(order=>order.id===id),'A paid order must remain in the durable owner queue when notifications are unavailable');

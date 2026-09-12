@@ -50,6 +50,8 @@ self.addEventListener('push', (event) => {
       body,
       tag,
       renotify: true,
+      requireInteraction: true,
+      vibrate: [500, 200, 500, 200, 800],
       data: {
         orderId,
         url: targetUrl,

@@ -48,6 +48,38 @@ BEGIN
     END IF;
   END LOOP;
 
+  -- Keep pre-outbox safety backups valid during the additive rollout. Once the
+  -- table exists, require the complete protected table/RPC contract.
+  IF to_regclass('public.outbound_message_jobs') IS NOT NULL THEN
+    SELECT c.oid INTO object_id
+    FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+    WHERE n.nspname='public' AND c.relname='outbound_message_jobs'
+      AND c.relkind IN ('r','p') AND c.relrowsecurity AND c.relforcerowsecurity;
+    IF object_id IS NULL
+      OR has_table_privilege('anon',object_id,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+      OR has_table_privilege('authenticated',object_id,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+      OR has_any_column_privilege('anon',object_id,'SELECT,INSERT,UPDATE,REFERENCES')
+      OR has_any_column_privilege('authenticated',object_id,'SELECT,INSERT,UPDATE,REFERENCES')
+      OR NOT has_table_privilege('service_role',object_id,'SELECT') THEN
+      RAISE EXCEPTION 'Unsafe outbound-message table privileges';
+    END IF;
+
+    FOREACH object_name IN ARRAY ARRAY[
+      'mark_order_paid_with_audit_and_messages', 'accept_order_with_messages',
+      'claim_outbound_message_jobs', 'start_outbound_message_attempt',
+      'complete_outbound_message_job', 'retry_outbound_message_job',
+      'mark_outbound_message_job_uncertain', 'fail_outbound_message_job_permanently'
+    ] LOOP
+      IF NOT EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+        WHERE n.nspname='public' AND p.proname=object_name
+          AND has_function_privilege('service_role',p.oid,'EXECUTE')
+          AND NOT has_function_privilege('anon',p.oid,'EXECUTE')
+          AND NOT has_function_privilege('authenticated',p.oid,'EXECUTE')) THEN
+        RAISE EXCEPTION 'Unsafe or missing outbound-message RPC: %', object_name;
+      END IF;
+    END LOOP;
+  END IF;
+
   IF EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
     WHERE n.nspname='public' AND c.relkind='S' AND (
       has_sequence_privilege('anon',c.oid,'USAGE,SELECT,UPDATE')

@@ -1,37 +1,134 @@
 # External release-verification checklist
 
-Status 2026-09-11: **inactive future checklist; all 71 checkboxes remain open**.
-The current task is local preparation only, under
-[LOCAL_GOAL_OBJECTIVE.md](LOCAL_GOAL_OBJECTIVE.md). The owner's resumed instruction
-supersedes the earlier authorization for external work. No provider account access,
-login attempt, resource creation, push, PR publication, Preview or Production
-deployment, merge, changed-main integration or Production access is permitted.
-Do not request a login or start an expiry follow-up in this local stage.
+Status 2026-09-12: **inactive future checklist; every checkbox remains open**.
+The replacement objective in [LOCAL_GOAL_OBJECTIVE.md](LOCAL_GOAL_OBJECTIVE.md)
+supersedes the earlier candidate scope and every prior authorization for external
+work. No provider account access, login attempt, resource creation, push, PR
+publication, Preview or Production deployment, merge, changed-main integration
+or Production access is permitted. Do not request a login or start an expiry
+follow-up in this local stage.
 
 No isolated hosted resources have been created and no hosted migration, restore,
 payment or expiry test has been performed. Every external procedure below is
 retained for a possible later stage and requires a new explicit owner instruction
 after its purpose and consequences have been explained. The local report comes first.
 
-The candidate is **card-only**. New Swish checkout and external email/SMS/push
-delivery are outside its scope and must remain disabled. Their disabled state
-and the staffed PostgreSQL order queue still require hosted verification.
+The candidate remains **card-only** and new Swish checkout remains disabled.
+Verified order email, the existing non-delivery SMS flows, staff push and the
+repeating staff alarm are now release requirements. They are not exclusions.
+Real test delivery may use only the owner and named staff recipients after cost
+and recipient approval; no new delivery-order SMS is to be added.
 
-The full final local matrix passed on `ec04965833c8a6667e6886d3509757dc2e3b55e6`: 193 backend
-tests, 22 desktop/mobile browser cases, Doctor21/21, exports, audit0critical/high
-and 14 moderate, database/API/isolation and real local backup/restore. The sealed
-315-path source review and independent post-scan delta review are finished. The sealed flag is partial due to stale checkpoint entries, as explained in the branch report. None
-of these local results closes a hosted checkbox or proves Production backups.
+The new local final candidate passed clean `npm ci` and `npm run check`, including
+206/206 backend tests, the web build and mobile typecheck. Expo Doctor passed
+21/21; Android and iOS exports succeeded. `npm audit` reports 0 critical, 0 high
+and 14 moderate, with no breaking automatic fix applied. `test:db`, `test:api`,
+PostgreSQL isolation and backup/restore passed. Targeted admin Playwright passed
+4/4 and the full Playwright suite passed 22/22. None of these local results
+closes a hosted checkbox or proves Production readiness.
 
 Local backup/security correction `eb2cd50` changes nine files (+485/-12). Its
 metadata gate and fingerprint now include column ACLs and grant options; the
 reproduced column-only refund mutation bypass is fixed and regression-tested.
-The final local `scripts/test-backup-restore.mjs` run passed in 80.9 seconds using
+The new local `scripts/test-backup-restore.mjs` A/B run passed in 80.506 seconds using
 two newly created independent local PostgreSQL clusters. It checks real operator
-backup/restore, source/target orders=1, items=1, paid gross=100 öre, audit=1,
-retained column SELECT/grant option, role denials and the untouched target Storage
-sentinel. This bounded synthetic result is not full financial A=B verification,
-a Production backup or evidence from hosted Supabase.
+backup/restore, source/target `orders=1`, `items=1`, `paidGrossOre=100`,
+`audit=1`, one Storage bucket, retained ACL/security metadata and the untouched
+target sentinel. This bounded synthetic result is not full financial A=B
+verification, a Production backup or evidence from hosted Supabase.
+
+Local working-tree changes made on 2026-09-12 preserve stored customer times on
+default acceptance, include future paid preorders in the acceptance queue and
+derive the foreground alarm from the full pending queue without a separate
+silence acknowledgement. The durable outbox, worker and protected maintenance
+route are also present. These changes are **implemented and verified locally**
+by the matrix above. Scheduling the route, live provider/push behavior and the
+complete physical background-alarm chain remain unverified. A prior full run
+correctly exposed a test regression when the active alarm blocked logout; the
+test was corrected without hiding or weakening the alarm, after which targeted
+admin Playwright passed 4/4 and the full suite passed 22/22.
+
+The final local Codex Security diff scan
+`8a3fdec0-93a2-4fcb-a10e-3d1cf051aced` sealed snapshot
+`codex-security-snapshot/v1:sha256:95f4bc1909b3e0c7ff13d046f4c7c405f12b616c912c958508dc8dd642f6a6f9`
+with complete 33/33 inventory coverage: 0 critical, 0 high, 0 medium and 1 low.
+Three other candidates were suppressed after validation. The low finding is a
+stale shared-browser Web Push binding across sequential staff/location accounts;
+it exposes only order ID/number/time and does not bypass server authorization,
+but it needs remediation or an explicit owner risk decision before shared-account
+device use. The scan also led to correction and re-test of retryable Resend
+transport errors and delivery-order failure-alert scope; 206/206 backend tests
+and the full API suite passed after those corrections.
+
+## Current status classification
+
+### Verified
+
+- The new local final candidate's install, 206/206 backend tests, web/mobile
+  builds and typechecks, Doctor 21/21, both exports, database/API/isolation,
+  independent A/B restore, targeted admin 4/4 and full browser 22/22 results.
+- The local timer/preorder/order-acceptance, queue/alarm, durable outbox, worker
+  and protected maintenance-route behavior within synthetic automated tests.
+- Historical local evidence on `ec04965`, within its bounded unchanged scope.
+- Repository-level fail-closed Preview routing and the explicit legacy migration
+  manifests. These do not prove the connected Vercel projects or databases.
+- The prior sealed scan facts and documented checkpoint discrepancy; see below.
+- Final local security snapshot coverage of 33/33 inventory items with no
+  critical, high or medium finding; one low Web Push account-binding finding is
+  open and recorded below.
+
+### Remaining
+
+- Freeze the reviewed source snapshot as an exact candidate commit.
+- Remediate or explicitly accept the low stale Web Push binding before a shared
+  device is used sequentially with differently scoped accounts.
+- Complete the route audit, including every old writer, function, deployment
+  route and alias, before cutover.
+- Configure and verify scheduling for protected `POST
+  /api/internal/maintenance/process-outbound-messages`.
+- Run the physical Android alarm matrix and live allowlisted provider/push tests.
+
+### Blocked
+
+- Hosted CI, provider sandboxes, physical-device alarm tests, Production backup,
+  live provider/push delivery, scheduled maintenance execution, externally timed
+  restore/cutover/rollback rehearsal and post-release follow-up. Each needs a
+  separately approved external block or physical participation.
+- The actual Vercel Git/deployment linkage, aliases and resource bindings remain
+  unknown until authorized account inspection; therefore the hosted part of the
+  route audit is also blocked.
+
+### Requires owner decision
+
+- Backup option, budget, accepted RPO/RTO, retention and test-copy disposal.
+- Backup alarm recipient/reserve operator, external test recipients and costs.
+- Staff/device availability, checkout-stop date, abort point and final release.
+- Confirmation of the named location accounts for each shop tablet. Store
+  tablets must not use the owner account.
+- Disposition of the low stale Web Push account-binding finding.
+- The 14 moderate advisories and real accounting/archive evidence. Mutating
+  retention remains disabled. Swish deferral is already decided.
+
+## Security-scan status
+
+Final scan `8a3fdec0-93a2-4fcb-a10e-3d1cf051aced` is formally complete for the
+current source snapshot: all 33/33 inventory items are closed, three candidates
+were suppressed after validation and one low finding remains open. There are no
+critical, high or medium findings. Documentation-only updates made after this
+snapshot do not change the reviewed source candidate.
+
+Sealed scan `eab014d1-3da0-4ed5-a3e0-fe8e67e5b403` covered the 315 frozen diff
+paths through `2d200f0`; discovery, validation and attack analysis finished with
+no unresolved candidate or reportable vulnerability. The sealed artifact still
+says `partial` because two stale checkpoint deferred entries survived the
+accepted final draft, whose status was `complete` with an empty deferred list.
+The artifact is preserved and is not represented as formally complete.
+
+The separate `coverage=complete` value in recorded scanner usage metadata is a
+token-accounting field, not code-coverage status. An older scan's
+`token_record_invalid` partial result is separate historical evidence. This
+discrepancy remains visible as historical evidence but does not qualify or
+replace the formally complete final scan above.
 
 Any later authorized hosted rehearsal must use newly created, disposable test
 resources containing synthetic names,
@@ -83,9 +180,10 @@ payloads or database dumps into Git, CI logs or this document.
   event has `livemode=false`.
 - [ ] Set `SWISH_CHECKOUT_ENABLED=false`; configure no Swish certificate, private
   key or merchant credential. Verify the web shows no Swish payment choice.
-- [ ] Leave email/SMS/push credentials unconfigured and delivery disabled. Use no
-  real customer destination. Provider delivery and Swish activation remain outside
-  this candidate, not completed release gates.
+- [ ] Configure isolated test-only email, SMS and push credentials only after the
+  owner approves the provider cost and an allowlist containing only the owner and
+  named staff. Prove attempts to address any other recipient fail closed. Keep
+  delivery-order SMS unchanged and keep Swish credentials absent.
 - [ ] Confirm logs, alerts and dashboards clearly label the environment TEST.
 
 Expected result: all resource identities are distinct, outbound destinations
@@ -147,6 +245,46 @@ Expected result: no data loss or cross-location access; every negative case is
 denied; historical financial fields and the new VAT snapshots remain readable.
 
 ## 3. Protected backup and independent restore
+
+### Owner decision: two comparable options
+
+Prices below are public USD list prices checked 2026-09-12, excluding tax,
+currency conversion, excess usage, email service and operator labour. Production
+is recorded as Supabase Free, so the totals show the cost from that baseline.
+Recheck prices before purchase.
+
+| Property | A — Supabase Pro + PITR + independent copy | B — own automated export to private R2 |
+| --- | --- | --- |
+| Recurring base cost | Pro $25/month + Small compute $15 minus the included $10 compute credit + 7-day PITR about $100 = **about $130/month**. A continuously available extra Micro restore project makes it about **$140/month**. | Supabase Free $0 + the selected private runner and monitoring. R2 Standard is $0 within 10 GB-month, 1M writes and 10M reads; after that storage is $0.015/GB-month. Exact total is **runner + monitoring + restore target + R2 usage** and cannot be approved until those are selected. |
+| Proposed independent interval | Encrypted public-schema export and Storage copy every hour, plus Supabase PITR. | Encrypted public-schema export every 15 minutes while orders are open, plus an independently scheduled Storage/Auth recovery export. The interval must be relaxed if load testing fails. |
+| Recovery point | Supabase describes PITR as restoring to a chosen point with up-to-seconds granularity and a worst-case RPO around two minutes. A full Supabase account/provider loss can still leave up to one hour missing from the independent copy. | Up to 15 minutes of new database transactions can be lost after the last successful export; a missed job makes the gap longer. This is not equivalent to PITR and does not meet a stricter latest-order requirement. |
+| Recovery time | Unknown until a timed restore at representative size; Supabase states downtime depends on database size. | Unknown until timed full restore, object recovery and credential/role reconstruction; operator work is larger. |
+| Production load | PITR is provider-managed; the hourly logical copy still consumes database, network and runner capacity and must be measured. | Frequent full `pg_dump` runs can consume CPU, I/O, connections and network; load testing and backoff are mandatory. |
+| Main limitations | Database backup excludes Storage object bytes; custom-role passwords need reset; independent copy and key custody remain owner duties. | Current scripts are manual, public-schema-only and do not encrypt by themselves. Auth, Storage bytes, scheduling, encryption, alerts, retention and concurrency controls must all be built and operated. |
+
+References: [Supabase backups](https://supabase.com/docs/guides/platform/backups),
+[Supabase pricing](https://supabase.com/pricing), and
+[Cloudflare R2 pricing](https://developers.cloudflare.com/r2/pricing/).
+
+Neither option is zero-loss across every failure mode. If the owner will not
+accept the stated latest-order gap at an approved price, release stays blocked
+until a continuous independent replication/journal design is costed and proven.
+
+For either option, approve and verify all of the following before activation:
+
+- [ ] Record the selected option, full monthly estimate, accepted database and
+  Storage RPO, target RTO, retention tiers, legal holds and deletion process.
+- [ ] Encrypt archives before upload, keep the bucket private and store the
+  encryption key separately from backup credentials and Git.
+- [ ] Monitor both failed and absent backup runs; send understandable email to
+  the owner and a named reserve person and test the alert path.
+- [ ] Define separate recovery for managed Auth, custom roles/passwords, Storage
+  metadata and Storage object bytes; a public-schema dump is not sufficient.
+- [ ] Automate a monthly restore test and an additional test before every major
+  database change. Report duration, hashes, source/target reconciliation and
+  failures without copying production data into Git, chat or ordinary tests.
+- [ ] Approve safe retention and disposal for backup artifacts and restore-test
+  copies before the first recurring job is enabled.
 
 `restore=verified_against_source_profile` currently attests the checked archive
 identity/profile, the target's internal accounting consistency and matching
@@ -260,55 +398,166 @@ Expected result: cross-instance safety works, plaintext customer/order details
 are absent from new replay values, sensitive capabilities have least-privilege
 access and observed hosted expiry matches the code contract.
 
-## 7. Disabled notifications and staffed queue
+## 7. Durable customer messages and staff alarm
 
-External email/SMS/push delivery is outside the candidate. The checks below prove
-the disabled state and order handling; they do not certify provider delivery.
+Email, existing SMS, push and the repeating staff alarm are release requirements.
+Every test uses synthetic orders and only owner-approved recipient addresses,
+numbers and devices. Provider unavailability must never roll back a paid order or
+make the customer/status page or staff order list unavailable.
 
-- [ ] With all email/SMS/push credentials absent, pay a synthetic order. Payment
-  status/audit must remain committed. Rehearse realtime failure/reconnect and
-  retain local tests of individual notifier rejection; no notifier failure may
-  roll back payment or terminate the process.
-- [ ] Confirm the correct owner/location sees the order in pending or pre-orders
-  through a fresh database query/poll after every failure; another location must
-  not see it.
-- [ ] Disconnect/reconnect SSE and reload the admin UI. The durable PostgreSQL
-  queue, not a transient notification, must recover the order.
-- [ ] Have a test staff member acknowledge/process the order and record detection
-  time. Define staffing hours, polling/reload procedure and escalation owner.
-- [ ] Decide whether the absence of a durable notification outbox is acceptable;
-  if not, leave release blocked until one is implemented and monitored.
+### Durable outbox and real delivery
 
-Expected result: notifier failure can delay an alert but cannot hide or roll back
-the paid order, and staff have a tested operational fallback.
+- [ ] Verify each relevant order transition creates one durable job per exact
+  order, event and channel in the same database transaction. Concurrent duplicate
+  transitions must not create duplicate work.
+- [ ] Start two workers concurrently and prove a lease/claim permits at most one
+  active sender per job while an expired claim becomes safely retryable.
+- [ ] Verify bounded attempts, scheduled backoff, terminal failure and a scoped
+  staff-visible failure view. A worker crash before and after provider acceptance
+  must not silently lose the job or blindly resend an ambiguous delivery.
+- [ ] Deliver the existing order email and each existing non-delivery SMS type to
+  the approved sinks/devices. Confirm content, language, order identity, location
+  and recipient. Prove no new delivery-order SMS is sent.
+- [ ] Exercise provider 4xx, 5xx, timeout, accepted-response loss and recovery.
+  Reconcile provider evidence with the job row and record whether manual review,
+  retry or success is the safe outcome.
+- [ ] With each provider offline in turn, verify payment status/audit remains
+  committed and the customer status page plus staff order list continue to work.
 
-## 8. Release decision
+### Durable order queue and acknowledgement
+
+- [ ] Pay synthetic orders for Höja and Möllevången. Before any staff action,
+  confirm each order is durably stored and appears only in the correct location's
+  fresh pending/preorder query; the owner may see both.
+- [ ] Confirm `Ta emot` atomically advances only that order through the existing
+  status flow. It must remain in administration and no separate seen/silence
+  acknowledgement may exist.
+- [ ] Connect two devices for one location. Accept on one; prove the other stops
+  alarming for that order after refreshing from server state while any other
+  waiting order continues.
+- [ ] Add a new order immediately after a prior acknowledgement and prove it
+  starts a new alarm. Repeat with multiple simultaneously waiting orders.
+- [ ] Reload, interrupt SSE/network, reconnect and restart the browser. Pending
+  orders must be fetched from PostgreSQL and resume alarming without relying on
+  the original push event.
+- [ ] Verify accepting an order without an explicit time adjustment preserves
+  the originally promised `estimated_ready_at`. In the 30-minus-5-minute case,
+  approximately 25 minutes remain. Repeat for preorders and an explicit change.
+
+### Physical alarm matrix
+
+Record device model, Android/browser version, power/battery settings, installed
+PWA/browser mode, notification permission, operator, timestamps, order IDs and
+actual result. Test both location roles plus the mobile-data reserve phone.
+
+| Device/location | Order view open and visible | Another app foreground | Screen locked | Network loss and reconnect | Shared acknowledgement and next order |
+| --- | --- | --- | --- | --- | --- |
+| Höja tablet | [ ] repeating sound until `Ta emot` | [ ] repeating background alert | [ ] repeating locked-screen alert | [ ] pending order and alarm recovered | [ ] other device stops only accepted order; later order alarms |
+| Möllevången tablet | [ ] repeating sound until `Ta emot` | [ ] repeating background alert | [ ] repeating locked-screen alert | [ ] pending order and alarm recovered | [ ] other device stops only accepted order; later order alarms |
+| Reserve phone on mobile data | [ ] correct selected-location queue | [ ] repeating background alert | [ ] repeating locked-screen alert | [ ] Wi-Fi/mobile-data transition recovered | [ ] acknowledgement sync and later order verified |
+
+- [ ] Verify a Höja order never reaches or alarms Möllevången staff and vice
+  versa, including push delivery and after reconnect.
+- [ ] Measure alarm start, repeat interval, acknowledgement propagation and
+  recovery time. Record the maximum acceptable operational detection time.
+- [ ] If another-app or locked-screen repetition is unreliable, stop this release
+  gate and present bounded technical alternatives with cost, operational burden
+  and platform limitations. Do not silently reduce the requirement.
+
+Expected result: customer messages are durable and controlled, paid orders stay
+available during provider failure, and every unreceived order drives a
+location-correct repeating alarm until that exact order is accepted.
+
+## 8. Timed cutover and rollback rehearsal
+
+Use synthetic orders in the isolated environment. Record a single exact candidate,
+all deployment/alias identities, operator, reviewer, UTC timestamps and duration
+for each step. The checkout stop may be at most 90 minutes and must occur when
+both stores are closed with margin before reopening.
+
+1. [ ] Inspect the actual migration ledger and file checksums. Select pending
+   steps from `legacy-transition-order.json`; never run the fresh-install track
+   against an existing database.
+2. [ ] Take the chosen protected backup, capture source financial aggregates,
+   restore it independently and apply the compatible Phase 1 database steps.
+   Prove old/new writer coexistence without lost history or conflicting numbers.
+3. [ ] Close checkout and deploy the protected backend. Old clients must receive
+   `CLIENT_UPGRADE_REQUIRED` before order/payment creation, while payments started
+   before the boundary remain reconcilable to completion.
+4. [ ] Remove or disconnect every old writing backend path, function and alias,
+   then publish the reviewed web build. Check old URLs, cached tabs and clients.
+5. [ ] Apply Phase 4 constraints only after all old writers are proven drained.
+6. [ ] Verify both-store checkout, messages, staff acknowledgement/alarm and
+   financial integrity before checkout is reopened.
+
+- [ ] Create additional paid synthetic orders after the backup boundary, then
+  rehearse the reserve action without overwriting them. Never restore the older
+  archive over the active source.
+- [ ] Identify and test the exact compatible rollback build or forward-fix
+  procedure. Raw old `main` is not a valid rollback after Phase 4.
+- [ ] Measure the reserve action and set an abort point that leaves enough time
+  to execute it before the 90-minute limit and next opening. A deadline never
+  permits reopening an unsafe checkout.
+- [ ] Stop before starting the real cutover if writer/alias inventory, time
+  margin, backup evidence or reserve action is incomplete.
+
+Expected result: deployment order cannot publish an incompatible writer, and the
+tested recovery path preserves every order/payment added after backup.
+
+## 9. Release decision
 
 - [ ] CI `build-and-test`, `integration-windows` and `browser-ubuntu` are green on
   the exact PR HEAD, with linked run URLs. Verify Node 24.18.1, npm 11.6.2, clean
   `npm ci`, build/security checks, all backend tests, Expo Doctor/typecheck/both
   mobile exports, PostgreSQL/API/provider simulations, 22 browser cases and
-  `npm audit --audit-level=high`. Local success does not certify hosted Actions.
+  `npm audit --audit-level=high`. Local success does not certify hosted Actions;
+  native exports are compatibility evidence, not a separate app release.
 - [ ] Final dependency audit has zero critical/high; each remaining moderate
   advisory is individually documented and submitted for an owner decision.
-- [ ] A new complete security diff review against the locally frozen main baseline covers
-  all candidate commits, validates candidates and has no unresolved critical/high
-  finding or unexplained partial coverage. Do not integrate a changed main.
+- [ ] A final security diff review against the locally frozen main baseline covers
+  every new candidate commit and has no unresolved critical/high finding. Preserve
+  the prior sealed partial/checkpoint explanation; do not rerun solely to change
+  that immutable flag and do not integrate a changed main.
+- [ ] The exact candidate has passing timer/preorder, durable outbox, worker
+  concurrency/retry, multi-order alarm, location isolation and reconnect tests.
+- [ ] The physical alarm matrix passes for both store tablets and the reserve
+  phone, including another app and locked screen. Any mandatory failure is NO-GO.
+- [ ] Real allowlisted order email, existing SMS and staff push delivery pass,
+  while provider failure leaves payment, customer status and staff queue intact.
 - [ ] The accountant has signed the preservation matrix and legacy VAT handling.
 - [ ] The privacy owner has approved (or changed) the 90/1,095-day field selection
   and intervals. Until then both non-dry-run retention passes remain disabled.
-- [ ] The owner has approved backup/restore, staffing, provider and rollback plans.
-- [ ] The owner has explicitly accepted this candidate's exclusions: Swish and
-  external email/SMS/push delivery. No historical or inferred approval substitutes
-  for a recorded decision on this candidate.
+- [ ] The owner has approved one costed backup option, its RPO/RTO/retention,
+  reserve alarm recipient, successful restore evidence and rollback plan.
+- [ ] The owner has recorded that new Swish checkout is deferred. Email, existing
+  SMS, staff push and alarm are verified requirements, not accepted exclusions.
+- [ ] The timed six-step rehearsal passes within the approved stop window and has
+  a measured abort point plus tested recovery that preserves post-backup orders.
 - [ ] Every external section above has linked evidence and an assigned owner.
 - [ ] The normal fast-forward branch push and updated Draft PR have exact commit,
   PR and CI links; the worktree is clean and all changes are reviewable commits.
 
 The local stage ends with reviewable commits, a clean worktree, the final local
 test matrix and a Swedish report of results, risks and unperformed external
-checks. It does not require executing this inactive hosted checklist, publishing
-a Draft PR or obtaining the six formal owner decisions. Keep every box and
-decision open. Any later external stage, including push/PR publication that could
+checks. It does not require executing this inactive hosted checklist or
+publishing a Draft PR. Keep every external box and owner decision open until
+evidenced. Any later external stage, including push/PR publication that could
 trigger deployment, needs a new explicit owner instruction; this document grants
-no such permission and no permission to merge or deploy.
+no permission to merge or deploy.
+
+## 10. Post-release verification
+
+- [ ] The owner and staff follow the first sales shift. For each store, record the
+  first real card order's database/payment reconciliation, customer messages,
+  correct-location staff receipt, alarm and acknowledgement without copying PII
+  into this repository.
+- [ ] Confirm the first scheduled automatic backup, alert monitor and report, and
+  verify the next monthly restore-test date and reserve recipient.
+- [ ] Reconcile real sales/refunds with the bookkeeping source selected by the
+  owner/accountant. Do not assume Stripe alone can reconstruct an order.
+- [ ] If a store has not yet received a real order, keep that store's check open.
+  Do not claim completion or unattended monitoring.
+
+Expected result: the release is closed only after both stores, financial records,
+customer messages, staff order handling and the first automatic backup have
+direct evidence or an explicitly recorded waiting check.

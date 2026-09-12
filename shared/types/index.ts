@@ -356,6 +356,23 @@ export interface Notification {
   read: boolean;
 }
 
+export type OutboundMessageFailureStatus = 'retryable' | 'uncertain' | 'permanent_failed';
+export type OutboundMessageFailureEvent = 'order_confirmation' | 'order_accepted';
+export type OutboundMessageFailureChannel = 'email' | 'sms';
+
+/** Safe, staff-facing view of an unresolved customer-message delivery job. */
+export interface OutboundMessageFailureAlert {
+  id: string;
+  orderNumber: string;
+  channel: OutboundMessageFailureChannel;
+  event: OutboundMessageFailureEvent;
+  status: OutboundMessageFailureStatus;
+  attemptCount: number;
+  maxAttempts: number;
+  errorCode: string;
+  updatedAt: string;
+}
+
 export interface PushSubscriptionRecord {
   id: string;
   endpoint: string;
