@@ -21,9 +21,10 @@ finalization only after old processes and aliases are proven drained. Its index
 is concurrent; its short metadata/sequence transaction uses the same lock order
 as trigger-backed inserts and aborts after five seconds of lock contention.
 
-The previous Phase 1 baseline contained 29 files. The independently verified
-`2026-09-11-private-function-defaults.sql` adds one pending safety step, making
-30 Phase 1 files plus the separate Phase 4 finalization (33 fresh-install files).
+The previous Phase 1 baseline contained 29 files. The private-function-defaults,
+durable outbound-message and single-active-push-endpoint migrations add three
+pending safety steps, making 32 Phase 1 files plus the separate Phase 4
+finalization (35 fresh-install files).
 It runs as the verified application object owner and revokes the global implicit
 PUBLIC function-execution default; a schema-scoped REVOKE alone cannot do that.
 It changes future-object defaults and makes the private ACLs on the two existing
@@ -196,6 +197,25 @@ WHERE id = '<verified-admin-id>';
 
 Use the application's logout endpoint for ordinary revocation. Only use the SQL
 form during an incident after independently verifying the intended admin ID.
+
+## 2026-09-12 single active push endpoint
+
+Apply `20260912193000_single_active_push_endpoint.sql` before deploying the
+matching backend and web build. The migration disables every currently active
+row for an endpoint that is active on more than one admin account; it does not
+guess which location owns an ambiguous browser subscription. Those devices must
+load the admin dashboard again while signed in to the intended location account.
+
+The partial unique index makes duplicate active endpoint ownership fail closed,
+including if an older backend instance overlaps the rollout. New registration
+uses a service-role-only transaction that serializes on the endpoint, disables
+the previous account binding and activates the current account binding. The
+transaction also locks the admin row and requires the authenticated token
+version, so an already-started registration cannot reactivate a binding after
+logout revokes that session. Logout sends the current browser endpoint and
+disables only that admin/endpoint pair.
+Verify sequential account switching, concurrent registration, logout retry and
+location isolation before enabling Web Push on shared shop devices.
 
 ## 2026-08-19 Stripe event idempotency
 

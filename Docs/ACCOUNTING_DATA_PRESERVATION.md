@@ -64,7 +64,7 @@ longer needed there, even when a separate legal archive must remain.
 | Delivery JSON, internal/cancellation notes, customer status credential | Fulfillment, service and temporary customer access | Scoped staff/owner; status credential itself is customer-held and verified against its stored hash/expiry | Current code can scrub after a 90-day minimum cutoff, subject to terminal state, settlement and legal hold. The job is not scheduled. An independent status key issues v2; stored v1 remains verifiable with the prior JWT key. Preview requires a strong separate status key; v2 never falls back to JWT | **Current code boundary only; not approved** | Owner/privacy adviser: approve purpose, interval, legal holds and complaint/incident exceptions. Preserve valid legacy access when activating the separate key; do not rotate production keys in this task |
 | Sealed minimal order-idempotency response in Upstash | Safe replay after a lost checkout response | Backend runtime holding the application secret; Upstash administrators see ciphertext for new values | New values exclude customer/contact/delivery/item data and seal only order ID/number, total, location, checkout marker and status capability with authenticated encryption bound to the storage key and payload hash. Code TTL is 86,400 seconds; processing locks use 600 seconds. A pre-change readable value may remain only for its already-running maximum 24-hour TTL | Hosted deletion, backup and log behavior unverified | Privacy/security owner: confirm EU region, least privilege, application-secret access, account logs/backups and actual expiry/deletion |
 | Email receipt, provider settlement record, bookkeeping export and paper receipt/ticket | Copies or primary evidence outside the application database | Depends on mailbox/provider/accounting/printer controls | Code paths are mapped; existence, completeness and retention in real accounts are not locally proven. Email delivery is disabled for this candidate and cannot be assumed to supply its receipt/archive copy | External policy/contract | Owner/accountant: identify the authoritative copy, access owner, archive medium and destruction date; approve how a receipt is supplied while email is disabled |
-| Application database backups and restored copies | Recovery of the public-schema accounting evidence chain | Named backup operators only | Candidate scripts isolate connections and require manifest v3, exact public-table catalog, `secured-ledgers`, `archiveScope=public-schema-only`, preserved ACLs and a source/target security metadata hash match. Hosted A→B backup/restore remains unverified | External schedule and deletion process unverified; this is not a backup of managed auth/Storage or object contents | Owner/accountant/privacy owner: approve frequency, encryption, access, independent restore tests, provider-managed recovery responsibilities and deletion reconciliation |
+| Application database and `site-media` release backup | One-time recovery copy through release day | Owner-operated; only the owner keeps the `age` passphrase | The final gate requires the complete application database with data/schema/privileges/security metadata plus separately copied real `site-media` objects, manifest counts and SHA-256 hashes, encrypted locally and fully restored in Supabase B. The current public-schema-only synthetic harness is supporting evidence, not fulfillment of this gate | Encrypted Google One copy retained long-term; Supabase B retained seven days and deleted only after explicit approval. No recurring backup is promised | Owner/accountant/privacy owner: verify full A=B business-data, permission and file-hash reconciliation and accept that future orders are outside this one-time copy |
 
 ## Enforced local boundaries
 
@@ -108,9 +108,10 @@ authorization before reconstructing a dataless legacy baseline in A.
 Seed synthetic legacy orders, both locations/roles, pending provider references,
 VAT cases and complete refund/audit ledgers. Select pending steps from the real
 applied ledger and checksums, not filename sorting or the fresh-install list.
-The current manifest contains 30 Phase 1 steps and one Phase 4 step; fresh install
-contains 33 files. `2026-09-11-private-function-defaults.sql` is the additional
-Phase 1 step beyond the original 29-step objective. Record hashes and UTC times,
+The current manifest contains 32 Phase 1 steps and one Phase 4 step; fresh install
+contains 35 files. Private-function defaults, the durable outbound-message
+outbox and the single-active push-endpoint guard are the three additions beyond
+the original 29-step objective. Record hashes and UTC times,
 use `ON_ERROR_STOP` and a five-second lock timeout, and stop on unknown migration,
 checksum mismatch, incomplete index or invariant failure. Prove all old writers
 are drained before Phase 4.
@@ -143,7 +144,7 @@ The recovery rehearsal must preserve that new payment and its records through a
 forward correction or compatible build. Never restore the older archive over A
 or any active database. Record durations, non-secret source/target identities,
 archive hashes and cleanup ownership in the restricted release journal. Hosted
-verification and the operational backup/rollback decision remain pending.
+verification and execution of the decided backup/rollback procedure remain pending.
 
 ## Approval gate
 
@@ -162,12 +163,13 @@ each decision below. These are proposed decision subjects, **not approvals**.
 | --- | --- | --- |
 | Historical VAT and accounting evidence | Preserve original financial records and existing `NULL` VAT snapshots; use original receipts for any separately approved forward correction | Pending accountant/owner decision |
 | 90/1,095-day retention | Approve exact fields, purposes, intervals, legal holds and archive handling before either non-dry-run scrub pass is enabled | Pending privacy/accounting/owner decision |
-| Backup and rollback | Approve public-only ACL-preserving A→B rehearsal, independent managed-resource recovery duties and forward recovery without overwriting later payments | Pending owner/accounting decision |
-| Staffing without notifications | Approve staffing hours, receipt handling, queue polling/reload, maximum detection time and escalation owner after hosted rehearsal | Pending operations/owner decision |
+| Backup and rollback | Execute the decided complete database + `site-media` copy, private `age`/Google One handling, full Supabase B restore and forward recovery without overwriting later payments | Decided; external execution pending owner authorization |
+| Physical notification proof | Verify both location tablets in open/other-app/locked/reload/reconnect modes; no reserve mobile requirement | Pending operations/owner evidence |
 | Remaining moderate advisories | Review each final moderate dependency advisory and its documented exposure; critical/high findings must still be zero | Pending owner decision on the final audit |
-| Excluded features | Accept that Swish activation and external email/SMS/push delivery are outside this card-only candidate and are not claimed verified | Pending owner decision |
+| Excluded features | Accept only new Swish activation as deferred; email, existing SMS, staff push and sound remain mandatory release evidence | Pending owner confirmation/evidence |
 
-All six decisions remain pending. The agent may prepare local evidence and PR
+Five decisions remain pending; the backup/rollback procedure is decided but its
+external execution still requires explicit authorization. The agent may prepare local evidence and PR
 text, then report results and risks to the owner. It may not publish a PR, push,
 access provider accounts or Production, deploy or merge in this stage. The
 inactive external checklist is a future decision aid, not authorization or a

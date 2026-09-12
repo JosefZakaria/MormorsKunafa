@@ -24,13 +24,17 @@ import { updateLocationFlags } from '../db/locations.js';
 import { isDeliveryFeeLineItem } from '../constants/deliveryFee.js';
 import { registerAdminMediaRoutes } from './adminMedia.js';
 import {
+  disablePushSubscriptionForAdminEndpoint,
   disablePushSubscriptionById,
   listActivePushSubscriptions,
   upsertPushSubscription,
 } from '../db/pushSubscriptionsRepository.js';
 import { getRealtimeStatus, registerRealtimeClient } from '../services/realtimeEvents.js';
 import { isWebPushConfigured } from '../services/pushNotifications.js';
-import { validatePushSubscription } from '../utils/webPushSecurity.js';
+import {
+  parsePushEndpointForRevocation,
+  validatePushSubscription,
+} from '../utils/webPushSecurity.js';
 import {
   AdminInputError,
   parseAdminLoginInput,
@@ -66,11 +70,15 @@ registerAdminMediaRoutes(router);
 
 const COMPLETED_STATUSES = ['klar', 'uthämtad', 'levererad'] as const;
 
-function getAuthenticatedAdmin(req: Request): { adminId: string; email?: string } | null {
+function getAuthenticatedAdmin(
+  req: Request
+): { adminId: string; email?: string; tokenVersion: number } | null {
   const admin = (req as Request & {
-    admin?: { adminId?: string; email?: string };
+    admin?: { adminId?: string; email?: string; tokenVersion?: number };
   }).admin;
-  return admin?.adminId ? { adminId: admin.adminId, email: admin.email } : null;
+  return admin?.adminId && Number.isSafeInteger(admin.tokenVersion) && Number(admin.tokenVersion) >= 1
+    ? { adminId: admin.adminId, email: admin.email, tokenVersion: Number(admin.tokenVersion) }
+    : null;
 }
 
 const pushSubscriptionLimiter = createRateLimiter({
@@ -223,6 +231,9 @@ router.post('/logout', async (req: Request, res: Response) => {
   let logoutAdminId: string | undefined;
   const auditRoute = { action:'admin_logout', httpMethod:'POST', routeTemplate:'/api/admin/logout' };
   try {
+    // Push cleanup is best-effort metadata for an otherwise independent session
+    // revocation. Provider allowlist drift or malformed input must never block logout.
+    const pushEndpoint = parsePushEndpointForRevocation(req.body?.pushEndpoint)?.toString();
     // Revocation grants no administrative access. Accept a valid signed token
     // even for a disabled account, and allow a retry after a lost success reply.
     // Cookie requests still pass the global double-submit CSRF middleware.
@@ -232,6 +243,10 @@ router.post('/logout', async (req: Request, res: Response) => {
       logoutAdminId = admin.adminId;
       await recordSecurityAuditEvent({...auditRoute,actorAdminId:admin.adminId,outcome:'attempted'});
       await revokeAdminSessions(admin);
+      if (pushEndpoint) {
+        const disabled = await disablePushSubscriptionForAdminEndpoint(pushEndpoint, admin.adminId);
+        if (!disabled) throw new Error('Push subscription revocation failed');
+      }
       await recordSecurityAuditEvent({...auditRoute,actorAdminId:admin.adminId,outcome:'succeeded'});
     }
     // Keep credentials available for retry on a database/revocation failure.
@@ -399,6 +414,7 @@ router.post('/push-subscriptions', requireAdmin, pushSubscriptionLimiter, async 
 
     const saved = await upsertPushSubscription({
       adminId: admin.adminId,
+      adminTokenVersion: admin.tokenVersion,
       ...validated,
     });
 

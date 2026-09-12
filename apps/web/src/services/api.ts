@@ -522,8 +522,11 @@ export const adminApi = {
     return adminRequest('/admin/session');
   },
 
-  logout: async (): Promise<void> => {
-    return adminRequest('/admin/logout', { method: 'POST' });
+  logout: async (pushEndpoint?: string): Promise<void> => {
+    return adminRequest('/admin/logout', {
+      method: 'POST',
+      body: JSON.stringify({ pushEndpoint }),
+    });
   },
 
   getSettings: async (): Promise<AdminSettings> => {

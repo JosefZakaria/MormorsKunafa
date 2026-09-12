@@ -1,8 +1,9 @@
 import webpush from 'web-push';
 import {
   createPushDeliveryLog,
-  disablePushSubscriptionByEndpoint,
+  disablePushSubscriptionIfCurrent,
   hasPushDeliveryLog,
+  isPushSubscriptionCurrent,
   listActivePushSubscriptions,
   markPushDeliveryFailure,
   markPushDeliverySuccess,
@@ -100,8 +101,17 @@ export async function sendOrderCreatedPush(event: OrderCreatedEvent): Promise<vo
         return;
       }
 
+      // The list and location scope are snapshots. Revalidate the exact row
+      // version immediately before dispatch so a transferred endpoint is not
+      // intentionally targeted using its former owner's scope.
+      if (!(await isPushSubscriptionCurrent(subscription))) {
+        return;
+      }
+
       if (!parseSafePushEndpoint(subscription.endpoint)) {
-        await disablePushSubscriptionByEndpoint(subscription.endpoint);
+        await disablePushSubscriptionIfCurrent(subscription, {
+          reason: 'Push endpoint is not allowed',
+        });
         return;
       }
 
@@ -117,7 +127,7 @@ export async function sendOrderCreatedPush(event: OrderCreatedEvent): Promise<vo
         await sendWebPushSafely(target, payload);
 
         setRuntimeDelivered(event.event_id, subscription.id);
-        await markPushDeliverySuccess(subscription.id);
+        await markPushDeliverySuccess(subscription);
         await createPushDeliveryLog({
           eventId: event.event_id,
           subscriptionId: subscription.id,
@@ -127,7 +137,11 @@ export async function sendOrderCreatedPush(event: OrderCreatedEvent): Promise<vo
       } catch (error: any) {
         const statusCode = Number(error?.statusCode ?? 0) || undefined;
         const message = safePushFailureReason(error);
-        await markPushDeliveryFailure(subscription.id, message, statusCode);
+        if (statusCode === 404 || statusCode === 410) {
+          await disablePushSubscriptionIfCurrent(subscription, { reason: message, statusCode });
+        } else {
+          await markPushDeliveryFailure(subscription, message, statusCode);
+        }
         await createPushDeliveryLog({
           eventId: event.event_id,
           subscriptionId: subscription.id,
@@ -135,10 +149,6 @@ export async function sendOrderCreatedPush(event: OrderCreatedEvent): Promise<vo
           statusCode,
           errorMessage: message,
         });
-
-        if (statusCode === 404 || statusCode === 410) {
-          await disablePushSubscriptionByEndpoint(subscription.endpoint);
-        }
       }
     })
   );

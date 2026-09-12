@@ -25,7 +25,7 @@ await withTestDatabase(async ({ sql, file }) => {
   const legacyFinal = legacyPlan.phase4AfterLegacyDrain;
   assert.deepEqual([...order].sort(), (await readdir(migrations)).filter(name => name.endsWith('.sql')).sort());
   assert(Array.isArray(legacyPhase1) && Array.isArray(legacyFinal));
-  assert.equal(legacyPhase1.length, 31, 'Phase 1 includes the additive private-defaults and outbound-message migrations');
+  assert.equal(legacyPhase1.length, 32, 'Phase 1 includes private defaults, outbound messages and the active push-endpoint guard');
   assert(!legacyPhase1.includes('2026-08-19-atomic-order-creation.sql'));
   assert(!legacyPhase1.includes('2026-09-08-checkout-rollout.sql'));
   assert.deepEqual(legacyFinal, ['2026-09-09-checkout-contract-finalization.sql']);
@@ -50,6 +50,10 @@ await withTestDatabase(async ({ sql, file }) => {
     return applied;
   }
   await apply(mainNames);
+  const conflictedPushEndpoint = 'https://fcm.googleapis.com/fcm/send/pre-upgrade-conflict';
+  await sql(`INSERT INTO admin_push_subscriptions(id,admin_id,endpoint,p256dh,auth)
+    VALUES ('${randomUUID()}','legacy-push-a',${quote(conflictedPushEndpoint)},'key-a','auth-a'),
+      ('${randomUUID()}','legacy-push-b',${quote(conflictedPushEndpoint)},'key-b','auth-b')`);
   const location = '2f1a9c4e-6b7d-4e8f-a901-b2c3d4e5f602';
   const legacyId = randomUUID();
   await sql(`INSERT INTO orders(id, order_number, customer_phone, location_id, stripe_checkout_session_id, total_ore)
@@ -57,12 +61,52 @@ await withTestDatabase(async ({ sql, file }) => {
     INSERT INTO order_items(id, order_id, product_name_snapshot, quantity, price_ore)
     VALUES ('${randomUUID()}', '${legacyId}', 'Pre-upgrade synthetic cake', 1, 1234)`);
   const ownershipMigration = '2026-09-08-stripe-event-ownership.sql';
-  await apply(legacyPhase1.filter(name => name !== ownershipMigration));
+  const pushOwnershipMigration = '20260912193000_single_active_push_endpoint.sql';
+  await apply(legacyPhase1.filter(name =>
+    name !== ownershipMigration && name !== pushOwnershipMigration));
   await sql(`INSERT INTO payment_provider_events(provider,event_id,event_type,livemode,status,attempts,lease_expires_at,outcome)
     VALUES ('stripe','evt_legacy_first','test',false,'processing',1,now()+interval '5 minutes',NULL),
     ('stripe','evt_legacy_retry','test',false,'processing',2,now()-interval '1 second',NULL),
     ('stripe','evt_legacy_done','test',false,'processed',1,NULL,'preserved')`);
-  await apply(legacyPhase1);
+  await apply([ownershipMigration]);
+  await file(path.join(repositoryRoot,'backend/src/db/verification/verify-security-metadata.sql'), {
+    expected_accounting_profile: 'secured-ledgers',
+  });
+  await file(path.join(repositoryRoot,'backend/src/db/verification/verify-restored-database.sql'), {
+    expected_accounting_profile: 'secured-ledgers',
+  });
+  await apply([pushOwnershipMigration]);
+  assert.equal(await sql(`SELECT count(*) FROM admin_push_subscriptions
+    WHERE endpoint=${quote(conflictedPushEndpoint)} AND disabled_at IS NULL`),'0',
+    'An ambiguous pre-upgrade endpoint must be disabled for every account');
+  assert.equal(await sql(`SELECT count(*) FROM admin_push_subscriptions
+    WHERE endpoint=${quote(conflictedPushEndpoint)} AND disabled_at IS NOT NULL`),'2');
+  assert.equal(await sql(`SELECT count(*) FROM pg_indexes
+    WHERE schemaname='public' AND indexname='admin_push_subscriptions_active_endpoint_uq'`),'1');
+  await sql(`INSERT INTO admin_users(id,email,password_hash)
+    VALUES ('legacy-push-a','legacy-push-a@example.test','synthetic'),
+      ('legacy-push-b','legacy-push-b@example.test','synthetic'),
+      ('legacy-push-final','legacy-push-final@example.test','synthetic')`);
+  const registerPush = (adminId, tokenVersion = 1) => `SET ROLE service_role;
+    SELECT admin_id FROM public.register_admin_push_subscription(
+      ${quote(adminId)},${tokenVersion},${quote(conflictedPushEndpoint)},'new-p256dh','new-auth',NULL,'Synthetic tablet')`;
+  const concurrentPushRegistrations = await Promise.all([
+    sql(registerPush('legacy-push-a')),
+    sql(registerPush('legacy-push-b')),
+  ]);
+  assert.deepEqual(new Set(concurrentPushRegistrations),new Set(['legacy-push-a','legacy-push-b']));
+  assert.equal(await sql(`SELECT count(*) FROM admin_push_subscriptions
+    WHERE endpoint=${quote(conflictedPushEndpoint)} AND disabled_at IS NULL`),'1',
+    'Concurrent registration must leave exactly one active owner');
+  assert.equal(await sql(registerPush('legacy-push-final')),'legacy-push-final');
+  assert.equal(await sql(`SELECT admin_id FROM admin_push_subscriptions
+    WHERE endpoint=${quote(conflictedPushEndpoint)} AND disabled_at IS NULL`),'legacy-push-final',
+    'A later registration must atomically transfer the endpoint');
+  await sql("UPDATE admin_users SET token_version=2 WHERE id='legacy-push-final'");
+  await assert.rejects(sql(registerPush('legacy-push-final', 1)), /stale admin session/);
+  assert.equal(await sql(`SELECT admin_id FROM admin_push_subscriptions
+    WHERE endpoint=${quote(conflictedPushEndpoint)} AND disabled_at IS NULL`),'legacy-push-final',
+    'A stale session must not mutate the active endpoint owner');
   await file(path.join(repositoryRoot,'backend/test/fixtures/stripe-event-ownership.sql'));
   await file(path.join(repositoryRoot,'backend/test/fixtures/online-cancellation-boundary.sql'));
   await file(path.join(repositoryRoot,'backend/src/db/verification/verify-restored-database.sql'), {

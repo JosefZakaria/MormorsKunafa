@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import type { AdminRole } from '@shared/types';
 import { adminApi } from '../services/api';
+import { getCurrentAdminPushEndpoint } from '../services/pwa';
 import { LEGACY_STORAGE_KEYS, removePersistentValue } from '../utils/browserStorage';
 
 interface AdminInfo {
@@ -79,7 +80,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
 
     const logout = async () => {
-        await adminApi.logout();
+        const pushEndpoint = await getCurrentAdminPushEndpoint();
+        await adminApi.logout(pushEndpoint);
         setIsAuthenticated(false);
         setAdmin(null);
     };

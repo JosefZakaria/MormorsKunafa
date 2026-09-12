@@ -91,6 +91,25 @@ BEGIN
 END
 $$;
 
+DO $$
+DECLARE duplicate_active_push_endpoints bigint;
+BEGIN
+  IF to_regclass('public.admin_push_subscriptions_active_endpoint_uq') IS NULL THEN RETURN; END IF;
+  SELECT count(*) INTO duplicate_active_push_endpoints
+  FROM (
+    SELECT endpoint
+    FROM public.admin_push_subscriptions
+    WHERE disabled_at IS NULL
+    GROUP BY endpoint
+    HAVING count(*) > 1
+  ) AS conflicts;
+  IF duplicate_active_push_endpoints <> 0 THEN
+    RAISE EXCEPTION 'Push-subscription isolation check failed: % ambiguous active endpoints',
+      duplicate_active_push_endpoints;
+  END IF;
+END
+$$;
+
 SELECT count(*) AS duplicate_order_numbers
 FROM (
   SELECT order_number

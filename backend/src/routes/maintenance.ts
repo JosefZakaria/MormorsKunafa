@@ -107,7 +107,7 @@ router.get(
   }
 );
 
-router.post(
+router.get(
   '/process-outbound-messages',
   requireMaintenanceAuthorization,
   async (_req: Request, res: Response) => {

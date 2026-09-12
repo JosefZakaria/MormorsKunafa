@@ -9,6 +9,7 @@ const checkoutContractHeader = {'X-Checkout-Contract':'order-v2'};
 await withTestDatabase(async db => {
   await initializeSyntheticDatabase(db);
   const { app, sessions, stripe, refunds, faults, expireRefundKeys } = await createSyntheticApp(db);
+  const pushRepository = await import('../backend/dist/db/pushSubscriptionsRepository.js');
   const server = app.listen(0,'127.0.0.1');
   await new Promise(resolve => server.once('listening',resolve));
   const origin = `http://127.0.0.1:${server.address().port}`;
@@ -189,10 +190,10 @@ await withTestDatabase(async db => {
     }
     const maintenanceSecret='synthetic-maintenance-secret-with-32-bytes';
     process.env.CRON_SECRET=maintenanceSecret;
-    const deniedOutboundRun=await call('/api/internal/maintenance/process-outbound-messages',{});
+    const deniedOutboundRun=await call('/api/internal/maintenance/process-outbound-messages');
     assert.equal(deniedOutboundRun.status,401,JSON.stringify(deniedOutboundRun.data));
     assert.match(deniedOutboundRun.headers.get('cache-control'),/private.*no-store/);
-    const outboundRun=await call('/api/internal/maintenance/process-outbound-messages',{}, {
+    const outboundRun=await call('/api/internal/maintenance/process-outbound-messages',undefined, {
       authorization:`Bearer ${maintenanceSecret}`,
     });
     assert.equal(outboundRun.status,200,JSON.stringify(outboundRun.data));
@@ -356,6 +357,60 @@ await withTestDatabase(async db => {
     assert.equal((await call('/api/admin/push-subscriptions',undefined,adminHeaders)).data.length,1,'Another admin cannot disable this subscription');
     assert.equal((await call(`/api/admin/push-subscriptions/${pushSaved.data.id}`,undefined,adminHeaders,'DELETE')).status,204);
     assert.equal((await call('/api/admin/push-subscriptions',undefined,adminHeaders)).data.length,0);
+    const transferredPushBody={...pushBody,subscription:{...pushBody.subscription,
+      endpoint:'https://fcm.googleapis.com/fcm/send/synthetic-transfer'}};
+    assert.equal((await call('/api/admin/push-subscriptions',transferredPushBody,adminHeaders)).status,201);
+    const stalePushSnapshot=(await pushRepository.listActivePushSubscriptions('mollevangen-test'))
+      .find(subscription=>subscription.endpoint===transferredPushBody.subscription.endpoint);
+    assert(stalePushSnapshot,'Expected a listed push subscription before transfer');
+    assert.equal(await pushRepository.isPushSubscriptionCurrent(stalePushSnapshot),true);
+    assert.equal((await call('/api/admin/push-subscriptions',transferredPushBody,ownerHeaders)).status,201);
+    assert.equal(await pushRepository.isPushSubscriptionCurrent(stalePushSnapshot),false,
+      'A delivery snapshot must become stale when another account takes the endpoint');
+    await pushRepository.disablePushSubscriptionIfCurrent(stalePushSnapshot);
+    assert.equal(await db.sql(`SELECT count(*) FROM admin_push_subscriptions
+      WHERE endpoint=${literal(transferredPushBody.subscription.endpoint)} AND disabled_at IS NULL`),'1');
+    assert.equal(await db.sql(`SELECT admin_id FROM admin_push_subscriptions
+      WHERE endpoint=${literal(transferredPushBody.subscription.endpoint)} AND disabled_at IS NULL`),'owner-test');
+    assert.equal((await call('/api/admin/push-subscriptions',undefined,adminHeaders)).data.length,0,
+      'The old account must lose an endpoint transferred in the same browser');
+    const concurrentPushBody={...pushBody,subscription:{...pushBody.subscription,
+      endpoint:'https://fcm.googleapis.com/fcm/send/synthetic-concurrent'}};
+    const concurrentPushRegistrations=await Promise.all([
+      call('/api/admin/push-subscriptions',concurrentPushBody,adminHeaders),
+      call('/api/admin/push-subscriptions',concurrentPushBody,hojaHeaders),
+    ]);
+    assert(concurrentPushRegistrations.every(response=>response.status===201),JSON.stringify(concurrentPushRegistrations));
+    assert.equal(await db.sql(`SELECT count(*) FROM admin_push_subscriptions
+      WHERE endpoint=${literal(concurrentPushBody.subscription.endpoint)} AND disabled_at IS NULL`),'1',
+      'Concurrent account registration must leave exactly one active binding');
+    assert.equal((await call('/api/admin/push-subscriptions',concurrentPushBody,ownerHeaders)).status,201);
+    assert.equal(await db.sql(`SELECT admin_id FROM admin_push_subscriptions
+      WHERE endpoint=${literal(concurrentPushBody.subscription.endpoint)} AND disabled_at IS NULL`),'owner-test');
+    const foreignPushBody={...pushBody,subscription:{...pushBody.subscription,
+      endpoint:'https://fcm.googleapis.com/fcm/send/synthetic-foreign-logout'}};
+    assert.equal((await call('/api/admin/push-subscriptions',foreignPushBody,adminHeaders)).status,201);
+    assert.equal((await call('/api/admin/logout',{pushEndpoint:foreignPushBody.subscription.endpoint},hojaHeaders)).status,204);
+    assert.equal(await db.sql(`SELECT admin_id FROM admin_push_subscriptions
+      WHERE endpoint=${literal(foreignPushBody.subscription.endpoint)} AND disabled_at IS NULL`),'mollevangen-test',
+      'Logout must not disable another account\'s endpoint');
+    const hojaRelogin = await call('/api/admin/login',{email:'hoja@example.test',password:TEST_PASSWORD});
+    assert.equal(hojaRelogin.status,200,JSON.stringify(hojaRelogin.data));
+    const hojaReloginCookies=hojaRelogin.headers.getSetCookie().map(s=>s.split(';')[0]).join('; ');
+    const hojaReloginHeaders={cookie:hojaReloginCookies,
+      'x-csrf-token':decodeURIComponent(hojaReloginCookies.match(/mk_csrf=([^;]+)/)[1])};
+    assert.equal((await call('/api/admin/logout',{
+      pushEndpoint:'https://unsupported-provider.example.test/push',
+    },hojaReloginHeaders)).status,204,
+      'An unallowlisted browser endpoint must not block session revocation');
+    assert.equal((await call('/api/admin/session',undefined,hojaReloginHeaders)).status,401);
+    const hojaLegacyRelogin = await call('/api/admin/login',{email:'hoja@example.test',password:TEST_PASSWORD});
+    assert.equal(hojaLegacyRelogin.status,200,JSON.stringify(hojaLegacyRelogin.data));
+    const hojaLegacyCookies=hojaLegacyRelogin.headers.getSetCookie().map(s=>s.split(';')[0]).join('; ');
+    const hojaLegacyHeaders={cookie:hojaLegacyCookies,
+      'x-csrf-token':decodeURIComponent(hojaLegacyCookies.match(/mk_csrf=([^;]+)/)[1])};
+    assert.equal((await call('/api/admin/logout',{},hojaLegacyHeaders)).status,204,
+      'Older clients without a push endpoint must still revoke their session');
     const cancelBody={password:TEST_PASSWORD,cancellationReason:'Synthetic cancellation'};
     assert.equal((await call(`/api/orders/admin/${id}/cancel`,cancelBody,ownerHeaders)).status,409);
     const pending=await newOrder(orderBody);
@@ -428,24 +483,71 @@ await withTestDatabase(async db => {
     const preorder=await newOrder({...orderBody,scheduledTime:new Date(Date.now()+30*86400000).toISOString().slice(0,10)+'T14:00'});
     assert.equal(preorder.status,201,JSON.stringify(preorder.data));
     assert.equal(await db.sql(`SELECT order_status_token_expires_at > scheduled_at + interval '6 days' FROM orders WHERE id='${preorder.data.id}'`),'t');
-    await db.sql("UPDATE admin_users SET token_version=token_version+1 WHERE id='mollevangen-test'");
-    assert.equal((await call('/api/admin/session',undefined,adminHeaders)).status,401);
+    const racingPushBody={...pushBody,subscription:{...pushBody.subscription,
+      endpoint:'https://fcm.googleapis.com/fcm/send/synthetic-register-logout-race'}};
+    const registrationBlocker=db.sql(`BEGIN;
+      SELECT pg_advisory_xact_lock(hashtextextended(${literal(racingPushBody.subscription.endpoint)},0));
+      SELECT pg_sleep(4);
+      COMMIT`);
+    let blockerReady=false;
+    for (let attempt=0;attempt<80 && !blockerReady;attempt++) {
+      blockerReady=(await db.sql("SELECT count(*) FROM pg_locks WHERE locktype='advisory' AND granted"))!=='0';
+      if (!blockerReady) await new Promise(resolve=>setTimeout(resolve,50));
+    }
+    assert(blockerReady,'Registration race blocker did not acquire its advisory lock');
+    const racingRegistration=call('/api/admin/push-subscriptions',racingPushBody,adminHeaders);
+    let registrationWaiting=false;
+    for (let attempt=0;attempt<60 && !registrationWaiting;attempt++) {
+      registrationWaiting=(await db.sql("SELECT count(*) FROM pg_locks WHERE locktype='advisory' AND NOT granted"))!=='0';
+      if (!registrationWaiting) await new Promise(resolve=>setTimeout(resolve,50));
+    }
+    const racingLogout=call('/api/admin/logout',{
+      pushEndpoint:racingPushBody.subscription.endpoint,
+    },adminHeaders);
+    const [,registrationResult,logoutResult]=await Promise.all([
+      registrationBlocker,racingRegistration,racingLogout,
+    ]);
+    assert(registrationWaiting,'Registration did not reach the barrier before logout');
+    assert.equal(registrationResult.status,201,JSON.stringify(registrationResult.data));
+    assert.equal(logoutResult.status,204,JSON.stringify(logoutResult.data));
+    assert.equal(await db.sql(`SELECT count(*) FROM admin_push_subscriptions
+      WHERE endpoint=${literal(racingPushBody.subscription.endpoint)} AND disabled_at IS NULL`),'0',
+      'Logout must win after an already authenticated registration completes');
+    assert.equal((await call('/api/admin/session',undefined,adminHeaders)).status,401,
+      'The registration race must not preserve the old session');
     assert.equal((await call('/api/admin/logout',{}, {cookie:ownerCookies})).status,403);
     await db.sql(`CREATE FUNCTION test_fail_revocation() RETURNS trigger LANGUAGE plpgsql AS $body$
       BEGIN RAISE EXCEPTION 'synthetic revocation unavailable'; END; $body$;
       CREATE TRIGGER test_fail_revocation BEFORE UPDATE OF token_version ON admin_users FOR EACH ROW EXECUTE FUNCTION test_fail_revocation()`);
-    const failedLogout=await call('/api/admin/logout',{},ownerHeaders);
+    const logoutPushA={...pushBody,subscription:{...pushBody.subscription,
+      endpoint:'https://fcm.googleapis.com/fcm/send/synthetic-logout-a'}};
+    const logoutPushB={...pushBody,subscription:{...pushBody.subscription,
+      endpoint:'https://fcm.googleapis.com/fcm/send/synthetic-logout-b'}};
+    assert.equal((await call('/api/admin/push-subscriptions',logoutPushA,ownerHeaders)).status,201);
+    assert.equal((await call('/api/admin/push-subscriptions',logoutPushB,ownerHeaders)).status,201);
+    const failedLogout=await call('/api/admin/logout',{pushEndpoint:logoutPushA.subscription.endpoint},ownerHeaders);
     assert.equal(failedLogout.status,503);
     assert.equal(failedLogout.headers.getSetCookie().length,0,'Keep credentials for a failed revocation retry');
+    assert.equal(await db.sql(`SELECT count(*) FROM admin_push_subscriptions
+      WHERE endpoint IN (${literal(logoutPushA.subscription.endpoint)},${literal(logoutPushB.subscription.endpoint)})
+        AND disabled_at IS NULL`),'2','A failed logout must not partially disable this device');
     assert.equal(await db.sql("SELECT count(*) FROM security_audit_log WHERE actor_admin_id='owner-test' AND action='admin_logout' AND outcome='failed'"),'1');
     assert.equal((await call('/api/admin/session',undefined,ownerHeaders)).status,200);
     await db.sql('DROP TRIGGER test_fail_revocation ON admin_users; DROP FUNCTION test_fail_revocation()');
     // Disabled accounts must also be able to irrevocably end their signed session.
     await db.sql("UPDATE admin_users SET is_active=false WHERE id='owner-test'");
-    assert.equal((await call('/api/admin/logout',{},ownerHeaders)).status,204);
+    assert.equal((await call('/api/admin/logout',{pushEndpoint:logoutPushA.subscription.endpoint},ownerHeaders)).status,204);
+    assert.equal(await db.sql(`SELECT count(*) FROM admin_push_subscriptions
+      WHERE endpoint=${literal(logoutPushA.subscription.endpoint)} AND disabled_at IS NULL`),'0');
+    assert.equal(await db.sql(`SELECT count(*) FROM admin_push_subscriptions
+      WHERE endpoint=${literal(logoutPushB.subscription.endpoint)} AND disabled_at IS NULL`),'1',
+      'Logout must disable only the endpoint sent by the current device');
     await db.sql("UPDATE admin_users SET is_active=true WHERE id='owner-test'");
     assert.equal((await call('/api/admin/session',undefined,ownerHeaders)).status,401);
-    assert.equal((await call('/api/admin/logout',{},ownerHeaders)).status,204,'Already revoked retry succeeds without restoring access');
+    assert.equal((await call('/api/admin/logout',{pushEndpoint:logoutPushB.subscription.endpoint},ownerHeaders)).status,204,
+      'Already revoked retry succeeds without restoring access');
+    assert.equal(await db.sql(`SELECT count(*) FROM admin_push_subscriptions
+      WHERE endpoint=${literal(logoutPushB.subscription.endpoint)} AND disabled_at IS NULL`),'0');
     console.log('Verified real HTTP routes + PostgreSQL: server pricing, replay, token privacy, concurrent checkout/confirmation, both locations, pauses/stock/hidden products, scoped refunds/status, CSRF and session revocation.');
   } finally { server.closeAllConnections(); await new Promise(resolve=>server.close(resolve)); }
 });

@@ -7,6 +7,10 @@
     {
       "path": "/api/internal/maintenance/cleanup-uninitiated-checkout-drafts",
       "schedule": "17 3 * * *"
+    },
+    {
+      "path": "/api/internal/maintenance/process-outbound-messages",
+      "schedule": "* * * * *"
     }
   ],
   "rewrites": [

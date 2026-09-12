@@ -19,12 +19,15 @@ repeating staff alarm are now release requirements. They are not exclusions.
 Real test delivery may use only the owner and named staff recipients after cost
 and recipient approval; no new delivery-order SMS is to be added.
 
-The new local final candidate passed clean `npm ci` and `npm run check`, including
-206/206 backend tests, the web build and mobile typecheck. Expo Doctor passed
-21/21; Android and iOS exports succeeded. `npm audit` reports 0 critical, 0 high
-and 14 moderate, with no breaking automatic fix applied. `test:db`, `test:api`,
-PostgreSQL isolation and backup/restore passed. Targeted admin Playwright passed
-4/4 and the full Playwright suite passed 22/22. None of these local results
+The unchanged dependency lock remains installed from the prior clean `npm ci`.
+On the current working tree, `npm run check` passed with 207/207 backend tests,
+the web build and mobile typecheck. `test:db`, the complete `test:api`, PostgreSQL
+isolation and backup/restore passed; offline Android/iOS exports succeeded and
+the full Playwright suite passed 24/24. Expo Doctor passed 19/21 offline; its
+Expo API and React Native Directory checks remain blocked until external reads
+are authorized. The prior online run on the same dependency lock passed 21/21,
+and the prior audit reported 0 critical, 0 high and 14 moderate; neither external
+read was repeated and no automatic fix was applied. None of these local results
 closes a hosted checkbox or proves Production readiness.
 
 Local backup/security correction `eb2cd50` changes nine files (+485/-12). Its
@@ -45,10 +48,11 @@ route are also present. These changes are **implemented and verified locally**
 by the matrix above. Scheduling the route, live provider/push behavior and the
 complete physical background-alarm chain remain unverified. A prior full run
 correctly exposed a test regression when the active alarm blocked logout; the
-test was corrected without hiding or weakening the alarm, after which targeted
-admin Playwright passed 4/4 and the full suite passed 22/22.
+test was corrected without hiding or weakening the alarm. The current full suite
+passes 24/24, including shared-browser endpoint transfer and fail-soft logout
+after an unsupported push-provider registration is rejected.
 
-The final local Codex Security diff scan
+The prior local Codex Security diff scan
 `8a3fdec0-93a2-4fcb-a10e-3d1cf051aced` sealed snapshot
 `codex-security-snapshot/v1:sha256:95f4bc1909b3e0c7ff13d046f4c7c405f12b616c912c958508dc8dd642f6a6f9`
 with complete 33/33 inventory coverage: 0 critical, 0 high, 0 medium and 1 low.
@@ -56,35 +60,38 @@ Three other candidates were suppressed after validation. The low finding is a
 stale shared-browser Web Push binding across sequential staff/location accounts;
 it exposes only order ID/number/time and does not bypass server authorization,
 but it needs remediation or an explicit owner risk decision before shared-account
-device use. The scan also led to correction and re-test of retryable Resend
-transport errors and delivery-order failure-alert scope; 206/206 backend tests
-and the full API suite passed after those corrections.
+device use. The current working tree remediates that finding; the exact candidate
+commit still requires its own final scan. The prior scan also led to correction
+and re-test of retryable Resend transport errors and delivery-order failure-alert
+scope; the full API suite passed after those corrections.
 
 ## Current status classification
 
 ### Verified
 
-- The new local final candidate's install, 206/206 backend tests, web/mobile
-  builds and typechecks, Doctor 21/21, both exports, database/API/isolation,
-  independent A/B restore, targeted admin 4/4 and full browser 22/22 results.
+- The current local candidate's 207/207 backend tests, web/mobile builds and
+  typechecks, both offline exports, database/API/isolation, independent A/B
+  restore and full browser 24/24 results. Doctor is 19/21 offline with two
+  explicitly external checks pending.
 - The local timer/preorder/order-acceptance, queue/alarm, durable outbox, worker
   and protected maintenance-route behavior within synthetic automated tests.
 - Historical local evidence on `ec04965`, within its bounded unchanged scope.
 - Repository-level fail-closed Preview routing and the explicit legacy migration
   manifests. These do not prove the connected Vercel projects or databases.
 - The prior sealed scan facts and documented checkpoint discrepancy; see below.
-- Final local security snapshot coverage of 33/33 inventory items with no
-  critical, high or medium finding; one low Web Push account-binding finding is
-  open and recorded below.
+- The previous local security snapshot covered 33/33 inventory items with no
+  critical, high or medium finding and one low Web Push account-binding finding.
+  The current local candidate remediates that finding; a new final scan on the
+  exact release commit remains mandatory.
 
 ### Remaining
 
 - Freeze the reviewed source snapshot as an exact candidate commit.
-- Remediate or explicitly accept the low stale Web Push binding before a shared
-  device is used sequentially with differently scoped accounts.
+- Verify the Web Push conflict quarantine, atomic account transfer, concurrent
+  registration and endpoint-specific logout on the exact release commit.
 - Complete the route audit, including every old writer, function, deployment
   route and alias, before cutover.
-- Configure and verify scheduling for protected `POST
+- Verify the configured every-minute schedule for protected `GET
   /api/internal/maintenance/process-outbound-messages`.
 - Run the physical Android alarm matrix and live allowlisted provider/push tests.
 
@@ -100,22 +107,23 @@ and the full API suite passed after those corrections.
 
 ### Requires owner decision
 
-- Backup option, budget, accepted RPO/RTO, retention and test-copy disposal.
-- Backup alarm recipient/reserve operator, external test recipients and costs.
+- Authorization to verify the free Supabase B slot, install `age`, access the
+  complete source database/`site-media`, use private Google One and later delete B.
+- External test recipients and email/SMS/card costs before any real send or buy.
 - Staff/device availability, checkout-stop date, abort point and final release.
 - Confirmation of the named location accounts for each shop tablet. Store
   tablets must not use the owner account.
-- Disposition of the low stale Web Push account-binding finding.
+- Final disposition of the Web Push remediation after the exact-commit scan.
 - The 14 moderate advisories and real accounting/archive evidence. Mutating
   retention remains disabled. Swish deferral is already decided.
 
 ## Security-scan status
 
-Final scan `8a3fdec0-93a2-4fcb-a10e-3d1cf051aced` is formally complete for the
-current source snapshot: all 33/33 inventory items are closed, three candidates
-were suppressed after validation and one low finding remains open. There are no
-critical, high or medium findings. Documentation-only updates made after this
-snapshot do not change the reviewed source candidate.
+Prior scan `8a3fdec0-93a2-4fcb-a10e-3d1cf051aced` is formally complete for its
+historical source snapshot: all 33/33 inventory items were closed, three
+candidates were suppressed after validation and one low finding remained. There
+were no critical, high or medium findings. The current source changes remediate
+that low finding and therefore require a new exact-commit scan.
 
 Sealed scan `eab014d1-3da0-4ed5-a3e0-fe8e67e5b403` covered the 315 frozen diff
 paths through `2d200f0`; discovery, validation and attack analysis finished with
@@ -128,7 +136,7 @@ The separate `coverage=complete` value in recorded scanner usage metadata is a
 token-accounting field, not code-coverage status. An older scan's
 `token_record_invalid` partial result is separate historical evidence. This
 discrepancy remains visible as historical evidence but does not qualify or
-replace the formally complete final scan above.
+replace the formally complete historical scan above.
 
 Any later authorized hosted rehearsal must use newly created, disposable test
 resources containing synthetic names,
@@ -210,10 +218,10 @@ schema write or payment initialization.
   writers/aliases are drained before Phase 4.
 - [ ] Apply only pending migrations with the configured five-second lock timeout.
   Record `ON_ERROR_STOP`, source file hashes, UTC start/end, lock duration, blocked
-  sessions and exact migration IDs. The current manifests contain **30 Phase 1
-  steps plus one Phase 4 step**, and **33 fresh-install files**. The additional
-  Phase 1 step is `2026-09-11-private-function-defaults.sql`; it complements the
-  original 29-step objective without rewriting an applied migration.
+  sessions and exact migration IDs. The current manifests contain **32 Phase 1
+  steps plus one Phase 4 step**, and **35 fresh-install files**. Private-function
+  defaults, durable outbound messages and the single-active push-endpoint guard
+  complement the original 29-step objective without rewriting applied migrations.
 - [ ] Stop on unknown migration, checksum mismatch, incomplete index or invariant
   failure. Prove every old writer/alias is drained before the separate Phase 4.
 - [ ] Verify old and new rows coexist with unchanged order IDs/numbers, gross
@@ -246,89 +254,51 @@ denied; historical financial fields and the new VAT snapshots remain readable.
 
 ## 3. Protected backup and independent restore
 
-### Owner decision: two comparable options
+### Decided one-time release copy
 
-Prices below are public USD list prices checked 2026-09-12, excluding tax,
-currency conversion, excess usage, email service and operator labour. Production
-is recorded as Supabase Free, so the totals show the cost from that baseline.
-Recheck prices before purchase.
+The former recurring PITR/R2 alternatives are superseded. The owner has chosen
+a one-time, no-additional-subscription release copy using the available Supabase
+Free project slot and existing private Google One storage. Before any provider
+access, first verify that the free Supabase B slot exists; if it does not, stop
+and ask the owner again instead of creating or purchasing a resource.
 
-| Property | A — Supabase Pro + PITR + independent copy | B — own automated export to private R2 |
-| --- | --- | --- |
-| Recurring base cost | Pro $25/month + Small compute $15 minus the included $10 compute credit + 7-day PITR about $100 = **about $130/month**. A continuously available extra Micro restore project makes it about **$140/month**. | Supabase Free $0 + the selected private runner and monitoring. R2 Standard is $0 within 10 GB-month, 1M writes and 10M reads; after that storage is $0.015/GB-month. Exact total is **runner + monitoring + restore target + R2 usage** and cannot be approved until those are selected. |
-| Proposed independent interval | Encrypted public-schema export and Storage copy every hour, plus Supabase PITR. | Encrypted public-schema export every 15 minutes while orders are open, plus an independently scheduled Storage/Auth recovery export. The interval must be relaxed if load testing fails. |
-| Recovery point | Supabase describes PITR as restoring to a chosen point with up-to-seconds granularity and a worst-case RPO around two minutes. A full Supabase account/provider loss can still leave up to one hour missing from the independent copy. | Up to 15 minutes of new database transactions can be lost after the last successful export; a missed job makes the gap longer. This is not equivalent to PITR and does not meet a stricter latest-order requirement. |
-| Recovery time | Unknown until a timed restore at representative size; Supabase states downtime depends on database size. | Unknown until timed full restore, object recovery and credential/role reconstruction; operator work is larger. |
-| Production load | PITR is provider-managed; the hourly logical copy still consumes database, network and runner capacity and must be measured. | Frequent full `pg_dump` runs can consume CPU, I/O, connections and network; load testing and backoff are mandatory. |
-| Main limitations | Database backup excludes Storage object bytes; custom-role passwords need reset; independent copy and key custody remain owner duties. | Current scripts are manual, public-schema-only and do not encrypt by themselves. Auth, Storage bytes, scheduling, encryption, alerts, retention and concurrency controls must all be built and operated. |
+- [ ] Pause checkout first and take the final copy immediately before PR/merge.
+- [ ] Export the complete application database: data, schema, privileges and
+  security metadata. Record tool versions and exact source identity privately.
+- [ ] Separately enumerate and copy every real object in the Supabase Storage
+  bucket `site-media`; a database backup does not contain these object bytes.
+- [ ] Package database and Storage with a manifest, aggregate object counts and
+  SHA-256 hashes for the archive components and every Storage object.
+- [ ] Install the free `age` tool only after separate owner approval. Encrypt
+  locally before upload. Never put the passphrase in Git, chat, logs or scripts.
+- [ ] The owner alone stores the passphrase in the password manager. No reserve
+  person receives it; this accepted single point of failure must remain visible.
+- [ ] Upload only the encrypted archive to a private, non-shared Google One
+  folder. Verify upload, fresh download and successful local decryption.
+- [ ] Restore the database and `site-media` objects into independent Supabase B.
+  Compare orders, order lines, amounts, payments, refunds, permissions and every
+  Storage hash against the source-boundary manifest.
+- [ ] Keep Supabase B for seven days. Delete it only after a separate explicit
+  owner approval and create a one-time reminder when that approval is given.
+- [ ] Retain the encrypted Google One archive long-term.
 
-References: [Supabase backups](https://supabase.com/docs/guides/platform/backups),
-[Supabase pricing](https://supabase.com/pricing), and
-[Cloudflare R2 pricing](https://developers.cloudflare.com/r2/pricing/).
+This is extra protection through release day, not a recurring backup. It cannot
+contain future orders and therefore cannot guarantee recovery from future data
+loss. Supabase Free has no automatic backups, and Storage object bytes must be
+copied separately. References: [Supabase backups](https://supabase.com/docs/guides/platform/backups)
+and [Supabase pricing](https://supabase.com/pricing).
 
-Neither option is zero-loss across every failure mode. If the owner will not
-accept the stated latest-order gap at an approved price, release stays blocked
-until a continuous independent replication/journal design is costed and proven.
+The current local public-schema backup/restore harness remains useful regression
+evidence but is not sufficient for this gate: it intentionally excludes real
+Storage bytes and does not perform the required full source-to-B reconciliation.
+The release journal must distinguish that bounded synthetic result from the new
+complete database-and-Storage copy. Never restore the older release archive over
+an active database containing later orders or payments; use a compatible forward
+fix or a separately restored environment with Stripe reconciliation.
 
-For either option, approve and verify all of the following before activation:
-
-- [ ] Record the selected option, full monthly estimate, accepted database and
-  Storage RPO, target RTO, retention tiers, legal holds and deletion process.
-- [ ] Encrypt archives before upload, keep the bucket private and store the
-  encryption key separately from backup credentials and Git.
-- [ ] Monitor both failed and absent backup runs; send understandable email to
-  the owner and a named reserve person and test the alert path.
-- [ ] Define separate recovery for managed Auth, custom roles/passwords, Storage
-  metadata and Storage object bytes; a public-schema dump is not sufficient.
-- [ ] Automate a monthly restore test and an additional test before every major
-  database change. Report duration, hashes, source/target reconciliation and
-  failures without copying production data into Git, chat or ordinary tests.
-- [ ] Approve safe retention and disposal for backup artifacts and restore-test
-  copies before the first recurring job is enabled.
-
-`restore=verified_against_source_profile` currently attests the checked archive
-identity/profile, the target's internal accounting consistency and matching
-security metadata. The manifest contains no source financial counts/sums or
-data fingerprint, and the script does not compare A's economic contents with B.
-The separate source/target reconciliation below remains an open acceptance gate;
-capture its source evidence at the defined backup boundary, before later test
-payments are added. A matching security hash is not a full DDL or data fingerprint.
-
-- [ ] From disposable A only, run the guarded safety-backup script to an
-  encrypted, access-restricted location outside Git/cloud-sync. Record source
-  fingerprint, archive SHA-256, manifest format 3, exact public-table catalog,
-  `accountingProfile=secured-ledgers`, tool versions and synthetic row aggregates.
-- [ ] Require `archiveScope=public-schema-only`, `privilegesIncluded=true` and
-  `securityMetadataSha256` in the manifest. Preserve application ACLs/default
-  privileges; reject non-public/unsupported archive entries. Do not dump or
-  restore provider-managed auth/Storage schemas, object contents or large objects.
-  Verify source security metadata is unchanged across the backup boundary.
-- [ ] Independently confirm the restore target is another disposable server or
-  project with a different hostname, database, user and credential. DNS aliases
-  or a different database name on the source server do not prove isolation.
-- [ ] Restore only to independent disposable B with the guarded restore script
-  and explicitly require `secured-ledgers`. Confirm the script emits
-  `restore=verified_against_source_profile`; a partial ledger set must fail before
-  restore. Require the restored security metadata hash to match A and run the
-  security/VAT checks on B. A passing `legacy-core` compatibility test does not
-  satisfy this candidate's secured-ledger acceptance gate.
-- [ ] Confirm B's provider-created public schema/owner is preserved and the
-  archive's application ACLs are restored. Record any required future-object
-  default-privilege changes for the disposable restore operator; do not alter
-  existing provider-managed objects or assume that a public archive backs them up.
-- [ ] Reconcile counts and aggregates for orders, items, paid gross, VAT snapshots,
-  payment events, security audit, ordinary refunds, refund allocations and
-  duplicate-payment refunds against source evidence captured at A's backup
-  boundary. Record expected/observed results and mismatches separately from the
-  script's profile/metadata status; do not substitute B-only printed counts.
-- [ ] Create additional synthetic orders/payments after the backup. Demonstrate
-  that the recovery plan uses a forward fix or compatible build and never
-  restores the older archive over those newer rows.
-- [ ] Record restore duration and recovery decision, then securely destroy test
-  archives/databases under the approved test-data schedule.
-
-Expected result: the independent restore is internally consistent and the
-rollback rehearsal cannot overwrite payments accepted after the backup boundary.
+Expected result: the downloaded encrypted archive decrypts locally, the complete
+database and `site-media` restore in B match their source-boundary manifest, and
+no post-boundary payment can be overwritten.
 
 ## 4. Stripe test-mode payment matrix
 
@@ -448,13 +418,12 @@ make the customer/status page or staff order list unavailable.
 
 Record device model, Android/browser version, power/battery settings, installed
 PWA/browser mode, notification permission, operator, timestamps, order IDs and
-actual result. Test both location roles plus the mobile-data reserve phone.
+actual result. Test both location roles on their assigned real tablets.
 
 | Device/location | Order view open and visible | Another app foreground | Screen locked | Network loss and reconnect | Shared acknowledgement and next order |
 | --- | --- | --- | --- | --- | --- |
 | Höja tablet | [ ] repeating sound until `Ta emot` | [ ] repeating background alert | [ ] repeating locked-screen alert | [ ] pending order and alarm recovered | [ ] other device stops only accepted order; later order alarms |
 | Möllevången tablet | [ ] repeating sound until `Ta emot` | [ ] repeating background alert | [ ] repeating locked-screen alert | [ ] pending order and alarm recovered | [ ] other device stops only accepted order; later order alarms |
-| Reserve phone on mobile data | [ ] correct selected-location queue | [ ] repeating background alert | [ ] repeating locked-screen alert | [ ] Wi-Fi/mobile-data transition recovered | [ ] acknowledgement sync and later order verified |
 
 - [ ] Verify a Höja order never reaches or alarms Möllevången staff and vice
   versa, including push delivery and after reconnect.
@@ -468,41 +437,40 @@ Expected result: customer messages are durable and controlled, paid orders stay
 available during provider failure, and every unreceived order drives a
 location-correct repeating alarm until that exact order is accepted.
 
-## 8. Timed cutover and rollback rehearsal
+## 8. Timed release, production proof and recovery
 
-Use synthetic orders in the isolated environment. Record a single exact candidate,
-all deployment/alias identities, operator, reviewer, UTC timestamps and duration
-for each step. The checkout stop may be at most 90 minutes and must occur when
-both stores are closed with margin before reopening.
+Every step needs operator/reviewer timestamps. Any mandatory failure is NO-GO;
+the requirement must not be silently reduced.
 
-1. [ ] Inspect the actual migration ledger and file checksums. Select pending
-   steps from `legacy-transition-order.json`; never run the fresh-install track
-   against an existing database.
-2. [ ] Take the chosen protected backup, capture source financial aggregates,
-   restore it independently and apply the compatible Phase 1 database steps.
-   Prove old/new writer coexistence without lost history or conflicting numbers.
-3. [ ] Close checkout and deploy the protected backend. Old clients must receive
-   `CLIENT_UPGRADE_REQUIRED` before order/payment creation, while payments started
-   before the boundary remain reconcilable to completion.
-4. [ ] Remove or disconnect every old writing backend path, function and alias,
-   then publish the reviewed web build. Check old URLs, cached tabs and clients.
-5. [ ] Apply Phase 4 constraints only after all old writers are proven drained.
-6. [ ] Verify both-store checkout, messages, staff acknowledgement/alarm and
-   financial integrity before checkout is reopened.
+1. [ ] Choose a night window while both stores are closed, normally around
+   01:00, with at most 90 minutes of checkout downtime and a measured abort point.
+2. [ ] Pause new purchases and inventory every already-started Stripe session.
+   Preserve its order rows and keep late completions reconcilable.
+3. [ ] Take, encrypt, upload, download, decrypt and restore the final complete
+   database plus `site-media` backup. Abort if any check or time margin fails.
+4. [ ] Present the exact commit, all test results, backup evidence, migration
+   order and residual risks to the user and owner.
+5. [ ] Only after both say GO, the user creates the PR and performs merge. Codex
+   must not push, create the PR or merge it.
+6. [ ] Keep checkout paused after deployment.
+7. [ ] On both real Android shop tablets with their respective location accounts,
+   test open view, another app, locked screen, reload, network loss/reconnect,
+   acknowledgement and complete location isolation.
+8. [ ] Through the ordinary owner flow, create a clearly labelled 3 kr test item
+   and activate it in only one store at a time.
+9. [ ] Open each store very briefly under supervision, make one incognito purchase,
+   pause again, and verify order, push, sound, email and SMS. Make exactly two
+   purchases total and refund both after separate cost approval.
+10. [ ] Disable the test item. Do not delete product, order, payment or refund
+    history.
+11. [ ] If only one store passes, open only that store after user-and-owner GO;
+    keep the other paused.
+12. [ ] Follow the first open sales shift and verify at least one ordinary
+    customer order per store. If a store has no order, keep that check pending.
 
-- [ ] Create additional paid synthetic orders after the backup boundary, then
-  rehearse the reserve action without overwriting them. Never restore the older
-  archive over the active source.
-- [ ] Identify and test the exact compatible rollback build or forward-fix
-  procedure. Raw old `main` is not a valid rollback after Phase 4.
-- [ ] Measure the reserve action and set an abort point that leaves enough time
-  to execute it before the 90-minute limit and next opening. A deadline never
-  permits reopening an unsafe checkout.
-- [ ] Stop before starting the real cutover if writer/alias inventory, time
-  margin, backup evidence or reserve action is incomplete.
-
-Expected result: deployment order cannot publish an incompatible writer, and the
-tested recovery path preserves every order/payment added after backup.
+Never place an old backup over the active production database. Use a compatible
+forward fix or a separate restored environment with Stripe reconciliation, and
+keep checkout closed until data integrity is proved.
 
 ## 9. Release decision
 
@@ -520,22 +488,24 @@ tested recovery path preserves every order/payment added after backup.
   that immutable flag and do not integrate a changed main.
 - [ ] The exact candidate has passing timer/preorder, durable outbox, worker
   concurrency/retry, multi-order alarm, location isolation and reconnect tests.
-- [ ] The physical alarm matrix passes for both store tablets and the reserve
-  phone, including another app and locked screen. Any mandatory failure is NO-GO.
+- [ ] The physical alarm matrix passes for both store tablets, including another
+  app and locked screen. Any mandatory failure is NO-GO.
 - [ ] Real allowlisted order email, existing SMS and staff push delivery pass,
   while provider failure leaves payment, customer status and staff queue intact.
 - [ ] The accountant has signed the preservation matrix and legacy VAT handling.
 - [ ] The privacy owner has approved (or changed) the 90/1,095-day field selection
   and intervals. Until then both non-dry-run retention passes remain disabled.
-- [ ] The owner has approved one costed backup option, its RPO/RTO/retention,
-  reserve alarm recipient, successful restore evidence and rollback plan.
+- [ ] The complete database plus `site-media` release archive has been locally
+  `age`-encrypted, privately uploaded, downloaded, decrypted and restored in B,
+  with all required data/permission/hash comparisons passing.
 - [ ] The owner has recorded that new Swish checkout is deferred. Email, existing
   SMS, staff push and alarm are verified requirements, not accepted exclusions.
-- [ ] The timed six-step rehearsal passes within the approved stop window and has
-  a measured abort point plus tested recovery that preserves post-backup orders.
+- [ ] The twelve-step release procedure passes within the approved stop window
+  and preserves/reconciles every post-backup payment.
 - [ ] Every external section above has linked evidence and an assigned owner.
-- [ ] The normal fast-forward branch push and updated Draft PR have exact commit,
-  PR and CI links; the worktree is clean and all changes are reviewable commits.
+- [ ] The exact local commit, test evidence, backup proof, migration order and
+  residual risks have been presented. Codex has not pushed or opened a PR; the
+  user creates the PR and performs merge only after the user and owner say GO.
 
 The local stage ends with reviewable commits, a clean worktree, the final local
 test matrix and a Swedish report of results, risks and unperformed external
@@ -551,13 +521,13 @@ no permission to merge or deploy.
   first real card order's database/payment reconciliation, customer messages,
   correct-location staff receipt, alarm and acknowledgement without copying PII
   into this repository.
-- [ ] Confirm the first scheduled automatic backup, alert monitor and report, and
-  verify the next monthly restore-test date and reserve recipient.
+- [ ] Keep the encrypted Google One release archive long-term. Confirm Supabase B
+  remains available for seven days; any later deletion needs explicit approval.
 - [ ] Reconcile real sales/refunds with the bookkeeping source selected by the
   owner/accountant. Do not assume Stripe alone can reconstruct an order.
 - [ ] If a store has not yet received a real order, keep that store's check open.
   Do not claim completion or unattended monitoring.
 
 Expected result: the release is closed only after both stores, financial records,
-customer messages, staff order handling and the first automatic backup have
+customer messages, staff order handling and the verified release backup have
 direct evidence or an explicitly recorded waiting check.

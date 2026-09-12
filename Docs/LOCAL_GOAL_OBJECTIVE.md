@@ -26,20 +26,23 @@ PR-publicering, merge och deployment eftersom de kan påverka driften.
 | Betalning | Kort. Ny Swish-funktion utvecklas separat senare. |
 | Beställningssätt | Bevara alla befintliga fungerande alternativ. |
 | Kundmeddelanden | Verifierade ordermejl och befintliga SMS-flöden. Ingen ny SMS-funktion för hemleverans. |
-| Personal | Android-surfplattor med reservtelefon på mobildata. Butikssurfplattorna ska använda respektive platskonto, aldrig owner-kontot. Push- och ljudlarm ingår i releasekraven. |
-| Backup | Återkommande automatiskt skydd, separat privat lagring och provad återställning. |
+| Personal | De två riktiga Android-surfplattorna. Varje butikssurfplatta ska använda sitt platskonto, aldrig owner-kontot. Push- och ljudlarm ingår i releasekraven. Ingen reservmobil krävs. |
+| Backup | En komplett releasebackup av applikationsdatabas och verkliga `site-media`-objekt, lokalt `age`-krypterad, långtidslagrad i privat Google One och provåterställd i Supabase B. Ingen återkommande backup ingår i beslutet. |
 | Historik | Bevara order-, betalnings-, återbetalnings-, revisions- och bokföringsuppgifter. Ingen ny gallring aktiveras. |
 | Produktion | Användaren utför produktionsstegen med Codex vägledning. Användaren och ägaren godkänner release och kostnader. |
 
 ## Verifierat lokalt underlag
 
-På den nya lokala slutkandidaten lyckades ren `npm ci`. `npm run check`
-lyckades med 206/206 backendtester, webbbygge och mobiltypkontroll. Expo Doctor
-passerade 21/21, Android- och iOS-export lyckades, och `npm audit` rapporterade
-0 critical, 0 high och 14 moderate. Ingen potentiellt brytande automatisk audit-
-fix kördes. `test:db`, `test:api`, PostgreSQL-isolering och backup/restore
-lyckades. Riktade Playwrightfall för admin passerade 4/4 och hela
-Playwrightsviten passerade 22/22.
+Den oförändrade beroendelåset är installerat från den tidigare rena `npm ci`-
+körningen. På den nuvarande arbetskatalogen lyckades `npm run check` med 207/207
+backendtester, webbbygge och mobiltypkontroll. `test:db`, hela `test:api`,
+PostgreSQL-isolering och backup/restore lyckades. Android- och iOS-export
+lyckades offline och hela Playwrightsviten passerade 24/24. Expo Doctor klarade
+19/21 offline; de två återstående kontrollerna kräver Expo API/React Native
+Directory och är spärrade tills extern läsning godkänns. Den tidigare online-
+körningen på samma beroendelås passerade 21/21 och den tidigare auditen
+rapporterade 0 critical, 0 high och 14 moderate; de externa läsningarna har inte
+upprepats och ingen automatisk audit-fix kördes.
 
 Det oberoende identiska A/B-restoreprovet med separata lokala
 PostgreSQL-kluster tog **80,506 sekunder**. Källa och mål hade
@@ -50,13 +53,14 @@ full återställning av Auth/Storage-objekt eller full ekonomisk A=B-avstämning
 
 En tidigare fullkörning hittade en testregression: det korrekta, fortfarande
 aktiva orderlarmet blockerade testets logout. Testet korrigerades för det avsedda
-beteendet utan att larmet doldes eller sänktes. Därefter passerade riktat admin-
-Playwright 4/4 och full Playwright 22/22.
+beteendet utan att larmet doldes eller sänktes. Den nuvarande fulla matrisen
+passerar 24/24, inklusive kontoöverföring av push-endpoint, okänd
+pushleverantör vid logout och retry efter förlorat lyckat svar.
 
 Den första nya säkerhetsgranskningen reproducerade också två icke-säkerhets-
 relaterade driftsfel: ett Resend-transportfel utan HTTP-status klassades som
 permanent och leveransordrar kunde falla utanför ansvarig personals utskicksfel.
-Båda rättades. Därefter passerade åter 206/206 backendtester och hela
+Båda rättades. Därefter passerade hela
 `test:api`, inklusive notifieringsintegrationen.
 
 Den historiskt förseglade säkerhetsgranskningen
@@ -66,17 +70,19 @@ checkpointposter överlevde ett accepterat slututkast med `complete` och tom
 deferred-lista. Detta redovisas öppet men motiverar inte ensamt en ny full
 granskning.
 
-Den nya slutkandidaten förseglades därefter i Codex Security-scan
+Den tidigare slutkandidaten förseglades därefter i Codex Security-scan
 `8a3fdec0-93a2-4fcb-a10e-3d1cf051aced` med snapshot
 `codex-security-snapshot/v1:sha256:95f4bc1909b3e0c7ff13d046f4c7c405f12b616c912c958508dc8dd642f6a6f9`.
 Täckningen är **complete**, 33/33 inventeringsposter granskades och resultatet är
 0 critical, 0 high, 0 medium och 1 low. Tre övriga kandidater undertrycktes efter
 validering eftersom de saknade en lägre privilegierad angreppsväg eller konkret
-säkerhetspåverkan. Det öppna low-fyndet gäller att samma webbläsares
+säkerhetspåverkan. Dess low-fynd gällde att samma webbläsares
 PushSubscription kan ligga kvar för flera personal-/platskonton vid sekventiell
 användning av en delad enhet. Payloaden är begränsad till order-id, ordernummer
-och tid och navigeringen är fortsatt serverauktoriserad, men kontobindningen ska
-åtgärdas eller uttryckligen riskbedömas före delad kontoanvändning.
+och tid och navigeringen är fortsatt serverauktoriserad. Den nuvarande
+arbetskatalogen rättar bindningen med en unik aktiv endpoint, atomisk överföring,
+sessionversionslås, endpoint-specifik logout och versionskontroll före leverans;
+en ny säkerhetsgranskning på den exakta kandidatcommitten återstår.
 
 ## Verifierat i den lokala slutkandidaten
 
@@ -97,7 +103,7 @@ och tid och navigeringen är fortsatt serverauktoriserad, men kontobindningen sk
   browsermatrisen. Verkligt Android-/push-/låsskärmsbeteende återstår.
 
 Bakgrundslarm är ett releasekrav. Öppen ordervy, annan app och låst skärm ska
-provas på båda butikernas faktiska plattor och på reservtelefonen. Om upprepat
+provas på båda butikernas faktiska plattor. Om upprepat
 larm inte fungerar tillförlitligt ska arbetet stoppas för den delen och
 avgränsade alternativ med konsekvenser presenteras. Kravet får inte sänkas.
 
@@ -128,7 +134,7 @@ ska bevaras. Nya jobb, arbetare och databasändringar ska ha minsta behörighet 
 versionsstyrd kompatibilitet.
 
 Outboxens databasövergångar, claim/leasing, success/retry/uncertain/permanent-
-utfall, arbetare och skyddade `POST
+utfall, arbetare och skyddade `GET
 /api/internal/maintenance/process-outbound-messages` är implementerade och
 verifierade lokalt med syntetiska tester. Verklig schemaläggning av routen,
 provider-/pushleverans och driftlarm är fortfarande releaseblockerande.
@@ -137,14 +143,16 @@ provider-/pushleverans och driftlarm är fortfarande releaseblockerande.
 
 - frys den säkerhetsgranskade arbetskatalogen som exakt commit och slutför route
   audit för alla verkliga skrivande vägar och alias;
-- åtgärda eller fatta ett uttryckligt riskbeslut om low-fyndet för kvarvarande
-  Web Push-bindning innan en fysisk enhet används sekventiellt med olika konton;
+- verifiera den implementerade Web Push-rättningen på den slutliga exakta
+  committen: konfliktkarantän, atomisk kontoflytt, samtidighet och endpointbunden
+  logout;
 - verifiera och dokumentera schemaläggningen av den skyddade maintenance-routen;
 - genomför verkliga allowlistade mejl-, SMS- och pushprov;
-- kör hela fysiska Android-matrisen på båda butiksplattorna med platskonton och
-  reservtelefonen, inklusive annan app, låst skärm och reconnect;
-- välj backupkostnad, retention, accepterad RPO/RTO och reservperson;
-- genomför extern tidsmätt A/B-restore samt sexstegs cutover/rollback och
+- kör hela fysiska Android-matrisen på båda butiksplattorna med platskonton,
+  inklusive annan app, låst skärm och reconnect;
+- ta releasebackupen enligt den beslutade Google One-/`age`-proceduren och
+  genomför full A/B-restore av både databas och `site-media`;
+- genomför extern tidsmätt restore samt kontrollerad cutover/framåträttning och
   kontrollera samtliga verkliga skrivande routes/alias.
 
 Releasebeslutet är därför fortsatt **NO-GO**.
@@ -185,6 +193,22 @@ framåtriktad rättning som bevarar nya order och betalningar.
 Planera högst 90 minuters checkoutstopp när båda butikerna är stängda. Bestäm
 avbrytpunkten från uppmätt reservtid och starta inte utan fungerande reservåtgärd
 och marginal till öppning.
+
+Releasebackupen tas först efter att checkout har pausats och precis före PR/merge.
+Exporten ska omfatta hela applikationsdatabasen med data, schema, behörigheter
+och säkerhetsmetadata samt alla verkliga objekt i `site-media`, eftersom en
+databasdump inte innehåller Storage-objekten. Paketet ska ha manifest, objektantal
+och SHA-256-kontroller. Gratisverktyget `age` installeras först efter ett separat
+godkännande och krypteringen sker lokalt. Endast användaren sparar lösenfrasen i
+sin lösenordshanterare; att ingen reservperson har nyckeln är en uttryckligen
+accepterad ensam felpunkt. Endast det krypterade arkivet får laddas upp till en
+privat, icke-delad Google One-mapp, varefter nedladdning och dekryptering provas.
+Databas och Storage återställs i Supabase B och order, rader, belopp, betalningar,
+återbetalningar, behörigheter och filhashar jämförs. B behålls i sju dagar och
+får bara raderas efter uttryckligt godkännande; då skapas en engångspåminnelse.
+Google One-kopian behålls långsiktigt. Eftersom återkommande backup valts bort
+innehåller kopian inga framtida order och ger ingen fullständig garanti mot
+framtida dataförlust.
 
 ## Absoluta gränser
 

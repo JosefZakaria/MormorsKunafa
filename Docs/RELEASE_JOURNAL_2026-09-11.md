@@ -19,17 +19,27 @@ arbetaren, det skyddade maintenance-anropet och personalvyn för kvarstående
 utskicksfel. Detta är inte ett releasegodkännande: schemalagd körning, verklig
 leverans och hela den fysiska bakgrundslarmkedjan återstår.
 
+Det befintliga arbetsläget bevarades i den lokala kontrollpunkten `d47c6a0`.
+Efter den kontrollpunkten rättar arbetskandidaten low-fyndet för delad Web Push:
+databasen tillåter bara en aktiv ägare per exakt endpoint, gamla konflikter
+avaktiveras utan att en butik gissas fram, ny registrering flyttar endpointen
+atomiskt och logout avaktiverar bara den aktuella enhetens bindning. Vercel-
+konfigurationen schemalägger dessutom den skyddade `GET`-routen för outboxen
+varje minut. Slutlig exakt commit och säkerhetsgranskning återstår.
+
 ### Verifierat
 
-- Den nya arbetskatalogen passerade ren `npm ci` och `npm run check`: webbbygge,
-  mobiltypkontroll och 206/206 backendtester. Expo Doctor passerade 21/21,
-  Android- och iOS-export lyckades och audit gav 0 critical, 0 high och
-  14 moderate utan brytande automatisk fix.
+- Den aktuella arbetskatalogen passerade `npm run check`: webbbygge,
+  mobiltypkontroll och 207/207 backendtester. Android- och iOS-export lyckades
+  offline. Expo Doctor klarade 19/21 offline; två externa katalog-/API-kontroller
+  är avsiktligt spärrade. Den tidigare körningen på samma beroendelås passerade
+  21/21 och tidigare audit gav 0 critical, 0 high och 14 moderate utan brytande
+  automatisk fix.
 - `test:db`, `test:api`, PostgreSQL-isolering och backup/restore passerade.
   Ett nytt identiskt A/B-restoreprov tog 80,506 sekunder och verifierade
   `orders=1`, `items=1`, `paidGrossOre=100`, `audit=1`, en Storage-bucket,
   mål-sentinel samt bevarad ACL- och säkerhetsmetadata.
-- Riktat admin-Playwright passerade 4/4 och full desktop-/mobilsvit 22/22. En
+- Full desktop-/mobilsvit passerade 24/24. En
   tidigare fullkörning visade att det korrekta orderlarmet blockerade testets
   logout; testet ändrades till att ta emot ordern via produktionsflödet utan att
   dölja eller försvaga larmet.
@@ -37,12 +47,12 @@ leverans och hela den fysiska bakgrundslarmkedjan återstår.
   Resend-transportfel utan HTTP-status behövde vara retryable och
   leveransordrars utskicksfel behövde använda samma ansvarsscope som orderkön.
   Båda rättades; därefter passerade 206/206 backendtester och hela `test:api`.
-- Slutscan `8a3fdec0-93a2-4fcb-a10e-3d1cf051aced` förseglade snapshot
+- Den tidigare slutscannen `8a3fdec0-93a2-4fcb-a10e-3d1cf051aced` förseglade snapshot
   `codex-security-snapshot/v1:sha256:95f4bc1909b3e0c7ff13d046f4c7c405f12b616c912c958508dc8dd642f6a6f9`
   med complete täckning 33/33: 0 critical, 0 high, 0 medium och 1 low. Tre
-  kandidater undertrycktes efter validering. Low-fyndet gäller kvarvarande
+  kandidater undertrycktes efter validering. Low-fyndet gällde kvarvarande
   PushSubscription över sekventiella personal-/platskonton på en delad enhet;
-  payloaden är begränsad men fyndet är öppet för rättning eller riskbeslut.
+  den aktuella arbetskatalogen rättar det och väntar på ny exakt-commit-scan.
 - `ec04965` passerade den sparade lokala matrisen med Node 24.18.1/npm 11.6.2:
   ren `npm ci`, säkerhetskontroller, webbbygge, 193/193 backendtester,
   mobiltypkontroll, Doctor 21/21, Android-/iOS-export, PostgreSQL,
@@ -71,26 +81,26 @@ inte som formellt complete.
 Det separata `coverage=complete` i verktygets användningsmetadata avser
 tokenredovisning, inte kodtäckning. En äldre skannings `token_record_invalid` är
 ett annat historiskt partialresultat. Avvikelsen döljas inte, men motiverar inte
-ensamt en ny fullständig granskning. Den nya källkandidaten har nu en separat,
-formellt complete slutscan enligt resultatet ovan; efterföljande ändringar är
-endast denna dokumentuppdatering.
+ensamt en ny fullständig granskning. Den tidigare källkandidaten har en separat,
+formellt complete scan enligt resultatet ovan; den nya källkandidaten kräver en
+egen exakt-commit-granskning efter de materiella Web Push-ändringarna.
 
 ### Återstående
 
 - Frys den säkerhetsgranskade arbetskatalogen som exakt commit och slutför route
   audit mot alla verkliga skrivande vägar och alias.
-- Åtgärda eller fatta ett uttryckligt riskbeslut om low-fyndet för delad Web
-  Push-bindning före sekventiell användning av olika konton på samma enhet.
-- Schemalägg och verifiera skyddade `POST
+- Verifiera Web Push-rättningen i den slutliga säkerhetsgranskningen på exakt
+  releasecommit.
+- Verifiera externt att den schemalagda skyddade `GET
   /api/internal/maintenance/process-outbound-messages` i ett separat godkänt
   externt block; kör därefter verkliga allowlistade mejl-, SMS- och pushprov.
 - Kör den fysiska Android-matrisen på båda butiksplattorna med respektive
-  platskonto, aldrig owner-kontot, samt reservtelefonen: öppen vy, annan app,
+  platskonto, aldrig owner-kontot: öppen vy, annan app,
   låst skärm, reconnect, delad kvittering och senare order.
 - Identifiera exakt kompatibelt rollbackbygge eller framåträttning, mät reservtid
   och dokumentera avbrytpunkten.
-- Välj backupalternativ, kostnad, retention, RPO/RTO och reservperson; genomför
-  sedan extern tidsmätt restore, cutover och rollback efter nytt godkännande.
+- Genomför den beslutade kompletta, `age`-krypterade releasebackupen till privat
+  Google One och full databas-/`site-media`-restore i Supabase B.
 
 ### Blockerat
 
@@ -98,11 +108,11 @@ endast denna dokumentuppdatering.
   alias, miljöer och resursbindningar.
 - Separata Supabase A/B-, Upstash-, Stripe-test-, backend- och webbresurser.
 - Verkliga allowlistade mejl-, SMS- och pushprov.
-- Fysisk larmmatris på Höja- och Möllevången-plattorna samt reservtelefonen:
+- Fysisk larmmatris på Höja- och Möllevången-plattorna:
   ordervy öppen, annan app, låst skärm, nätavbrott/återanslutning, delad
   kvittering och platsisolering.
-- Produktionsbackup, oberoende restore, full ekonomisk avstämning, tidsmätt
-  sexstegs cutover/rollback och uppföljning av första försäljningspasset.
+- Produktionsbackup, oberoende restore, full ekonomisk avstämning, den tidsmätta
+  tolvstegsreleasen och uppföljning av första försäljningspasset.
 
 Inget av detta får påbörjas utan ett beskrivet externt arbetsblock och ägarens
 nya uttryckliga tillstånd. Push och PR-publicering räknas som externa eftersom
@@ -112,10 +122,10 @@ de kan starta CI och deployment.
 
 | Beslut | Alternativ/underlag | Status |
 | --- | --- | --- |
-| Backup | Välj alternativ A eller B nedan; godkänn total kostnad, RPO/RTO, retention och testkopior | Öppet |
-| Reservansvar | Utse reservperson för backuplarm och säkra separat nyckel-/kontoåtkomst | Öppet |
+| Backup | Komplett databas + `site-media`, lokal `age`-kryptering, privat Google One, full restore i Supabase B | Beslutad; genomförande kräver separata godkännanden |
+| Nyckelansvar | Endast användaren sparar lösenfrasen; ingen reservperson | Beslutad ensam felpunkt |
 | Integrationstest | Godkänn testresurser, mottagare för mejl/SMS/push och providerkostnader | Öppet |
-| Fysiskt larmprov | Ordna personal, båda butikers Android-plattor och reservtelefon | Öppet |
+| Fysiskt larmprov | Ordna personal och båda butikernas Android-plattor | Öppet |
 | Releasefönster | Godkänn datum, högst 90 minuters checkoutstopp, avbrytpunkt och slutlig release | Öppet |
 | Risk/ekonomi | Bedöm 14 moderate-poster och kontrollera verkliga köp, refunds, kvitton och bokföringskälla | Öppet |
 | Retention | Ingen ny gallring aktiveras; eventuella 90/1 095-dagarsregler kräver separat integritets-/redovisningsbeslut | Öppet men inte aktiverat |
@@ -124,28 +134,26 @@ Swish är beslutat uppskjutet. Ordermejl, befintliga SMS, personalpush och
 ljudlarm är däremot releasekrav och får inte längre listas som accepterade
 exkluderingar.
 
-#### Kostnadsjämförda backupalternativ
+#### Beslutad releasebackup
 
-Offentliga USD-listpriser kontrollerade 2026-09-12; skatt, valutaväxling,
-överförbrukning, vald runner, mejltjänst och operatörstid tillkommer. Verifiera
-priserna igen före köp.
+Efter att checkout pausats och precis före PR/merge exporteras hela
+applikationsdatabasen med data, schema, behörigheter och säkerhetsmetadata.
+Alla verkliga objekt i `site-media` kopieras separat. Paketet får manifest,
+objektantal och SHA-256-kontroller. `age` installeras först efter uttryckligt
+godkännande och krypterar lokalt före upload. Endast den krypterade filen laddas
+till en privat, icke-delad Google One-mapp och verifieras med nedladdning och
+dekryptering. Databas och Storage återställs i Supabase B och affärsdata,
+behörigheter och filhashar jämförs. B behålls sju dagar och raderas bara efter
+nytt godkännande; då skapas en engångspåminnelse. Den krypterade Google One-
+kopian behålls långsiktigt.
 
-| Egenskap | A — Supabase Pro + PITR + oberoende kopia | B — egen automatisk export till privat R2 |
-| --- | --- | --- |
-| Total bas | Pro $25 + Small compute $15 − $10 inkluderad compute credit + 7 dagars PITR cirka $100 = **cirka $130/månad** från nuvarande Free. Permanent extra Micro-restoremål ger cirka **$140/månad**. | Supabase Free $0 + privat runner/monitorering/restoremål. R2 är $0 inom 10 GB-månad/free operationer; därefter $0.015/GB-månad. Exakt total är öppen tills runner och datamängd valts. |
-| Intervall/RPO | Providerhanterad PITR med upp till sekundval och beskriven worst-case RPO runt två minuter; föreslagen krypterad oberoende databas-/Storagekopia varje timme ger fortfarande upp till en timmes leverantörsoberoende lucka. | Föreslaget krypterat public-schema-dump var 15:e minut när checkout är öppen; upp till 15 minuters köp kan saknas efter senaste lyckade export och längre vid missat jobb. Inte likvärdigt med PITR. |
-| RTO | Okänd tills tidsmätt restore vid representativ storlek; Supabase anger att downtime beror på databasstorlek. | Okänd tills full restore, Storage/Auth-återuppbyggnad och rollkontroll tidsmätts; större eget driftansvar. |
-| Belastning/ansvar | PITR hanteras av Supabase; ägaren ansvarar för extern kopia, Storage/Auth, nycklar, larm och månatligt restoreprov. | Täta fulla exporter belastar CPU/I/O/nät/anslutningar. Ägaren ansvarar för runner, kryptering, schemaändringar, retry, larm, retention och restore. |
-
-Källor: [Supabase backups](https://supabase.com/docs/guides/platform/backups),
-[Supabase pricing](https://supabase.com/pricing) och
-[Cloudflare R2 pricing](https://developers.cloudflare.com/r2/pricing/).
-
-Båda alternativen ska använda klientkryptering före upload, privat separat
-lagring, separat nyckelförvaring, larm för misslyckad **och utebliven** backup
-till ägare och reservperson, hantering av Auth/Storage, månatliga automatiserade
-restoreprov och godkänd lagringstid/radering. Om senaste-order-luckan inte är
-acceptabel till godkänd kostnad förblir release blockerad.
+Ingen reservperson får lösenfrasen; användarens lösenordshanterare är den enda
+nyckelförvaringen och därmed en accepterad ensam felpunkt. Återkommande backup
+är uttryckligen bortvald. Kopian innehåller därför inte framtida order och kan
+inte ge fullständig garanti mot framtida dataförlust. Supabase Free saknar
+automatiska backuper och Storage-filer måste kopieras separat. Källor:
+[Supabase backups](https://supabase.com/docs/guides/platform/backups) och
+[Supabase pricing](https://supabase.com/pricing).
 
 #### Fysisk larmmatris som ska fyllas efter godkänt prov
 
@@ -153,31 +161,40 @@ acceptabel till godkänd kostnad förblir release blockerad.
 | --- | --- | --- | --- | --- | --- |
 | Höja-platta | Ej provat | Ej provat | Ej provat | Ej provat | Ej provat |
 | Möllevången-platta | Ej provat | Ej provat | Ej provat | Ej provat | Ej provat |
-| Reservtelefon, mobildata | Ej provat | Ej provat | Ej provat | Ej provat | Ej provat |
 
 Ett underkänt obligatoriskt fall stoppar release. Om Android/webbplattformen
 inte kan ge tillförlitligt upprepat bakgrundslarm ska avgränsade alternativ och
 konsekvenser presenteras; kravet får inte tyst sänkas.
 
-#### Sexstegs cutover och rollback
+#### Tolvstegs release och produktionsprov
 
-1. Kontrollera verkligt schema, migrationsjournal och filchecksummor; välj
-   legacyspåret, aldrig fresh-install-spåret, för befintlig produktion.
-2. Ta och provåterställ vald backup, fånga ekonomisk källprofil och applicera
-   kompatibla Phase 1-steg utan att skada gammal/ny orderhistorik.
-3. Stäng checkout och aktivera skyddad backend. Avvisa gamla köp före skrivning,
-   men låt redan startade betalningar slutföras och avstämmas.
-4. Koppla bort alla gamla skrivande backendvägar/alias och publicera den granskade
-   webben; kontrollera gamla URL:er, öppna flikar och cache.
-5. Applicera Phase 4-regler först när gamla skrivare bevisligen är dränerade.
-6. Kontrollera köp för båda butiker, meddelanden, ordermottagning/larm och
-   ekonomisk integritet innan checkout öppnas.
+1. Välj nattfönster när båda butikerna är stängda, normalt omkring 01:00, med
+   högst 90 minuters checkoutstopp och mätt avbrytpunkt.
+2. Pausa nya köp och inventera påbörjade Stripe-sessioner; bevara orderrader och
+   möjlighet att avstämma sena betalningar.
+3. Ta, kryptera, ladda upp, ladda ned, dekryptera och återställ slutbackupen.
+   Avbryt om bevis eller tidsmarginal misslyckas.
+4. Presentera exakt commit, tester, backupbevis, migrationsordning och risker.
+5. Efter användarens och ägarens GO skapar användaren PR och gör merge; Codex
+   pushar, skapar eller mergar inte PR:n.
+6. Håll checkout pausad efter deployment.
+7. Prova båda riktiga Android-plattorna med sina platskonton: öppen vy, annan
+   app, låst skärm, omladdning, nätavbrott/reconnect, kvittering och platsisolering.
+8. Skapa en tydligt märkt testvara för 3 kr via ägarflödet och aktivera den i
+   bara en butik åt gången.
+9. Öppna varje butik kort och övervakat, gör ett inkognitoköp, pausa igen och
+   kontrollera order, push, ljud, mejl och SMS. Gör totalt två köp och återbetala
+   båda efter kostnadsgodkännande.
+10. Avaktivera testvaran utan att radera produkt-, order-, betalnings- eller
+    återbetalningshistorik.
+11. Om bara en butik klarar proven får bara den öppnas efter användarens och
+    ägarens GO; den andra förblir pausad.
+12. Följ första öppna försäljningspasset och verifiera minst en vanlig order per
+    butik; saknas order förblir kontrollen väntande.
 
-Genrepets rollback ska innehålla betalningar som skapats efter backupgränsen.
-Återställ aldrig den äldre backupen ovanpå aktiv databas. Rå `main` är inte en
-säker standardrollback; använd en provad kompatibel build eller framåträttning.
-Planera högst 90 minuter när båda butikerna är stängda och sätt avbrytpunkten
-från uppmätt reservtid. Starta inte utan bevisad reservåtgärd och tidsmarginal.
+Återställ aldrig en äldre backup ovanpå aktiv produktion. Använd kompatibel
+framåträttning eller separat återställd miljö med Stripe-avstämning och håll
+checkout stängd tills dataintegriteten är bevisad.
 
 ## Historisk status — 2026-09-11
 
@@ -341,15 +358,17 @@ verifieras före eventuell push, efter ett nytt uttryckligt ägarbesked.
 Inga Preview-origins har godkänts. Stripe/Upstash och Supabase A/B är öppna.
 Ingen 24-timmarsmätning har startats; ingen expiry påstås vara verifierad.
 
-## Beslut som kräver namngiven människa
+## Historiska beslutspunkter och nuvarande ersättningar
 
-Samtliga rader är **ej godkända** tills beslut, ansvarig och UTC-tid anges.
+Raderna nedan dokumenterar den äldre 2026-09-11-listan. Backup och
+nyckelhantering ersattes 2026-09-12 av det beslutade engångsförfarandet ovan;
+dess externa genomförande kräver fortfarande separat tillstånd.
 
 | Beslutsrad | Ansvar | Status |
 | --- | --- | --- |
 | Bevara ekonomisk historik; historiska null-momssnapshots bedöms från originalunderlag utan automatisk backfill. | Ägare och redovisningsgranskare | Ej godkänt |
 | Godkänn fält, undantag och intervall för 90/1 095 dagar; ingen muterande retention aktiveras före beslut. | Integritetsägare och redovisningsgranskare | Ej godkänt |
-| Godkänn backup, oberoende restore och framåträttning; gammal backup får aldrig ersätta nya betalningar i aktiv databas. | Ägare/backupansvarig | Ej godkänt |
+| Godkänn backup, oberoende restore och framåträttning; gammal backup får aldrig ersätta nya betalningar i aktiv databas. | Ägare/backupansvarig | Ersatt 2026-09-12: förfarandet är beslutat, externt genomförande ej godkänt |
 | Historiskt förslag: utse bemanning, omladdnings-/pollningsrutin och eskaleringsansvar när notifieringar var avstängda. | Verksamhetsägare | Ersatt 2026-09-12 av verifieringskrav för mejl/SMS/push/larm |
 | Bedöm varje kvarvarande moderate-kedja mot den slutliga auditen och nåbarhetsanalysen. | Teknisk ägare | Ej godkänt |
 | Historiskt scopeförslag: kortbetalning med Swish, e-post, SMS och push utanför kandidaten. | Verksamhetsägare | Ersatt 2026-09-12: endast Swish är uppskjutet; övriga kanaler är releasekrav |

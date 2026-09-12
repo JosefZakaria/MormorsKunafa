@@ -30,7 +30,8 @@
     "2026-09-09-receipt-vat-snapshot.sql",
     "2026-09-10-receipt-history-immutability.sql",
     "2026-09-11-private-function-defaults.sql",
-    "20260912155609_outbound_message_jobs.sql"
+    "20260912155609_outbound_message_jobs.sql",
+    "20260912193000_single_active_push_endpoint.sql"
   ],
   "phase4AfterLegacyDrain": [
     "2026-09-09-checkout-contract-finalization.sql"

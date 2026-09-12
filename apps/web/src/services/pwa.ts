@@ -45,6 +45,20 @@ export async function getAdminPushState(): Promise<AdminPushState> {
   return subscription ? 'enabled' : 'available';
 }
 
+export async function getCurrentAdminPushEndpoint(): Promise<string | undefined> {
+  if (!supportsAdminPush()) return undefined;
+  try {
+    const registration = await navigator.serviceWorker.getRegistration();
+    const subscription = await registration?.pushManager.getSubscription();
+    return subscription?.endpoint;
+  } catch {
+    // Session revocation must remain available if the browser's optional push
+    // API is temporarily unavailable. A later registration still transfers the
+    // endpoint atomically before it can receive another account's messages.
+    return undefined;
+  }
+}
+
 /** Browser permission must only be requested from an explicit staff action. */
 export async function enableAdminPush(): Promise<PushSubscription> {
   if (!supportsAdminPush()) throw new Error('Push stöds inte av den här webbläsaren.');

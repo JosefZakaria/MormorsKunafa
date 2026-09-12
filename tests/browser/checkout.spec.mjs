@@ -363,6 +363,84 @@ test('admin cookie login, current dashboard and logout', async ({page,context})=
   await expect(page).not.toHaveURL(/dashboard/);
 });
 
+test('same browser transfers its push endpoint across account logout and login',async({page,context})=>{
+  const endpoint='https://fcm.googleapis.com/fcm/send/synthetic-browser-account-switch';
+  await page.addInitScript(({endpoint})=>{
+    let currentEndpoint=endpoint;
+    const subscription={get endpoint(){return currentEndpoint;},toJSON:()=>({
+      endpoint:currentEndpoint,
+      keys:{p256dh:'AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE',auth:'AgICAgICAgICAgICAgICAg'},
+    })};
+    const registration={
+      pushManager:{getSubscription:async()=>subscription,subscribe:async()=>subscription},
+      update:async()=>undefined,
+    };
+    Object.defineProperty(window,'PushManager',{configurable:true,value:function PushManager(){}});
+    Object.defineProperty(window,'Notification',{configurable:true,value:{
+      permission:'granted',requestPermission:async()=>'granted',
+    }});
+    Object.defineProperty(navigator,'serviceWorker',{configurable:true,value:{
+      register:async()=>registration,
+      getRegistration:async()=>registration,
+      ready:Promise.resolve(registration),
+    }});
+    Object.defineProperty(window,'__setSyntheticPushEndpoint',{configurable:true,value:value=>{
+      currentEndpoint=value;
+    }});
+  },{endpoint});
+  await page.route('**/api/admin/notifications/health',route=>route.fulfill({json:{webPushConfigured:true}}));
+  let logoutEndpoint;
+  await page.route('**/api/admin/logout',async route=>{
+    logoutEndpoint=route.request().postDataJSON()?.pushEndpoint;
+    await route.continue();
+  });
+
+  await page.goto('/admin/login');
+  await page.getByLabel('E-post',{exact:true}).fill('mollevangen@example.test');
+  await page.getByLabel('Lösenord',{exact:true}).fill('Synthetic-local-password-42');
+  const firstRegistration=page.waitForResponse(response=>response.request().method()==='POST'
+    && response.url().endsWith('/api/admin/push-subscriptions'));
+  await page.getByRole('button',{name:'Logga in',exact:true}).click();
+  expect((await firstRegistration).status()).toBe(201);
+  const firstList=await context.request.get('/api/admin/push-subscriptions');
+  expect(firstList.status()).toBe(200);
+  expect((await firstList.json()).map(subscription=>subscription.endpoint)).toContain(endpoint);
+
+  await page.getByRole('button',{name:/Logga ut/i}).click();
+  await expect(page).toHaveURL(/admin\/login/);
+  expect(logoutEndpoint).toBe(endpoint);
+
+  await page.getByLabel('E-post',{exact:true}).fill('owner@example.test');
+  await page.getByLabel('Lösenord',{exact:true}).fill('Synthetic-local-password-42');
+  const secondRegistration=page.waitForResponse(response=>response.request().method()==='POST'
+    && response.url().endsWith('/api/admin/push-subscriptions'));
+  await page.getByRole('button',{name:'Logga in',exact:true}).click();
+  expect((await secondRegistration).status()).toBe(201);
+  const secondList=await context.request.get('/api/admin/push-subscriptions');
+  expect(secondList.status()).toBe(200);
+  expect((await secondList.json()).filter(subscription=>subscription.endpoint===endpoint)).toHaveLength(1);
+
+  const unsupportedEndpoint='https://unsupported-provider.example.test/synthetic-browser-subscription';
+  const ownerCookies=await context.cookies();
+  const csrfCookie=ownerCookies.find(cookie=>cookie.name==='mk_csrf');
+  expect(csrfCookie).toBeTruthy();
+  const rejectedRegistration=await context.request.post('/api/admin/push-subscriptions',{
+    headers:{'x-csrf-token':decodeURIComponent(csrfCookie.value)},
+    data:{subscription:{endpoint:unsupportedEndpoint,keys:{
+      p256dh:'AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE',
+      auth:'AgICAgICAgICAgICAgICAg',
+    }}},
+  });
+  expect(rejectedRegistration.status()).toBe(400);
+  await page.evaluate(value=>window.__setSyntheticPushEndpoint(value),unsupportedEndpoint);
+  logoutEndpoint=undefined;
+  const unsupportedLogout=page.waitForResponse(response=>response.url().endsWith('/api/admin/logout'));
+  await page.getByRole('button',{name:/Logga ut/i}).click();
+  expect((await unsupportedLogout).status()).toBe(204);
+  expect(logoutEndpoint).toBe(unsupportedEndpoint);
+  await expect(page).toHaveURL(/admin\/login/);
+});
+
 test('logout can retry after the server revoked the session but its response was lost',async({page,context})=>{
   await page.goto('/admin/login');
   await page.getByLabel('E-post',{exact:true}).fill('owner@example.test');

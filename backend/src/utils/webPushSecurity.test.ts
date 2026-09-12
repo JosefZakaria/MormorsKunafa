@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { LookupAddress, LookupOptions } from 'node:dns';
-import { createSafePushLookup, parseSafePushEndpoint, safePushFailureReason, validatePushSubscription } from './webPushSecurity.js';
+import {
+  createSafePushLookup,
+  parsePushEndpointForRevocation,
+  parseSafePushEndpoint,
+  safePushFailureReason,
+  validatePushSubscription,
+} from './webPushSecurity.js';
 
 const p256dh = Buffer.alloc(65, 1).toString('base64url');
 const auth = Buffer.alloc(16, 2).toString('base64url');
@@ -48,6 +54,27 @@ test('rejects malformed encryption keys and oversized metadata', () => {
 test('does not persist attacker-controlled upstream response bodies', () => {
   assert.equal(safePushFailureReason({ statusCode: 500, body: 'secret response body' }), 'Push service returned HTTP 500');
   assert.equal(safePushFailureReason({ code: 'ETIMEDOUT', message: 'sensitive URL' }), 'ETIMEDOUT');
+});
+
+test('logout endpoint parsing is bounded but independent of the send allowlist', () => {
+  assert.equal(
+    parsePushEndpointForRevocation('https://unsupported-provider.example.test/push')?.toString(),
+    'https://unsupported-provider.example.test/push'
+  );
+  assert.equal(
+    parsePushEndpointForRevocation('https://127.0.0.1/push')?.toString(),
+    'https://127.0.0.1/push'
+  );
+  for (const endpoint of [
+    'http://fcm.googleapis.com/a',
+    'https://user:password@fcm.googleapis.com/a',
+    'https://fcm.googleapis.com:8443/a',
+    'https://fcm.googleapis.com/a#fragment',
+    'not-a-url',
+    `https://example.test/${'x'.repeat(2048)}`,
+  ]) {
+    assert.equal(parsePushEndpointForRevocation(endpoint), null, endpoint);
+  }
 });
 
 function resolveFixture(addresses: LookupAddress[], options: LookupOptions = {}) {

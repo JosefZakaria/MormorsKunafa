@@ -47,56 +47,29 @@ export async function listActivePushSubscriptions(adminId?: string): Promise<Pus
 
 export async function upsertPushSubscription(args: {
   adminId: string;
+  adminTokenVersion: number;
   endpoint: string;
   p256dh: string;
   auth: string;
   userAgent?: string;
   deviceLabel?: string;
 }): Promise<PushSubscriptionRow | null> {
-  const existing = await findPushSubscriptionByEndpoint(args.endpoint, args.adminId);
-  const payload = {
-    admin_id: args.adminId,
-    endpoint: args.endpoint,
-    p256dh: args.p256dh,
-    auth: args.auth,
-    user_agent: args.userAgent?.trim() || null,
-    device_label: args.deviceLabel?.trim() || null,
-    updated_at: nowIso(),
-    disabled_at: null,
-    last_failure_at: null,
-    last_failure_reason: null,
-  };
-
-  if (existing) {
-    const { data, error } = await supabase
-      .from('admin_push_subscriptions')
-      .update(payload)
-      .eq('id', existing.id)
-      .select('*')
-      .single();
-
-    if (error) {
-      logSupabaseError('upsertPushSubscription update', error);
-      return null;
-    }
-    return data as unknown as PushSubscriptionRow;
-  }
-
-  const { data, error } = await supabase
-    .from('admin_push_subscriptions')
-    .insert({
-      id: generateId(),
-      ...payload,
-      created_at: nowIso(),
-    })
-    .select('*')
-    .single();
+  const { data, error } = await supabase.rpc('register_admin_push_subscription', {
+    p_admin_id: args.adminId,
+    p_admin_token_version: args.adminTokenVersion,
+    p_endpoint: args.endpoint,
+    p_p256dh: args.p256dh,
+    p_auth: args.auth,
+    p_user_agent: args.userAgent?.trim() || null,
+    p_device_label: args.deviceLabel?.trim() || null,
+  });
 
   if (error) {
-    logSupabaseError('upsertPushSubscription insert', error);
+    logSupabaseError('upsertPushSubscription', error);
     return null;
   }
-  return data as unknown as PushSubscriptionRow;
+  const row = Array.isArray(data) ? data[0] : null;
+  return row ? (row as unknown as PushSubscriptionRow) : null;
 }
 
 export async function disablePushSubscriptionById(subscriptionId: string, adminId: string): Promise<boolean> {
@@ -113,18 +86,72 @@ export async function disablePushSubscriptionById(subscriptionId: string, adminI
   return true;
 }
 
-export async function disablePushSubscriptionByEndpoint(endpoint: string): Promise<void> {
+export async function isPushSubscriptionCurrent(subscription: PushSubscriptionRow): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('admin_push_subscriptions')
+    .select('id')
+    .eq('id', subscription.id)
+    .eq('admin_id', subscription.admin_id)
+    .eq('endpoint', subscription.endpoint)
+    .eq('p256dh', subscription.p256dh)
+    .eq('auth', subscription.auth)
+    .eq('updated_at', subscription.updated_at)
+    .is('disabled_at', null)
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    logSupabaseError('isPushSubscriptionCurrent', error);
+    return false;
+  }
+  return Boolean(data);
+}
+
+export async function disablePushSubscriptionIfCurrent(
+  subscription: PushSubscriptionRow,
+  failure?: { reason: string; statusCode?: number }
+): Promise<void> {
+  const changedAt = nowIso();
+  const { error } = await supabase
+    .from('admin_push_subscriptions')
+    .update({
+      disabled_at: changedAt,
+      updated_at: changedAt,
+      ...(failure ? {
+        last_failure_at: changedAt,
+        last_failure_reason: `[${failure.statusCode ?? 'n/a'}] ${failure.reason}`.slice(0, 1000),
+      } : {}),
+    })
+    .eq('id', subscription.id)
+    .eq('admin_id', subscription.admin_id)
+    .eq('endpoint', subscription.endpoint)
+    .eq('p256dh', subscription.p256dh)
+    .eq('auth', subscription.auth)
+    .eq('updated_at', subscription.updated_at)
+    .is('disabled_at', null);
+  if (error) {
+    logSupabaseError('disablePushSubscriptionIfCurrent', error);
+  }
+}
+
+export async function disablePushSubscriptionForAdminEndpoint(
+  endpoint: string,
+  adminId: string
+): Promise<boolean> {
   const { error } = await supabase
     .from('admin_push_subscriptions')
     .update({ disabled_at: nowIso(), updated_at: nowIso() })
     .eq('endpoint', endpoint)
+    .eq('admin_id', adminId)
     .is('disabled_at', null);
   if (error) {
-    logSupabaseError('disablePushSubscriptionByEndpoint', error);
+    logSupabaseError('disablePushSubscriptionForAdminEndpoint', error);
+    return false;
   }
+  return true;
 }
 
-export async function markPushDeliverySuccess(subscriptionId: string): Promise<void> {
+export async function markPushDeliverySuccess(subscription: PushSubscriptionRow): Promise<void> {
   const { error } = await supabase
     .from('admin_push_subscriptions')
     .update({
@@ -133,7 +160,13 @@ export async function markPushDeliverySuccess(subscriptionId: string): Promise<v
       last_failure_reason: null,
       updated_at: nowIso(),
     })
-    .eq('id', subscriptionId);
+    .eq('id', subscription.id)
+    .eq('admin_id', subscription.admin_id)
+    .eq('endpoint', subscription.endpoint)
+    .eq('p256dh', subscription.p256dh)
+    .eq('auth', subscription.auth)
+    .eq('updated_at', subscription.updated_at)
+    .is('disabled_at', null);
 
   if (error) {
     logSupabaseError('markPushDeliverySuccess', error);
@@ -141,7 +174,7 @@ export async function markPushDeliverySuccess(subscriptionId: string): Promise<v
 }
 
 export async function markPushDeliveryFailure(
-  subscriptionId: string,
+  subscription: PushSubscriptionRow,
   reason: string,
   statusCode?: number
 ): Promise<void> {
@@ -152,7 +185,13 @@ export async function markPushDeliveryFailure(
       last_failure_reason: `[${statusCode ?? 'n/a'}] ${reason}`.slice(0, 1000),
       updated_at: nowIso(),
     })
-    .eq('id', subscriptionId);
+    .eq('id', subscription.id)
+    .eq('admin_id', subscription.admin_id)
+    .eq('endpoint', subscription.endpoint)
+    .eq('p256dh', subscription.p256dh)
+    .eq('auth', subscription.auth)
+    .eq('updated_at', subscription.updated_at)
+    .is('disabled_at', null);
 
   if (error) {
     logSupabaseError('markPushDeliveryFailure', error);
@@ -196,24 +235,4 @@ export async function createPushDeliveryLog(args: {
   if (error) {
     logSupabaseError('createPushDeliveryLog', error);
   }
-}
-
-async function findPushSubscriptionByEndpoint(
-  endpoint: string,
-  adminId: string
-): Promise<PushSubscriptionRow | null> {
-  const { data, error } = await supabase
-    .from('admin_push_subscriptions')
-    .select('*')
-    .eq('endpoint', endpoint)
-    .eq('admin_id', adminId)
-    .limit(1)
-    .maybeSingle();
-
-  if (error) {
-    logSupabaseError('findPushSubscriptionByEndpoint', error);
-    return null;
-  }
-
-  return data ? (data as unknown as PushSubscriptionRow) : null;
 }

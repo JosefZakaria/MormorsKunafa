@@ -98,6 +98,30 @@ export function parseSafePushEndpoint(value: unknown): URL | null {
   }
 }
 
+// Logout never contacts this URL. It only uses the normalized value in a
+// bounded database comparison, so provider allowlisting and DNS checks do not
+// belong on the session-revocation path.
+export function parsePushEndpointForRevocation(value: unknown): URL | null {
+  const endpoint = String(value ?? '').trim();
+  if (!endpoint || endpoint.length > MAX_ENDPOINT_LENGTH) return null;
+
+  try {
+    const url = new URL(endpoint);
+    if (
+      url.protocol !== 'https:' ||
+      url.username ||
+      url.password ||
+      url.hash ||
+      (url.port && url.port !== '443')
+    ) {
+      return null;
+    }
+    return url;
+  } catch {
+    return null;
+  }
+}
+
 function isBase64UrlWithDecodedLength(value: string, expectedBytes: number): boolean {
   if (!/^[A-Za-z0-9_-]+$/.test(value)) return false;
   try {

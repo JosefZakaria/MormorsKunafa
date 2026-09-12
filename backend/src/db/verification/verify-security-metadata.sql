@@ -106,6 +106,49 @@ BEGIN
       RAISE EXCEPTION 'Missing service-role RPC grant: %', object_name;
     END IF;
   END LOOP;
+  -- A safety backup is taken before pending migrations. Permit the wholly
+  -- absent pre-migration contract, but reject every partially activated or
+  -- malformed state once either the function name or index appears.
+  IF to_regclass('public.admin_push_subscriptions_active_endpoint_uq') IS NOT NULL
+    OR EXISTS (
+      SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+      WHERE n.nspname='public' AND p.proname='register_admin_push_subscription'
+    ) THEN
+    IF to_regprocedure(
+        'public.register_admin_push_subscription(text,bigint,text,text,text,text,text)'
+      ) IS NULL
+      OR NOT has_function_privilege(
+        'service_role',
+        'public.register_admin_push_subscription(text,bigint,text,text,text,text,text)',
+        'EXECUTE'
+      )
+      OR has_function_privilege(
+        'anon',
+        'public.register_admin_push_subscription(text,bigint,text,text,text,text,text)',
+        'EXECUTE'
+      )
+      OR has_function_privilege(
+        'authenticated',
+        'public.register_admin_push_subscription(text,bigint,text,text,text,text,text)',
+        'EXECUTE'
+      ) THEN
+      RAISE EXCEPTION 'Unsafe or missing push-registration RPC';
+    END IF;
+
+    IF NOT EXISTS (
+      SELECT 1
+      FROM pg_index i
+      WHERE i.indexrelid = to_regclass('public.admin_push_subscriptions_active_endpoint_uq')
+        AND i.indrelid = 'public.admin_push_subscriptions'::regclass
+        AND i.indisunique AND i.indisvalid AND i.indisready
+        AND i.indnkeyatts = 1
+        AND pg_get_indexdef(i.indexrelid, 1, true) = 'endpoint'
+        AND regexp_replace(pg_get_expr(i.indpred, i.indrelid), '[()]', '', 'g')
+          = 'disabled_at IS NULL'
+    ) THEN
+      RAISE EXCEPTION 'Missing single-active push endpoint index';
+    END IF;
+  END IF;
   -- Trigger-only functions cannot be invoked as RPCs. Extension members have
   -- provider-managed contracts and are outside the application function set.
   IF EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
