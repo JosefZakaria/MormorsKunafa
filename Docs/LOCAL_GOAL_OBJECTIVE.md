@@ -1,5 +1,13 @@
 # Ersättande mål — färdigställ och förbered trygg publicering
 
+Tillägg 2026-09-16: low-fyndet om överföring mellan slutrevalidering och
+pushsändning rättas lokalt med generisk wakeup och en ny autentiserad
+service worker-kontroll av aktuell admins databasplats och väntande kö.
+Se [lokalt rättningsunderlag](LOCAL_PUSH_WAKEUP_2026-09-16.md) för bevis och
+avgränsningar. Historiska scanresultat nedan gäller sina angivna kandidater;
+ny slutscan ska förseglas på den exakta nya checkpointcommitten. Ingen extern
+kontroll eller releaseåtgärd är godkänd av detta tillägg.
+
 Status 2026-09-12: detta mål ersätter äldre motstridiga målformuleringar för
 `security-checks`. Den tidigare verifierade kodbaslinjen är
 `ec04965833c8a6667e6886d3509757dc2e3b55e6`; dokumentbaslinjen är `a119c99`.

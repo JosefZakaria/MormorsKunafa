@@ -31,6 +31,7 @@ import {
 } from '../db/pushSubscriptionsRepository.js';
 import { getRealtimeStatus, registerRealtimeClient } from '../services/realtimeEvents.js';
 import { isWebPushConfigured } from '../services/pushNotifications.js';
+import { shouldNotifyPendingOrder } from '../services/pendingOrderNotification.js';
 import {
   parsePushEndpointForRevocation,
   validatePushSubscription,
@@ -606,6 +607,18 @@ router.get('/notifications', requireAdmin, async (req: Request, res: Response) =
   } catch (error) {
     logUnexpectedError('GET /admin/notifications failed', error);
     res.status(503).json({ error: 'Message delivery alerts unavailable' });
+  }
+});
+
+router.get('/notifications/pending', requireAdmin, async (req: Request, res: Response) => {
+  res.setHeader('Cache-Control', 'private, no-store');
+  const admin = getAuthenticatedAdmin(req);
+  if (!admin) { res.status(401).json({ shouldNotify: false }); return; }
+  try {
+    res.json({ shouldNotify: await shouldNotifyPendingOrder(admin.adminId, admin.tokenVersion) });
+  } catch (error) {
+    logUnexpectedError('GET /admin/notifications/pending failed', error);
+    res.status(503).json({ shouldNotify: false });
   }
 });
 

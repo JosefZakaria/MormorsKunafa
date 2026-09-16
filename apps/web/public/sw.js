@@ -8,64 +8,43 @@ self.addEventListener('activate', (event) => {
 
 const ADMIN_FALLBACK_URL = '/admin/dashboard';
 
-function boundedNotificationText(value, fallback, maxLength) {
-  const text = typeof value === 'string' ? value.replace(/[\u0000-\u001f\u007f]/g, ' ').trim() : '';
-  return (text || fallback).slice(0, maxLength);
-}
-
-function safeAdminTarget(value) {
-  if (typeof value !== 'string' || !value) return ADMIN_FALLBACK_URL;
+async function notifyPendingOrders() {
   try {
-    const target = new URL(value, self.location.origin);
-    if (target.origin !== self.location.origin) return ADMIN_FALLBACK_URL;
-    if (target.pathname !== '/admin' && !target.pathname.startsWith('/admin/')) {
-      return ADMIN_FALLBACK_URL;
-    }
-    return `${target.pathname}${target.search}`;
+    // Push is only a wakeup. Never trust its account, text or navigation data,
+    // including delayed payloads from an older server version.
+    const response = await fetch('/api/admin/notifications/pending', {
+      method: 'GET',
+      credentials: 'same-origin',
+      mode: 'same-origin',
+      cache: 'no-store',
+      redirect: 'error',
+    });
+    if (!response.ok) return;
+    const pending = await response.json();
+    if (pending?.shouldNotify !== true) return;
+    await self.registration.showNotification('Ny order', {
+      body: 'Det finns beställningar att ta emot',
+      tag: 'pending-orders',
+      renotify: true,
+      requireInteraction: true,
+      vibrate: [500, 200, 500, 200, 800],
+      data: { url: ADMIN_FALLBACK_URL },
+      badge: '/images/logo-icon.png',
+      icon: '/images/logo-icon.png',
+    });
   } catch {
-    return ADMIN_FALLBACK_URL;
+    // Logged out, unavailable or malformed: the durable dashboard queue remains
+    // authoritative; a failed recheck must never produce an OS notification.
   }
 }
 
 self.addEventListener('push', (event) => {
-  let data = {};
-  try {
-    data = event.data ? event.data.json() : {};
-  } catch {
-    data = {};
-  }
-
-  const title = boundedNotificationText(data.title, 'Ny order', 80);
-  const body = boundedNotificationText(data.body, 'En ny bestallning har kommit in', 240);
-  const orderId = typeof data.order_id === 'string' ? data.order_id.slice(0, 128) : null;
-  const targetUrl = safeAdminTarget(data.url);
-  const tag = boundedNotificationText(
-    data.tag,
-    orderId ? `order-${orderId}` : 'new-order',
-    160
-  );
-
-  event.waitUntil(
-    self.registration.showNotification(title, {
-      body,
-      tag,
-      renotify: true,
-      requireInteraction: true,
-      vibrate: [500, 200, 500, 200, 800],
-      data: {
-        orderId,
-        url: targetUrl,
-      },
-      badge: '/images/logo-icon.png',
-      icon: '/images/logo-icon.png',
-    })
-  );
+  event.waitUntil(notifyPendingOrders());
 });
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const data = event.notification.data || {};
-  const target = safeAdminTarget(data.url);
+  const target = ADMIN_FALLBACK_URL;
 
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {

@@ -78,15 +78,10 @@ export async function sendOrderCreatedPush(event: OrderCreatedEvent): Promise<vo
   if (!visibleSubscriptions.length) return;
 
   const payload = JSON.stringify({
-    event_id: event.event_id,
-    event_type: event.event_type,
-    order_id: event.order_id,
-    order_number: event.order_number,
-    created_at: event.created_at,
+    type: 'order_wakeup',
     title: 'Ny order',
-    body: `Order ${event.order_number} har kommit in`,
-    url: `/admin/dashboard?orderId=${encodeURIComponent(event.order_id)}`,
-    tag: `order-${event.order_id}`,
+    body: 'Det finns beställningar att ta emot',
+    url: '/admin/dashboard',
   });
 
   await Promise.all(
@@ -104,6 +99,8 @@ export async function sendOrderCreatedPush(event: OrderCreatedEvent): Promise<vo
       // The list and location scope are snapshots. Revalidate the exact row
       // version immediately before dispatch so a transferred endpoint is not
       // intentionally targeted using its former owner's scope.
+      // Transfer can still win after this check. The payload is a generic wakeup;
+      // the worker authorizes the current browser session before displaying it.
       if (!(await isPushSubscriptionCurrent(subscription))) {
         return;
       }
