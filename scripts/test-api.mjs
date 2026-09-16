@@ -6,6 +6,25 @@ import { initializeSyntheticDatabase, createSyntheticApp, HOJA, MOLLEVANGEN, PRO
 
 const nativeFetch = globalThis.fetch;
 const checkoutContractHeader = {'X-Checkout-Contract':'order-v2'};
+
+function nextStockholmDateString(now = new Date()) {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Europe/Stockholm',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(now)
+      .filter(({ type }) => type === 'year' || type === 'month' || type === 'day')
+      .map(({ type, value }) => [type, value]),
+  );
+  return new Date(Date.UTC(
+    Number(parts.year),
+    Number(parts.month) - 1,
+    Number(parts.day) + 1,
+  )).toISOString().slice(0, 10);
+}
+
 await withTestDatabase(async db => {
   await initializeSyntheticDatabase(db);
   const { app, sessions, stripe, refunds, faults, expireRefundKeys } = await createSyntheticApp(db);
@@ -19,7 +38,7 @@ await withTestDatabase(async db => {
     const text = await response.text();
     return {status:response.status, headers:response.headers, data:text ? JSON.parse(text) : null};
   }
-  const tomorrow = new Date(Date.now()+86400000).toISOString().slice(0,10)+'T14:00';
+  const tomorrow = nextStockholmDateString()+'T14:00';
   const orderBody = { items:[{productId:PRODUCT,variantId:'250 gram',quantity:2,price:1,name:'FORGED'}],
     orderType:'takeaway',locationId:HOJA,paymentMethod:'card',scheduledTime:tomorrow,
     customerInfo:{name:'Synthetic Test',phone:'+46700000000',email:'buyer@example.test'} };
