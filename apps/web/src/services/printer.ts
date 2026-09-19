@@ -1,3 +1,6 @@
+/**
+ * Service for direct client-side thermal receipt and kitchen printing via Epson ePOS XML.
+ */
 import type { Order, Location } from '@shared/types';
 import { HOJA_LOCATION_ID, MOLLEVANGEN_LOCATION_ID } from '@shared/types';
 
