@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Container } from '../../../components/common/Container/Container';
 import { Button } from '../../../components/common/Button/Button';
 import { orderApi, productApi, adminApi, locationApi } from '../../../services/api';
-import { printKitchenTicket, printReceipt, testConnection, isPrinterConfigured, getPrinterConfig, setPrinterConfig } from '../../../services/printer';
+import { printKitchenTicket, printReceipt, testConnection, isPrinterConfigured, getPrinterConfig, setPrinterConfig, getOrderTargetLocationSlug, PrinterLocationSlug, DEFAULT_HOJA_PRINTER_IP } from '../../../services/printer';
 import type {
     DeliveryInfo,
     Order,
@@ -168,16 +168,37 @@ function playForegroundAttentionSound(): void {
     }
 }
 
-function PrinterSettings() {
-    const config = getPrinterConfig();
+function PrinterSettings({
+    locations: _locations,
+    myLocation,
+    isOwner,
+}: {
+    locations?: Location[];
+    myLocation?: Location;
+    isOwner: boolean;
+}) {
+    const defaultSlug: PrinterLocationSlug = (myLocation?.slug === 'mollevangen' ? 'mollevangen' : 'hoja');
+    const [selectedSlug, setSelectedSlug] = useState<PrinterLocationSlug>(defaultSlug);
+
+    const config = getPrinterConfig(selectedSlug);
     const [ip, setIp] = useState(config.ip);
     const [deviceId, setDeviceId] = useState(config.deviceId);
     const [testResult, setTestResult] = useState<string | null>(null);
     const [testing, setTesting] = useState(false);
 
+    useEffect(() => {
+        const c = getPrinterConfig(selectedSlug);
+        setIp(c.ip);
+        setDeviceId(c.deviceId);
+        setTestResult(null);
+    }, [selectedSlug]);
+
+    const hojaConfigured = isPrinterConfigured('hoja');
+    const molleConfigured = isPrinterConfigured('mollevangen');
+
     const handleSave = () => {
-        setPrinterConfig(ip.trim(), deviceId.trim() || undefined);
-        setTestResult('Inställningar sparade.');
+        setPrinterConfig(ip.trim(), deviceId.trim() || undefined, selectedSlug);
+        setTestResult(`Inställningar för ${selectedSlug === 'hoja' ? 'Höja' : 'Möllevången'} sparade.`);
     };
 
     const handleTest = async () => {
@@ -185,28 +206,77 @@ function PrinterSettings() {
             setTestResult('Ange en IP-adress först.');
             return;
         }
-        setPrinterConfig(ip.trim(), deviceId.trim() || undefined);
+        setPrinterConfig(ip.trim(), deviceId.trim() || undefined, selectedSlug);
         setTesting(true);
         setTestResult(null);
-        const res = await testConnection();
+        const res = await testConnection(selectedSlug);
         setTesting(false);
-        setTestResult(res.success ? 'Anslutning lyckades!' : (res.error || 'Kunde inte nå skrivaren.'));
+        setTestResult(res.success ? `Anslutning lyckades (${selectedSlug === 'hoja' ? 'Höja' : 'Möllevången'})!` : (res.error || 'Kunde inte nå skrivaren.'));
     };
+
+    const currentLocName = selectedSlug === 'hoja' ? 'Höja' : 'Möllevången';
+    const isCurrentConfigured = selectedSlug === 'hoja' ? hojaConfigured : molleConfigured;
 
     return (
         <div className="rush-card" style={{ marginTop: '1rem' }}>
-            <h3>Skrivare (ePOS-Print)</h3>
-            <p>Anslut till en Epson-kvittoskrivare på det lokala nätverket.</p>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                <h3 style={{ margin: 0 }}>Kvittoskrivare (ePOS-Print)</h3>
+                <span style={{
+                    fontSize: '0.8rem',
+                    padding: '0.2rem 0.6rem',
+                    borderRadius: '999px',
+                    background: isCurrentConfigured ? '#dcfce7' : '#f3f4f6',
+                    color: isCurrentConfigured ? '#166534' : '#6b7280',
+                    fontWeight: 600,
+                }}>
+                    {isCurrentConfigured ? `🟢 ${currentLocName}: Konfigurerad` : `⚪ ${currentLocName}: Ej konfigurerad`}
+                </span>
+            </div>
+            <p style={{ marginTop: '0.5rem', marginBottom: '0.75rem', color: '#666', fontSize: '0.9rem' }}>
+                Anslut till en Epson-termoskrivare på det lokala nätverket. Varje restaurang har sin egen skrivarkonfiguration.
+            </p>
+
+            {isOwner && (
+                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+                    <button
+                        type="button"
+                        className={`place-filter-chip ${selectedSlug === 'hoja' ? 'active' : ''}`}
+                        onClick={() => setSelectedSlug('hoja')}
+                    >
+                        Höja {hojaConfigured ? '🟢' : ''}
+                    </button>
+                    <button
+                        type="button"
+                        className={`place-filter-chip ${selectedSlug === 'mollevangen' ? 'active' : ''}`}
+                        onClick={() => setSelectedSlug('mollevangen')}
+                    >
+                        Möllevången {molleConfigured ? '🟢' : '(ingen än)'}
+                    </button>
+                </div>
+            )}
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.75rem' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                    <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Skrivarens IP-adress</label>
+                    <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>
+                        Skrivarens IP-adress ({currentLocName})
+                    </label>
                     <input
                         type="text"
-                        placeholder="t.ex. 192.168.1.50"
+                        placeholder={selectedSlug === 'hoja' ? DEFAULT_HOJA_PRINTER_IP : 't.ex. 192.168.1.50'}
                         value={ip}
                         onChange={e => setIp(e.target.value)}
                         style={{ padding: '0.5rem 0.75rem', borderRadius: '6px', border: '1px solid #ccc', fontSize: '1rem' }}
                     />
+                    {selectedSlug === 'mollevangen' && !ip && (
+                        <span style={{ fontSize: '0.8rem', color: '#888' }}>
+                            Möllevången har ingen skrivare än. Beställningar till Möllevången hoppas automatiskt över tills IP fylls i.
+                        </span>
+                    )}
+                    {selectedSlug === 'hoja' && ip === DEFAULT_HOJA_PRINTER_IP && (
+                        <span style={{ fontSize: '0.8rem', color: '#16a34a' }}>
+                            Standard-IP för Höja ({DEFAULT_HOJA_PRINTER_IP}) är förinställd.
+                        </span>
+                    )}
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                     <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Enhets-ID</label>
@@ -221,11 +291,11 @@ function PrinterSettings() {
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                     <Button variant="primary" size="sm" onClick={handleSave}>Spara</Button>
                     <Button variant="ghost" size="sm" onClick={handleTest} disabled={testing}>
-                        {testing ? 'Testar...' : 'Testa anslutning'}
+                        {testing ? 'Testar...' : `Testa anslutning (${currentLocName})`}
                     </Button>
                 </div>
                 {testResult && (
-                    <p style={{ fontSize: '0.85rem', margin: 0, color: testResult.includes('lyckades') ? '#16a34a' : '#dc2626' }}>
+                    <p style={{ fontSize: '0.85rem', margin: 0, color: testResult.includes('lyckades') || testResult.includes('sparade') ? '#16a34a' : '#dc2626' }}>
                         {testResult}
                     </p>
                 )}
@@ -790,6 +860,10 @@ export const AdminDashboard: React.FC = () => {
     const [settings, setSettings] = useState<AdminSettings | null>(null);
     const [locations, setLocations] = useState<Location[]>([]);
     const [placeFilter, setPlaceFilter] = useState<PlaceFilter>('all');
+    const isOwner = admin?.role !== 'location';
+    const myLocation = admin?.role === 'location'
+        ? locations.find((location) => location.id === admin.locationId)
+        : undefined;
 
     // Statistics state
     const [showStatsModal, setShowStatsModal] = useState(false);
@@ -1059,24 +1133,43 @@ export const AdminDashboard: React.FC = () => {
             return;
         }
 
-        if (!isPrinterConfigured()) return;
-
         for (const order of pendingOrders) {
             if (printedOrderIdsRef.current.has(order.id)) continue;
             if (!isKitchenTicketPrintDue(order.scheduledTime)) continue;
+
+            const targetSlug = getOrderTargetLocationSlug(order, locations);
+
+            // Om dashboarden körs för en specifik plats (t.ex. Höja eller Möllevången):
+            // Hantera endast ordrar för den egna platsen!
+            if (admin?.role === 'location') {
+                const mySlug = myLocation?.slug ?? (admin.locationId === HOJA_LOCATION_ID ? 'hoja' : 'mollevangen');
+                if (targetSlug !== mySlug) {
+                    continue;
+                }
+            }
+
+            // Om orderns målrestaurang saknar konfigurerad skrivare (t.ex. Möllan i dagsläget):
+            // Markera ordern som hanterad och hoppa över utskrift tyst utan fel!
+            if (!isPrinterConfigured(targetSlug)) {
+                printedOrderIdsRef.current.add(order.id);
+                continue;
+            }
+
             // Markera FÖRE await så att nästa polling inte startar en dubbel utskrift.
             printedOrderIdsRef.current.add(order.id);
-            printKitchenTicket(order)
+            printKitchenTicket(order, targetSlug)
                 .then(res => {
                     if (!res.success) {
-                        setError(res.error || 'Kunde inte skriva ut kokslapp. Kontrollera skrivaren.');
+                        const locName = targetSlug === 'hoja' ? 'Höja' : 'Möllevången';
+                        setError(res.error || `Kunde inte skriva ut kökslapp för ${locName}. Kontrollera skrivaren.`);
                     }
                 })
                 .catch(() => {
-                    setError('Kunde inte skriva ut kokslapp. Kontrollera skrivaren.');
+                    const locName = targetSlug === 'hoja' ? 'Höja' : 'Möllevången';
+                    setError(`Kunde inte skriva ut kökslapp för ${locName}. Kontrollera skrivaren.`);
                 });
         }
-    }, [pendingOrders, loadingOrders, printTick]);
+    }, [pendingOrders, loadingOrders, printTick, admin, myLocation, locations]);
 
     // Tick every 15s so a same-day order scheduled later still prints at T-30
     // even if the pending list content has not changed.
@@ -1201,8 +1294,6 @@ export const AdminDashboard: React.FC = () => {
         });
         locationApi.getAll().then(setLocations).catch(() => undefined);
     }, []);
-
-    const isOwner = admin?.role !== 'location';
 
     useEffect(() => {
         if (isOwner) return;
@@ -1408,13 +1499,15 @@ export const AdminDashboard: React.FC = () => {
     };
 
     const handlePrintReceipt = async (order: Order) => {
-        if (!isPrinterConfigured()) {
-            setError('Skrivaren är inte konfigurerad. Ange IP-adress under Inställningar.');
+        const targetSlug = getOrderTargetLocationSlug(order, locations);
+        const targetName = locations.find(l => l.slug === targetSlug)?.name ?? (targetSlug === 'hoja' ? 'Höja' : 'Möllevången');
+        if (!isPrinterConfigured(targetSlug)) {
+            setError(`Skrivaren för ${targetName} är inte konfigurerad. Ange IP-adress under Inställningar.`);
             return;
         }
-        const result = await printReceipt(order);
+        const result = await printReceipt(order, targetSlug);
         if (!result.success) {
-            setError(result.error || 'Kunde inte skriva ut kvitto. Kontrollera skrivaren.');
+            setError(result.error || `Kunde inte skriva ut kvitto för ${targetName}. Kontrollera skrivaren.`);
         }
     };
 
@@ -1514,9 +1607,6 @@ export const AdminDashboard: React.FC = () => {
     };
 
     const isPaused = settings?.isPaused ?? false;
-    const myLocation = admin?.role === 'location'
-        ? locations.find((location) => location.id === admin.locationId)
-        : undefined;
     const headerPaused = isOwner ? isPaused : Boolean(myLocation?.isPaused);
     const canManageDelivery = isOwner || myLocation?.fulfillsDelivery === true;
     const pauseLocations = isOwner
@@ -1545,6 +1635,19 @@ export const AdminDashboard: React.FC = () => {
                         )}
                         <span className={`status-badge ${headerPaused ? 'status-paused' : 'status-active'}`}>
                             {headerPaused ? '🔴 STOPPAD' : '🟢 ONLINE'}
+                        </span>
+                        <span
+                            className="status-badge"
+                            style={{
+                                background: isPrinterConfigured(myLocation?.slug ?? 'hoja') ? '#dcfce7' : '#f3f4f6',
+                                color: isPrinterConfigured(myLocation?.slug ?? 'hoja') ? '#166534' : '#6b7280',
+                                border: '1px solid ' + (isPrinterConfigured(myLocation?.slug ?? 'hoja') ? '#86efac' : '#e5e7eb'),
+                                fontSize: '0.75rem',
+                                padding: '0.2rem 0.5rem',
+                            }}
+                            title={`Skrivarstatus: ${isPrinterConfigured(myLocation?.slug ?? 'hoja') ? 'Klar att skriva ut' : 'Ingen skrivare konfigurerad'}`}
+                        >
+                            🖨️ {isPrinterConfigured(myLocation?.slug ?? 'hoja') ? (admin?.role === 'location' ? 'Skrivare redo' : 'Höja skrivare redo') : 'Ingen skrivare'}
                         </span>
 
                         {/* Ljudlarm-indikator i headern */}
@@ -2244,7 +2347,7 @@ export const AdminDashboard: React.FC = () => {
                                 </div>
                             </div>
                             )}
-                            <PrinterSettings />
+                            <PrinterSettings locations={locations} myLocation={myLocation} isOwner={isOwner} />
 
                             {/* --- Ljudinställningar för inkommande ordrar --- */}
                             <div className="alarm-settings-card">
