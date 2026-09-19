@@ -20,7 +20,7 @@ router.post('/:orderId', async (req: Request, res: Response) => {
       return;
     }
 
-    const orderId = req.params.orderId;
+    const orderId = String(req.params.orderId);
     const order = await fetchOrderRow(orderId);
     if (!order) {
       res.status(404).json({ error: 'Order not found' });
@@ -81,7 +81,7 @@ router.post('/:orderId', async (req: Request, res: Response) => {
 
 router.get('/:orderId/status', async (req: Request, res: Response) => {
   try {
-    const orderId = req.params.orderId;
+    const orderId = String(req.params.orderId);
     const order = await fetchOrderRow(orderId);
     if (!order) {
       res.status(404).json({ error: 'Order not found' });
