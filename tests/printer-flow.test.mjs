@@ -111,3 +111,30 @@ test('activation holds older due tickets for manual review but leaves future pre
   assert.equal(state.getKitchenPrintStatus(futurePreorder.id), null);
   assert.equal(state.shouldAutoPrintKitchenTicket({ ...futurePreorder, scheduledTime: new Date(Date.now() + 5 * 60_000).toISOString() }, true, true), true);
 });
+
+test('failed print remains for manual review after reload and manual reprint records success once', async () => {
+  data.clear();
+  sentUrls = [];
+  printer.setPrinterConfig('192.168.1.42', 'kitchen', 'hoja');
+  printer.verifySavedPrinterConfig('hoja');
+  const paidHoja = { ...order, id: 'manual-reprint', paymentStatus: 'paid' };
+
+  printerSuccess = false;
+  assert.equal((await state.attemptHojaKitchenPrint(paidHoja)).success, false);
+  assert.equal(sentUrls.length, 1);
+  assert.equal(state.getKitchenPrintStatus(paidHoja.id), 'review');
+
+  const afterReload = await import(`../apps/web/src/services/kitchenPrintState.ts?reload=${Date.now()}`);
+  assert.equal(afterReload.getKitchenPrintStatus(paidHoja.id), 'review');
+  assert.equal(afterReload.shouldAutoPrintKitchenTicket(paidHoja, true, true), false);
+
+  printerSuccess = true;
+  assert.equal((await afterReload.attemptHojaKitchenPrint(paidHoja)).success, true);
+  assert.equal(sentUrls.length, 2);
+  assert.equal(afterReload.getKitchenPrintStatus(paidHoja.id), 'printed');
+  assert.equal(afterReload.shouldAutoPrintKitchenTicket(paidHoja, true, true), false);
+
+  const paidMolle = { ...paidHoja, id: 'molle-no-print', locationId: 'mollevangen' };
+  assert.equal((await afterReload.attemptHojaKitchenPrint(paidMolle)).success, false);
+  assert.equal(sentUrls.length, 2);
+});

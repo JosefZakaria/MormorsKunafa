@@ -1,7 +1,7 @@
 /** Kitchen ticket outcomes are local to the one tablet connected to Höja's printer. */
 import type { Order } from '@shared/types';
 import { isKitchenTicketPrintDue } from '@shared/utils/scheduledTime';
-import { getOrderTargetLocationSlug, isPrinterConfigured } from './printer';
+import { getOrderTargetLocationSlug, isPrinterConfigured, printKitchenTicket } from './printer';
 
 export type KitchenPrintStatus = 'printing' | 'printed' | 'review';
 
@@ -64,4 +64,25 @@ export function markExistingDueTicketsForReview(orders: Order[]): boolean {
     }
   }
   return true;
+}
+
+/** Record the uncertain state before sending bytes, then persist the printer's actual result. */
+export async function attemptHojaKitchenPrint(order: Order): Promise<{ success: boolean; error?: string }> {
+  if (order.paymentStatus !== 'paid' || order.status === 'avbruten' || getOrderTargetLocationSlug(order) !== 'hoja' || !isPrinterConfigured('hoja')) {
+    return { success: false, error: 'Kökslappen kan bara skrivas ut från den verifierade Höjapaddan.' };
+  }
+  if (!setKitchenPrintStatus(order.id, 'printing')) {
+    return { success: false, error: 'Kunde inte spara utskriftsstatus på paddan. Ingen lapp skickades.' };
+  }
+  try {
+    const result = await printKitchenTicket(order, 'hoja');
+    if (!setKitchenPrintStatus(order.id, result.success ? 'printed' : 'review')) {
+      return { success: false, error: 'Kunde inte spara utskriftsstatus. Kontrollera lappen innan manuell utskrift.' };
+    }
+    return result;
+  } catch (error) {
+    setKitchenPrintStatus(order.id, 'review');
+    console.error('[printer] Kitchen ticket failed', { orderId: order.id, error });
+    return { success: false, error: 'Utskriftsresultatet är osäkert. Kontrollera lappen.' };
+  }
 }

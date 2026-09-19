@@ -4,8 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { Container } from '../../../components/common/Container/Container';
 import { Button } from '../../../components/common/Button/Button';
 import { orderApi, productApi, adminApi, locationApi } from '../../../services/api';
-import { printKitchenTicket, printReceipt, testConnection, isPrinterConfigured, getPrinterConfig, setPrinterConfig, verifySavedPrinterConfig, getOrderTargetLocationSlug, PrinterLocationSlug, DEFAULT_HOJA_PRINTER_IP } from '../../../services/printer';
-import { getKitchenPrintStatus, isHojaAutoPrintEnabled, markExistingDueTicketsForReview, setHojaAutoPrintEnabled, setKitchenPrintStatus, shouldAutoPrintKitchenTicket, type KitchenPrintStatus } from '../../../services/kitchenPrintState';
+import { printReceipt, testConnection, isPrinterConfigured, getPrinterConfig, setPrinterConfig, verifySavedPrinterConfig, getOrderTargetLocationSlug, PrinterLocationSlug, DEFAULT_HOJA_PRINTER_IP } from '../../../services/printer';
+import { attemptHojaKitchenPrint, getKitchenPrintStatus, isHojaAutoPrintEnabled, markExistingDueTicketsForReview, setHojaAutoPrintEnabled, shouldAutoPrintKitchenTicket, type KitchenPrintStatus } from '../../../services/kitchenPrintState';
 import { urlBase64ToUint8Array } from '../../../services/pwa';
 import type {
     DeliveryInfo,
@@ -1088,22 +1088,14 @@ export const AdminDashboard: React.FC = () => {
             return;
         }
         if (inFlightPrintIdsRef.current.has(order.id)) return;
-        // Persist before sending bytes: an interrupted request has an unknown result.
-        if (!setKitchenPrintStatus(order.id, 'printing')) {
-            setError('Kunde inte spara utskriftsstatus på paddan. Ingen lapp skickades.');
-            return;
-        }
         inFlightPrintIdsRef.current.add(order.id);
         setPrintTick(n => n + 1);
         try {
-            const result = await printKitchenTicket(order, 'hoja');
-            if (!setKitchenPrintStatus(order.id, result.success ? 'printed' : 'review')) {
-                setError('Kunde inte spara utskriftsstatus. Kontrollera lappen innan manuell utskrift.');
-            } else if (!result.success) {
+            const result = await attemptHojaKitchenPrint(order);
+            if (!result.success) {
                 setError(result.error || 'Utskriftsresultatet är osäkert. Kontrollera lappen.');
             }
         } catch (error) {
-            setKitchenPrintStatus(order.id, 'review');
             setError('Utskriftsresultatet är osäkert. Kontrollera lappen.');
             console.error('[printer] Kitchen ticket failed', { orderId: order.id, error });
         } finally {
