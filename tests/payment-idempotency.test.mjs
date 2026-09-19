@@ -3,10 +3,15 @@ import assert from 'node:assert/strict';
 
 process.env.SUPABASE_URL = 'http://localhost:54321';
 process.env.SUPABASE_SERVICE_ROLE_KEY = 'local-test-key';
+delete process.env.WEB_PUSH_VAPID_PUBLIC_KEY;
+delete process.env.WEB_PUSH_VAPID_PRIVATE_KEY;
 
 let paid = false;
 let pushLookups = 0;
 let paymentUpdates = 0;
+let activeSubscriptions = [];
+const pushFailures = [];
+const deliveryLogs = [];
 const order = {
   id: 'order-1', order_number: '#1001', order_type: 'takeaway',
   location_id: '2f1a9c4e-6b7d-4e8f-a901-b2c3d4e5f601', total_ore: 12000,
@@ -26,7 +31,17 @@ globalThis.fetch = async (input, init = {}) => {
   } else if (table === 'order_items' && method === 'GET') body = [];
   else if (table === 'admin_push_subscriptions' && method === 'GET') {
     pushLookups += 1;
-    body = [];
+    body = activeSubscriptions;
+  } else if (table === 'admin_users' && method === 'GET') {
+    body = { id: 'admin-1', role: 'location', location_id: order.location_id };
+  } else if (table === 'locations' && method === 'GET') {
+    body = { id: order.location_id, slug: 'hoja', fulfills_delivery: true };
+  } else if (table === 'admin_push_subscriptions' && method === 'PATCH') {
+    pushFailures.push(JSON.parse(init.body));
+    return new Response(null, { status: 204 });
+  } else if (table === 'admin_push_delivery_logs' && method === 'POST') {
+    deliveryLogs.push(JSON.parse(init.body));
+    return new Response(null, { status: 201 });
   } else {
     throw new Error(`Unexpected mock database request: ${method} ${url}`);
   }
@@ -72,5 +87,23 @@ test('concurrent payment confirmations still create one order alert', async () =
     assert.equal(written.filter(chunk => chunk === 'event: ORDER_CREATED\n').length, 1);
   } finally {
     cleanup();
+  }
+});
+
+test('push failure is visible without reverting payment or repeating the alert', async () => {
+  paid = false;
+  activeSubscriptions = [{ id: 'hoja-sub', admin_id: 'admin-1', endpoint: 'https://push.example/hoja' }];
+  pushFailures.length = 0;
+  deliveryLogs.length = 0;
+  try {
+    assert.equal(await markOrderPaid(order.id, { paidAmountOre: 12000 }), true);
+    assert.equal(paid, true);
+    assert.equal(pushFailures.length, 1);
+    assert.match(pushFailures[0].last_failure_reason, /Web Push is not configured/);
+    assert.deepEqual(deliveryLogs.map(log => log.status), ['failed']);
+    assert.equal(await markOrderPaid(order.id, { paidAmountOre: 12000 }), false);
+    assert.equal(deliveryLogs.length, 1);
+  } finally {
+    activeSubscriptions = [];
   }
 });
