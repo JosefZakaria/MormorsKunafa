@@ -44,7 +44,23 @@ export async function markOrderPaid(orderId: string, options?: MarkOrderPaidOpti
 
   if (!data || data.length === 0) return false;
 
-  const refreshed = await getOrderById(orderId);
+  let refreshed = null;
+  try {
+    refreshed = await getOrderById(orderId);
+  } catch (error) {
+    console.error('[markOrderPaid] Could not reload paid order for confirmations', { orderId, error });
+  }
+  const notificationOrder = refreshed?.order ?? result.order;
+
+  // The payment is already committed. Await push before replying to Stripe/Swish,
+  // while notification failures remain independent of payment success.
+  await dispatchOrderCreatedEvent(
+    orderId,
+    String(notificationOrder.order_number ?? ''),
+    String(notificationOrder.order_type ?? 'takeaway'),
+    notificationOrder.location_id != null ? String(notificationOrder.location_id) : null
+  );
+
   if (!refreshed) return true;
 
   const emailOut = String(refreshed.order.customer_email ?? '').trim();
@@ -58,20 +74,13 @@ export async function markOrderPaid(orderId: string, options?: MarkOrderPaidOpti
   const smsCustomerName = String(refreshed.order.customer_name ?? '').trim();
   // Hemleverans får inga SMS – endast "Ta med" och "Äta här".
   if (phoneOut && String(refreshed.order.order_type ?? '') !== 'delivery') {
-    const schedStr = refreshed.order.scheduled_at ? formatStockholmDateTime(refreshed.order.scheduled_at as string) : '';
-    const schedSuffix = schedStr ? ` Planerad upphämtning: ${schedStr}.` : '';
-    const placeSuffix = await inStorePickupSmsSuffix(refreshed.order);
-    void sendSms(phoneOut, `Tack för din beställning från Mormors Kunafa${smsCustomerName ? ', ' + smsCustomerName : ''}! Vi tar snart emot din beställning.${placeSuffix}${schedSuffix}`).catch((err) =>
-      console.error('[order confirmation sms after payment]', err)
-    );
+    void (async () => {
+      const schedStr = refreshed.order.scheduled_at ? formatStockholmDateTime(refreshed.order.scheduled_at as string) : '';
+      const schedSuffix = schedStr ? ` Planerad upphämtning: ${schedStr}.` : '';
+      const placeSuffix = await inStorePickupSmsSuffix(refreshed.order);
+      await sendSms(phoneOut, `Tack för din beställning från Mormors Kunafa${smsCustomerName ? ', ' + smsCustomerName : ''}! Vi tar snart emot din beställning.${placeSuffix}${schedSuffix}`);
+    })().catch((err) => console.error('[order confirmation sms after payment]', err));
   }
-
-  dispatchOrderCreatedEvent(
-    orderId,
-    String(refreshed.order.order_number ?? ''),
-    String(refreshed.order.order_type ?? 'takeaway'),
-    refreshed.order.location_id != null ? String(refreshed.order.location_id) : null
-  );
 
   return true;
 }

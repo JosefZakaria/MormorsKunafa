@@ -6,6 +6,7 @@ import {
   listActivePushSubscriptions,
   markPushDeliveryFailure,
   markPushDeliverySuccess,
+  type PushSubscriptionRow,
 } from '../db/pushSubscriptionsRepository.js';
 import type { OrderCreatedEvent } from './realtimeEvents.js';
 import { loadAdminScopes, orderVisibleToScope } from './locationScope.js';
@@ -53,11 +54,43 @@ export function isWebPushConfigured(): boolean {
   return vapidConfigured;
 }
 
-export async function sendOrderCreatedPush(event: OrderCreatedEvent): Promise<void> {
-  if (!vapidConfigured) return;
+export async function sendTestPush(subscription: PushSubscriptionRow): Promise<boolean> {
+  if (!vapidConfigured) throw new Error('Web Push is not configured');
+  const eventId = crypto.randomUUID();
+  const target = {
+    endpoint: subscription.endpoint,
+    keys: { p256dh: subscription.p256dh, auth: subscription.auth },
+  };
+  try {
+    await webpush.sendNotification(target, JSON.stringify({
+      title: 'Testnotis från Mormors Kunafa',
+      body: 'Notiser fungerar på denna padda.',
+      tag: `test-${eventId}`,
+      url: '/admin/dashboard',
+    }), { TTL: 60, urgency: 'high' });
+    await markPushDeliverySuccess(subscription.id);
+    await createPushDeliveryLog({ eventId, subscriptionId: subscription.id, status: 'success', statusCode: 201 });
+    return true;
+  } catch (error: any) {
+    const statusCode = Number(error?.statusCode ?? 0) || undefined;
+    const message = String(error?.body || error?.message || 'push failed');
+    console.error('[push] test delivery failed', { subscriptionId: subscription.id, statusCode, message });
+    await markPushDeliveryFailure(subscription.id, message, statusCode);
+    await createPushDeliveryLog({ eventId, subscriptionId: subscription.id, status: 'failed', statusCode, errorMessage: message });
+    if (statusCode === 404 || statusCode === 410) await disablePushSubscriptionByEndpoint(subscription.endpoint);
+    return false;
+  }
+}
 
+export async function sendOrderCreatedPush(event: OrderCreatedEvent): Promise<void> {
   const subscriptions = await listActivePushSubscriptions();
   if (!subscriptions.length) return;
+
+  if (!vapidConfigured) {
+    console.error('[push] Order notification unavailable: VAPID keys missing', { orderId: event.order_id });
+    await Promise.all(subscriptions.map(subscription => markPushDeliveryFailure(subscription.id, 'Web Push is not configured')));
+    return;
+  }
 
   const scopes = await loadAdminScopes(subscriptions.map((s) => s.admin_id));
   const visibleSubscriptions = subscriptions.filter((subscription) => {
@@ -119,6 +152,7 @@ export async function sendOrderCreatedPush(event: OrderCreatedEvent): Promise<vo
       } catch (error: any) {
         const statusCode = Number(error?.statusCode ?? 0) || undefined;
         const message = String(error?.body || error?.message || 'push failed');
+        console.error('[push] order delivery failed', { orderId: event.order_id, subscriptionId: subscription.id, statusCode, message });
         await markPushDeliveryFailure(subscription.id, message, statusCode);
         await createPushDeliveryLog({
           eventId: event.event_id,

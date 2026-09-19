@@ -10,6 +10,7 @@ export const DEFAULT_HOJA_PRINTER_IP = '192.168.1.100';
 
 const PRINTER_IP_KEY = 'printer_ip';
 const PRINTER_DEVID_KEY = 'printer_devid';
+const VERIFIED_CONFIG_PREFIX = 'printer_verified_';
 
 export function normalizeLocationSlug(locationIdOrSlug?: string | null): PrinterLocationSlug {
   if (!locationIdOrSlug) return 'hoja';
@@ -58,8 +59,6 @@ export function getPrinterIp(locationIdOrSlug?: string | null): string {
     if (legacy && legacy.trim().length > 0) {
       return legacy.trim();
     }
-    // Säker fallback så att Höja fungerar direkt även om localStorage rensats
-    return DEFAULT_HOJA_PRINTER_IP;
   }
 
   // För Möllan: ingen skrivare installerad än som standard
@@ -84,6 +83,10 @@ export function setPrinterConfig(ip: string, deviceId?: string, locationIdOrSlug
   const trimmedIp = ip.trim();
   const trimmedDeviceId = deviceId?.trim() || 'local_printer';
 
+  if (getPrinterIp(slug) !== trimmedIp || getDeviceId(slug) !== trimmedDeviceId) {
+    localStorage.removeItem(`${VERIFIED_CONFIG_PREFIX}${slug}`);
+  }
+
   localStorage.setItem(getPrinterIpKey(slug), trimmedIp);
   localStorage.setItem(getPrinterDevidKey(slug), trimmedDeviceId);
 
@@ -102,7 +105,15 @@ export function getPrinterConfig(locationIdOrSlug?: string | null): { ip: string
 }
 
 export function isPrinterConfigured(locationIdOrSlug?: string | null): boolean {
-  return getPrinterIp(locationIdOrSlug).length > 0;
+  const slug = normalizeLocationSlug(locationIdOrSlug);
+  const { ip, deviceId } = getPrinterConfig(slug);
+  return Boolean(ip && localStorage.getItem(`${VERIFIED_CONFIG_PREFIX}${slug}`) === JSON.stringify([ip, deviceId]));
+}
+
+export function verifySavedPrinterConfig(locationIdOrSlug?: string | null): void {
+  const slug = normalizeLocationSlug(locationIdOrSlug);
+  const { ip, deviceId } = getPrinterConfig(slug);
+  if (ip) localStorage.setItem(`${VERIFIED_CONFIG_PREFIX}${slug}`, JSON.stringify([ip, deviceId]));
 }
 
 const ORDER_TYPE_LABELS: Record<string, string> = {
@@ -151,21 +162,20 @@ function wrapInSoap(printXml: string): string {
     + `</s:Envelope>`;
 }
 
-function buildEndpointUrl(locationIdOrSlug?: string | null): string {
-  const ip = getPrinterIp(locationIdOrSlug);
-  const devid = getDeviceId(locationIdOrSlug);
-  return `http://${ip}/cgi-bin/epos/service.cgi?devid=${devid}&timeout=10000`;
+function buildEndpointUrl(config: { ip: string; deviceId: string }): string {
+  return `http://${config.ip}/cgi-bin/epos/service.cgi?devid=${encodeURIComponent(config.deviceId)}&timeout=10000`;
 }
 
-async function sendToPrinter(soapXml: string, locationIdOrSlug?: string | null): Promise<{ success: boolean; error?: string }> {
+async function sendToPrinter(soapXml: string, locationIdOrSlug?: string | null, testConfig?: { ip: string; deviceId: string }): Promise<{ success: boolean; error?: string }> {
   const slug = normalizeLocationSlug(locationIdOrSlug);
-  if (!isPrinterConfigured(slug)) {
+  const config = testConfig ?? getPrinterConfig(slug);
+  if (!config.ip || (!testConfig && !isPrinterConfigured(slug))) {
     const locName = slug === 'hoja' ? 'Höja' : 'Möllevången';
     return { success: false, error: `Skrivaren för ${locName} är inte konfigurerad. Ange IP-adress i inställningarna.` };
   }
 
   try {
-    const url = buildEndpointUrl(slug);
+    const url = buildEndpointUrl(config);
     const xhr = new XMLHttpRequest();
 
     return new Promise((resolve) => {
@@ -335,9 +345,9 @@ export async function printReceipt(order: Order, locationIdOrSlug?: string | nul
 /**
  * Testar anslutningen med minimal utskrift (samma XML-stil som kvitto).
  */
-export async function testConnection(locationIdOrSlug?: string | null): Promise<{ success: boolean; error?: string }> {
+export async function testConnection(locationIdOrSlug?: string | null, config?: { ip: string; deviceId: string }): Promise<{ success: boolean; error?: string }> {
   const slug = normalizeLocationSlug(locationIdOrSlug);
   const locationName = slug === 'hoja' ? 'Höja' : 'Möllevången';
   const xml = finishPrint(textLine(`Testutskrift OK - ${locationName}`, 'center'));
-  return sendToPrinter(wrapInSoap(buildEposPrintXml(xml)), slug);
+  return sendToPrinter(wrapInSoap(buildEposPrintXml(xml)), slug, config);
 }

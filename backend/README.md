@@ -117,17 +117,13 @@ Optional, for one-time WordPress migration only:
 
 3. Build/deploy backend and web over HTTPS.
 
-4. On iPad:
+4. Deploy when Höja has no paid orders awaiting acceptance. On the designated Höja Android tablet, sign in with Höja's location account in Chrome.
 
-   - Open site in Safari.
-   - Add to Home Screen.
-   - Log in to admin dashboard.
-   - Press "Aktivera notiser".
+   - Compare the saved printer IP and device ID with the printer's network settings. Allow Chrome's local network permission and press **Testa anslutning**. A successful test with saved values verifies that printer on this tablet; testing unsaved values does not save them.
+   - Enable **Automatisk kökslapp på denna Höjapadda** only on this tablet.
+   - Press **Aktivera notiser**, then **Skicka testnotis** and lock the tablet within five seconds. Verify that the notification arrives and that its sound is enabled in Android settings. The web app cannot override a silent notification channel.
 
-5. Verify flow:
-
-   - New order emits SSE event (`/api/admin/events`) for foreground sync.
-   - Push notification is sent for background/stängd app.
+5. Follow the first real paid Höja order. It should appear in Inkommande, alarm, and produce one kitchen ticket. Reload the dashboard and check that it does not print again. If the result is uncertain, inspect the physical ticket and use **Skriv ut kökslapp igen** manually. Möllevången's orders must not print on Höja's device.
 
 ## Web app and API URL
 

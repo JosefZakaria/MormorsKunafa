@@ -9,11 +9,12 @@ import { isDeliveryFeeLineItem } from '../constants/deliveryFee.js';
 import { registerAdminMediaRoutes } from './adminMedia.js';
 import {
   disablePushSubscriptionById,
+  findCurrentDeviceSubscription,
   listActivePushSubscriptions,
   upsertPushSubscription,
 } from '../db/pushSubscriptionsRepository.js';
 import { getRealtimeStatus, registerRealtimeClient } from '../services/realtimeEvents.js';
-import { isWebPushConfigured } from '../services/pushNotifications.js';
+import { isWebPushConfigured, sendTestPush } from '../services/pushNotifications.js';
 
 const router = Router();
 registerAdminMediaRoutes(router);
@@ -175,6 +176,46 @@ router.get('/notifications/health', requireAdmin, (_req: Request, res: Response)
     webPushConfigured: isWebPushConfigured(),
     realtime: status,
   });
+});
+
+router.post('/notifications/test', requireAdmin, async (req: Request, res: Response) => {
+  const admin = getAdminFromRequest(req);
+  if (!admin?.adminId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  if (isRateLimited(admin.adminId)) {
+    res.status(429).json({ error: 'För många testförsök. Försök igen om en stund.' });
+    return;
+  }
+  if (!isWebPushConfigured()) {
+    res.status(503).json({ error: 'Push är inte konfigurerat på servern.' });
+    return;
+  }
+  const subscription = req.body?.subscription as { endpoint?: string; keys?: { p256dh?: string; auth?: string } } | undefined;
+  const endpoint = String(subscription?.endpoint ?? '').trim();
+  const p256dh = String(subscription?.keys?.p256dh ?? '').trim();
+  const auth = String(subscription?.keys?.auth ?? '').trim();
+  if (!endpoint || !p256dh || !auth) {
+    res.status(400).json({ error: 'Prenumeration saknas på denna padda.' });
+    return;
+  }
+  try {
+    const currentDevice = await findCurrentDeviceSubscription({ adminId: admin.adminId, endpoint, p256dh, auth });
+    if (!currentDevice) {
+      res.status(404).json({ error: 'Ingen aktiv prenumeration för denna inloggade padda.' });
+      return;
+    }
+    const delayMs = Math.min(5000, Math.max(0, Number(req.body?.delayMs) || 0));
+    if (delayMs) await new Promise(resolve => setTimeout(resolve, delayMs));
+    const success = await sendTestPush(currentDevice);
+    res.status(success ? 200 : 502).json(success
+      ? { success: true }
+      : { success: false, error: 'Testnotisen kunde inte skickas. Kontrollera statusen på paddan.' });
+  } catch (error) {
+    console.error('[push] test endpoint failed', { adminId: admin.adminId, error });
+    res.status(500).json({ error: 'Kunde inte skicka testnotis.' });
+  }
 });
 
 router.get('/push-subscriptions', requireAdmin, async (req: Request, res: Response) => {

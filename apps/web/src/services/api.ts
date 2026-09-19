@@ -411,6 +411,17 @@ export const adminApi = {
     });
   },
 
+  sendTestNotification: async (subscription: PushSubscription, delayMs = 0): Promise<{ success: boolean }> => {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+    return authenticatedRequest<{ success: boolean }>('/admin/notifications/test', {
+      method: 'POST',
+      body: JSON.stringify({ subscription, delayMs }),
+      token,
+      timeout: 20000,
+    });
+  },
+
   getRealtimeEventsUrl: (): string => {
     const token = getToken();
     if (!token) throw new Error('Not authenticated');

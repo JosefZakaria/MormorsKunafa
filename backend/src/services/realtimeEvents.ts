@@ -61,7 +61,11 @@ export function broadcastOrderCreated(event: OrderCreatedEvent): void {
     ) {
       continue;
     }
-    sseWrite(client.res, 'ORDER_CREATED', event);
+    try {
+      sseWrite(client.res, 'ORDER_CREATED', event);
+    } catch (error) {
+      console.warn('[realtime] Could not write to client', { clientId: client.id, error });
+    }
   }
 }
 
@@ -70,12 +74,12 @@ function asOrderType(value: string): OrderType {
   return 'takeaway';
 }
 
-export function dispatchOrderCreatedEvent(
+export async function dispatchOrderCreatedEvent(
   orderId: string,
   orderNumber: string,
   orderType: string,
   locationId: string | null
-): void {
+): Promise<void> {
   const event: OrderCreatedEvent = {
     event_id: crypto.randomUUID(),
     event_type: 'ORDER_CREATED',
@@ -87,7 +91,7 @@ export function dispatchOrderCreatedEvent(
   };
 
   broadcastOrderCreated(event);
-  void sendOrderCreatedPush(event).catch((error) => {
+  await sendOrderCreatedPush(event).catch((error) => {
     console.error('[push] sendOrderCreatedPush failed', {
       eventId: event.event_id,
       orderId: orderId,
