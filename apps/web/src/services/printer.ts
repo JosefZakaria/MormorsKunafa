@@ -1,27 +1,105 @@
-import type { Order } from '@shared/types';
+import type { Order, Location } from '@shared/types';
+import { HOJA_LOCATION_ID, MOLLEVANGEN_LOCATION_ID } from '@shared/types';
+
+export type PrinterLocationSlug = 'hoja' | 'mollevangen';
+
+export const DEFAULT_HOJA_PRINTER_IP = '192.168.1.100';
 
 const PRINTER_IP_KEY = 'printer_ip';
 const PRINTER_DEVID_KEY = 'printer_devid';
 
-function getPrinterIp(): string {
-  return localStorage.getItem(PRINTER_IP_KEY) || '';
+export function normalizeLocationSlug(locationIdOrSlug?: string | null): PrinterLocationSlug {
+  if (!locationIdOrSlug) return 'hoja';
+  const clean = locationIdOrSlug.toLowerCase().trim();
+  if (clean === 'mollevangen' || clean === MOLLEVANGEN_LOCATION_ID) {
+    return 'mollevangen';
+  }
+  if (clean === 'hoja' || clean === HOJA_LOCATION_ID) {
+    return 'hoja';
+  }
+  return 'hoja';
 }
 
-function getDeviceId(): string {
-  return localStorage.getItem(PRINTER_DEVID_KEY) || 'local_printer';
+/**
+ * Avgör vilken restaurang en order ska tillagas och skrivas ut hos.
+ * Hemleverans har inget pickup locationId i databasen, men expedieras alltid från Höja.
+ */
+export function getOrderTargetLocationSlug(order: Order, _locations?: Location[]): PrinterLocationSlug {
+  if (order.orderType === 'delivery') {
+    return 'hoja';
+  }
+  if (order.locationId) {
+    return normalizeLocationSlug(order.locationId);
+  }
+  return 'hoja';
 }
 
-export function setPrinterConfig(ip: string, deviceId?: string) {
-  localStorage.setItem(PRINTER_IP_KEY, ip);
-  if (deviceId) localStorage.setItem(PRINTER_DEVID_KEY, deviceId);
+function getPrinterIpKey(slug: PrinterLocationSlug): string {
+  return `printer_ip_${slug}`;
 }
 
-export function getPrinterConfig(): { ip: string; deviceId: string } {
-  return { ip: getPrinterIp(), deviceId: getDeviceId() };
+function getPrinterDevidKey(slug: PrinterLocationSlug): string {
+  return `printer_devid_${slug}`;
 }
 
-export function isPrinterConfigured(): boolean {
-  return getPrinterIp().length > 0;
+export function getPrinterIp(locationIdOrSlug?: string | null): string {
+  const slug = normalizeLocationSlug(locationIdOrSlug);
+  const locationSpecific = localStorage.getItem(getPrinterIpKey(slug));
+  if (locationSpecific && locationSpecific.trim().length > 0) {
+    return locationSpecific.trim();
+  }
+
+  // För Höja: bakåtkompatibilitet med gamla globala nyckeln 'printer_ip'
+  if (slug === 'hoja') {
+    const legacy = localStorage.getItem(PRINTER_IP_KEY);
+    if (legacy && legacy.trim().length > 0) {
+      return legacy.trim();
+    }
+    // Säker fallback så att Höja fungerar direkt även om localStorage rensats
+    return DEFAULT_HOJA_PRINTER_IP;
+  }
+
+  // För Möllan: ingen skrivare installerad än som standard
+  return '';
+}
+
+export function getDeviceId(locationIdOrSlug?: string | null): string {
+  const slug = normalizeLocationSlug(locationIdOrSlug);
+  const locationSpecific = localStorage.getItem(getPrinterDevidKey(slug));
+  if (locationSpecific && locationSpecific.trim().length > 0) {
+    return locationSpecific.trim();
+  }
+  if (slug === 'hoja') {
+    const legacy = localStorage.getItem(PRINTER_DEVID_KEY);
+    if (legacy && legacy.trim().length > 0) return legacy.trim();
+  }
+  return 'local_printer';
+}
+
+export function setPrinterConfig(ip: string, deviceId?: string, locationIdOrSlug?: string | null) {
+  const slug = normalizeLocationSlug(locationIdOrSlug);
+  const trimmedIp = ip.trim();
+  const trimmedDeviceId = deviceId?.trim() || 'local_printer';
+
+  localStorage.setItem(getPrinterIpKey(slug), trimmedIp);
+  localStorage.setItem(getPrinterDevidKey(slug), trimmedDeviceId);
+
+  // Om vi sparar för Höja, synka även gamla nycklarna så eventuell äldre kod fortsätter fungera
+  if (slug === 'hoja') {
+    localStorage.setItem(PRINTER_IP_KEY, trimmedIp);
+    localStorage.setItem(PRINTER_DEVID_KEY, trimmedDeviceId);
+  }
+}
+
+export function getPrinterConfig(locationIdOrSlug?: string | null): { ip: string; deviceId: string } {
+  return {
+    ip: getPrinterIp(locationIdOrSlug),
+    deviceId: getDeviceId(locationIdOrSlug),
+  };
+}
+
+export function isPrinterConfigured(locationIdOrSlug?: string | null): boolean {
+  return getPrinterIp(locationIdOrSlug).length > 0;
 }
 
 const ORDER_TYPE_LABELS: Record<string, string> = {
@@ -70,19 +148,21 @@ function wrapInSoap(printXml: string): string {
     + `</s:Envelope>`;
 }
 
-function buildEndpointUrl(): string {
-  const ip = getPrinterIp();
-  const devid = getDeviceId();
+function buildEndpointUrl(locationIdOrSlug?: string | null): string {
+  const ip = getPrinterIp(locationIdOrSlug);
+  const devid = getDeviceId(locationIdOrSlug);
   return `http://${ip}/cgi-bin/epos/service.cgi?devid=${devid}&timeout=10000`;
 }
 
-async function sendToPrinter(soapXml: string): Promise<{ success: boolean; error?: string }> {
-  if (!isPrinterConfigured()) {
-    return { success: false, error: 'Skrivaren är inte konfigurerad. Ange IP-adress i inställningarna.' };
+async function sendToPrinter(soapXml: string, locationIdOrSlug?: string | null): Promise<{ success: boolean; error?: string }> {
+  const slug = normalizeLocationSlug(locationIdOrSlug);
+  if (!isPrinterConfigured(slug)) {
+    const locName = slug === 'hoja' ? 'Höja' : 'Möllevången';
+    return { success: false, error: `Skrivaren för ${locName} är inte konfigurerad. Ange IP-adress i inställningarna.` };
   }
 
   try {
-    const url = buildEndpointUrl();
+    const url = buildEndpointUrl(slug);
     const xhr = new XMLHttpRequest();
 
     return new Promise((resolve) => {
@@ -162,7 +242,9 @@ function finishPrint(xml: string): string {
 /**
  * Skriver ut en kökslapp (utan priser) — auto vid Inkommande / 30 min före planerad tid.
  */
-export async function printKitchenTicket(order: Order): Promise<{ success: boolean; error?: string }> {
+export async function printKitchenTicket(order: Order, locationIdOrSlug?: string | null): Promise<{ success: boolean; error?: string }> {
+  const slug = locationIdOrSlug ? normalizeLocationSlug(locationIdOrSlug) : getOrderTargetLocationSlug(order);
+
   let xml = '';
 
   xml += textLine('KOKSLAPP', 'center');
@@ -199,13 +281,15 @@ export async function printKitchenTicket(order: Order): Promise<{ success: boole
   xml = appendDeliveryBlock(xml, order);
   xml = finishPrint(xml);
 
-  return sendToPrinter(wrapInSoap(buildEposPrintXml(xml)));
+  return sendToPrinter(wrapInSoap(buildEposPrintXml(xml)), slug);
 }
 
 /**
  * Skriver ut ett kundkvitto (med priser) — används vid manuell "Kvitto"-knapptryckning.
  */
-export async function printReceipt(order: Order): Promise<{ success: boolean; error?: string }> {
+export async function printReceipt(order: Order, locationIdOrSlug?: string | null): Promise<{ success: boolean; error?: string }> {
+  const slug = locationIdOrSlug ? normalizeLocationSlug(locationIdOrSlug) : getOrderTargetLocationSlug(order);
+
   let xml = '';
 
   xml += textLine('Mormors Kunafa', 'center');
@@ -242,13 +326,15 @@ export async function printReceipt(order: Order): Promise<{ success: boolean; er
   xml += textLine('Tack for din bestallning!', 'center');
   xml = finishPrint(xml);
 
-  return sendToPrinter(wrapInSoap(buildEposPrintXml(xml)));
+  return sendToPrinter(wrapInSoap(buildEposPrintXml(xml)), slug);
 }
 
 /**
  * Testar anslutningen med minimal utskrift (samma XML-stil som kvitto).
  */
-export async function testConnection(): Promise<{ success: boolean; error?: string }> {
-  const xml = finishPrint(textLine('Testutskrift OK', 'center'));
-  return sendToPrinter(wrapInSoap(buildEposPrintXml(xml)));
+export async function testConnection(locationIdOrSlug?: string | null): Promise<{ success: boolean; error?: string }> {
+  const slug = normalizeLocationSlug(locationIdOrSlug);
+  const locationName = slug === 'hoja' ? 'Höja' : 'Möllevången';
+  const xml = finishPrint(textLine(`Testutskrift OK - ${locationName}`, 'center'));
+  return sendToPrinter(wrapInSoap(buildEposPrintXml(xml)), slug);
 }
