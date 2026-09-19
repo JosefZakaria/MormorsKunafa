@@ -188,10 +188,6 @@ router.post('/notifications/test', requireAdmin, async (req: Request, res: Respo
     res.status(429).json({ error: 'För många testförsök. Försök igen om en stund.' });
     return;
   }
-  if (!isWebPushConfigured()) {
-    res.status(503).json({ error: 'Push är inte konfigurerat på servern.' });
-    return;
-  }
   const subscription = req.body?.subscription as { endpoint?: string; keys?: { p256dh?: string; auth?: string } } | undefined;
   const endpoint = String(subscription?.endpoint ?? '').trim();
   const p256dh = String(subscription?.keys?.p256dh ?? '').trim();

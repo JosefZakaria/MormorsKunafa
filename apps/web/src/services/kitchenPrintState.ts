@@ -55,3 +55,13 @@ export function shouldAutoPrintKitchenTicket(order: Order, authorizedHojaTablet:
     && isKitchenTicketPrintDue(order.scheduledTime)
     && getKitchenPrintStatus(order.id) === null;
 }
+
+/** Keep already-due orders from printing unexpectedly when this tablet is first enabled. */
+export function markExistingDueTicketsForReview(orders: Order[]): boolean {
+  for (const order of orders) {
+    if (shouldAutoPrintKitchenTicket(order, true, true) && !setKitchenPrintStatus(order.id, 'review')) {
+      return false;
+    }
+  }
+  return true;
+}

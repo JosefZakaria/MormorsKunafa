@@ -55,8 +55,18 @@ export function isWebPushConfigured(): boolean {
 }
 
 export async function sendTestPush(subscription: PushSubscriptionRow): Promise<boolean> {
-  if (!vapidConfigured) throw new Error('Web Push is not configured');
   const eventId = crypto.randomUUID();
+  if (!vapidConfigured) {
+    console.error('[push] Test notification unavailable: VAPID keys missing', { subscriptionId: subscription.id });
+    await markPushDeliveryFailure(subscription.id, 'Web Push is not configured');
+    await createPushDeliveryLog({
+      eventId,
+      subscriptionId: subscription.id,
+      status: 'failed',
+      errorMessage: 'Web Push is not configured',
+    });
+    return false;
+  }
   const target = {
     endpoint: subscription.endpoint,
     keys: { p256dh: subscription.p256dh, auth: subscription.auth },
@@ -86,12 +96,6 @@ export async function sendOrderCreatedPush(event: OrderCreatedEvent): Promise<vo
   const subscriptions = await listActivePushSubscriptions();
   if (!subscriptions.length) return;
 
-  if (!vapidConfigured) {
-    console.error('[push] Order notification unavailable: VAPID keys missing', { orderId: event.order_id });
-    await Promise.all(subscriptions.map(subscription => markPushDeliveryFailure(subscription.id, 'Web Push is not configured')));
-    return;
-  }
-
   const scopes = await loadAdminScopes(subscriptions.map((s) => s.admin_id));
   const visibleSubscriptions = subscriptions.filter((subscription) => {
     const scope = scopes.get(subscription.admin_id);
@@ -102,6 +106,20 @@ export async function sendOrderCreatedPush(event: OrderCreatedEvent): Promise<vo
     });
   });
   if (!visibleSubscriptions.length) return;
+
+  if (!vapidConfigured) {
+    console.error('[push] Order notification unavailable: VAPID keys missing', { orderId: event.order_id });
+    await Promise.all(visibleSubscriptions.map(async subscription => {
+      await markPushDeliveryFailure(subscription.id, 'Web Push is not configured');
+      await createPushDeliveryLog({
+        eventId: event.event_id,
+        subscriptionId: subscription.id,
+        status: 'failed',
+        errorMessage: 'Web Push is not configured',
+      });
+    }));
+    return;
+  }
 
   const payload = JSON.stringify({
     event_id: event.event_id,

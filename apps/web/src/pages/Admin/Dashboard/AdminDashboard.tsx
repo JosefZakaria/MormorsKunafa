@@ -5,7 +5,7 @@ import { Container } from '../../../components/common/Container/Container';
 import { Button } from '../../../components/common/Button/Button';
 import { orderApi, productApi, adminApi, locationApi } from '../../../services/api';
 import { printKitchenTicket, printReceipt, testConnection, isPrinterConfigured, getPrinterConfig, setPrinterConfig, verifySavedPrinterConfig, getOrderTargetLocationSlug, PrinterLocationSlug, DEFAULT_HOJA_PRINTER_IP } from '../../../services/printer';
-import { getKitchenPrintStatus, isHojaAutoPrintEnabled, setHojaAutoPrintEnabled, setKitchenPrintStatus, shouldAutoPrintKitchenTicket, type KitchenPrintStatus } from '../../../services/kitchenPrintState';
+import { getKitchenPrintStatus, isHojaAutoPrintEnabled, markExistingDueTicketsForReview, setHojaAutoPrintEnabled, setKitchenPrintStatus, shouldAutoPrintKitchenTicket, type KitchenPrintStatus } from '../../../services/kitchenPrintState';
 import { urlBase64ToUint8Array } from '../../../services/pwa';
 import type {
     DeliveryInfo,
@@ -175,6 +175,7 @@ function PrinterSettings({
     isOwner,
     canAutoPrint,
     autoPrintEnabled,
+    autoPrintBusy,
     onAutoPrintChange,
 }: {
     locations?: Location[];
@@ -182,6 +183,7 @@ function PrinterSettings({
     isOwner: boolean;
     canAutoPrint: boolean;
     autoPrintEnabled: boolean;
+    autoPrintBusy: boolean;
     onAutoPrintChange: (enabled: boolean) => void;
 }) {
     const defaultSlug: PrinterLocationSlug = (myLocation?.slug === 'mollevangen' ? 'mollevangen' : 'hoja');
@@ -333,10 +335,11 @@ function PrinterSettings({
                 )}
                 {canAutoPrint && selectedSlug === 'hoja' && (
                     <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 600 }}>
-                        <input type="checkbox" checked={autoPrintEnabled} disabled={!hojaConfigured} onChange={e => onAutoPrintChange(e.target.checked)} />
+                        <input type="checkbox" checked={autoPrintEnabled} disabled={!hojaConfigured || autoPrintBusy} onChange={e => onAutoPrintChange(e.target.checked)} />
                         Automatisk kökslapp på denna Höjapadda
                     </label>
                 )}
+                {canAutoPrint && selectedSlug === 'hoja' && <small>Befintliga ordrar som redan är klara för utskrift kräver manuell kontroll när funktionen aktiveras.</small>}
             </div>
         </div>
     );
@@ -521,11 +524,31 @@ function ScheduledOrderInfo({ order }: { order: Order }) {
     );
 }
 
-function PreOrderCard({ order, locations, onEditNotes, onCancel }: {
+function KitchenTicketStatus({ order, status, onReprint }: {
+    order: Order;
+    status?: KitchenPrintStatus | null;
+    onReprint?: (order: Order) => void;
+}) {
+    if (!status) return null;
+    return (
+        <div role={status === 'review' ? 'alert' : 'status'}>
+            {status === 'printed' && '🖨️ Kökslapp utskriven'}
+            {status === 'printing' && '🖨️ Skriver ut kökslapp...'}
+            {status === 'review' && (
+                <><strong style={{ color: '#b45309' }}>⚠️ Kontrollera lappen</strong>{' '}
+                    {onReprint && <Button size="sm" variant="ghost" onClick={() => onReprint(order)}>Skriv ut kökslapp igen</Button>}</>
+            )}
+        </div>
+    );
+}
+
+function PreOrderCard({ order, locations, onEditNotes, onCancel, printStatus, onReprint }: {
     order: Order;
     locations: Location[];
     onEditNotes: (order: Order) => void;
     onCancel: (order: Order) => void;
+    printStatus?: KitchenPrintStatus | null;
+    onReprint?: (order: Order) => void;
 }) {
     const dateLabel = formatScheduledDate(order.scheduledTime);
     const clockLabel = formatScheduledClock(order.scheduledTime);
@@ -552,6 +575,7 @@ function PreOrderCard({ order, locations, onEditNotes, onCancel }: {
                         {clockLabel ? ` · ${clockLabel}` : ''}
                     </span>
                 </div>
+                <KitchenTicketStatus order={order} status={printStatus} onReprint={onReprint} />
                 <ul className="order-items">
                     {order.items.map((item, i) => (
                         <li key={i}>{item.quantity}x {item.productName} – {(item.price * item.quantity / 100).toFixed(0)} kr</li>
@@ -602,9 +626,7 @@ function PendingOrderCard({ order, locations, defaultPrepTime, onAccept, printSt
                     <PlaceBadge order={order} locations={locations} />
                 </h3>
                 <span className="status-badge status-ny">Ny</span>
-                {printStatus === 'printed' && <p role="status">🖨️ Kökslapp utskriven</p>}
-                {printStatus === 'printing' && <p role="status">🖨️ Skriver ut kökslapp...</p>}
-                {printStatus === 'review' && <p role="alert" style={{ color: '#b45309', fontWeight: 700 }}>⚠️ Kontrollera lappen</p>}
+                <KitchenTicketStatus order={order} status={printStatus} onReprint={onReprint} />
                 <ScheduledOrderInfo order={order} />
                 <ul className="order-items">
                     {order.items.map((item, i) => (
@@ -630,9 +652,6 @@ function PendingOrderCard({ order, locations, defaultPrepTime, onAccept, printSt
                 <Button size="sm" variant="primary" onClick={() => onAccept(order.id, extraMinutes)}>
                     Acceptera
                 </Button>
-                {printStatus === 'review' && onReprint && (
-                    <Button size="sm" variant="ghost" onClick={() => onReprint(order)}>Skriv ut kökslapp igen</Button>
-                )}
             </div>
         </div>
     );
@@ -1005,6 +1024,7 @@ export const AdminDashboard: React.FC = () => {
         : undefined;
     const canAutoPrint = admin?.role === 'location' && admin.locationId === HOJA_LOCATION_ID;
     const [autoPrintEnabled, setAutoPrintEnabledState] = useState(isHojaAutoPrintEnabled);
+    const [autoPrintBusy, setAutoPrintBusy] = useState(false);
 
     // Statistics state
     const [showStatsModal, setShowStatsModal] = useState(false);
@@ -1062,17 +1082,8 @@ export const AdminDashboard: React.FC = () => {
     // pendingOrders-listan är oförändrad).
     const [printTick, setPrintTick] = useState(0);
 
-    const handleAutoPrintChange = (enabled: boolean) => {
-        if (enabled && (!canAutoPrint || !isPrinterConfigured('hoja'))) return;
-        if (!setHojaAutoPrintEnabled(enabled)) {
-            setError('Kunde inte spara valet för automatisk utskrift på paddan.');
-            return;
-        }
-        setAutoPrintEnabledState(enabled);
-    };
-
     const runKitchenPrint = useCallback(async (order: Order) => {
-        if (!canAutoPrint || getOrderTargetLocationSlug(order) !== 'hoja' || !isPrinterConfigured('hoja')) {
+        if (!canAutoPrint || order.paymentStatus !== 'paid' || order.status === 'avbruten' || getOrderTargetLocationSlug(order) !== 'hoja' || !isPrinterConfigured('hoja')) {
             setError('Kökslappen kan bara skrivas ut från den verifierade Höjapaddan.');
             return;
         }
@@ -1142,7 +1153,7 @@ export const AdminDashboard: React.FC = () => {
     const fetchOrders = useCallback(async (isManualOrWake = false) => {
         // Prevent concurrent polling executions unless explicitly forced by wake/event
         if (isFetchingRef.current && !isManualOrWake) {
-            return;
+            return null;
         }
 
         const currentSeq = ++fetchSeqRef.current;
@@ -1157,7 +1168,7 @@ export const AdminDashboard: React.FC = () => {
 
             // Discard out-of-order response if another request completed earlier
             if (currentSeq !== fetchSeqRef.current) {
-                return;
+                return null;
             }
 
             setPendingOrders(pending);
@@ -1168,9 +1179,10 @@ export const AdminDashboard: React.FC = () => {
             consecutiveErrorsRef.current = 0;
             setIsReconnecting(false);
             setError((prev) => (prev === 'Kunde inte hämta ordrar.' ? null : prev));
+            return { pending, active, preOrders: preOrdersList };
         } catch (e: any) {
             if (currentSeq !== fetchSeqRef.current) {
-                return;
+                return null;
             }
 
             console.warn('[AdminDashboard] fetchOrders error:', e?.message || e);
@@ -1182,7 +1194,7 @@ export const AdminDashboard: React.FC = () => {
                     logout();
                     navigate('/admin/login');
                 }, 2000);
-                return;
+                return null;
             }
 
             consecutiveErrorsRef.current += 1;
@@ -1192,11 +1204,38 @@ export const AdminDashboard: React.FC = () => {
             if (consecutiveErrorsRef.current >= 3) {
                 setIsReconnecting(true);
             }
+            return null;
         } finally {
             isFetchingRef.current = false;
             setLoadingOrders(false);
         }
     }, [logout, navigate]);
+
+    const handleAutoPrintChange = async (enabled: boolean) => {
+        if (!enabled) {
+            if (setHojaAutoPrintEnabled(false)) setAutoPrintEnabledState(false);
+            else setError('Kunde inte spara valet för automatisk utskrift på paddan.');
+            return;
+        }
+        if (!canAutoPrint || !isPrinterConfigured('hoja')) return;
+        setAutoPrintBusy(true);
+        try {
+            const current = await fetchOrders(true);
+            if (!current) {
+                setError('Kunde inte kontrollera aktuella ordrar. Automatisk utskrift aktiverades inte.');
+                return;
+            }
+            const unique = new Map([...current.pending, ...current.active, ...current.preOrders].map(order => [order.id, order]));
+            if (!markExistingDueTicketsForReview([...unique.values()]) || !setHojaAutoPrintEnabled(true)) {
+                setError('Kunde inte spara utskriftsstatus på paddan. Automatisk utskrift aktiverades inte.');
+                return;
+            }
+            setAutoPrintEnabledState(true);
+            setPrintTick(n => n + 1);
+        } finally {
+            setAutoPrintBusy(false);
+        }
+    };
 
     // --- Sekventiell polling som eliminerar överlappande anrop och pausar när skärmen släcks ---
     useEffect(() => {
@@ -1324,11 +1363,12 @@ export const AdminDashboard: React.FC = () => {
         // Vänta på första hämtningen innan vi gör något.
         if (loadingOrders) return;
 
-        for (const order of pendingOrders) {
+        const openOrders = new Map([...pendingOrders, ...activeOrders, ...preOrders].map(order => [order.id, order]));
+        for (const order of openOrders.values()) {
             if (!shouldAutoPrintKitchenTicket(order, canAutoPrint, autoPrintEnabled)) continue;
             void runKitchenPrint(order);
         }
-    }, [pendingOrders, loadingOrders, printTick, autoPrintEnabled, canAutoPrint, runKitchenPrint]);
+    }, [pendingOrders, activeOrders, preOrders, loadingOrders, printTick, autoPrintEnabled, canAutoPrint, runKitchenPrint]);
 
     // Tick every 15s so a same-day order scheduled later still prints at T-30
     // even if the pending list content has not changed.
@@ -1779,6 +1819,10 @@ export const AdminDashboard: React.FC = () => {
     const visiblePreOrders = isOwner ? preOrders.filter((order) => orderMatchesPlaceFilter(order, placeFilter)) : preOrders;
     const visibleActive = isOwner ? activeOrders.filter((order) => orderMatchesPlaceFilter(order, placeFilter)) : activeOrders;
     const visibleHistory = isOwner ? historyOrders.filter((order) => orderMatchesPlaceFilter(order, placeFilter)) : historyOrders;
+    const kitchenStatusFor = (order: Order): KitchenPrintStatus | null => {
+        if (!canAutoPrint || getOrderTargetLocationSlug(order) !== 'hoja') return null;
+        return inFlightPrintIdsRef.current.has(order.id) ? 'printing' : getKitchenPrintStatus(order.id);
+    };
     const hojaName = locations.find((location) => location.slug === 'hoja')?.name ?? 'Höja';
     const molleName = locations.find((location) => location.slug === 'mollevangen')?.name ?? 'Möllevången';
     return (
@@ -2043,9 +2087,7 @@ export const AdminDashboard: React.FC = () => {
                                         locations={locations}
                                         defaultPrepTime={settings?.defaultPreparationTime ?? 30}
                                         onAccept={handleAcceptOrder}
-                                        printStatus={canAutoPrint
-                                            ? inFlightPrintIdsRef.current.has(order.id) ? 'printing' : getKitchenPrintStatus(order.id)
-                                            : undefined}
+                                        printStatus={kitchenStatusFor(order)}
                                         onReprint={canAutoPrint ? runKitchenPrint : undefined}
                                     />
                                 ))
@@ -2092,6 +2134,8 @@ export const AdminDashboard: React.FC = () => {
                                                         locations={locations}
                                                         onEditNotes={openNotesModal}
                                                         onCancel={(order) => openCancelModal(order.id)}
+                                                        printStatus={kitchenStatusFor(o)}
+                                                        onReprint={canAutoPrint ? runKitchenPrint : undefined}
                                                     />
                                                 ))}
                                             </div>
@@ -2124,16 +2168,7 @@ export const AdminDashboard: React.FC = () => {
                                                 <OrderTimer estimatedReadyTime={order.estimatedReadyTime} />
                                                 <span className={`status-badge status-${order.status}`}>{order.status}</span>
                                             </div>
-                                            {canAutoPrint && getOrderTargetLocationSlug(order) === 'hoja' && (
-                                                <div role="status">
-                                                    {inFlightPrintIdsRef.current.has(order.id) ? '🖨️ Skriver ut kökslapp...' :
-                                                        getKitchenPrintStatus(order.id) === 'printed' ? '🖨️ Kökslapp utskriven' :
-                                                        getKitchenPrintStatus(order.id) === 'review' ? (
-                                                            <><strong style={{ color: '#b45309' }}>⚠️ Kontrollera lappen</strong>{' '}
-                                                                <Button size="sm" variant="ghost" onClick={() => void runKitchenPrint(order)}>Skriv ut kökslapp igen</Button></>
-                                                        ) : null}
-                                                </div>
-                                            )}
+                                            <KitchenTicketStatus order={order} status={kitchenStatusFor(order)} onReprint={canAutoPrint && order.status !== 'avbruten' ? runKitchenPrint : undefined} />
                                             {order.orderType === 'delivery' && (
                                                 <p style={{ fontSize: '0.8rem', color: '#6b5f52', margin: '0.25rem 0 0' }}>
                                                     Nedräkning: tillagning i köket
@@ -2221,6 +2256,7 @@ export const AdminDashboard: React.FC = () => {
                                             <span className={`status-badge ${order.status === 'avbruten' ? 'status-avbruten' : 'status-klar'}`}>
                                                 {order.status === 'avbruten' ? 'Avbruten' : 'Klar'}
                                             </span>
+                                            <KitchenTicketStatus order={order} status={kitchenStatusFor(order)} onReprint={canAutoPrint && order.status !== 'avbruten' ? runKitchenPrint : undefined} />
                                             <ScheduledOrderInfo order={order} />
                                             <ul style={{ margin: '0.5rem 0', paddingLeft: '1.2rem' }}>
                                                 {order.items.map((item, i) => (
@@ -2532,6 +2568,7 @@ export const AdminDashboard: React.FC = () => {
                                 isOwner={isOwner}
                                 canAutoPrint={canAutoPrint}
                                 autoPrintEnabled={autoPrintEnabled}
+                                autoPrintBusy={autoPrintBusy}
                                 onAutoPrintChange={handleAutoPrintChange}
                             />
                             {canAutoPrint && <HojaNotificationSettings />}

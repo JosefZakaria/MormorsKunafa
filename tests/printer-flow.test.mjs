@@ -94,3 +94,20 @@ test('automatic ticket eligibility stays on the designated paid Höja order', ()
   state.setKitchenPrintStatus(hojaOrder.id, 'printed');
   assert.equal(state.shouldAutoPrintKitchenTicket(hojaOrder, true, true), false);
 });
+
+test('activation holds older due tickets for manual review but leaves future preorders eligible', () => {
+  data.clear();
+  printer.setPrinterConfig('192.168.1.42', 'kitchen', 'hoja');
+  printer.verifySavedPrinterConfig('hoja');
+  const acceptedDue = {
+    ...order, id: 'accepted-due', status: 'mottagen', paymentStatus: 'paid',
+    locationId: '2f1a9c4e-6b7d-4e8f-a901-b2c3d4e5f601',
+    scheduledTime: new Date(Date.now() + 5 * 60_000).toISOString(),
+  };
+  const futurePreorder = { ...acceptedDue, id: 'future-preorder', scheduledTime: new Date(Date.now() + 24 * 60 * 60_000).toISOString() };
+  assert.equal(state.markExistingDueTicketsForReview([acceptedDue, futurePreorder]), true);
+  assert.equal(state.getKitchenPrintStatus(acceptedDue.id), 'review');
+  assert.equal(state.shouldAutoPrintKitchenTicket(acceptedDue, true, true), false);
+  assert.equal(state.getKitchenPrintStatus(futurePreorder.id), null);
+  assert.equal(state.shouldAutoPrintKitchenTicket({ ...futurePreorder, scheduledTime: new Date(Date.now() + 5 * 60_000).toISOString() }, true, true), true);
+});
