@@ -8,7 +8,7 @@ import { PrinterService } from '../services/PrinterService.js';
 import { sendOrderConfirmationEmail } from '../services/OrderConfirmationEmail.js';
 import { sendSms } from '../services/SmsService.js';
 import { getStripe } from '../services/stripeClient.js';
-import { broadcastOrderCreated, type OrderCreatedEvent } from '../services/realtimeEvents.js';
+import { broadcastOrderCreated, dispatchOrderCreatedEvent, type OrderCreatedEvent } from '../services/realtimeEvents.js';
 import { sendOrderCreatedPush } from '../services/pushNotifications.js';
 import { resolveOrderLocationId, locationOrderTypeError, inStorePickupSmsSuffix } from '../db/locations.js';
 import { outOfStockProductNames, stockLocationIdForOrder } from '../db/productLocationStock.js';
@@ -48,30 +48,9 @@ function asOrderType(value: string): OrderType {
   return 'takeaway';
 }
 
-function dispatchOrderCreatedEvent(
-  orderId: string,
-  orderNumber: string,
-  orderType: string,
-  locationId: string | null
-): void {
-  const event: OrderCreatedEvent = {
-    event_id: generateId(),
-    event_type: 'ORDER_CREATED',
-    order_id: orderId,
-    order_number: orderNumber,
-    created_at: nowIso(),
-    order_type: asOrderType(orderType),
-    location_id: locationId,
-  };
-
-  broadcastOrderCreated(event);
-  void sendOrderCreatedPush(event).catch((error) => {
-    console.error('[push] sendOrderCreatedPush failed', {
-      eventId: event.event_id,
-      orderId: orderId,
-      error,
-    });
-  });
+function paramId(req: Request, key = 'id'): string {
+  const v = req.params[key];
+  return Array.isArray(v) ? String(v[0] ?? '') : String(v ?? '');
 }
 
 // Returns "YYYY-MM-DD" for the given date in the Europe/Stockholm timezone.
@@ -385,12 +364,14 @@ router.post('/', async (req: Request, res: Response) => {
       );
     }
 
-    dispatchOrderCreatedEvent(
-      orderId,
-      String(result.order.order_number ?? orderNumber),
-      String(result.order.order_type ?? orderType),
-      result.order.location_id != null ? String(result.order.location_id) : locationId
-    );
+    if (!isOnlinePayment(paymentMethod)) {
+      dispatchOrderCreatedEvent(
+        orderId,
+        String(result.order.order_number ?? orderNumber),
+        String(result.order.order_type ?? orderType),
+        result.order.location_id != null ? String(result.order.location_id) : locationId
+      );
+    }
 
     res.status(201).json(orderRowToOrder(result.order, result.items));
   } catch (e) {
@@ -410,7 +391,7 @@ router.post('/checkout-session/:orderId', async (req: Request, res: Response) =>
       return;
     }
 
-    const orderId = req.params.orderId;
+    const orderId = paramId(req, 'orderId');
     const result = await getOrderById(orderId);
     if (!result) {
       res.status(404).json({ error: 'Order not found' });
@@ -550,9 +531,10 @@ router.get('/admin/pending', requireAdmin, async (req: Request, res: Response) =
 // Admin: accept order (ny → mottagen), optionally adjust estimated time
 router.patch('/admin/:id/accept', requireAdmin, async (req: Request, res: Response) => {
   try {
+    const id = paramId(req);
     const { extraMinutes } = req.body as { extraMinutes?: number };
 
-    const result = await getOrderById(req.params.id);
+    const result = await getOrderById(id);
     if (!result) {
       res.status(404).json({ error: 'Order not found' });
       return;
@@ -574,12 +556,12 @@ router.patch('/admin/:id/accept', requireAdmin, async (req: Request, res: Respon
     const totalMinutes = defaultPrep + (extraMinutes ?? 0);
     const estimatedReady = new Date(Date.now() + totalMinutes * 60 * 1000);
 
-    await updateOrder(req.params.id, {
+    await updateOrder(id, {
       status: 'mottagen',
       estimated_ready_at: estimatedReady.toISOString(),
     });
 
-    const updated = await getOrderById(req.params.id);
+    const updated = await getOrderById(id);
     if (!updated) {
       res.status(500).json({ error: 'Accept succeeded but fetch failed' });
       return;
@@ -727,6 +709,7 @@ router.post('/admin/history/all/delete', requireAdmin, requireOwner, async (req:
 // Admin: delete single order. Uses POST so a password can be supplied in the body.
 router.post('/admin/:id/delete', requireAdmin, async (req: Request, res: Response) => {
   try {
+    const id = paramId(req);
     const { password } = req.body as { password?: string };
     const deletePassword = process.env.DELETE_PASSWORD;
     if (!deletePassword || !password || password !== deletePassword) {
@@ -734,14 +717,14 @@ router.post('/admin/:id/delete', requireAdmin, async (req: Request, res: Respons
       return;
     }
 
-    const existing = await getOrderById(req.params.id);
+    const existing = await getOrderById(id);
     if (!existing) {
       res.status(404).json({ error: 'Order not found' });
       return;
     }
     if (!(await assertOrderVisible(req, res, existing.order))) return;
 
-    const { error } = await supabase.from('orders').delete().eq('id', req.params.id);
+    const { error } = await supabase.from('orders').delete().eq('id', id);
     if (error) {
       logSupabaseError('DELETE /admin/:id', error);
       res.status(500).json({ error: 'Failed to delete order', details: error.message });
@@ -757,6 +740,7 @@ router.post('/admin/:id/delete', requireAdmin, async (req: Request, res: Respons
 // Admin: cancel order (password protected).
 router.post('/admin/:id/cancel', requireAdmin, async (req: Request, res: Response) => {
   try {
+    const id = paramId(req);
     const { password, cancellationReason } = req.body as { password?: string; cancellationReason?: string };
     const deletePassword = process.env.DELETE_PASSWORD;
     if (!deletePassword || !password || password !== deletePassword) {
@@ -768,13 +752,13 @@ router.post('/admin/:id/cancel', requireAdmin, async (req: Request, res: Respons
       return;
     }
 
-    const existing = await getOrderById(req.params.id);
+    const existing = await getOrderById(id);
     if (!existing) {
       res.status(404).json({ error: 'Order not found' });
       return;
     }
     if (!(await assertOrderVisible(req, res, existing.order))) return;
-    await updateOrder(req.params.id, {
+    await updateOrder(id, {
       status: 'avbruten',
       cancelled_at: existing.order.cancelled_at
         ? String(existing.order.cancelled_at)
@@ -782,7 +766,7 @@ router.post('/admin/:id/cancel', requireAdmin, async (req: Request, res: Respons
       cancellation_reason: cancellationReason.trim(),
     });
 
-    const result = await getOrderById(req.params.id);
+    const result = await getOrderById(id);
     if (!result) {
       res.status(404).json({ error: 'Order not found' });
       return;
@@ -797,6 +781,7 @@ router.post('/admin/:id/cancel', requireAdmin, async (req: Request, res: Respons
 // Admin: update status
 router.patch('/admin/:id/status', requireAdmin, async (req: Request, res: Response) => {
   try {
+    const id = paramId(req);
     const { status, estimatedReadyTime, cancellationReason } = req.body as {
       status?: string;
       estimatedReadyTime?: string;
@@ -811,7 +796,7 @@ router.patch('/admin/:id/status', requireAdmin, async (req: Request, res: Respon
       return;
     }
 
-    const existing = await getOrderById(req.params.id);
+    const existing = await getOrderById(id);
     if (!existing) {
       res.status(404).json({ error: 'Order not found' });
       return;
@@ -835,9 +820,9 @@ router.patch('/admin/:id/status', requireAdmin, async (req: Request, res: Respon
         : nowIso();
       patch.cancellation_reason = cancellationReason?.trim() ?? null;
     }
-    await updateOrder(req.params.id, patch);
+    await updateOrder(id, patch);
 
-    const result = await getOrderById(req.params.id);
+    const result = await getOrderById(id);
     if (!result) {
       res.status(404).json({ error: 'Order not found' });
       return;
@@ -853,6 +838,7 @@ router.patch('/admin/:id/status', requireAdmin, async (req: Request, res: Respon
 // Admin: update time
 router.patch('/admin/:id/time', requireAdmin, async (req: Request, res: Response) => {
   try {
+    const id = paramId(req);
     const { estimatedReadyTime, preparationTime } = req.body as { estimatedReadyTime?: string; preparationTime?: number };
     const patch: Record<string, unknown> = {};
     if (estimatedReadyTime) {
@@ -865,15 +851,15 @@ router.patch('/admin/:id/time', requireAdmin, async (req: Request, res: Response
       res.status(400).json({ error: 'estimatedReadyTime or preparationTime required' });
       return;
     }
-    const existing = await getOrderById(req.params.id);
+    const existing = await getOrderById(id);
     if (!existing) {
       res.status(404).json({ error: 'Order not found' });
       return;
     }
     if (!(await assertOrderVisible(req, res, existing.order))) return;
-    await updateOrder(req.params.id, patch);
+    await updateOrder(id, patch);
 
-    const result = await getOrderById(req.params.id);
+    const result = await getOrderById(id);
     if (!result) {
       res.status(404).json({ error: 'Order not found' });
       return;
@@ -888,19 +874,20 @@ router.patch('/admin/:id/time', requireAdmin, async (req: Request, res: Response
 // Admin: update internal notes
 router.patch('/admin/:id/notes', requireAdmin, async (req: Request, res: Response) => {
   try {
+    const id = paramId(req);
     const { internalNotes } = req.body as { internalNotes?: string };
     const trimmed = typeof internalNotes === 'string' ? internalNotes.trim() : '';
-    const existing = await getOrderById(req.params.id);
+    const existing = await getOrderById(id);
     if (!existing) {
       res.status(404).json({ error: 'Order not found' });
       return;
     }
     if (!(await assertOrderVisible(req, res, existing.order))) return;
-    await updateOrder(req.params.id, {
+    await updateOrder(id, {
       internal_notes: trimmed.length > 0 ? trimmed : null,
     });
 
-    const result = await getOrderById(req.params.id);
+    const result = await getOrderById(id);
     if (!result) {
       res.status(404).json({ error: 'Order not found' });
       return;
@@ -915,7 +902,8 @@ router.patch('/admin/:id/notes', requireAdmin, async (req: Request, res: Respons
 // Admin: print receipt
 router.post('/admin/:id/print', requireAdmin, async (req: Request, res: Response) => {
   try {
-    const result = await getOrderById(req.params.id);
+    const id = paramId(req);
+    const result = await getOrderById(id);
     if (!result) {
       res.status(404).json({ error: 'Order not found' });
       return;
@@ -967,7 +955,8 @@ router.get('/settings', async (_req: Request, res: Response) => {
 
 router.get('/:id', async (req: Request, res: Response) => {
   try {
-    const result = await getOrderById(req.params.id);
+    const id = paramId(req);
+    const result = await getOrderById(id);
     if (!result) {
       res.status(404).json({ error: 'Order not found' });
       return;

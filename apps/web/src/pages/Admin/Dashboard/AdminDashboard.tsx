@@ -828,8 +828,15 @@ export const AdminDashboard: React.FC = () => {
     const [deleteAllSubmitting, setDeleteAllSubmitting] = useState(false);
     const [deleteAllPassword, setDeleteAllPassword] = useState('');
     const [deleteAllError, setDeleteAllError] = useState<string | null>(null);
+    const [isReconnecting, setIsReconnecting] = useState(false);
 
-    const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const isFetchingRef = useRef(false);
+    const fetchSeqRef = useRef(0);
+    const consecutiveErrorsRef = useRef(0);
+    const pollingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const eventSourceRef = useRef<EventSource | null>(null);
+    const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const reconnectAttemptsRef = useRef(0);
     const statsAuthPasswordRef = useRef('');
     const seenRealtimeEventIdsRef = useRef<Set<string>>(new Set());
 
@@ -862,81 +869,175 @@ export const AdminDashboard: React.FC = () => {
         setActiveAlarmOrder(null);
     };
 
-    // --- Fetch pending + active + pre-orders ---
-    const fetchOrders = useCallback(async () => {
+    // --- Fetch pending + active + pre-orders with request sequencing and graceful error recovery ---
+    const fetchOrders = useCallback(async (isManualOrWake = false) => {
+        // Prevent concurrent polling executions unless explicitly forced by wake/event
+        if (isFetchingRef.current && !isManualOrWake) {
+            return;
+        }
+
+        const currentSeq = ++fetchSeqRef.current;
+        isFetchingRef.current = true;
+
         try {
             const [pending, active, preOrdersList] = await Promise.all([
                 orderApi.getPending(),
                 orderApi.getActive(),
                 orderApi.getPreOrders(),
             ]);
+
+            // Discard out-of-order response if another request completed earlier
+            if (currentSeq !== fetchSeqRef.current) {
+                return;
+            }
+
             setPendingOrders(pending);
             setActiveOrders(active);
             setPreOrders(preOrdersList);
-            setError(null);
+
+            // Successfully fetched orders: clear error counters and reconnecting status
+            consecutiveErrorsRef.current = 0;
+            setIsReconnecting(false);
+            setError((prev) => (prev === 'Kunde inte hämta ordrar.' ? null : prev));
         } catch (e: any) {
-            setError('Kunde inte hämta ordrar.');
+            if (currentSeq !== fetchSeqRef.current) {
+                return;
+            }
+
+            console.warn('[AdminDashboard] fetchOrders error:', e?.message || e);
+
+            // If 401 Unauthorized: auth session token expired
+            if (e?.status === 401 || e?.message === 'Not authenticated') {
+                setError('Sessionen har löpt ut. Logga in igen.');
+                setTimeout(() => {
+                    logout();
+                    navigate('/admin/login');
+                }, 2000);
+                return;
+            }
+
+            consecutiveErrorsRef.current += 1;
+
+            // Only display reconnecting indicator after 3 consecutive failures (~10-12s).
+            // This prevents brief WiFi dips (e.g. tablet waking from sleep) from alarming staff.
+            if (consecutiveErrorsRef.current >= 3) {
+                setIsReconnecting(true);
+            }
         } finally {
+            isFetchingRef.current = false;
             setLoadingOrders(false);
         }
-    }, []);
+    }, [logout, navigate]);
 
-
-    // --- Polling every 5s ---
+    // --- Sekventiell polling som eliminerar överlappande anrop och pausar när skärmen släcks ---
     useEffect(() => {
-        fetchOrders();
-        pollingRef.current = setInterval(fetchOrders, 3000);
-        return () => { if (pollingRef.current) clearInterval(pollingRef.current); };
+        let isMounted = true;
+
+        const pollLoop = async () => {
+            if (!isMounted) return;
+
+            // Endast om fliken är aktiv/synlig körs polling i bakgrunden
+            if (document.visibilityState === 'visible') {
+                await fetchOrders();
+            }
+
+            if (!isMounted) return;
+
+            // Schemalägg nästa körning EFTER att föregående slutförts
+            const delay = consecutiveErrorsRef.current > 0 ? 5000 : 3500;
+            pollingTimerRef.current = setTimeout(pollLoop, delay);
+        };
+
+        void pollLoop();
+
+        return () => {
+            isMounted = false;
+            if (pollingTimerRef.current) {
+                clearTimeout(pollingTimerRef.current);
+            }
+        };
     }, [fetchOrders]);
 
+    // --- Realtidshändelser via Server-Sent Events (SSE) med självläkande återanslutning ---
     useEffect(() => {
-        let eventSource: EventSource | null = null;
-        let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
         let closed = false;
 
         const connect = () => {
             if (closed) return;
-            try {
-                const url = adminApi.getRealtimeEventsUrl();
-                eventSource = new EventSource(url);
-            } catch {
-                setError('Kunde inte starta realtidskanalen.');
-                return;
+            if (eventSourceRef.current) {
+                try {
+                    eventSourceRef.current.close();
+                } catch {
+                    // Ignore
+                }
+                eventSourceRef.current = null;
             }
 
+            try {
+                const url = adminApi.getRealtimeEventsUrl();
+                const es = new EventSource(url);
+                eventSourceRef.current = es;
 
-            eventSource.addEventListener('ORDER_CREATED', (rawEvent) => {
-                try {
-                    const event = JSON.parse((rawEvent as MessageEvent).data) as OrderCreatedRealtimeEvent;
-                    if (seenRealtimeEventIdsRef.current.has(event.event_id)) return;
+                es.onopen = () => {
+                    reconnectAttemptsRef.current = 0;
+                };
 
-                    seenRealtimeEventIdsRef.current.add(event.event_id);
-                    if (seenRealtimeEventIdsRef.current.size > 1000) {
-                        const first = seenRealtimeEventIdsRef.current.values().next().value;
-                        if (first) seenRealtimeEventIdsRef.current.delete(first);
+                es.addEventListener('ORDER_CREATED', (rawEvent) => {
+                    try {
+                        const event = JSON.parse((rawEvent as MessageEvent).data) as OrderCreatedRealtimeEvent;
+                        if (seenRealtimeEventIdsRef.current.has(event.event_id)) return;
+
+                        seenRealtimeEventIdsRef.current.add(event.event_id);
+                        if (seenRealtimeEventIdsRef.current.size > 1000) {
+                            const first = seenRealtimeEventIdsRef.current.values().next().value;
+                            if (first) seenRealtimeEventIdsRef.current.delete(first);
+                        }
+
+                        playForegroundAttentionSound();
+                        void fetchOrders(true);
+                    } catch (error) {
+                        console.error('[realtime] ORDER_CREATED parse failed', error);
                     }
+                });
 
-                    playForegroundAttentionSound();
-                    void fetchOrders();
-                } catch (error) {
-                    console.error('[realtime] ORDER_CREATED parse failed', error);
-                }
-            });
-
-            eventSource.onerror = () => {
-                eventSource?.close();
+                es.onerror = () => {
+                    try {
+                        es.close();
+                    } catch {
+                        // Ignore
+                    }
+                    eventSourceRef.current = null;
+                    if (!closed) {
+                        reconnectAttemptsRef.current += 1;
+                        const backoff = Math.min(15000, 2000 * Math.pow(1.3, reconnectAttemptsRef.current));
+                        if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+                        reconnectTimerRef.current = setTimeout(connect, backoff);
+                    }
+                };
+            } catch (err) {
+                console.warn('[realtime] kunde inte skapa EventSource, schemalägger återförsök:', err);
                 if (!closed) {
-                    reconnectTimer = setTimeout(connect, 1500);
+                    reconnectAttemptsRef.current += 1;
+                    const backoff = Math.min(15000, 2000 * Math.pow(1.3, reconnectAttemptsRef.current));
+                    if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+                    reconnectTimerRef.current = setTimeout(connect, backoff);
                 }
-            };
+            }
         };
 
         connect();
 
         return () => {
             closed = true;
-            if (reconnectTimer) clearTimeout(reconnectTimer);
-            eventSource?.close();
+            if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+            if (eventSourceRef.current) {
+                try {
+                    eventSourceRef.current.close();
+                } catch {
+                    // Ignore
+                }
+                eventSourceRef.current = null;
+            }
         };
     }, [fetchOrders]);
 
@@ -984,24 +1085,49 @@ export const AdminDashboard: React.FC = () => {
         return () => clearInterval(id);
     }, []);
 
-    // --- Screen Wake Lock API Setup ---
+    // --- Screen Wake Lock & Android Livscykel (Uppvaknande ur viloläge, WiFi online, Fokus) ---
     useEffect(() => {
         void requestWakeLock();
 
-        // Re-request when page gains visibility (browser releases lock when hidden)
-        const handleVisibilityChange = () => {
+        const handleWakeOrFocus = () => {
             if (document.visibilityState === 'visible') {
                 void requestWakeLock();
+                // Hämta ordrar omedelbart när skärmen tänds eller fliken återfår fokus
+                void fetchOrders(true);
+
+                // Om EventSource har dött under surfplattans viloläge, återanslut direkt
+                if (!eventSourceRef.current || eventSourceRef.current.readyState === EventSource.CLOSED) {
+                    reconnectAttemptsRef.current = 0;
+                    if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+                    try {
+                        const url = adminApi.getRealtimeEventsUrl();
+                        const es = new EventSource(url);
+                        eventSourceRef.current = es;
+                    } catch {
+                        // Fångas av SSE-reconnect loopen
+                    }
+                }
             }
         };
 
-        document.addEventListener('visibilitychange', handleVisibilityChange);
-        
+        const handleOnline = () => {
+            console.log('[AdminDashboard] WiFi/nätverk återanslutet, synkroniserar ordrar direkt...');
+            consecutiveErrorsRef.current = 0;
+            setIsReconnecting(false);
+            void fetchOrders(true);
+        };
+
+        document.addEventListener('visibilitychange', handleWakeOrFocus);
+        window.addEventListener('focus', handleWakeOrFocus);
+        window.addEventListener('online', handleOnline);
+
         return () => {
-            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            document.removeEventListener('visibilitychange', handleWakeOrFocus);
+            window.removeEventListener('focus', handleWakeOrFocus);
+            window.removeEventListener('online', handleOnline);
             void releaseWakeLock();
         };
-    }, []);
+    }, [fetchOrders]);
 
     // Check if audio context is locked by the browser
     useEffect(() => {
@@ -1476,6 +1602,26 @@ export const AdminDashboard: React.FC = () => {
                         <Button variant="ghost" onClick={handleLogout}>Logga ut</Button>
                     </div>
                 </header>
+
+                {/* --- Återanslutningsindikator (visas endast vid ihållande nätverkstapp) --- */}
+                {isReconnecting && !error && (
+                    <div style={{
+                        padding: '0.6rem 1rem',
+                        background: '#FEF3C7',
+                        color: '#92400E',
+                        borderRadius: '8px',
+                        marginBottom: '1rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.6rem',
+                        fontSize: '0.85rem',
+                        fontWeight: 600,
+                        border: '1px solid #FCD34D'
+                    }}>
+                        <span>📡</span>
+                        <span>Återansluter till servern... (uppdateras automatiskt så fort nätverket svarar)</span>
+                    </div>
+                )}
 
                 {error && (
                     <div style={{ padding: '0.75rem 1rem', background: '#fee', color: '#c00', borderRadius: '8px', marginBottom: '1rem' }}>

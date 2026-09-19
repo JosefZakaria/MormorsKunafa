@@ -42,6 +42,8 @@ Thumbs.db
 npm-debug.log*
 *.tsbuildinfo
 coverage/
+test-results/
+.cache/
 
 # Stripe CLI (lokal nedladdning – ska inte committas)
 stripe_*.zip

@@ -4,6 +4,7 @@ import { sendOrderConfirmationEmail } from './OrderConfirmationEmail.js';
 import { sendSms } from './SmsService.js';
 import { formatStockholmDateTime } from '../utils/stockholmWallTime.js';
 import { inStorePickupSmsSuffix } from '../db/locations.js';
+import { dispatchOrderCreatedEvent } from './realtimeEvents.js';
 
 export type MarkOrderPaidOptions = {
   expectedAmountOre?: number;
@@ -64,6 +65,13 @@ export async function markOrderPaid(orderId: string, options?: MarkOrderPaidOpti
       console.error('[order confirmation sms after payment]', err)
     );
   }
+
+  dispatchOrderCreatedEvent(
+    orderId,
+    String(refreshed.order.order_number ?? ''),
+    String(refreshed.order.order_type ?? 'takeaway'),
+    refreshed.order.location_id != null ? String(refreshed.order.location_id) : null
+  );
 
   return true;
 }

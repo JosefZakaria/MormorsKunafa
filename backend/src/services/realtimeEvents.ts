@@ -2,6 +2,7 @@ import type { Response } from 'express';
 import type { OrderType } from '@mormors-kunafa/shared/types';
 import type { AdminScope } from './locationScope.js';
 import { orderVisibleToScope } from './locationScope.js';
+import { sendOrderCreatedPush } from './pushNotifications.js';
 
 export type OrderCreatedEvent = {
   event_id: string;
@@ -62,6 +63,37 @@ export function broadcastOrderCreated(event: OrderCreatedEvent): void {
     }
     sseWrite(client.res, 'ORDER_CREATED', event);
   }
+}
+
+function asOrderType(value: string): OrderType {
+  if (value === 'eat-here' || value === 'takeaway' || value === 'delivery') return value;
+  return 'takeaway';
+}
+
+export function dispatchOrderCreatedEvent(
+  orderId: string,
+  orderNumber: string,
+  orderType: string,
+  locationId: string | null
+): void {
+  const event: OrderCreatedEvent = {
+    event_id: crypto.randomUUID(),
+    event_type: 'ORDER_CREATED',
+    order_id: orderId,
+    order_number: orderNumber,
+    created_at: new Date().toISOString(),
+    order_type: asOrderType(orderType),
+    location_id: locationId,
+  };
+
+  broadcastOrderCreated(event);
+  void sendOrderCreatedPush(event).catch((error) => {
+    console.error('[push] sendOrderCreatedPush failed', {
+      eventId: event.event_id,
+      orderId: orderId,
+      error,
+    });
+  });
 }
 
 export function getRealtimeStatus(): { totalClients: number; byAdmin: Record<string, number> } {
