@@ -28,6 +28,7 @@ Database/
 *.sql
 !backend/src/db/migrations/*.sql
 !backend/src/db/verification/*.sql
+!backend/src/db/operations/*.sql
 
 # IDE & OS
 .idea/

@@ -10,6 +10,7 @@ import type {
   AdminSettings,
   AdminRole,
   PushSubscriptionRecord,
+  PushNotificationHealth,
 } from '@shared/types';
 
 // Get auth token from localStorage (web-specific)
@@ -409,6 +410,12 @@ export const adminApi = {
       method: 'DELETE',
       token,
     });
+  },
+
+  getPushNotificationHealth: async (): Promise<PushNotificationHealth> => {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+    return authenticatedRequest<PushNotificationHealth>('/admin/notifications/health', { token });
   },
 
   sendTestNotification: async (subscription: PushSubscription, delayMs = 0): Promise<{ success: boolean }> => {

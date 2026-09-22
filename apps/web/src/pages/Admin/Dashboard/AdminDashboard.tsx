@@ -14,6 +14,7 @@ import type {
     AdminSettings,
     OrderCreatedRealtimeEvent,
     Location,
+    PushNotificationHealth,
 } from '@shared/types';
 import { HOJA_LOCATION_ID, MOLLEVANGEN_LOCATION_ID } from '@shared/types';
 import { parseApiTimestamp } from '@shared/utils/parseApiTimestamp';
@@ -1065,6 +1066,7 @@ export const AdminDashboard: React.FC = () => {
     const [deleteAllError, setDeleteAllError] = useState<string | null>(null);
     const [isReconnecting, setIsReconnecting] = useState(false);
     const [pushFailure, setPushFailure] = useState<string | null>(null);
+    const [pushHealth, setPushHealth] = useState<PushNotificationHealth['push'] | null>(null);
 
     const isFetchingRef = useRef(false);
     const fetchSeqRef = useRef(0);
@@ -1105,8 +1107,15 @@ export const AdminDashboard: React.FC = () => {
     }, [canAutoPrint]);
 
     useEffect(() => {
-        if (!canAutoPrint || !('serviceWorker' in navigator)) return;
+        if (!canAutoPrint) return;
         const refresh = async () => {
+            try {
+                const health = await adminApi.getPushNotificationHealth();
+                setPushHealth(health.push);
+            } catch (error) {
+                console.warn('[push] Could not read outbox status', error);
+            }
+            if (!('serviceWorker' in navigator)) return;
             try {
                 const registration = await navigator.serviceWorker.getRegistration();
                 const subscription = await registration?.pushManager.getSubscription();
@@ -1930,6 +1939,22 @@ export const AdminDashboard: React.FC = () => {
                 {canAutoPrint && pushFailure && (
                     <div role="alert" style={{ padding: '0.75rem 1rem', background: '#fee2e2', color: '#991b1b', borderRadius: '8px', marginBottom: '1rem' }}>
                         Pushnotis misslyckades: {pushFailure}. Kontrollera notiser under Inställningar.
+                    </div>
+                )}
+                {canAutoPrint && pushHealth && (pushHealth.activeSubscriptions === 0 || pushHealth.dead > 0 || (
+                    pushHealth.oldestPendingAt && Date.now() - new Date(pushHealth.oldestPendingAt).getTime() > 120000
+                )) && (
+                    <div role="alert" style={{ padding: '0.75rem 1rem', background: '#fee2e2', color: '#991b1b', borderRadius: '8px', marginBottom: '1rem' }}>
+                        {pushHealth.dead > 0
+                            ? `${pushHealth.dead} ordernotis${pushHealth.dead === 1 ? '' : 'er'} kunde inte levereras inom 15 minuter. Kontrollera ordrarna och notisinställningarna.`
+                            : pushHealth.activeSubscriptions === 0
+                                ? 'Ingen aktiv pushprenumeration finns på servern. Aktivera notiser på Höjapaddan under Inställningar.'
+                                : 'Ordernotiser har väntat i över två minuter. Kontrollera nätverk och notisinställningar.'}
+                        {pushHealth.deadJobs.length > 0 && (
+                            <ul style={{ margin: '0.5rem 0 0', paddingLeft: '1.25rem' }}>
+                                {pushHealth.deadJobs.map((job) => <li key={job.orderId}>Order {job.orderNumber}</li>)}
+                            </ul>
+                        )}
                     </div>
                 )}
 

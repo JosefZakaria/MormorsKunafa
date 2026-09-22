@@ -3,6 +3,9 @@
   "framework": null,
   "installCommand": "cd .. && npm ci",
   "buildCommand": "npm run build && node -e \"const fs = require('fs'); fs.mkdirSync('public', { recursive: true }); fs.writeFileSync('public/index.html', 'OK');\"",
+  "functions": {
+    "api/internal/push/drain.ts": { "maxDuration": 60 }
+  },
   "rewrites": [
     {
       "source": "/(.*)",

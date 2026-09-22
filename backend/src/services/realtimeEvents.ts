@@ -2,7 +2,6 @@ import type { Response } from 'express';
 import type { OrderType } from '@mormors-kunafa/shared/types';
 import type { AdminScope } from './locationScope.js';
 import { orderVisibleToScope } from './locationScope.js';
-import { sendOrderCreatedPush } from './pushNotifications.js';
 
 export type OrderCreatedEvent = {
   event_id: string;
@@ -91,13 +90,6 @@ export async function dispatchOrderCreatedEvent(
   };
 
   broadcastOrderCreated(event);
-  await sendOrderCreatedPush(event).catch((error) => {
-    console.error('[push] sendOrderCreatedPush failed', {
-      eventId: event.event_id,
-      orderId: orderId,
-      error,
-    });
-  });
 }
 
 export function getRealtimeStatus(): { totalClients: number; byAdmin: Record<string, number> } {

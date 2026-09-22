@@ -9,6 +9,13 @@ export type AdminScope = {
   fulfillsDelivery: boolean;
 };
 
+export class AdminScopeUnavailableError extends Error {
+  constructor(adminId: string) {
+    super(`Admin account is unavailable: ${adminId}`);
+    this.name = 'AdminScopeUnavailableError';
+  }
+}
+
 export type OrderLocationRef = {
   orderType?: string | null;
   locationId?: string | null;
@@ -45,10 +52,14 @@ export async function loadAdminScope(adminId: string): Promise<AdminScope> {
   }
 
   if (!data) {
-    return { adminId, role: 'owner', locationId: null, fulfillsDelivery: false };
+    throw new AdminScopeUnavailableError(adminId);
   }
 
-  const role = parseAdminRole((data as Row).role);
+  const rawRole = (data as Row).role;
+  if (rawRole !== 'owner' && rawRole !== 'location') {
+    throw new AdminScopeUnavailableError(adminId);
+  }
+  const role = rawRole;
   const locationId =
     (data as Row).location_id != null ? String((data as Row).location_id) : null;
   let fulfillsDelivery = false;
@@ -65,7 +76,11 @@ export async function loadAdminScopes(adminIds: string[]): Promise<Map<string, A
   const scopes = new Map<string, AdminScope>();
   await Promise.all(
     unique.map(async (id) => {
-      scopes.set(id, await loadAdminScope(id));
+      try {
+        scopes.set(id, await loadAdminScope(id));
+      } catch (error) {
+        if (!(error instanceof AdminScopeUnavailableError)) throw error;
+      }
     })
   );
   return scopes;

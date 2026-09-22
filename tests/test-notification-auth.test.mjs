@@ -26,6 +26,16 @@ globalThis.fetch = async (input, init = {}) => {
       && url.searchParams.get('endpoint') === `eq.${target.endpoint}`;
     return new Response(JSON.stringify(match ? target : null), { status: 200, headers: { 'content-type': 'application/json' } });
   }
+  if (table === 'admin_users' && method === 'GET') {
+    const adminId = url.searchParams.get('id')?.replace(/^eq\./, '');
+    const admin = adminId === 'deleted-admin'
+      ? null
+      : { id: adminId, role: adminId === 'owner-admin' ? 'owner' : 'location', location_id: '2f1a9c4e-6b7d-4e8f-a901-b2c3d4e5f601' };
+    return new Response(JSON.stringify(admin), { status: 200, headers: { 'content-type': 'application/json' } });
+  }
+  if (table === 'locations' && method === 'GET') {
+    return new Response(JSON.stringify({ id: '2f1a9c4e-6b7d-4e8f-a901-b2c3d4e5f601', slug: 'hoja', fulfills_delivery: true }), { status: 200, headers: { 'content-type': 'application/json' } });
+  }
   if (table === 'admin_push_subscriptions' && method === 'PATCH') {
     subscriptionUpdates.push(JSON.parse(init.body));
     return new Response(null, { status: 204 });
@@ -39,6 +49,7 @@ globalThis.fetch = async (input, init = {}) => {
 
 const { configureWebPush } = await import('../backend/src/services/pushNotifications.ts');
 const { signToken } = await import('../backend/src/middleware/auth.ts');
+const { requireAdmin, requireOwner } = await import('../backend/src/middleware/auth.ts');
 const { default: adminRouter } = await import('../backend/src/routes/admin.ts');
 configureWebPush();
 
@@ -55,6 +66,7 @@ test('test push requires login and this account’s exact device subscription', 
   const url = `http://127.0.0.1:${address.port}/api/admin/notifications/test`;
   const token = signToken({ adminId: 'hoja-admin', email: 'hoja@example.test' });
   const otherToken = signToken({ adminId: 'other-admin', email: 'other@example.test' });
+  const deletedToken = signToken({ adminId: 'deleted-admin', email: 'deleted@example.test', role: 'owner' });
   const request = (authToken, subscription) => nativeFetch(url, {
     method: 'POST',
     headers: { 'content-type': 'application/json', ...(authToken ? { authorization: `Bearer ${authToken}` } : {}) },
@@ -63,6 +75,7 @@ test('test push requires login and this account’s exact device subscription', 
   const subscription = { endpoint: target.endpoint, keys: { p256dh: target.p256dh, auth: target.auth } };
   try {
     assert.equal((await request(null, subscription)).status, 401);
+    assert.equal((await request(deletedToken, subscription)).status, 401);
     assert.equal((await request(token, { ...subscription, keys: { ...subscription.keys, auth: 'wrong' } })).status, 404);
     assert.equal((await request(otherToken, subscription)).status, 404);
     assert.equal((await request(token, subscription)).status, 200);
@@ -73,6 +86,25 @@ test('test push requires login and this account’s exact device subscription', 
     assert.ok(deliveryLogs.some(log => log.status === 'failed'));
   } finally {
     webpush.sendNotification = originalSend;
+    await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+  }
+});
+
+test('a deleted admin cannot reach an owner-only route or open an SSE stream', async () => {
+  const app = express();
+  app.get('/owner', requireAdmin, requireOwner, (_req, res) => res.json({ ok: true }));
+  app.use('/api/admin', adminRouter);
+  const server = app.listen(0, '127.0.0.1');
+  await new Promise(resolve => server.once('listening', resolve));
+  const address = server.address();
+  const base = `http://127.0.0.1:${address.port}`;
+  const deletedToken = signToken({ adminId: 'deleted-admin', email: 'deleted@example.test', role: 'owner' });
+  const ownerToken = signToken({ adminId: 'owner-admin', email: 'owner@example.test', role: 'owner' });
+  try {
+    assert.equal((await nativeFetch(`${base}/owner`, { headers: { authorization: `Bearer ${deletedToken}` } })).status, 401);
+    assert.equal((await nativeFetch(`${base}/owner`, { headers: { authorization: `Bearer ${ownerToken}` } })).status, 200);
+    assert.equal((await nativeFetch(`${base}/api/admin/events?token=${encodeURIComponent(deletedToken)}`)).status, 401);
+  } finally {
     await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
   }
 });

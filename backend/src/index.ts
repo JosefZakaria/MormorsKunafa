@@ -5,6 +5,7 @@ import productsRouter from './routes/products.js';
 import ordersRouter from './routes/orders.js';
 import locationsRouter from './routes/locations.js';
 import adminRouter from './routes/admin.js';
+import internalPushRouter from './routes/internalPush.js';
 import { handleStripeWebhook } from './routes/stripeWebhook.js';
 import { handleSwishCallback } from './routes/swishCallback.js';
 import { getPublicWebAppUrlDiagnostics } from './utils/publicWebAppUrl.js';
@@ -59,6 +60,7 @@ app.use('/api/products', productsRouter);
 app.use('/api/orders', ordersRouter);
 app.use('/api/locations', locationsRouter);
 app.use('/api/admin', adminRouter);
+app.use('/api/internal', internalPushRouter);
 
 app.get('/api/health', (_req, res) => {
   const hasSupabase = Boolean(

@@ -1,8 +1,9 @@
 import webpush from 'web-push';
 import {
   createPushDeliveryLog,
+  disablePushSubscriptionById,
   disablePushSubscriptionByEndpoint,
-  hasPushDeliveryLog,
+  hasSuccessfulPushDeliveryLog,
   listActivePushSubscriptions,
   markPushDeliveryFailure,
   markPushDeliverySuccess,
@@ -11,22 +12,14 @@ import {
 import type { OrderCreatedEvent } from './realtimeEvents.js';
 import { loadAdminScopes, orderVisibleToScope } from './locationScope.js';
 
-const deliveredInRuntime = new Map<string, Set<string>>();
+const PUSH_SOCKET_TIMEOUT_MS = 3000;
 
-function setRuntimeDelivered(eventId: string, subscriptionId: string): void {
-  if (!deliveredInRuntime.has(eventId)) {
-    deliveredInRuntime.set(eventId, new Set<string>());
-    if (deliveredInRuntime.size > 500) {
-      const oldest = deliveredInRuntime.keys().next().value;
-      if (oldest) deliveredInRuntime.delete(oldest);
-    }
-  }
-  deliveredInRuntime.get(eventId)?.add(subscriptionId);
-}
-
-function hasRuntimeDelivered(eventId: string, subscriptionId: string): boolean {
-  return deliveredInRuntime.get(eventId)?.has(subscriptionId) ?? false;
-}
+export type PushDeliveryOutcome = {
+  eligibleCount: number;
+  successfulCount: number;
+  retryableErrors: string[];
+  permanentErrors: string[];
+};
 
 let vapidConfigured = false;
 
@@ -77,7 +70,7 @@ export async function sendTestPush(subscription: PushSubscriptionRow): Promise<b
       body: 'Notiser fungerar på denna padda.',
       tag: `test-${eventId}`,
       url: '/admin/dashboard',
-    }), { TTL: 60, urgency: 'high' });
+    }), { TTL: 60, urgency: 'high', timeout: PUSH_SOCKET_TIMEOUT_MS });
     await markPushDeliverySuccess(subscription.id);
     await createPushDeliveryLog({ eventId, subscriptionId: subscription.id, status: 'success', statusCode: 201 });
     return true;
@@ -92,11 +85,22 @@ export async function sendTestPush(subscription: PushSubscriptionRow): Promise<b
   }
 }
 
-export async function sendOrderCreatedPush(event: OrderCreatedEvent): Promise<void> {
+export async function sendOrderCreatedPush(event: OrderCreatedEvent): Promise<PushDeliveryOutcome> {
+  const outcome: PushDeliveryOutcome = {
+    eligibleCount: 0,
+    successfulCount: 0,
+    retryableErrors: [],
+    permanentErrors: [],
+  };
   const subscriptions = await listActivePushSubscriptions();
-  if (!subscriptions.length) return;
+  if (!subscriptions.length) return outcome;
 
   const scopes = await loadAdminScopes(subscriptions.map((s) => s.admin_id));
+  const orphaned = subscriptions.filter((subscription) => !scopes.has(subscription.admin_id));
+  await Promise.all(orphaned.map(async (subscription) => {
+    const disabled = await disablePushSubscriptionById(subscription.id, subscription.admin_id);
+    if (!disabled) outcome.retryableErrors.push(`Could not disable orphaned subscription ${subscription.id}`);
+  }));
   const visibleSubscriptions = subscriptions.filter((subscription) => {
     const scope = scopes.get(subscription.admin_id);
     if (!scope) return false;
@@ -105,7 +109,8 @@ export async function sendOrderCreatedPush(event: OrderCreatedEvent): Promise<vo
       locationId: event.location_id,
     });
   });
-  if (!visibleSubscriptions.length) return;
+  outcome.eligibleCount = visibleSubscriptions.length;
+  if (!visibleSubscriptions.length) return outcome;
 
   if (!vapidConfigured) {
     console.error('[push] Order notification unavailable: VAPID keys missing', { orderId: event.order_id });
@@ -118,7 +123,8 @@ export async function sendOrderCreatedPush(event: OrderCreatedEvent): Promise<vo
         errorMessage: 'Web Push is not configured',
       });
     }));
-    return;
+    outcome.retryableErrors.push('Web Push is not configured');
+    return outcome;
   }
 
   const payload = JSON.stringify({
@@ -135,13 +141,9 @@ export async function sendOrderCreatedPush(event: OrderCreatedEvent): Promise<vo
 
   await Promise.all(
     visibleSubscriptions.map(async (subscription) => {
-      if (hasRuntimeDelivered(event.event_id, subscription.id)) {
-        return;
-      }
-
-      const alreadyLogged = await hasPushDeliveryLog(event.event_id, subscription.id);
+      const alreadyLogged = await hasSuccessfulPushDeliveryLog(event.event_id, subscription.id);
       if (alreadyLogged) {
-        setRuntimeDelivered(event.event_id, subscription.id);
+        outcome.successfulCount += 1;
         return;
       }
 
@@ -153,13 +155,18 @@ export async function sendOrderCreatedPush(event: OrderCreatedEvent): Promise<vo
         },
       };
 
+      let providerError: any = null;
       try {
         await webpush.sendNotification(target, payload, {
           TTL: 60,
           urgency: 'high',
+          timeout: PUSH_SOCKET_TIMEOUT_MS,
         });
+      } catch (error: any) {
+        providerError = error;
+      }
 
-        setRuntimeDelivered(event.event_id, subscription.id);
+      if (!providerError) {
         await markPushDeliverySuccess(subscription.id);
         await createPushDeliveryLog({
           eventId: event.event_id,
@@ -167,23 +174,33 @@ export async function sendOrderCreatedPush(event: OrderCreatedEvent): Promise<vo
           status: 'success',
           statusCode: 201,
         });
-      } catch (error: any) {
-        const statusCode = Number(error?.statusCode ?? 0) || undefined;
-        const message = String(error?.body || error?.message || 'push failed');
-        console.error('[push] order delivery failed', { orderId: event.order_id, subscriptionId: subscription.id, statusCode, message });
-        await markPushDeliveryFailure(subscription.id, message, statusCode);
-        await createPushDeliveryLog({
-          eventId: event.event_id,
-          subscriptionId: subscription.id,
-          status: 'failed',
-          statusCode,
-          errorMessage: message,
-        });
+        outcome.successfulCount += 1;
+        return;
+      }
 
-        if (statusCode === 404 || statusCode === 410) {
-          await disablePushSubscriptionByEndpoint(subscription.endpoint);
-        }
+      const statusCode = Number(providerError?.statusCode ?? 0) || undefined;
+      const message = String(providerError?.body || providerError?.message || 'push failed');
+      console.error('[push] order delivery failed', { orderId: event.order_id, subscriptionId: subscription.id, statusCode, message });
+      await markPushDeliveryFailure(subscription.id, message, statusCode);
+      await createPushDeliveryLog({
+        eventId: event.event_id,
+        subscriptionId: subscription.id,
+        status: 'failed',
+        statusCode,
+        errorMessage: message,
+      });
+
+      if (statusCode === 404 || statusCode === 410) {
+        await disablePushSubscriptionByEndpoint(subscription.endpoint);
+        return;
+      }
+      const errorLabel = `${subscription.id}: ${message}`;
+      if (statusCode && statusCode >= 400 && statusCode < 500 && statusCode !== 429) {
+        outcome.permanentErrors.push(errorLabel);
+      } else {
+        outcome.retryableErrors.push(errorLabel);
       }
     })
   );
+  return outcome;
 }

@@ -2,8 +2,9 @@ import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { supabase, type Row, logSupabaseError, nowIso } from '../db/connection.js';
 import { applyAdminSettingsPatch, adminSettingsFromRow } from '../db/adminSettings.js';
-import { requireAdmin, requireOwner, signToken, verifyAdminToken, getRequestAdmin } from '../middleware/auth.js';
-import { loadAdminScope, parseAdminRole } from '../services/locationScope.js';
+import { requireAdmin, requireOwner, signToken, verifyAdminToken, getRequestAdmin, getRequestAdminScope } from '../middleware/auth.js';
+import { AdminScopeUnavailableError, loadAdminScope, parseAdminRole } from '../services/locationScope.js';
+import { getPushOutboxHealth } from '../db/pushOutboxRepository.js';
 import { updateLocationFlags } from '../db/locations.js';
 import { isDeliveryFeeLineItem } from '../constants/deliveryFee.js';
 import { registerAdminMediaRoutes } from './adminMedia.js';
@@ -146,36 +147,49 @@ router.post('/login', async (req: Request, res: Response) => {
   }
 });
 
-router.get('/events', (req: Request, res: Response) => {
+router.get('/events', async (req: Request, res: Response) => {
   const admin = getAdminFromRequest(req);
   if (!admin?.adminId) {
     res.status(401).json({ error: 'Unauthorized' });
     return;
   }
 
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache, no-transform');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders();
-
-  void loadAdminScope(admin.adminId)
-    .then((scope) => {
-      const cleanup = registerRealtimeClient(scope, res);
-      req.on('close', cleanup);
-    })
-    .catch((e) => {
-      console.error('[GET /admin/events] scope', e);
-      res.end();
-    });
+  try {
+    const scope = await loadAdminScope(admin.adminId);
+    if (req.destroyed) return;
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+    const cleanup = registerRealtimeClient(scope, res);
+    req.on('close', cleanup);
+  } catch (error) {
+    if (error instanceof AdminScopeUnavailableError) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    console.error('[GET /admin/events] scope', error);
+    res.status(500).json({ error: 'Failed to verify access' });
+  }
 });
 
-router.get('/notifications/health', requireAdmin, (_req: Request, res: Response) => {
-  const status = getRealtimeStatus();
-  res.json({
-    ok: true,
-    webPushConfigured: isWebPushConfigured(),
-    realtime: status,
-  });
+router.get('/notifications/health', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const scope = getRequestAdminScope(req);
+    if (!scope) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    res.json({
+      ok: true,
+      webPushConfigured: isWebPushConfigured(),
+      realtime: getRealtimeStatus(),
+      push: await getPushOutboxHealth(scope),
+    });
+  } catch (error) {
+    console.error('[push] Could not read outbox health', error);
+    res.status(500).json({ error: 'Could not read notification status' });
+  }
 });
 
 router.post('/notifications/test', requireAdmin, async (req: Request, res: Response) => {
@@ -221,20 +235,25 @@ router.get('/push-subscriptions', requireAdmin, async (req: Request, res: Respon
     return;
   }
 
-  const subscriptions = await listActivePushSubscriptions(admin.adminId);
-  res.json(
-    subscriptions.map((it) => ({
-      id: it.id,
-      endpoint: it.endpoint,
-      deviceLabel: it.device_label,
-      userAgent: it.user_agent,
-      createdAt: it.created_at,
-      updatedAt: it.updated_at,
-      lastSuccessAt: it.last_success_at,
-      lastFailureAt: it.last_failure_at,
-      lastFailureReason: it.last_failure_reason,
-    }))
-  );
+  try {
+    const subscriptions = await listActivePushSubscriptions(admin.adminId);
+    res.json(
+      subscriptions.map((it) => ({
+        id: it.id,
+        endpoint: it.endpoint,
+        deviceLabel: it.device_label,
+        userAgent: it.user_agent,
+        createdAt: it.created_at,
+        updatedAt: it.updated_at,
+        lastSuccessAt: it.last_success_at,
+        lastFailureAt: it.last_failure_at,
+        lastFailureReason: it.last_failure_reason,
+      }))
+    );
+  } catch (error) {
+    console.error('[push] Could not list subscriptions', error);
+    res.status(500).json({ error: 'Could not list subscriptions' });
+  }
 });
 
 router.post('/push-subscriptions', requireAdmin, async (req: Request, res: Response) => {

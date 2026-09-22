@@ -5,6 +5,7 @@ import { sendSms } from './SmsService.js';
 import { formatStockholmDateTime } from '../utils/stockholmWallTime.js';
 import { inStorePickupSmsSuffix } from '../db/locations.js';
 import { dispatchOrderCreatedEvent } from './realtimeEvents.js';
+import { scheduleImmediatePush } from './pushOutboxWorker.js';
 
 export type MarkOrderPaidOptions = {
   expectedAmountOre?: number;
@@ -30,9 +31,15 @@ export async function markOrderPaid(orderId: string, options?: MarkOrderPaidOpti
     return false;
   }
 
+  const paidAt = nowIso();
   const { data, error } = await supabase
     .from('orders')
-    .update({ payment_status: 'paid', updated_at: nowIso() })
+    .update({
+      payment_status: 'paid',
+      push_event_id: crypto.randomUUID(),
+      push_event_created_at: paidAt,
+      updated_at: paidAt,
+    })
     .eq('id', orderId)
     .eq('payment_status', 'pending')
     .select('id');
@@ -52,14 +59,15 @@ export async function markOrderPaid(orderId: string, options?: MarkOrderPaidOpti
   }
   const notificationOrder = refreshed?.order ?? result.order;
 
-  // The payment is already committed. Await push before replying to Stripe/Swish,
-  // while notification failures remain independent of payment success.
+  // The event id is committed with payment. A background attempt runs now;
+  // the scheduled worker reconciles missing outbox rows after an interrupted request.
   await dispatchOrderCreatedEvent(
     orderId,
     String(notificationOrder.order_number ?? ''),
     String(notificationOrder.order_type ?? 'takeaway'),
     notificationOrder.location_id != null ? String(notificationOrder.location_id) : null
   );
+  scheduleImmediatePush();
 
   if (!refreshed) return true;
 

@@ -10,6 +10,7 @@ let paid = false;
 let pushLookups = 0;
 let paymentUpdates = 0;
 let activeSubscriptions = [];
+let committedPushEventId = null;
 const pushFailures = [];
 const deliveryLogs = [];
 const order = {
@@ -26,7 +27,12 @@ globalThis.fetch = async (input, init = {}) => {
   if (table === 'orders' && method === 'GET') body = { ...order, payment_status: paid ? 'paid' : 'pending' };
   else if (table === 'orders' && method === 'PATCH') {
     paymentUpdates += 1;
+    const patch = JSON.parse(init.body);
+    assert.equal(patch.payment_status, 'paid');
+    assert.match(patch.push_event_id, /^[0-9a-f-]{36}$/i);
+    assert.equal(patch.push_event_created_at, patch.updated_at);
     body = paid ? [] : [{ id: order.id }];
+    if (!paid) committedPushEventId = patch.push_event_id;
     paid = true;
   } else if (table === 'order_items' && method === 'GET') body = [];
   else if (table === 'admin_push_subscriptions' && method === 'GET') {
@@ -61,7 +67,8 @@ test('repeated payment confirmations through the shared transition create one or
     assert.equal(await markOrderPaid(order.id, { paidAmountOre: 12000 }), false);
     assert.equal(await markOrderPaid(order.id, { paidAmountOre: 12000 }), false);
     assert.equal(paymentUpdates, 3);
-    assert.equal(pushLookups, 1);
+    assert.match(committedPushEventId, /^[0-9a-f-]{36}$/i);
+    assert.equal(pushLookups, 0);
     assert.equal(written.filter(chunk => chunk === 'event: ORDER_CREATED\n').length, 1);
   } finally {
     cleanup();
@@ -72,6 +79,7 @@ test('concurrent payment confirmations still create one order alert', async () =
   paid = false;
   paymentUpdates = 0;
   pushLookups = 0;
+  committedPushEventId = null;
   const written = [];
   const cleanup = registerRealtimeClient({
     adminId: 'admin-1', role: 'location', locationId: order.location_id, fulfillsDelivery: true,
@@ -83,26 +91,30 @@ test('concurrent payment confirmations still create one order alert', async () =
     ]);
     assert.deepEqual(outcomes.sort(), [false, true]);
     assert.equal(paymentUpdates, 2);
-    assert.equal(pushLookups, 1);
+    assert.match(committedPushEventId, /^[0-9a-f-]{36}$/i);
+    assert.equal(pushLookups, 0);
     assert.equal(written.filter(chunk => chunk === 'event: ORDER_CREATED\n').length, 1);
   } finally {
     cleanup();
   }
 });
 
-test('push failure is visible without reverting payment or repeating the alert', async () => {
+test('payment commits without waiting for any push provider attempt', async () => {
   paid = false;
+  committedPushEventId = null;
+  pushLookups = 0;
   activeSubscriptions = [{ id: 'hoja-sub', admin_id: 'admin-1', endpoint: 'https://push.example/hoja' }];
   pushFailures.length = 0;
   deliveryLogs.length = 0;
   try {
     assert.equal(await markOrderPaid(order.id, { paidAmountOre: 12000 }), true);
     assert.equal(paid, true);
-    assert.equal(pushFailures.length, 1);
-    assert.match(pushFailures[0].last_failure_reason, /Web Push is not configured/);
-    assert.deepEqual(deliveryLogs.map(log => log.status), ['failed']);
+    assert.match(committedPushEventId, /^[0-9a-f-]{36}$/i);
+    assert.equal(pushLookups, 0);
+    assert.equal(pushFailures.length, 0);
+    assert.equal(deliveryLogs.length, 0);
     assert.equal(await markOrderPaid(order.id, { paidAmountOre: 12000 }), false);
-    assert.equal(deliveryLogs.length, 1);
+    assert.equal(deliveryLogs.length, 0);
   } finally {
     activeSubscriptions = [];
   }
