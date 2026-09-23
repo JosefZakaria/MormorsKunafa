@@ -1,6 +1,4 @@
-/** Hemleverans i hela Sverige — 79 kr (server is source of truth at checkout). */
-export const DELIVERY_FEE_ORE = 7900;
-export const DELIVERY_FEE_SEK = 79;
+/** Delivery line identifiers; prices come from the saved delivery settings. */
 export const DELIVERY_FEE_LINE_NAME = 'Leveransavgift';
 export const DELIVERY_FEE_LINE_ID = 'delivery-fee';
 

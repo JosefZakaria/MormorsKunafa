@@ -104,6 +104,24 @@ Optional, for one-time WordPress migration only:
 
    API base URL: `http://localhost:3001/api` (or `PORT` you set).
 
+## Delivery pricing administration
+
+Apply `src/db/migrations/20260923110008_add_delivery_pricing.sql` before using
+the delivery-price editor in the admin **Leveranspriser** tab.
+This step adds no new migration. The editor requires an owner account.
+
+- `GET /api/admin/delivery-pricing` reads `{ defaultFeeOre, cityFees }`.
+- `PATCH /api/admin/delivery-pricing` replaces both values together. Each city
+  entry is `{ city, feeOre }`; all amounts are integer öre. Invalid amounts,
+  empty city names and normalized duplicates return 400.
+- Public GET /api/orders/delivery-pricing returns current prices without caching. Deploy the backend and web changes together; an old checkout is rejected until refreshed.
+- Delivery orders require a matching deliveryQuote. A changed price or classification returns 409 (DELIVERY_QUOTE_CHANGED) with refreshed pricing, before creating an order.
+- The server calculates the fee and saves the quote in delivery_info_json.pricing. Stripe, Swish and receipts use the saved order lines and total. Later settings changes do not change existing orders.
+- No new migration is needed for this checkout step; the delivery pricing migration from part 1 must already be applied. Older orders without a snapshot retain the national delivery estimate.
+- City matching normalizes case, whitespace and Unicode. It does not validate the postal code or street address.
+- Run `npm run test:delivery-pricing --workspace=@mormors-kunafa/backend` from
+  the repository root. Tests use an isolated local database stub, not Supabase.
+
 ## Admin PWA Notifications
 
 1. Apply SQL migration in Supabase SQL editor:

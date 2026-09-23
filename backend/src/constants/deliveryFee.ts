@@ -1,5 +1,4 @@
 /** Keep in sync with shared/constants/delivery.ts */
-export const DELIVERY_FEE_ORE = 7900;
 export const DELIVERY_FEE_LINE_NAME = 'Leveransavgift';
 
 export function isDeliveryFeeLineItem(item: {
