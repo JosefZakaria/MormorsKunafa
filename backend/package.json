@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test:delivery-pricing": "npm run build && node --test tests/delivery-pricing.test.mjs",
+    "test:delivery-pricing": "npm run build && node --test tests/delivery-*.test.mjs",
     "build": "npm run build --workspace=@mormors-kunafa/shared && node scripts/sync-shared-dist.mjs src && tsc && node scripts/sync-shared-dist.mjs dist",
     "start": "node dist/index.js",
     "dev": "npm run build --workspace=@mormors-kunafa/shared && node scripts/sync-shared-dist.mjs src && tsx watch src/index.ts",

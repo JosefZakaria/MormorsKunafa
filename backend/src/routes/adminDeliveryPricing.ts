@@ -1,18 +1,12 @@
 import { Router, type Response } from 'express';
-import { supabase, nowIso, type Row, logSupabaseError } from '../db/connection.js';
+import { supabase, nowIso, logSupabaseError } from '../db/connection.js';
 import { requireAdmin, requireOwner } from '../middleware/auth.js';
 import { parseDeliveryPricing } from '../shared/utils/deliveryPricing.js';
+import { deliveryPricingFromRow as pricingFromRow } from '../db/deliveryPricing.js';
 
 const router = Router();
 const columns = 'id, delivery_default_fee_ore, delivery_city_fees';
 router.use(requireAdmin, requireOwner);
-
-function pricingFromRow(row: Row) {
-  return parseDeliveryPricing({
-    defaultFeeOre: row.delivery_default_fee_ore,
-    cityFees: row.delivery_city_fees,
-  });
-}
 
 function databaseError(res: Response, error: Parameters<typeof logSupabaseError>[1]) {
   logSupabaseError('admin delivery pricing', error);

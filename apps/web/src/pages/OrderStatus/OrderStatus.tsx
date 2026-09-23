@@ -1,3 +1,4 @@
+import { showOrderDeliveryEstimate } from '@shared/utils/deliveryPricing';
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Container } from '../../components/common/Container/Container';
@@ -88,12 +89,12 @@ function OrderItemsSummary({ order }: { order: Order }) {
                     <li key={i}>
                         {item.quantity}× {item.productName}
                         {' — '}
-                        {((item.price * item.quantity) / 100).toFixed(0)} kr
+                        {((item.price * item.quantity) / 100).toLocaleString('sv-SE', { maximumFractionDigits: 2 })} kr
                     </li>
                 ))}
             </ul>
             <p className="status-order-summary__total">
-                Totalt {(order.totalPrice / 100).toFixed(0)} kr
+                Totalt {(order.totalPrice / 100).toLocaleString('sv-SE', { maximumFractionDigits: 2 })} kr
             </p>
         </div>
     );
@@ -151,7 +152,9 @@ function SimpleConfirmationView({
     } else if (isDelivery) {
         message = scheduledLabel
             ? `Vi har tagit emot din beställning. Leverans är planerad till ${scheduledLabel}. Du får bekräftelse via e-post om du angav adress.`
-            : 'Vi har tagit emot din beställning. Hemleverans sker normalt inom 1–2 arbetsdagar över hela Sverige. Du får bekräftelse via e-post om du angav adress.';
+            : showOrderDeliveryEstimate(order.deliveryInfo)
+                ? 'Vi har tagit emot din beställning. Hemleverans sker normalt inom 1–2 arbetsdagar. Du får bekräftelse via e-post om du angav adress.'
+                : 'Vi har tagit emot din beställning för hemleverans. Du får bekräftelse via e-post om du angav adress.';
     } else if (isBooked && scheduledLabel) {
         message = `Vi förbereder din order närmare ${scheduledLabel}. Du behöver inte följa minut-timer här — vid frågor, kontakta oss med ditt ordernummer.`;
     } else {
@@ -163,7 +166,7 @@ function SimpleConfirmationView({
             <h1 className="text-display-md status-title">{title}</h1>
             <p className="text-center status-message">{message}</p>
 
-            {isDelivery && !isAwaitingPayment && (
+            {isDelivery && !isAwaitingPayment && (scheduledLabel || showOrderDeliveryEstimate(order.deliveryInfo)) && (
                 <p className="status-hint">
                     {scheduledLabel
                         ? `Planerad: ${scheduledLabel}`

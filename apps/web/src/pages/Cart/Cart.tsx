@@ -8,7 +8,7 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { useCart } from '../../contexts/CartContext';
 import { orderApi, locationApi } from '../../services/api';
 import type { CheckoutPaymentChoice, CustomerInfo, Location, OrderType } from '@shared/types';
-import { DELIVERY_FEE_SEK } from '@shared/constants/delivery';
+import { parseDeliveryPricing, quoteDelivery, type DeliveryPricing } from '@shared/utils/deliveryPricing';
 import {
     dateToStockholmInputValue,
     roundClockToNext5Min,
@@ -95,6 +95,22 @@ export const Cart: React.FC = () => {
     const [deliveryAddress, setDeliveryAddress] = useState('');
     const [deliveryPostalCode, setDeliveryPostalCode] = useState('');
     const [deliveryCity, setDeliveryCity] = useState('');
+    const [deliveryPricing, setDeliveryPricing] = useState<DeliveryPricing | null>(null);
+    const [pricingFailed, setPricingFailed] = useState(false);
+    const [pricingAttempt, setPricingAttempt] = useState(0);
+
+    useEffect(() => {
+        if (orderType !== 'delivery') return;
+        let cancelled = false;
+        setDeliveryPricing(null);
+        setPricingFailed(false);
+        orderApi.getDeliveryPricing().then(parseDeliveryPricing).then((pricing) => {
+            if (!cancelled) setDeliveryPricing(pricing);
+        }).catch(() => {
+            if (!cancelled) setPricingFailed(true);
+        });
+        return () => { cancelled = true; };
+    }, [orderType, pricingAttempt]);
     const [customerInfoError, setCustomerInfoError] = useState<string | null>(null);
     const [paymentChoice, setPaymentChoice] = useState<CheckoutPaymentChoice>('card');
     const [locations, setLocations] = useState<Location[]>([]);
@@ -345,8 +361,11 @@ export const Cart: React.FC = () => {
 
     const subtotalKr = getTotal() / 100;
     const isDeliveryOrder = orderType === 'delivery';
-    const deliveryFeeKr = isDeliveryOrder ? DELIVERY_FEE_SEK : 0;
+    const deliveryQuote = isDeliveryOrder && deliveryPricing && deliveryCity.trim()
+        ? quoteDelivery(deliveryCity, deliveryPricing) : null;
+    const deliveryFeeKr = deliveryQuote ? deliveryQuote.feeOre / 100 : 0;
     const totalKr = subtotalKr + deliveryFeeKr;
+    const formatKr = (value: number) => value.toLocaleString(scheduleLocale, { maximumFractionDigits: 2 });
     const selectedPlace = locations.find((location) => location.id === locationId);
     const selectedPlaceLabel = selectedPlace
         ? (selectedPlace.address.trim()
@@ -462,6 +481,7 @@ export const Cart: React.FC = () => {
             };
         }
 
+        if (orderType === 'delivery' && !deliveryQuote) return;
         setIsSubmitting(true);
         setError(null);
         setOrderTypeError(null);
@@ -515,6 +535,7 @@ export const Cart: React.FC = () => {
                 orderType: orderType as OrderType,
                 customerInfo,
                 deliveryInfo: deliveryInfo,
+                ...(isDelivery && deliveryQuote ? { deliveryQuote } : {}),
                 ...(scheduledTime ? { scheduledTime } : {}),
                 paymentMethod: paymentChoice,
                 ...(needsPickupLocation(orderType) ? { locationId } : {}),
@@ -529,6 +550,16 @@ export const Cart: React.FC = () => {
                 navigate(`/pay/swish?orderId=${encodeURIComponent(order.id)}`);
             }
         } catch (err: any) {
+            if (err.status === 409 && err.data?.code === 'DELIVERY_QUOTE_CHANGED') {
+                try {
+                    setDeliveryPricing(parseDeliveryPricing(err.data.deliveryPricing));
+                } catch {
+                    setDeliveryPricing(null);
+                    setPricingFailed(true);
+                }
+                setError(t('delivery.price_changed'));
+                return;
+            }
             let errorMsg = err.message || 'Kunde inte skapa beställning. Försök igen.';
             if (err.data && err.data.error) {
                 errorMsg = err.data.error;
@@ -577,7 +608,7 @@ export const Cart: React.FC = () => {
                 )}
 
                 {error && (
-                    <div className="cart-error" style={{ 
+                    <div className="cart-error" role="alert" style={{
                         padding: '1rem', 
                         background: '#fee', 
                         color: '#c00', 
@@ -758,8 +789,20 @@ export const Cart: React.FC = () => {
                                             }}>
                                                 <Truck size={18} className="text-primary" />
                                                 <div>
-                                                    <div style={{ fontWeight: 'bold', color: '#333' }}>{t('delivery.delivery_time')}</div>
-                                                    <div>{t('delivery.fee_note')}</div>
+                                                    {deliveryQuote?.showDeliveryEstimate && (
+                                                        <div style={{ fontWeight: 'bold', color: '#333' }}>{t('delivery.delivery_time')}</div>
+                                                    )}
+                                                    <div aria-live="polite">
+                                                        {pricingFailed ? t('delivery.pricing_error')
+                                                            : !deliveryPricing ? t('delivery.pricing_loading')
+                                                            : !deliveryQuote ? t('delivery.enter_city')
+                                                            : `${t('cart.delivery_fee')}: ${formatKr(deliveryFeeKr)} kr`}
+                                                    </div>
+                                                    {pricingFailed && (
+                                                        <button type="button" onClick={() => setPricingAttempt((value) => value + 1)}>
+                                                            {t('delivery.retry')}
+                                                        </button>
+                                                    )}
                                                 </div>
                                             </div>
 
@@ -823,11 +866,11 @@ export const Cart: React.FC = () => {
                                 <>
                                     <div className="cart-summary__row">
                                         <span className="text-body-lg">{t('cart.subtotal')}</span>
-                                        <span className="text-body-lg">{subtotalKr.toFixed(0)} kr</span>
+                                        <span className="text-body-lg">{formatKr(subtotalKr)} kr</span>
                                     </div>
                                     <div className="cart-summary__row">
                                         <span className="text-body-lg">{t('cart.delivery_fee')}</span>
-                                        <span className="text-body-lg">{deliveryFeeKr.toFixed(0)} kr</span>
+                                        <span className="text-body-lg">{deliveryQuote ? `${formatKr(deliveryFeeKr)} kr` : '—'}</span>
                                     </div>
                                     <hr className="cart-divider" />
                                 </>
@@ -835,7 +878,7 @@ export const Cart: React.FC = () => {
                             <div className="cart-summary__row cart-summary__total">
                                 <span className="text-heading-md">{t('cart.total')}</span>
                                 <span className="text-heading-md font-bold text-primary">
-                                    {totalKr.toFixed(0)} kr
+                                    {isDeliveryOrder && !deliveryQuote ? '—' : `${formatKr(totalKr)} kr`}
                                 </span>
                             </div>
 
@@ -873,7 +916,7 @@ export const Cart: React.FC = () => {
                                 size="lg"
                                 className="checkout-btn"
                                 onClick={() => handleCheckout()}
-                                disabled={isSubmitting || (!isDeliveryOrder && !clockRange)}
+                                disabled={isSubmitting || (isDeliveryOrder ? !deliveryQuote : !clockRange)}
                             >
                                 {isSubmitting ? 'Skapar beställning...' : t('cart.checkout')}
                             </Button>

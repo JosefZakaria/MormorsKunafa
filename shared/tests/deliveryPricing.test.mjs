@@ -4,9 +4,17 @@ import {
   INITIAL_DELIVERY_PRICING,
   parseDeliveryPricing,
   quoteDelivery,
+  showOrderDeliveryEstimate,
 } from '../dist/utils/deliveryPricing.js';
 
 const initial = () => parseDeliveryPricing(INITIAL_DELIVERY_PRICING);
+
+test('order estimates use frozen terms, with the previous national terms for legacy orders', () => {
+  assert.equal(showOrderDeliveryEstimate(), true);
+  assert.equal(showOrderDeliveryEstimate({ city: 'Lund' }), true);
+  assert.equal(showOrderDeliveryEstimate({ pricing: quoteDelivery('Lund', initial()) }), false);
+  assert.equal(showOrderDeliveryEstimate({ pricing: quoteDelivery('Stockholm', initial()) }), true);
+});
 
 for (const [city, feeOre] of [
   ['Malmö', 7900], ['Lund', 11900], ['Burlöv', 11900], ['Arlöv', 11900], ['Helsingborg', 14900],

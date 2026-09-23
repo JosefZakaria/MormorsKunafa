@@ -1,3 +1,4 @@
+import { showOrderDeliveryEstimate, type DeliveryQuote } from '../shared/utils/deliveryPricing.js';
 import { CharacterSet, ThermalPrinter, PrinterTypes, BreakLine } from 'node-thermal-printer';
 
 export class PrinterService {
@@ -22,6 +23,7 @@ export class PrinterService {
     orderType?: string;
     customerInfo?: { name?: string; phone?: string; email?: string };
     deliveryInfo?: {
+      pricing?: DeliveryQuote;
       name?: string;
       address?: string;
       postalCode?: string;
@@ -49,7 +51,7 @@ export class PrinterService {
     if (postalCity) this.printer.println(postalCity);
     if (phone) this.printer.println(`Tel: ${phone}`);
     if (email) this.printer.println(email);
-    if (!order.scheduledTime) {
+    if (!order.scheduledTime && showOrderDeliveryEstimate(d)) {
       this.printer.println('Leverans: 1-2 arbetsdagar');
     }
     this.printer.drawLine();

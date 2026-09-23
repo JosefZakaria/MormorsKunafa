@@ -15,6 +15,17 @@ export interface DeliveryQuote {
   showDeliveryEstimate: boolean;
 }
 
+/** Orders without a snapshot were placed under the previous national delivery terms. */
+export function showOrderDeliveryEstimate(info?: { pricing?: DeliveryQuote }): boolean {
+  return info?.pricing?.showDeliveryEstimate !== false;
+}
+
+/** Treat the client's quote only as acknowledgement, never as the source of the price. */
+export function deliveryQuoteMatches(value: unknown, quote: DeliveryQuote): boolean {
+  return isRecord(value) && value.feeOre === quote.feeOre &&
+    value.matchedCity === quote.matchedCity && value.showDeliveryEstimate === quote.showDeliveryEstimate;
+}
+
 /** Initial settings only. Once configured, callers must use the saved settings. */
 export const INITIAL_DELIVERY_PRICING: Readonly<{
   defaultFeeOre: number;

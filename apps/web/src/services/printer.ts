@@ -1,3 +1,4 @@
+import { showOrderDeliveryEstimate } from '@shared/utils/deliveryPricing';
 /**
  * Service for direct client-side thermal receipt and kitchen printing via Epson ePOS XML.
  */
@@ -231,7 +232,7 @@ function appendDeliveryBlock(xml: string, order: Order): string {
   if (postalCity) xml += textLine(postalCity);
   if (phone) xml += textLine(`Tel: ${phone}`);
   if (email) xml += textLine(email);
-  if (!order.scheduledTime) {
+  if (!order.scheduledTime && showOrderDeliveryEstimate(d)) {
     xml += textLine('Leverans: 1-2 arbetsdagar');
   }
   xml += separator();

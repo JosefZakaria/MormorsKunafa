@@ -115,6 +115,9 @@ export const locationApi = {
 
 // Orders API
 export const orderApi = {
+  getDeliveryPricing: async (): Promise<DeliveryPricing> => {
+    return apiRequest<DeliveryPricing>('/orders/delivery-pricing');
+  },
   create: async (data: CreateOrderRequest): Promise<Order> => {
     return apiRequest<Order>('/orders', {
       method: 'POST',

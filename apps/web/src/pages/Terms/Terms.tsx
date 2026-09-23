@@ -53,7 +53,7 @@ export const Terms: React.FC = () => {
             <h2>4. التوصيل والاستلام (Leverans och Upphämtning)</h2>
             <p>
               <strong>الاستلام من المحل:</strong> يجهز الطلب في الوقت المحدد في Höja (Karolingatan 1) أو Möllevången (Bergsgatan 35) في مالمو. يرجى إبراز رقم الطلب عند الاستلام.<br />
-              <strong>التوصيل للمنزل:</strong> تبلغ رسوم التوصيل 79 كرونة. يتم تأكيد إمكانية التوصيل والوقت للعنوان المحدد في الطلب.
+              <strong>التوصيل للمنزل:</strong> تختلف رسوم التوصيل حسب المدينة وتظهر عند إتمام الطلب قبل الدفع. يتم تأكيد إمكانية التوصيل والوقت للعنوان المحدد في الطلب.
             </p>
           </section>
 
@@ -122,7 +122,7 @@ export const Terms: React.FC = () => {
             <h2>4. Delivery & Pickup</h2>
             <p>
               <strong>Pickup:</strong> Your order will be prepared for the chosen collection time at Höja (Karolingatan 1) or Möllevången (Bergsgatan 35) in Malmö. Please show your order number upon arrival.<br />
-              <strong>Home Delivery:</strong> The delivery fee is 79 SEK. Availability and timing for the submitted address are confirmed with the order.
+              <strong>Home Delivery:</strong> The delivery fee depends on your city and is shown at checkout before payment. Availability and timing for the submitted address are confirmed with the order.
             </p>
           </section>
 
@@ -190,7 +190,7 @@ export const Terms: React.FC = () => {
           <h2>4. Leverans och Upphämtning</h2>
           <p>
             <strong>Upphämtning i butik:</strong> Beställningen tillagas och förbereds till den angivna upphämtningstiden på Höja (Karolingatan 1) eller Möllevången (Bergsgatan 35) i Malmö. Uppge ditt ordernummer vid uthämtning.<br />
-            <strong>Hemleverans:</strong> Leveransavgiften är 79 kr. Leveransmöjlighet och tid för den angivna adressen bekräftas i samband med beställningen.
+            <strong>Hemleverans:</strong> Leveransavgiften beror på ort och visas i kassan före betalning. Leveransmöjlighet och tid för den angivna adressen bekräftas i samband med beställningen.
           </p>
         </section>
 

@@ -87,7 +87,7 @@ export function DeliveryPricingSettings() {
         <section className="rush-card delivery-pricing" aria-labelledby={`${prefix}-title`}>
             <h3 id={`${prefix}-title`}>Leveranspriser</h3>
             <p>Standardavgiften gäller för orter som saknar ett eget stadspris.</p>
-            <p className="delivery-pricing__notice">Priserna kan förberedas här. Kassan använder fortfarande 79 kr tills det nya leveransflödet aktiveras.</p>
+            <p className="delivery-pricing__notice">Priserna används för nya beställningar. Redan lagda beställningar behåller sin leveransavgift.</p>
             {loading && <p role="status">Laddar leveranspriser…</p>}
             {error && <p role="alert" className="delivery-pricing__error">{error}</p>}
             {!loading && !draft && <Button type="button" variant="outline" onClick={() => setReload((n) => n + 1)}>Försök igen</Button>}

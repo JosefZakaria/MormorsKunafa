@@ -1,3 +1,4 @@
+import { showOrderDeliveryEstimate } from '@shared/utils/deliveryPricing';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -81,9 +82,9 @@ function OrderContactPanel({ order }: { order: Order }) {
                 {email && <p>E-post: {email}</p>}
                 {scheduledLabel ? (
                     <p className="delivery-info-panel__window">Önskad tid: {scheduledLabel}</p>
-                ) : (
-                    <p className="delivery-info-panel__window">Leverans: 1–2 arbetsdagar (Sverige)</p>
-                )}
+                ) : showOrderDeliveryEstimate(d) ? (
+                    <p className="delivery-info-panel__window">Leverans: 1–2 arbetsdagar</p>
+                ) : null}
             </div>
         );
     }
@@ -427,7 +428,7 @@ function PreOrderCard({ order, locations, onEditNotes, onCancel }: {
                         <li key={i}>{item.quantity}x {item.productName} – {(item.price * item.quantity / 100).toFixed(0)} kr</li>
                     ))}
                 </ul>
-                <p className="order-total">{(order.totalPrice / 100).toFixed(0)} kr</p>
+                <p className="order-total">{(order.totalPrice / 100).toLocaleString('sv-SE', { maximumFractionDigits: 2 })} kr</p>
                 <OrderContactPanel order={order} />
                 {order.internalNotes && (
                     <div className="preorder-notes">
@@ -476,7 +477,7 @@ function PendingOrderCard({ order, locations, defaultPrepTime, onAccept }: {
                         <li key={i}>{item.quantity}x {item.productName} – {(item.price * item.quantity / 100).toFixed(0)} kr</li>
                     ))}
                 </ul>
-                <p className="order-total">{(order.totalPrice / 100).toFixed(0)} kr</p>
+                <p className="order-total">{(order.totalPrice / 100).toLocaleString('sv-SE', { maximumFractionDigits: 2 })} kr</p>
                 <OrderContactPanel order={order} />
                 <p className="order-meta">
                     Beställd {formatCreatedAt(order.createdAt, isAdvancePreOrder(order))}
@@ -1973,7 +1974,7 @@ export const AdminDashboard: React.FC = () => {
                                                     <li key={i}>{item.quantity}x {item.productName} – {(item.price * item.quantity / 100).toFixed(0)} kr</li>
                                                 ))}
                                             </ul>
-                                            <p className="order-total">{(order.totalPrice / 100).toFixed(0)} kr</p>
+                                            <p className="order-total">{(order.totalPrice / 100).toLocaleString('sv-SE', { maximumFractionDigits: 2 })} kr</p>
                                             <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
                                                 <Button size="sm" variant="ghost" onClick={() => handleAddTime(order, -5)}>−5 min</Button>
                                                 <Button size="sm" variant="ghost" onClick={() => handleAddTime(order, 5)}>+5 min</Button>
@@ -2054,7 +2055,7 @@ export const AdminDashboard: React.FC = () => {
                                                     <li key={i}>{item.quantity}x {item.productName}</li>
                                                 ))}
                                             </ul>
-                                            <p className="order-total">{(order.totalPrice / 100).toFixed(0)} kr</p>
+                                            <p className="order-total">{(order.totalPrice / 100).toLocaleString('sv-SE', { maximumFractionDigits: 2 })} kr</p>
                                             <OrderContactPanel order={order} />
                                             <p style={{ fontSize: '0.8rem', color: '#888', margin: 0 }}>
                                                 Beställd {formatCreatedAt(order.createdAt, true)}
@@ -2445,7 +2446,7 @@ export const AdminDashboard: React.FC = () => {
                                 ))}
                             </ul>
                             <div className="alarm-order-total">
-                                Summa: {(activeAlarmOrder.totalPrice / 100).toFixed(0)} kr
+                                Summa: {(activeAlarmOrder.totalPrice / 100).toLocaleString('sv-SE', { maximumFractionDigits: 2 })} kr
                             </div>
                         </div>
                         <button className="alarm-silence-btn" onClick={handleSilenceAlarm}>
