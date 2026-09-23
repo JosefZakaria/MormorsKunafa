@@ -219,6 +219,19 @@ export interface PushSubscriptionRecord {
   lastFailureReason?: string | null;
 }
 
+export interface PushNotificationHealth {
+  ok: boolean;
+  webPushConfigured: boolean;
+  push: {
+    activeSubscriptions: number;
+    pending: number;
+    leased: number;
+    dead: number;
+    oldestPendingAt: string | null;
+    deadJobs: Array<{ orderId: string; orderNumber: string; failedAt: string }>;
+  };
+}
+
 export interface OrderCreatedRealtimeEvent {
   event_id: string;
   event_type: 'ORDER_CREATED';

@@ -4,7 +4,9 @@ import { useNavigate } from 'react-router-dom';
 import { Container } from '../../../components/common/Container/Container';
 import { Button } from '../../../components/common/Button/Button';
 import { orderApi, productApi, adminApi, locationApi } from '../../../services/api';
-import { printKitchenTicket, printReceipt, testConnection, isPrinterConfigured, getPrinterConfig, setPrinterConfig, getOrderTargetLocationSlug, PrinterLocationSlug, DEFAULT_HOJA_PRINTER_IP } from '../../../services/printer';
+import { printReceipt, testConnection, isPrinterConfigured, getPrinterConfig, setPrinterConfig, verifySavedPrinterConfig, getOrderTargetLocationSlug, PrinterLocationSlug, DEFAULT_HOJA_PRINTER_IP } from '../../../services/printer';
+import { attemptHojaKitchenPrint, getKitchenPrintStatus, isHojaAutoPrintEnabled, markExistingDueTicketsForReview, setHojaAutoPrintEnabled, shouldAutoPrintKitchenTicket, type KitchenPrintStatus } from '../../../services/kitchenPrintState';
+import { urlBase64ToUint8Array } from '../../../services/pwa';
 import type {
     DeliveryInfo,
     Order,
@@ -12,10 +14,10 @@ import type {
     AdminSettings,
     OrderCreatedRealtimeEvent,
     Location,
+    PushNotificationHealth,
 } from '@shared/types';
 import { HOJA_LOCATION_ID, MOLLEVANGEN_LOCATION_ID } from '@shared/types';
 import { parseApiTimestamp } from '@shared/utils/parseApiTimestamp';
-import { isKitchenTicketPrintDue } from '@shared/utils/scheduledTime';
 import '../Admin.css';
 import { requestWakeLock, releaseWakeLock } from '../../../utils/wakeLock';
 import { startAlarm, stopAlarm, setAlarmVolume, AlarmType, getAudioState, unlockAudio, isAlarmActive } from '../../../utils/alarmPlayer';
@@ -162,7 +164,7 @@ function playForegroundAttentionSound(): void {
         gainNode.connect(ctx.destination);
         oscillator.start();
         oscillator.stop(ctx.currentTime + 0.25);
-        void ctx.close();
+        oscillator.onended = () => { void ctx.close(); };
     } catch {
         // Best effort only; iOS can block audio when no user gesture exists.
     }
@@ -172,10 +174,18 @@ function PrinterSettings({
     locations: _locations,
     myLocation,
     isOwner,
+    canAutoPrint,
+    autoPrintEnabled,
+    autoPrintBusy,
+    onAutoPrintChange,
 }: {
     locations?: Location[];
     myLocation?: Location;
     isOwner: boolean;
+    canAutoPrint: boolean;
+    autoPrintEnabled: boolean;
+    autoPrintBusy: boolean;
+    onAutoPrintChange: (enabled: boolean) => void;
 }) {
     const defaultSlug: PrinterLocationSlug = (myLocation?.slug === 'mollevangen' ? 'mollevangen' : 'hoja');
     const [selectedSlug, setSelectedSlug] = useState<PrinterLocationSlug>(defaultSlug);
@@ -185,20 +195,32 @@ function PrinterSettings({
     const [deviceId, setDeviceId] = useState(config.deviceId);
     const [testResult, setTestResult] = useState<string | null>(null);
     const [testing, setTesting] = useState(false);
+    const [testedConfig, setTestedConfig] = useState<string | null>(null);
 
     useEffect(() => {
         const c = getPrinterConfig(selectedSlug);
         setIp(c.ip);
         setDeviceId(c.deviceId);
         setTestResult(null);
+        setTestedConfig(null);
     }, [selectedSlug]);
 
     const hojaConfigured = isPrinterConfigured('hoja');
     const molleConfigured = isPrinterConfigured('mollevangen');
 
     const handleSave = () => {
+        const savedBefore = getPrinterConfig(selectedSlug);
+        const wasVerified = isPrinterConfigured(selectedSlug);
         setPrinterConfig(ip.trim(), deviceId.trim() || undefined, selectedSlug);
-        setTestResult(`Inställningar för ${selectedSlug === 'hoja' ? 'Höja' : 'Möllevången'} sparade.`);
+        if (testedConfig === JSON.stringify([ip.trim(), deviceId.trim() || 'local_printer'])) {
+            verifySavedPrinterConfig(selectedSlug);
+            setTestResult(`Inställningar för ${selectedSlug === 'hoja' ? 'Höja' : 'Möllevången'} sparade och verifierade.`);
+        } else if (wasVerified && savedBefore.ip === ip.trim() && savedBefore.deviceId === (deviceId.trim() || 'local_printer')) {
+            setTestResult('Verifierade inställningar sparade.');
+        } else {
+            onAutoPrintChange(false);
+            setTestResult('Inställningarna sparades. Kör Testa anslutning för att verifiera skrivaren.');
+        }
     };
 
     const handleTest = async () => {
@@ -206,12 +228,24 @@ function PrinterSettings({
             setTestResult('Ange en IP-adress först.');
             return;
         }
-        setPrinterConfig(ip.trim(), deviceId.trim() || undefined, selectedSlug);
         setTesting(true);
         setTestResult(null);
-        const res = await testConnection(selectedSlug);
+        const draft = { ip: ip.trim(), deviceId: deviceId.trim() || 'local_printer' };
+        const res = await testConnection(selectedSlug, draft);
         setTesting(false);
-        setTestResult(res.success ? `Anslutning lyckades (${selectedSlug === 'hoja' ? 'Höja' : 'Möllevången'})!` : (res.error || 'Kunde inte nå skrivaren.'));
+        if (res.success) {
+            setTestedConfig(JSON.stringify([draft.ip, draft.deviceId]));
+            const saved = getPrinterConfig(selectedSlug);
+            if (saved.ip === draft.ip && saved.deviceId === draft.deviceId) {
+                verifySavedPrinterConfig(selectedSlug);
+                setTestResult(`Testutskrift lyckades (${selectedSlug === 'hoja' ? 'Höja' : 'Möllevången'}). Sparad skrivare verifierad.`);
+            } else {
+                setTestResult('Testutskrift lyckades med inskrivna värden. Spara för att använda dem.');
+            }
+        } else {
+            setTestedConfig(null);
+            setTestResult(res.error || 'Kunde inte nå skrivaren.');
+        }
     };
 
     const currentLocName = selectedSlug === 'hoja' ? 'Höja' : 'Möllevången';
@@ -229,11 +263,12 @@ function PrinterSettings({
                     color: isCurrentConfigured ? '#166534' : '#6b7280',
                     fontWeight: 600,
                 }}>
-                    {isCurrentConfigured ? `🟢 ${currentLocName}: Konfigurerad` : `⚪ ${currentLocName}: Ej konfigurerad`}
+                    {isCurrentConfigured ? `🟢 ${currentLocName}: Verifierad` : `⚪ ${currentLocName}: Ej verifierad`}
                 </span>
             </div>
             <p style={{ marginTop: '0.5rem', marginBottom: '0.75rem', color: '#666', fontSize: '0.9rem' }}>
                 Anslut till en Epson-termoskrivare på det lokala nätverket. Varje restaurang har sin egen skrivarkonfiguration.
+                Om testutskriften misslyckas: kontrollera IP, enhets-ID, WiFi och Chromes tillstånd för lokalt nätverk.
             </p>
 
             {isOwner && (
@@ -272,9 +307,9 @@ function PrinterSettings({
                             Möllevången har ingen skrivare än. Beställningar till Möllevången hoppas automatiskt över tills IP fylls i.
                         </span>
                     )}
-                    {selectedSlug === 'hoja' && ip === DEFAULT_HOJA_PRINTER_IP && (
-                        <span style={{ fontSize: '0.8rem', color: '#16a34a' }}>
-                            Standard-IP för Höja ({DEFAULT_HOJA_PRINTER_IP}) är förinställd.
+                    {selectedSlug === 'hoja' && ip === DEFAULT_HOJA_PRINTER_IP && !isCurrentConfigured && (
+                        <span style={{ fontSize: '0.8rem', color: '#b45309' }}>
+                            {DEFAULT_HOJA_PRINTER_IP} är ett tidigare standardvärde. Kontrollera skrivarens IP och kör en testutskrift.
                         </span>
                     )}
                 </div>
@@ -299,7 +334,107 @@ function PrinterSettings({
                         {testResult}
                     </p>
                 )}
+                {canAutoPrint && selectedSlug === 'hoja' && (
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 600 }}>
+                        <input type="checkbox" checked={autoPrintEnabled} disabled={!hojaConfigured || autoPrintBusy} onChange={e => onAutoPrintChange(e.target.checked)} />
+                        Automatisk kökslapp på denna Höjapadda
+                    </label>
+                )}
+                {canAutoPrint && selectedSlug === 'hoja' && <small>Befintliga ordrar som redan är klara för utskrift kräver manuell kontroll när funktionen aktiveras.</small>}
             </div>
+        </div>
+    );
+}
+
+function HojaNotificationSettings() {
+    const [subscription, setSubscription] = useState<PushSubscription | null>(null);
+    const [lastFailure, setLastFailure] = useState<string | null>(null);
+    const [message, setMessage] = useState<string | null>(null);
+    const [busy, setBusy] = useState(false);
+
+    const refresh = useCallback(async () => {
+        if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+        const registration = await navigator.serviceWorker.register('/sw.js');
+        const current = await registration.pushManager.getSubscription();
+        setSubscription(current);
+        if (current) {
+            const records = await adminApi.getPushSubscriptions();
+            const saved = records.find(record => record.endpoint === current.endpoint);
+            setLastFailure(saved ? saved.lastFailureReason ?? null : 'Prenumerationen är inte aktiv på servern. Aktivera notiser igen.');
+        } else {
+            setLastFailure(null);
+        }
+    }, []);
+
+    useEffect(() => {
+        void refresh().catch(error => setMessage(error instanceof Error ? error.message : 'Kunde inte läsa notisstatus.'));
+    }, [refresh]);
+
+    useEffect(() => {
+        if (!subscription) return;
+        const id = setInterval(() => {
+            void adminApi.getPushSubscriptions()
+                .then(records => {
+                    const saved = records.find(record => record.endpoint === subscription.endpoint);
+                    setLastFailure(saved ? saved.lastFailureReason ?? null : 'Prenumerationen är inte aktiv på servern. Aktivera notiser igen.');
+                })
+                .catch(error => console.warn('[push] Could not refresh delivery status', error));
+        }, 15000);
+        return () => clearInterval(id);
+    }, [subscription]);
+
+    const enable = async () => {
+        setBusy(true);
+        setMessage(null);
+        try {
+            if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+                throw new Error('Den här webbläsaren stöder inte pushnotiser.');
+            }
+            const publicKey = import.meta.env.VITE_WEB_PUSH_VAPID_PUBLIC_KEY?.trim();
+            if (!publicKey) throw new Error('Pushnyckeln saknas i webbappens konfiguration.');
+            const permission = await Notification.requestPermission();
+            if (permission !== 'granted') throw new Error('Tillåt notiser för webbplatsen i Chrome först.');
+            const registration = await navigator.serviceWorker.register('/sw.js');
+            const current = await registration.pushManager.getSubscription()
+                ?? await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(publicKey) as BufferSource });
+            await adminApi.savePushSubscription(current, 'Höjapadda');
+            setSubscription(current);
+            setLastFailure(null);
+            setMessage('Notiser är aktiverade på denna padda.');
+        } catch (error) {
+            setMessage(error instanceof Error ? error.message : 'Kunde inte aktivera notiser.');
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    const sendTest = async () => {
+        setBusy(true);
+        setMessage('Testnotisen skickas om fem sekunder. Lås paddan nu.');
+        try {
+            if (!subscription) throw new Error('Aktivera notiser först.');
+            await adminApi.sendTestNotification(subscription, 5000);
+            setLastFailure(null);
+            setMessage('Testnotisen skickades. Kontrollera att den visades och hördes på den låsta paddan.');
+        } catch (error) {
+            setMessage(error instanceof Error ? error.message : 'Testnotisen misslyckades.');
+            try { await refresh(); } catch { /* The failure is already shown above. */ }
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    return (
+        <div className="rush-card" style={{ marginTop: '1rem' }}>
+            <h3>Notiser på Höjapaddan</h3>
+            <p>Pushnotiser varnar även när skärmen är låst. Kontrollera notisljudet i Androids inställningar.</p>
+            <p>Status: {subscription && 'Notification' in window && Notification.permission === 'granted' ? 'Prenumeration finns på paddan' : 'Ej aktiverad på paddan'}</p>
+            {lastFailure && <p style={{ color: '#b91c1c' }}>Senaste pushfel: {lastFailure}</p>}
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <Button variant="primary" size="sm" disabled={busy} onClick={enable}>Aktivera notiser</Button>
+                <Button variant="ghost" size="sm" disabled={busy || !subscription} onClick={sendTest}>Skicka testnotis</Button>
+            </div>
+            {message && <p role="status">{message}</p>}
         </div>
     );
 }
@@ -390,11 +525,31 @@ function ScheduledOrderInfo({ order }: { order: Order }) {
     );
 }
 
-function PreOrderCard({ order, locations, onEditNotes, onCancel }: {
+function KitchenTicketStatus({ order, status, onReprint }: {
+    order: Order;
+    status?: KitchenPrintStatus | null;
+    onReprint?: (order: Order) => void;
+}) {
+    if (!status) return null;
+    return (
+        <div role={status === 'review' ? 'alert' : 'status'}>
+            {status === 'printed' && '🖨️ Kökslapp utskriven'}
+            {status === 'printing' && '🖨️ Skriver ut kökslapp...'}
+            {status === 'review' && (
+                <><strong style={{ color: '#b45309' }}>⚠️ Kontrollera lappen</strong>{' '}
+                    {onReprint && <Button size="sm" variant="ghost" onClick={() => onReprint(order)}>Skriv ut kökslapp igen</Button>}</>
+            )}
+        </div>
+    );
+}
+
+function PreOrderCard({ order, locations, onEditNotes, onCancel, printStatus, onReprint }: {
     order: Order;
     locations: Location[];
     onEditNotes: (order: Order) => void;
     onCancel: (order: Order) => void;
+    printStatus?: KitchenPrintStatus | null;
+    onReprint?: (order: Order) => void;
 }) {
     const dateLabel = formatScheduledDate(order.scheduledTime);
     const clockLabel = formatScheduledClock(order.scheduledTime);
@@ -421,6 +576,7 @@ function PreOrderCard({ order, locations, onEditNotes, onCancel }: {
                         {clockLabel ? ` · ${clockLabel}` : ''}
                     </span>
                 </div>
+                <KitchenTicketStatus order={order} status={printStatus} onReprint={onReprint} />
                 <ul className="order-items">
                     {order.items.map((item, i) => (
                         <li key={i}>{item.quantity}x {item.productName} – {(item.price * item.quantity / 100).toFixed(0)} kr</li>
@@ -449,11 +605,13 @@ function PreOrderCard({ order, locations, onEditNotes, onCancel }: {
     );
 }
 
-function PendingOrderCard({ order, locations, defaultPrepTime, onAccept }: {
+function PendingOrderCard({ order, locations, defaultPrepTime, onAccept, printStatus, onReprint }: {
     order: Order;
     locations: Location[];
     defaultPrepTime: number;
     onAccept: (orderId: string, extraMinutes: number) => void;
+    printStatus?: KitchenPrintStatus | null;
+    onReprint?: (order: Order) => void;
 }) {
     const [extraMinutes, setExtraMinutes] = useState(0);
     const totalMinutes = defaultPrepTime + extraMinutes;
@@ -469,6 +627,7 @@ function PendingOrderCard({ order, locations, defaultPrepTime, onAccept }: {
                     <PlaceBadge order={order} locations={locations} />
                 </h3>
                 <span className="status-badge status-ny">Ny</span>
+                <KitchenTicketStatus order={order} status={printStatus} onReprint={onReprint} />
                 <ScheduledOrderInfo order={order} />
                 <ul className="order-items">
                     {order.items.map((item, i) => (
@@ -864,6 +1023,9 @@ export const AdminDashboard: React.FC = () => {
     const myLocation = admin?.role === 'location'
         ? locations.find((location) => location.id === admin.locationId)
         : undefined;
+    const canAutoPrint = admin?.role === 'location' && admin.locationId === HOJA_LOCATION_ID;
+    const [autoPrintEnabled, setAutoPrintEnabledState] = useState(isHojaAutoPrintEnabled);
+    const [autoPrintBusy, setAutoPrintBusy] = useState(false);
 
     // Statistics state
     const [showStatsModal, setShowStatsModal] = useState(false);
@@ -903,27 +1065,72 @@ export const AdminDashboard: React.FC = () => {
     const [deleteAllPassword, setDeleteAllPassword] = useState('');
     const [deleteAllError, setDeleteAllError] = useState<string | null>(null);
     const [isReconnecting, setIsReconnecting] = useState(false);
+    const [pushFailure, setPushFailure] = useState<string | null>(null);
+    const [pushHealth, setPushHealth] = useState<PushNotificationHealth['push'] | null>(null);
 
     const isFetchingRef = useRef(false);
     const fetchSeqRef = useRef(0);
     const consecutiveErrorsRef = useRef(0);
     const pollingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const eventSourceRef = useRef<EventSource | null>(null);
+    const reconnectRealtimeRef = useRef<() => void>(() => undefined);
     const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const reconnectAttemptsRef = useRef(0);
     const statsAuthPasswordRef = useRef('');
     const seenRealtimeEventIdsRef = useRef<Set<string>>(new Set());
 
-    // Spårar vilka inkommande ordrar som redan skrivits ut (kökslapp) så att
-    // pollingen inte skriver ut samma order flera gånger.
-    const printedOrderIdsRef = useRef<Set<string>>(new Set());
-    // Vid första laddningen "seedar" vi ordrar som redan är inom utskriftsfönstret
-    // (utan att skriva ut) så refresh inte ger dubbletter. Ordrar som ännu inte
-    // nått 30 min före upphämtning lämnas osedade och skrivs ut när tiden är inne.
-    const printSeedDoneRef = useRef(false);
+    const inFlightPrintIdsRef = useRef<Set<string>>(new Set());
     // Tvingar omkörning av auto-utskrift när utskriftsfönstret öppnas (även om
     // pendingOrders-listan är oförändrad).
     const [printTick, setPrintTick] = useState(0);
+
+    const runKitchenPrint = useCallback(async (order: Order) => {
+        if (!canAutoPrint || order.paymentStatus !== 'paid' || order.status === 'avbruten' || getOrderTargetLocationSlug(order) !== 'hoja' || !isPrinterConfigured('hoja')) {
+            setError('Kökslappen kan bara skrivas ut från den verifierade Höjapaddan.');
+            return;
+        }
+        if (inFlightPrintIdsRef.current.has(order.id)) return;
+        inFlightPrintIdsRef.current.add(order.id);
+        setPrintTick(n => n + 1);
+        try {
+            const result = await attemptHojaKitchenPrint(order);
+            if (!result.success) {
+                setError(result.error || 'Utskriftsresultatet är osäkert. Kontrollera lappen.');
+            }
+        } catch (error) {
+            setError('Utskriftsresultatet är osäkert. Kontrollera lappen.');
+            console.error('[printer] Kitchen ticket failed', { orderId: order.id, error });
+        } finally {
+            inFlightPrintIdsRef.current.delete(order.id);
+            setPrintTick(n => n + 1);
+        }
+    }, [canAutoPrint]);
+
+    useEffect(() => {
+        if (!canAutoPrint) return;
+        const refresh = async () => {
+            try {
+                const health = await adminApi.getPushNotificationHealth();
+                setPushHealth(health.push);
+            } catch (error) {
+                console.warn('[push] Could not read outbox status', error);
+            }
+            if (!('serviceWorker' in navigator)) return;
+            try {
+                const registration = await navigator.serviceWorker.getRegistration();
+                const subscription = await registration?.pushManager.getSubscription();
+                if (!subscription) return;
+                const records = await adminApi.getPushSubscriptions();
+                const saved = records.find(record => record.endpoint === subscription.endpoint);
+                setPushFailure(saved ? saved.lastFailureReason ?? null : 'Prenumerationen är inte aktiv på servern. Aktivera notiser igen.');
+            } catch (error) {
+                console.warn('[push] Could not refresh delivery status', error);
+            }
+        };
+        void refresh();
+        const id = setInterval(() => { void refresh(); }, 15000);
+        return () => clearInterval(id);
+    }, [canAutoPrint]);
 
     // Alarm state & settings
     const [activeAlarmOrder, setActiveAlarmOrder] = useState<Order | null>(null);
@@ -934,8 +1141,8 @@ export const AdminDashboard: React.FC = () => {
     });
     const [audioLocked, setAudioLocked] = useState<boolean>(true);
 
-    const alarmSeedDoneRef = useRef(false);
     const seenOrderIdsRef = useRef<Set<string>>(new Set());
+    const wasHiddenRef = useRef(false);
 
     // Mute helper
     const handleSilenceAlarm = () => {
@@ -947,7 +1154,7 @@ export const AdminDashboard: React.FC = () => {
     const fetchOrders = useCallback(async (isManualOrWake = false) => {
         // Prevent concurrent polling executions unless explicitly forced by wake/event
         if (isFetchingRef.current && !isManualOrWake) {
-            return;
+            return null;
         }
 
         const currentSeq = ++fetchSeqRef.current;
@@ -962,7 +1169,7 @@ export const AdminDashboard: React.FC = () => {
 
             // Discard out-of-order response if another request completed earlier
             if (currentSeq !== fetchSeqRef.current) {
-                return;
+                return null;
             }
 
             setPendingOrders(pending);
@@ -973,9 +1180,10 @@ export const AdminDashboard: React.FC = () => {
             consecutiveErrorsRef.current = 0;
             setIsReconnecting(false);
             setError((prev) => (prev === 'Kunde inte hämta ordrar.' ? null : prev));
+            return { pending, active, preOrders: preOrdersList };
         } catch (e: any) {
             if (currentSeq !== fetchSeqRef.current) {
-                return;
+                return null;
             }
 
             console.warn('[AdminDashboard] fetchOrders error:', e?.message || e);
@@ -987,7 +1195,7 @@ export const AdminDashboard: React.FC = () => {
                     logout();
                     navigate('/admin/login');
                 }, 2000);
-                return;
+                return null;
             }
 
             consecutiveErrorsRef.current += 1;
@@ -997,11 +1205,38 @@ export const AdminDashboard: React.FC = () => {
             if (consecutiveErrorsRef.current >= 3) {
                 setIsReconnecting(true);
             }
+            return null;
         } finally {
             isFetchingRef.current = false;
             setLoadingOrders(false);
         }
     }, [logout, navigate]);
+
+    const handleAutoPrintChange = async (enabled: boolean) => {
+        if (!enabled) {
+            if (setHojaAutoPrintEnabled(false)) setAutoPrintEnabledState(false);
+            else setError('Kunde inte spara valet för automatisk utskrift på paddan.');
+            return;
+        }
+        if (!canAutoPrint || !isPrinterConfigured('hoja')) return;
+        setAutoPrintBusy(true);
+        try {
+            const current = await fetchOrders(true);
+            if (!current) {
+                setError('Kunde inte kontrollera aktuella ordrar. Automatisk utskrift aktiverades inte.');
+                return;
+            }
+            const unique = new Map([...current.pending, ...current.active, ...current.preOrders].map(order => [order.id, order]));
+            if (!markExistingDueTicketsForReview([...unique.values()]) || !setHojaAutoPrintEnabled(true)) {
+                setError('Kunde inte spara utskriftsstatus på paddan. Automatisk utskrift aktiverades inte.');
+                return;
+            }
+            setAutoPrintEnabledState(true);
+            setPrintTick(n => n + 1);
+        } finally {
+            setAutoPrintBusy(false);
+        }
+    };
 
     // --- Sekventiell polling som eliminerar överlappande anrop och pausar när skärmen släcks ---
     useEffect(() => {
@@ -1038,6 +1273,10 @@ export const AdminDashboard: React.FC = () => {
 
         const connect = () => {
             if (closed) return;
+            if (reconnectTimerRef.current) {
+                clearTimeout(reconnectTimerRef.current);
+                reconnectTimerRef.current = null;
+            }
             if (eventSourceRef.current) {
                 try {
                     eventSourceRef.current.close();
@@ -1053,6 +1292,7 @@ export const AdminDashboard: React.FC = () => {
                 eventSourceRef.current = es;
 
                 es.onopen = () => {
+                    if (eventSourceRef.current !== es) return;
                     reconnectAttemptsRef.current = 0;
                 };
 
@@ -1075,6 +1315,7 @@ export const AdminDashboard: React.FC = () => {
                 });
 
                 es.onerror = () => {
+                    if (eventSourceRef.current !== es) return;
                     try {
                         es.close();
                     } catch {
@@ -1099,10 +1340,12 @@ export const AdminDashboard: React.FC = () => {
             }
         };
 
+        reconnectRealtimeRef.current = connect;
         connect();
 
         return () => {
             closed = true;
+            reconnectRealtimeRef.current = () => undefined;
             if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
             if (eventSourceRef.current) {
                 try {
@@ -1121,55 +1364,12 @@ export const AdminDashboard: React.FC = () => {
         // Vänta på första hämtningen innan vi gör något.
         if (loadingOrders) return;
 
-        // Första gången: markera ordrar som redan är "print-due" som hanterade
-        // så att de inte skrivs ut vid refresh. Ordrar längre fram i tiden lämnas.
-        if (!printSeedDoneRef.current) {
-            for (const o of pendingOrders) {
-                if (isKitchenTicketPrintDue(o.scheduledTime)) {
-                    printedOrderIdsRef.current.add(o.id);
-                }
-            }
-            printSeedDoneRef.current = true;
-            return;
+        const openOrders = new Map([...pendingOrders, ...activeOrders, ...preOrders].map(order => [order.id, order]));
+        for (const order of openOrders.values()) {
+            if (!shouldAutoPrintKitchenTicket(order, canAutoPrint, autoPrintEnabled)) continue;
+            void runKitchenPrint(order);
         }
-
-        for (const order of pendingOrders) {
-            if (printedOrderIdsRef.current.has(order.id)) continue;
-            if (!isKitchenTicketPrintDue(order.scheduledTime)) continue;
-
-            const targetSlug = getOrderTargetLocationSlug(order, locations);
-
-            // Om dashboarden körs för en specifik plats (t.ex. Höja eller Möllevången):
-            // Hantera endast ordrar för den egna platsen!
-            if (admin?.role === 'location') {
-                const mySlug = myLocation?.slug ?? (admin.locationId === HOJA_LOCATION_ID ? 'hoja' : 'mollevangen');
-                if (targetSlug !== mySlug) {
-                    continue;
-                }
-            }
-
-            // Om orderns målrestaurang saknar konfigurerad skrivare (t.ex. Möllan i dagsläget):
-            // Markera ordern som hanterad och hoppa över utskrift tyst utan fel!
-            if (!isPrinterConfigured(targetSlug)) {
-                printedOrderIdsRef.current.add(order.id);
-                continue;
-            }
-
-            // Markera FÖRE await så att nästa polling inte startar en dubbel utskrift.
-            printedOrderIdsRef.current.add(order.id);
-            printKitchenTicket(order, targetSlug)
-                .then(res => {
-                    if (!res.success) {
-                        const locName = targetSlug === 'hoja' ? 'Höja' : 'Möllevången';
-                        setError(res.error || `Kunde inte skriva ut kökslapp för ${locName}. Kontrollera skrivaren.`);
-                    }
-                })
-                .catch(() => {
-                    const locName = targetSlug === 'hoja' ? 'Höja' : 'Möllevången';
-                    setError(`Kunde inte skriva ut kökslapp för ${locName}. Kontrollera skrivaren.`);
-                });
-        }
-    }, [pendingOrders, loadingOrders, printTick, admin, myLocation, locations]);
+    }, [pendingOrders, activeOrders, preOrders, loadingOrders, printTick, autoPrintEnabled, canAutoPrint, runKitchenPrint]);
 
     // Tick every 15s so a same-day order scheduled later still prints at T-30
     // even if the pending list content has not changed.
@@ -1183,7 +1383,15 @@ export const AdminDashboard: React.FC = () => {
         void requestWakeLock();
 
         const handleWakeOrFocus = () => {
+            if (document.visibilityState !== 'visible') {
+                wasHiddenRef.current = true;
+                return;
+            }
             if (document.visibilityState === 'visible') {
+                if (wasHiddenRef.current) {
+                    seenOrderIdsRef.current.clear();
+                    wasHiddenRef.current = false;
+                }
                 void requestWakeLock();
                 // Hämta ordrar omedelbart när skärmen tänds eller fliken återfår fokus
                 void fetchOrders(true);
@@ -1191,14 +1399,7 @@ export const AdminDashboard: React.FC = () => {
                 // Om EventSource har dött under surfplattans viloläge, återanslut direkt
                 if (!eventSourceRef.current || eventSourceRef.current.readyState === EventSource.CLOSED) {
                     reconnectAttemptsRef.current = 0;
-                    if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
-                    try {
-                        const url = adminApi.getRealtimeEventsUrl();
-                        const es = new EventSource(url);
-                        eventSourceRef.current = es;
-                    } catch {
-                        // Fångas av SSE-reconnect loopen
-                    }
+                    reconnectRealtimeRef.current();
                 }
             }
         };
@@ -1208,15 +1409,22 @@ export const AdminDashboard: React.FC = () => {
             consecutiveErrorsRef.current = 0;
             setIsReconnecting(false);
             void fetchOrders(true);
+            if (!eventSourceRef.current || eventSourceRef.current.readyState === EventSource.CLOSED) {
+                reconnectRealtimeRef.current();
+            }
         };
+
+        const handleBlur = () => { wasHiddenRef.current = true; };
 
         document.addEventListener('visibilitychange', handleWakeOrFocus);
         window.addEventListener('focus', handleWakeOrFocus);
+        window.addEventListener('blur', handleBlur);
         window.addEventListener('online', handleOnline);
 
         return () => {
             document.removeEventListener('visibilitychange', handleWakeOrFocus);
             window.removeEventListener('focus', handleWakeOrFocus);
+            window.removeEventListener('blur', handleBlur);
             window.removeEventListener('online', handleOnline);
             void releaseWakeLock();
         };
@@ -1253,14 +1461,7 @@ export const AdminDashboard: React.FC = () => {
     useEffect(() => {
         if (loadingOrders) return;
 
-        // Första gången: seeda nuvarande inkommande ordrar så att de inte sätter igång larmet
-        if (!alarmSeedDoneRef.current) {
-            for (const o of pendingOrders) {
-                seenOrderIdsRef.current.add(o.id);
-            }
-            alarmSeedDoneRef.current = true;
-            return;
-        }
+        if (document.visibilityState !== 'visible') return;
 
         let newOrderToAlert: Order | null = null;
         for (const order of pendingOrders) {
@@ -1619,6 +1820,10 @@ export const AdminDashboard: React.FC = () => {
     const visiblePreOrders = isOwner ? preOrders.filter((order) => orderMatchesPlaceFilter(order, placeFilter)) : preOrders;
     const visibleActive = isOwner ? activeOrders.filter((order) => orderMatchesPlaceFilter(order, placeFilter)) : activeOrders;
     const visibleHistory = isOwner ? historyOrders.filter((order) => orderMatchesPlaceFilter(order, placeFilter)) : historyOrders;
+    const kitchenStatusFor = (order: Order): KitchenPrintStatus | null => {
+        if (!canAutoPrint || getOrderTargetLocationSlug(order) !== 'hoja') return null;
+        return inFlightPrintIdsRef.current.has(order.id) ? 'printing' : getKitchenPrintStatus(order.id);
+    };
     const hojaName = locations.find((location) => location.slug === 'hoja')?.name ?? 'Höja';
     const molleName = locations.find((location) => location.slug === 'mollevangen')?.name ?? 'Möllevången';
     return (
@@ -1729,6 +1934,27 @@ export const AdminDashboard: React.FC = () => {
                 {error && (
                     <div style={{ padding: '0.75rem 1rem', background: '#fee', color: '#c00', borderRadius: '8px', marginBottom: '1rem' }}>
                         {error} <button onClick={() => setError(null)} style={{ marginLeft: '1rem', cursor: 'pointer' }}>✕</button>
+                    </div>
+                )}
+                {canAutoPrint && pushFailure && (
+                    <div role="alert" style={{ padding: '0.75rem 1rem', background: '#fee2e2', color: '#991b1b', borderRadius: '8px', marginBottom: '1rem' }}>
+                        Pushnotis misslyckades: {pushFailure}. Kontrollera notiser under Inställningar.
+                    </div>
+                )}
+                {canAutoPrint && pushHealth && (pushHealth.activeSubscriptions === 0 || pushHealth.dead > 0 || (
+                    pushHealth.oldestPendingAt && Date.now() - new Date(pushHealth.oldestPendingAt).getTime() > 120000
+                )) && (
+                    <div role="alert" style={{ padding: '0.75rem 1rem', background: '#fee2e2', color: '#991b1b', borderRadius: '8px', marginBottom: '1rem' }}>
+                        {pushHealth.dead > 0
+                            ? `${pushHealth.dead} ordernotis${pushHealth.dead === 1 ? '' : 'er'} kunde inte levereras inom 15 minuter. Kontrollera ordrarna och notisinställningarna.`
+                            : pushHealth.activeSubscriptions === 0
+                                ? 'Ingen aktiv pushprenumeration finns på servern. Aktivera notiser på Höjapaddan under Inställningar.'
+                                : 'Ordernotiser har väntat i över två minuter. Kontrollera nätverk och notisinställningar.'}
+                        {pushHealth.deadJobs.length > 0 && (
+                            <ul style={{ margin: '0.5rem 0 0', paddingLeft: '1.25rem' }}>
+                                {pushHealth.deadJobs.map((job) => <li key={job.orderId}>Order {job.orderNumber}</li>)}
+                            </ul>
+                        )}
                     </div>
                 )}
 
@@ -1878,6 +2104,8 @@ export const AdminDashboard: React.FC = () => {
                                         locations={locations}
                                         defaultPrepTime={settings?.defaultPreparationTime ?? 30}
                                         onAccept={handleAcceptOrder}
+                                        printStatus={kitchenStatusFor(order)}
+                                        onReprint={canAutoPrint ? runKitchenPrint : undefined}
                                     />
                                 ))
                             )}
@@ -1923,6 +2151,8 @@ export const AdminDashboard: React.FC = () => {
                                                         locations={locations}
                                                         onEditNotes={openNotesModal}
                                                         onCancel={(order) => openCancelModal(order.id)}
+                                                        printStatus={kitchenStatusFor(o)}
+                                                        onReprint={canAutoPrint ? runKitchenPrint : undefined}
                                                     />
                                                 ))}
                                             </div>
@@ -1955,6 +2185,7 @@ export const AdminDashboard: React.FC = () => {
                                                 <OrderTimer estimatedReadyTime={order.estimatedReadyTime} />
                                                 <span className={`status-badge status-${order.status}`}>{order.status}</span>
                                             </div>
+                                            <KitchenTicketStatus order={order} status={kitchenStatusFor(order)} onReprint={canAutoPrint && order.status !== 'avbruten' ? runKitchenPrint : undefined} />
                                             {order.orderType === 'delivery' && (
                                                 <p style={{ fontSize: '0.8rem', color: '#6b5f52', margin: '0.25rem 0 0' }}>
                                                     Nedräkning: tillagning i köket
@@ -2042,6 +2273,7 @@ export const AdminDashboard: React.FC = () => {
                                             <span className={`status-badge ${order.status === 'avbruten' ? 'status-avbruten' : 'status-klar'}`}>
                                                 {order.status === 'avbruten' ? 'Avbruten' : 'Klar'}
                                             </span>
+                                            <KitchenTicketStatus order={order} status={kitchenStatusFor(order)} onReprint={canAutoPrint && order.status !== 'avbruten' ? runKitchenPrint : undefined} />
                                             <ScheduledOrderInfo order={order} />
                                             <ul style={{ margin: '0.5rem 0', paddingLeft: '1.2rem' }}>
                                                 {order.items.map((item, i) => (
@@ -2347,7 +2579,16 @@ export const AdminDashboard: React.FC = () => {
                                 </div>
                             </div>
                             )}
-                            <PrinterSettings locations={locations} myLocation={myLocation} isOwner={isOwner} />
+                            <PrinterSettings
+                                locations={locations}
+                                myLocation={myLocation}
+                                isOwner={isOwner}
+                                canAutoPrint={canAutoPrint}
+                                autoPrintEnabled={autoPrintEnabled}
+                                autoPrintBusy={autoPrintBusy}
+                                onAutoPrintChange={handleAutoPrintChange}
+                            />
+                            {canAutoPrint && <HojaNotificationSettings />}
 
                             {/* --- Ljudinställningar för inkommande ordrar --- */}
                             <div className="alarm-settings-card">

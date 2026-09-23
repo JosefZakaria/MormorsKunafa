@@ -1,4 +1,5 @@
 import { generateId, logSupabaseError, nowIso, supabase, type Row } from './connection.js';
+import { timingSafeEqual } from 'node:crypto';
 
 export type PushSubscriptionRow = {
   id: string;
@@ -40,9 +41,37 @@ export async function listActivePushSubscriptions(adminId?: string): Promise<Pus
   const { data, error } = await query;
   if (error) {
     logSupabaseError('listActivePushSubscriptions', error);
-    return [];
+    throw error;
   }
   return ((data ?? []) as Row[]).map((row) => row as unknown as PushSubscriptionRow);
+}
+
+export async function findCurrentDeviceSubscription(args: {
+  adminId: string;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+}): Promise<PushSubscriptionRow | null> {
+  const { data, error } = await supabase
+    .from('admin_push_subscriptions')
+    .select('*')
+    .eq('admin_id', args.adminId)
+    .eq('endpoint', args.endpoint)
+    .is('disabled_at', null)
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    logSupabaseError('findCurrentDeviceSubscription', error);
+    throw error;
+  }
+  if (!data) return null;
+  const row = data as unknown as PushSubscriptionRow;
+  const matches = (left: string, right: string): boolean => {
+    const a = Buffer.from(left);
+    const b = Buffer.from(right);
+    return a.length === b.length && timingSafeEqual(a, b);
+  };
+  return matches(row.p256dh, args.p256dh) && matches(row.auth, args.auth) ? row : null;
 }
 
 export async function upsertPushSubscription(args: {
@@ -121,6 +150,7 @@ export async function disablePushSubscriptionByEndpoint(endpoint: string): Promi
     .is('disabled_at', null);
   if (error) {
     logSupabaseError('disablePushSubscriptionByEndpoint', error);
+    throw error;
   }
 }
 
@@ -159,21 +189,21 @@ export async function markPushDeliveryFailure(
   }
 }
 
-export async function hasPushDeliveryLog(eventId: string, subscriptionId: string): Promise<boolean> {
+export async function hasSuccessfulPushDeliveryLog(eventId: string, subscriptionId: string): Promise<boolean> {
   const { data, error } = await supabase
     .from('admin_push_delivery_logs')
-    .select('id')
+    .select('status')
     .eq('event_id', eventId)
     .eq('subscription_id', subscriptionId)
     .limit(1)
     .maybeSingle();
 
   if (error) {
-    logSupabaseError('hasPushDeliveryLog', error);
-    return false;
+    logSupabaseError('hasSuccessfulPushDeliveryLog', error);
+    throw error;
   }
 
-  return Boolean(data);
+  return (data as Row | null)?.status === 'success';
 }
 
 export async function createPushDeliveryLog(args: {
@@ -183,18 +213,18 @@ export async function createPushDeliveryLog(args: {
   statusCode?: number;
   errorMessage?: string;
 }): Promise<void> {
-  const { error } = await supabase.from('admin_push_delivery_logs').insert({
-    id: generateId(),
+  const { error } = await supabase.from('admin_push_delivery_logs').upsert({
     event_id: args.eventId,
     subscription_id: args.subscriptionId,
     status: args.status,
     status_code: args.statusCode ?? null,
     error_message: args.errorMessage?.slice(0, 1000) ?? null,
     created_at: nowIso(),
-  });
+  }, { onConflict: 'event_id,subscription_id' });
 
   if (error) {
     logSupabaseError('createPushDeliveryLog', error);
+    throw error;
   }
 }
 

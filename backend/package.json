@@ -20,6 +20,7 @@
     "@mormors-kunafa/shared": "*",
     "@supabase/supabase-js": "^2.106.1",
     "@types/web-push": "^3.6.4",
+    "@vercel/functions": "^3.9.9",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",

@@ -5,6 +5,7 @@ import { sendSms } from './SmsService.js';
 import { formatStockholmDateTime } from '../utils/stockholmWallTime.js';
 import { inStorePickupSmsSuffix } from '../db/locations.js';
 import { dispatchOrderCreatedEvent } from './realtimeEvents.js';
+import { scheduleImmediatePush } from './pushOutboxWorker.js';
 
 export type MarkOrderPaidOptions = {
   expectedAmountOre?: number;
@@ -30,9 +31,15 @@ export async function markOrderPaid(orderId: string, options?: MarkOrderPaidOpti
     return false;
   }
 
+  const paidAt = nowIso();
   const { data, error } = await supabase
     .from('orders')
-    .update({ payment_status: 'paid', updated_at: nowIso() })
+    .update({
+      payment_status: 'paid',
+      push_event_id: crypto.randomUUID(),
+      push_event_created_at: paidAt,
+      updated_at: paidAt,
+    })
     .eq('id', orderId)
     .eq('payment_status', 'pending')
     .select('id');
@@ -44,7 +51,24 @@ export async function markOrderPaid(orderId: string, options?: MarkOrderPaidOpti
 
   if (!data || data.length === 0) return false;
 
-  const refreshed = await getOrderById(orderId);
+  let refreshed = null;
+  try {
+    refreshed = await getOrderById(orderId);
+  } catch (error) {
+    console.error('[markOrderPaid] Could not reload paid order for confirmations', { orderId, error });
+  }
+  const notificationOrder = refreshed?.order ?? result.order;
+
+  // The event id is committed with payment. A background attempt runs now;
+  // the scheduled worker reconciles missing outbox rows after an interrupted request.
+  await dispatchOrderCreatedEvent(
+    orderId,
+    String(notificationOrder.order_number ?? ''),
+    String(notificationOrder.order_type ?? 'takeaway'),
+    notificationOrder.location_id != null ? String(notificationOrder.location_id) : null
+  );
+  scheduleImmediatePush();
+
   if (!refreshed) return true;
 
   const emailOut = String(refreshed.order.customer_email ?? '').trim();
@@ -58,20 +82,13 @@ export async function markOrderPaid(orderId: string, options?: MarkOrderPaidOpti
   const smsCustomerName = String(refreshed.order.customer_name ?? '').trim();
   // Hemleverans får inga SMS – endast "Ta med" och "Äta här".
   if (phoneOut && String(refreshed.order.order_type ?? '') !== 'delivery') {
-    const schedStr = refreshed.order.scheduled_at ? formatStockholmDateTime(refreshed.order.scheduled_at as string) : '';
-    const schedSuffix = schedStr ? ` Planerad upphämtning: ${schedStr}.` : '';
-    const placeSuffix = await inStorePickupSmsSuffix(refreshed.order);
-    void sendSms(phoneOut, `Tack för din beställning från Mormors Kunafa${smsCustomerName ? ', ' + smsCustomerName : ''}! Vi tar snart emot din beställning.${placeSuffix}${schedSuffix}`).catch((err) =>
-      console.error('[order confirmation sms after payment]', err)
-    );
+    void (async () => {
+      const schedStr = refreshed.order.scheduled_at ? formatStockholmDateTime(refreshed.order.scheduled_at as string) : '';
+      const schedSuffix = schedStr ? ` Planerad upphämtning: ${schedStr}.` : '';
+      const placeSuffix = await inStorePickupSmsSuffix(refreshed.order);
+      await sendSms(phoneOut, `Tack för din beställning från Mormors Kunafa${smsCustomerName ? ', ' + smsCustomerName : ''}! Vi tar snart emot din beställning.${placeSuffix}${schedSuffix}`);
+    })().catch((err) => console.error('[order confirmation sms after payment]', err));
   }
-
-  dispatchOrderCreatedEvent(
-    orderId,
-    String(refreshed.order.order_number ?? ''),
-    String(refreshed.order.order_type ?? 'takeaway'),
-    refreshed.order.location_id != null ? String(refreshed.order.location_id) : null
-  );
 
   return true;
 }

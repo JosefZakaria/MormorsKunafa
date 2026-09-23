@@ -8,11 +8,10 @@ import { PrinterService } from '../services/PrinterService.js';
 import { sendOrderConfirmationEmail } from '../services/OrderConfirmationEmail.js';
 import { sendSms } from '../services/SmsService.js';
 import { getStripe } from '../services/stripeClient.js';
-import { broadcastOrderCreated, dispatchOrderCreatedEvent, type OrderCreatedEvent } from '../services/realtimeEvents.js';
-import { sendOrderCreatedPush } from '../services/pushNotifications.js';
+import { dispatchOrderCreatedEvent } from '../services/realtimeEvents.js';
 import { resolveOrderLocationId, locationOrderTypeError, inStorePickupSmsSuffix } from '../db/locations.js';
 import { outOfStockProductNames, stockLocationIdForOrder } from '../db/productLocationStock.js';
-import type { OrderType } from '@mormors-kunafa/shared/types';
+import { HOJA_LOCATION_ID, type OrderType } from '@mormors-kunafa/shared/types';
 import { parseOrderScheduledAt, formatStockholmDateTime } from '../utils/stockholmWallTime.js';
 import { validateScheduledOrderTime } from '../shared/utils/openingHours.js';
 import {
@@ -345,6 +344,14 @@ router.post('/', async (req: Request, res: Response) => {
       res.status(500).json({ error: 'Order created but fetch failed' });
       return;
     }
+    if (!isOnlinePayment(paymentMethod)) {
+      await dispatchOrderCreatedEvent(
+        orderId,
+        String(result.order.order_number ?? orderNumber),
+        String(result.order.order_type ?? orderType),
+        result.order.location_id != null ? String(result.order.location_id) : locationId
+      );
+    }
     const emailOut = String(result.order.customer_email ?? '').trim();
     if (emailOut && !isOnlinePayment(paymentMethod)) {
       void sendOrderConfirmationEmail({ order: result.order, items: result.items }).catch((err) =>
@@ -356,21 +363,12 @@ router.post('/', async (req: Request, res: Response) => {
     const smsCustomerName = String(result.order.customer_name ?? '').trim();
     // Hemleverans får inga SMS – endast "Ta med" och "Äta här".
     if (phoneOut && !isOnlinePayment(paymentMethod) && !isDelivery) {
-      const schedStr = result.order.scheduled_at ? formatStockholmDateTime(result.order.scheduled_at as string) : '';
-      const schedSuffix = schedStr ? ` Planerad upphämtning: ${schedStr}.` : '';
-      const placeSuffix = await inStorePickupSmsSuffix(result.order);
-      void sendSms(phoneOut, `Tack för din beställning från Mormors Kunafa${smsCustomerName ? ', ' + smsCustomerName : ''}! Vi tar snart emot din beställning.${placeSuffix}${schedSuffix}`).catch((err) =>
-        console.error('[order confirmation sms]', err)
-      );
-    }
-
-    if (!isOnlinePayment(paymentMethod)) {
-      dispatchOrderCreatedEvent(
-        orderId,
-        String(result.order.order_number ?? orderNumber),
-        String(result.order.order_type ?? orderType),
-        result.order.location_id != null ? String(result.order.location_id) : locationId
-      );
+      void (async () => {
+        const schedStr = result.order.scheduled_at ? formatStockholmDateTime(result.order.scheduled_at as string) : '';
+        const schedSuffix = schedStr ? ` Planerad upphämtning: ${schedStr}.` : '';
+        const placeSuffix = await inStorePickupSmsSuffix(result.order);
+        await sendSms(phoneOut, `Tack för din beställning från Mormors Kunafa${smsCustomerName ? ', ' + smsCustomerName : ''}! Vi tar snart emot din beställning.${placeSuffix}${schedSuffix}`);
+      })().catch((err) => console.error('[order confirmation sms]', err));
     }
 
     res.status(201).json(orderRowToOrder(result.order, result.items));
@@ -909,9 +907,17 @@ router.post('/admin/:id/print', requireAdmin, async (req: Request, res: Response
       return;
     }
     if (!(await assertOrderVisible(req, res, result.order))) return;
+    if (String(result.order.order_type ?? '') !== 'delivery' && String(result.order.location_id ?? '') !== HOJA_LOCATION_ID) {
+      res.status(409).json({ error: 'Den här ordern tillhör inte Höja och kan inte skickas till Höjas skrivare.' });
+      return;
+    }
     const orderData = orderRowToOrder(result.order, result.items);
 
-    const printerIp = process.env.PRINTER_IP || '192.168.1.100';
+    const printerIp = process.env.PRINTER_IP?.trim();
+    if (!printerIp) {
+      res.status(503).json({ error: 'Serverns skrivare är inte konfigurerad.' });
+      return;
+    }
     const printerService = new PrinterService(printerIp);
     
     const success = await printerService.printOrder(orderData);
