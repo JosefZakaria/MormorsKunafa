@@ -1,0 +1,18 @@
+.delivery-pricing { text-align: left; max-width: 720px; margin: var(--spacing-xl) auto; }
+.delivery-pricing fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.delivery-pricing label { display: block; font-weight: 600; margin-bottom: 0.4rem; }
+.delivery-pricing input {
+    width: 100%; min-width: 0; box-sizing: border-box; padding: 0.7rem;
+    border: 1px solid #c9cec9; border-radius: 8px; font: inherit; background: #fff;
+}
+.delivery-pricing input:focus-visible { outline: 2px solid #1a3d32; outline-offset: 2px; }
+.delivery-pricing h4 { margin: 1.5rem 0 0.5rem; }
+.delivery-pricing .delivery-pricing__notice { padding: 0.8rem; background: #fff5e6; border-radius: 8px; color: #684319; }
+.delivery-pricing .delivery-pricing__error { color: #a32020; }
+.delivery-pricing .delivery-pricing__hint { font-size: 0.9rem; }
+.delivery-pricing__row { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) auto; gap: 0.75rem; align-items: end; margin-bottom: 1rem; }
+.delivery-pricing__actions { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 1.25rem; }
+@media (max-width: 600px) {
+    .delivery-pricing__row { grid-template-columns: minmax(0, 1fr); border-bottom: 1px solid #e4e5e2; padding-bottom: 1rem; }
+    .delivery-pricing__row .btn { justify-self: start; }
+}

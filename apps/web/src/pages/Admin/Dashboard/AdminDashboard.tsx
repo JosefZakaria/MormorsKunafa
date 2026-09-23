@@ -20,6 +20,7 @@ import '../Admin.css';
 import { requestWakeLock, releaseWakeLock } from '../../../utils/wakeLock';
 import { startAlarm, stopAlarm, setAlarmVolume, AlarmType, getAudioState, unlockAudio, isAlarmActive } from '../../../utils/alarmPlayer';
 import { MenuTab } from './MenuTab';
+import { DeliveryPricingSettings } from './DeliveryPricingSettings';
 
 // --- Helper: countdown string from ISO time ---
 function getCountdown(isoTime: string | undefined): string {
@@ -849,7 +850,7 @@ function StockRow({
 export const AdminDashboard: React.FC = () => {
     const { logout, admin } = useAuth();
     const navigate = useNavigate();
-    const [activeTab, setActiveTab] = useState<'pending' | 'preorders' | 'active' | 'history' | 'stock' | 'menu' | 'rush' | 'stats'>('pending');
+    const [activeTab, setActiveTab] = useState<'pending' | 'preorders' | 'active' | 'history' | 'stock' | 'menu' | 'delivery-pricing' | 'rush' | 'stats'>('pending');
 
     // Data state
     const [pendingOrders, setPendingOrders] = useState<Order[]>([]);
@@ -1297,7 +1298,7 @@ export const AdminDashboard: React.FC = () => {
 
     useEffect(() => {
         if (isOwner) return;
-        if (activeTab === 'menu' || activeTab === 'stats') {
+        if (activeTab === 'menu' || activeTab === 'stats' || activeTab === 'delivery-pricing') {
             setActiveTab('pending');
             setStatsData(null);
             setShowStatsModal(false);
@@ -1767,6 +1768,11 @@ export const AdminDashboard: React.FC = () => {
                         Meny
                     </button>
                     )}
+                    {isOwner && (
+                    <button className={`admin-tab ${activeTab === 'delivery-pricing' ? 'active' : ''}`} onClick={() => { setActiveTab('delivery-pricing'); setStatsData(null); }}>
+                        Leveranspriser
+                    </button>
+                    )}
                     <button className={`admin-tab ${activeTab === 'rush' ? 'active' : ''}`} onClick={() => { setActiveTab('rush'); setStatsData(null); }}>
                         Inställningar
                     </button>
@@ -2122,6 +2128,8 @@ export const AdminDashboard: React.FC = () => {
                             onError={setError}
                         />
                     )}
+
+                    {activeTab === 'delivery-pricing' && isOwner && <DeliveryPricingSettings />}
 
                     {/* ── STATISTIK ── */}
                     {activeTab === 'stats' && statsData && (() => {

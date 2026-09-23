@@ -104,6 +104,20 @@ Optional, for one-time WordPress migration only:
 
    API base URL: `http://localhost:3001/api` (or `PORT` you set).
 
+## Delivery pricing administration
+
+Apply `src/db/migrations/20260923110008_add_delivery_pricing.sql` before using
+the delivery-price editor in the admin **Leveranspriser** tab.
+This step adds no new migration. The editor requires an owner account.
+
+- `GET /api/admin/delivery-pricing` reads `{ defaultFeeOre, cityFees }`.
+- `PATCH /api/admin/delivery-pricing` replaces both values together. Each city
+  entry is `{ city, feeOre }`; all amounts are integer öre. Invalid amounts,
+  empty city names and normalized duplicates return 400.
+- The existing checkout still charges 79 kr until the next delivery rollout step.
+- Run `npm run test:delivery-pricing --workspace=@mormors-kunafa/backend` from
+  the repository root. Tests use an isolated local database stub, not Supabase.
+
 ## Admin PWA Notifications
 
 1. Apply SQL migration in Supabase SQL editor:

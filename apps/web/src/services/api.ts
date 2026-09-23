@@ -1,4 +1,5 @@
 import { API_CONFIG, apiRequest, authenticatedRequest } from '@shared/api';
+import type { DeliveryPricing } from '@shared/utils/deliveryPricing';
 import type {
   Product,
   Order,
@@ -294,6 +295,20 @@ export const orderApi = {
 
 // Admin API
 export const adminApi = {
+  getDeliveryPricing: async (): Promise<DeliveryPricing> => {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+    return authenticatedRequest<DeliveryPricing>('/admin/delivery-pricing', { token });
+  },
+
+  updateDeliveryPricing: async (pricing: DeliveryPricing): Promise<DeliveryPricing> => {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+    return authenticatedRequest<DeliveryPricing>('/admin/delivery-pricing', {
+      method: 'PATCH', body: JSON.stringify(pricing), token,
+    });
+  },
+
   login: async (email: string, password: string): Promise<{
     token: string;
     admin: { id: string; email: string; name: string; role: AdminRole; locationId: string | null };
