@@ -83,6 +83,8 @@
 
 .admin-header {
     display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
     justify-content: space-between;
     align-items: center;
     margin-bottom: var(--spacing-xl);
@@ -246,6 +248,9 @@
 
 .admin-header-left {
     display: flex;
+    flex-wrap: wrap;
+    min-width: 0;
+    flex: 1;
     align-items: center;
     gap: var(--spacing-md);
 }
@@ -1185,6 +1190,8 @@ select.stats-modal-input {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
     box-shadow: var(--shadow-md);
     cursor: pointer;
     animation: slide-down 0.4s ease-out;
@@ -1239,6 +1246,8 @@ select.stats-modal-input {
     justify-content: center;
     z-index: 99999; /* Ensure it stays on top of everything, including modals */
     animation: fade-in 0.3s ease-out;
+    overflow-y: auto;
+    padding: 1rem 0;
 }
 
 .alarm-overlay-card {
@@ -1246,6 +1255,8 @@ select.stats-modal-input {
     border-radius: var(--radius-lg);
     width: 90%;
     max-width: 500px;
+    max-height: calc(100dvh - 2rem);
+    overflow-y: auto;
     padding: var(--spacing-2xl);
     box-shadow: 0 25px 50px -12px rgba(220, 38, 38, 0.35); /* Heavy red shadow */
     text-align: center;
@@ -1360,6 +1371,48 @@ select.stats-modal-input {
 
 .alarm-silence-btn:active {
     transform: scale(0.98);
+}
+
+.alarm-paused-banner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    margin-bottom: 1rem;
+    background: #fff4d6;
+    border: 1px solid #d2a738;
+    border-radius: var(--radius-md);
+    color: #713f12;
+    font-weight: 600;
+}
+
+.alarm-help {
+    margin: 0.75rem 0;
+    color: #475569;
+    font-size: 0.95rem;
+}
+
+.alarm-activate-btn {
+    width: 100%;
+    padding: 0.85rem;
+    background: #92400e;
+    color: white;
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font: inherit;
+    font-weight: 700;
+}
+
+@media (max-width: 540px) {
+    .alarm-overlay-card { padding: 1rem; }
+    .alarm-silence-btn { font-size: 1rem !important; letter-spacing: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .alarm-overlay, .alarm-overlay-card, .alarm-overlay-card h2, .alarm-overlay-icon { animation: none; }
 }
 
 /* Sound Settings Styling */
