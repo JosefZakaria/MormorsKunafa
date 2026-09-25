@@ -1,6 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Truck } from 'lucide-react';
 import { Container } from '../../components/common/Container/Container';
 import { Button } from '../../components/common/Button/Button';
 import { AllergenNotice } from '../../components/common/AllergenNotice/AllergenNotice';
@@ -751,25 +750,6 @@ export const Cart: React.FC = () => {
 
                                     {orderType === 'delivery' && (
                                         <>
-                                            <div className="cart-delivery-note" style={{
-                                                padding: '0.75rem',
-                                                background: '#f9f9f9',
-                                                borderRadius: '8px',
-                                                fontSize: '0.85rem',
-                                                color: '#666',
-                                                marginBottom: '1rem',
-                                                border: '1px solid #eee',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '0.5rem'
-                                            }}>
-                                                <Truck size={18} className="text-primary" />
-                                                <div>
-                                                    <div style={{ fontWeight: 'bold', color: '#333' }}>{t('delivery.delivery_time')}</div>
-                                                    <div>{t('delivery.fee_note')}</div>
-                                                </div>
-                                            </div>
-
                                             <div className="customer-info__field">
                                                 <label htmlFor="delivery-address" className="customer-info__label">
                                                     {t('delivery.address_label')}
