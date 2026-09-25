@@ -23,7 +23,6 @@ import {
 import { resolveProductIdFromLineId } from '../utils/resolveProductId.js';
 import { resolveLineOption, resolveUnitPriceOre, variantPricesForProduct } from '../utils/productPrices.js';
 import {
-  DELIVERY_FEE_ORE,
   DELIVERY_FEE_LINE_NAME,
   isDeliveryFeeLineItem,
 } from '../constants/deliveryFee.js';
@@ -36,10 +35,22 @@ import {
   adminSettingsFromRow,
 } from '../db/adminSettings.js';
 import swishPaymentRouter from './swishPayment.js';
+import { loadDeliveryPricing } from '../db/deliveryPricing.js';
+import { deliveryQuoteMatches, quoteDelivery, type DeliveryQuote } from '../shared/utils/deliveryPricing.js';
 
 const router = Router();
 
 router.use('/swish-payment', swishPaymentRouter);
+
+router.get('/delivery-pricing', async (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  try {
+    res.json(await loadDeliveryPricing());
+  } catch (error) {
+    console.error('[GET delivery pricing]', error);
+    res.status(503).json({ error: 'Leveranspriser kunde inte hämtas. Försök igen.' });
+  }
+});
 
 const ACTIVE_STATUSES = ['mottagen', 'påbörjad'] as const;
 
@@ -97,6 +108,7 @@ router.post('/', async (req: Request, res: Response) => {
       orderType: string;
       customerInfo?: { name?: string; phone?: string; email?: string };
       deliveryInfo?: Record<string, string>;
+      deliveryQuote?: unknown;
       scheduledTime?: string;
       paymentMethod: string;
       locationId?: string;
@@ -113,7 +125,9 @@ router.post('/', async (req: Request, res: Response) => {
       res.status(400).json({ error: 'items required' });
       return;
     }
-    if (isDelivery && !body.deliveryInfo) {
+    if (isDelivery && (!body.deliveryInfo || ['city', 'address', 'postalCode'].some(
+      (key) => typeof body.deliveryInfo?.[key] !== 'string' || !body.deliveryInfo[key].trim()
+    ))) {
       res.status(400).json({ error: 'Leveransinformation krävs för hemleverans.' });
       return;
     }
@@ -132,6 +146,27 @@ router.post('/', async (req: Request, res: Response) => {
     if (!isAllowedPaymentMethod(paymentMethod)) {
       res.status(400).json({ error: 'Invalid payment method' });
       return;
+    }
+
+    let deliveryQuote: DeliveryQuote | undefined;
+    if (isDelivery) {
+      let pricing;
+      try {
+        pricing = await loadDeliveryPricing();
+      } catch (error) {
+        console.error('[POST order delivery pricing]', error);
+        res.status(503).json({ error: 'Leveranspriser kunde inte hämtas. Försök igen.' });
+        return;
+      }
+      deliveryQuote = quoteDelivery(body.deliveryInfo!.city, pricing);
+      if (!deliveryQuoteMatches(body.deliveryQuote, deliveryQuote)) {
+        res.status(409).json({
+          code: 'DELIVERY_QUOTE_CHANGED',
+          error: 'Leveransvillkoren har uppdaterats. Kontrollera avgiften och bekräfta beställningen igen.',
+          deliveryPricing: pricing,
+        });
+        return;
+      }
     }
 
     const orderNumber = await getNextOrderNumber();
@@ -180,7 +215,7 @@ router.post('/', async (req: Request, res: Response) => {
       ? Number(settings.default_preparation_time_minutes) || 30
       : 30;
 
-    // Hemkörning has no customer-chosen time (1–2 business days); ignore any scheduledTime.
+    // Home delivery has no customer-chosen time; ignore any scheduledTime.
     let scheduledAt: Date | null = null;
     if (!isDelivery) {
       if (body.scheduledTime != null && String(body.scheduledTime).trim() !== '') {
@@ -246,7 +281,12 @@ router.post('/', async (req: Request, res: Response) => {
       customer_name: customerName,
       customer_email: customerEmail,
       customer_phone: customerPhone,
-      delivery_info_json: body.deliveryInfo ?? null,
+      delivery_info_json: isDelivery ? {
+        name: customerName, phone: customerPhone, email: customerEmail,
+        address: body.deliveryInfo!.address.trim(),
+        postalCode: body.deliveryInfo!.postalCode.trim(), city: body.deliveryInfo!.city.trim(),
+        pricing: deliveryQuote,
+      } : null,
       location_id: locationId,
     };
 
@@ -315,14 +355,14 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     if (isDelivery) {
-      totalOre += DELIVERY_FEE_ORE;
+      totalOre += deliveryQuote!.feeOre;
       itemRows.push({
         id: generateId(),
         order_id: orderId,
         product_id: null,
         product_name_snapshot: DELIVERY_FEE_LINE_NAME,
         quantity: 1,
-        price_ore: DELIVERY_FEE_ORE,
+        price_ore: deliveryQuote!.feeOre,
         modifications_json: null,
       });
     }

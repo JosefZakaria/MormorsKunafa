@@ -1,3 +1,4 @@
+import { showOrderDeliveryEstimate } from '@shared/utils/deliveryPricing';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -18,8 +19,9 @@ import { parseApiTimestamp } from '@shared/utils/parseApiTimestamp';
 import { isKitchenTicketPrintDue } from '@shared/utils/scheduledTime';
 import '../Admin.css';
 import { requestWakeLock, releaseWakeLock } from '../../../utils/wakeLock';
-import { startAlarm, stopAlarm, setAlarmVolume, AlarmType, getAudioState, unlockAudio, isAlarmActive } from '../../../utils/alarmPlayer';
+import { useOrderAlarm } from '../../../hooks/useOrderAlarm';
 import { MenuTab } from './MenuTab';
+import { DeliveryPricingSettings } from './DeliveryPricingSettings';
 
 // --- Helper: countdown string from ISO time ---
 function getCountdown(isoTime: string | undefined): string {
@@ -80,9 +82,9 @@ function OrderContactPanel({ order }: { order: Order }) {
                 {email && <p>E-post: {email}</p>}
                 {scheduledLabel ? (
                     <p className="delivery-info-panel__window">Önskad tid: {scheduledLabel}</p>
-                ) : (
-                    <p className="delivery-info-panel__window">Leverans: 1–2 arbetsdagar (Sverige)</p>
-                )}
+                ) : showOrderDeliveryEstimate(d) ? (
+                    <p className="delivery-info-panel__window">Leverans: 1–2 arbetsdagar</p>
+                ) : null}
             </div>
         );
     }
@@ -143,30 +145,6 @@ function OrderTimer({ estimatedReadyTime }: { estimatedReadyTime: string }) {
 }
 
 type StatsData = Awaited<ReturnType<typeof adminApi.getStatistics>>;
-
-function playForegroundAttentionSound(): void {
-    if (typeof window === 'undefined' || document.visibilityState !== 'visible') return;
-
-    try {
-        const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-        if (!AudioCtx) return;
-        const ctx = new AudioCtx();
-        const oscillator = ctx.createOscillator();
-        const gainNode = ctx.createGain();
-        oscillator.type = 'sine';
-        oscillator.frequency.setValueAtTime(880, ctx.currentTime);
-        gainNode.gain.setValueAtTime(0.0001, ctx.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + 0.02);
-        gainNode.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.24);
-        oscillator.connect(gainNode);
-        gainNode.connect(ctx.destination);
-        oscillator.start();
-        oscillator.stop(ctx.currentTime + 0.25);
-        void ctx.close();
-    } catch {
-        // Best effort only; iOS can block audio when no user gesture exists.
-    }
-}
 
 function PrinterSettings({
     locations: _locations,
@@ -426,7 +404,7 @@ function PreOrderCard({ order, locations, onEditNotes, onCancel }: {
                         <li key={i}>{item.quantity}x {item.productName} – {(item.price * item.quantity / 100).toFixed(0)} kr</li>
                     ))}
                 </ul>
-                <p className="order-total">{(order.totalPrice / 100).toFixed(0)} kr</p>
+                <p className="order-total">{(order.totalPrice / 100).toLocaleString('sv-SE', { maximumFractionDigits: 2 })} kr</p>
                 <OrderContactPanel order={order} />
                 {order.internalNotes && (
                     <div className="preorder-notes">
@@ -475,7 +453,7 @@ function PendingOrderCard({ order, locations, defaultPrepTime, onAccept }: {
                         <li key={i}>{item.quantity}x {item.productName} – {(item.price * item.quantity / 100).toFixed(0)} kr</li>
                     ))}
                 </ul>
-                <p className="order-total">{(order.totalPrice / 100).toFixed(0)} kr</p>
+                <p className="order-total">{(order.totalPrice / 100).toLocaleString('sv-SE', { maximumFractionDigits: 2 })} kr</p>
                 <OrderContactPanel order={order} />
                 <p className="order-meta">
                     Beställd {formatCreatedAt(order.createdAt, isAdvancePreOrder(order))}
@@ -849,7 +827,7 @@ function StockRow({
 export const AdminDashboard: React.FC = () => {
     const { logout, admin } = useAuth();
     const navigate = useNavigate();
-    const [activeTab, setActiveTab] = useState<'pending' | 'preorders' | 'active' | 'history' | 'stock' | 'menu' | 'rush' | 'stats'>('pending');
+    const [activeTab, setActiveTab] = useState<'pending' | 'preorders' | 'active' | 'history' | 'stock' | 'menu' | 'delivery-pricing' | 'rush' | 'stats'>('pending');
 
     // Data state
     const [pendingOrders, setPendingOrders] = useState<Order[]>([]);
@@ -909,6 +887,7 @@ export const AdminDashboard: React.FC = () => {
     const consecutiveErrorsRef = useRef(0);
     const pollingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const eventSourceRef = useRef<EventSource | null>(null);
+    const reconnectRealtimeRef = useRef<(() => void) | null>(null);
     const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const reconnectAttemptsRef = useRef(0);
     const statsAuthPasswordRef = useRef('');
@@ -925,22 +904,14 @@ export const AdminDashboard: React.FC = () => {
     // pendingOrders-listan är oförändrad).
     const [printTick, setPrintTick] = useState(0);
 
-    // Alarm state & settings
-    const [activeAlarmOrder, setActiveAlarmOrder] = useState<Order | null>(null);
-    const alarmType: AlarmType = 'ring';
-    const [alarmVolume, setAlarmVolumeState] = useState<number>(() => {
-        const saved = localStorage.getItem('admin_alarm_volume');
-        return saved !== null ? Math.max(0.8, parseFloat(saved)) : 0.8;
-    });
-    const [audioLocked, setAudioLocked] = useState<boolean>(true);
+    const alarm = useOrderAlarm(pendingOrders, !loadingOrders && Boolean(admin));
+    const activeAlarmOrder = alarm.activeOrder;
+    const audioLocked = !alarm.audioReady;
 
-    const alarmSeedDoneRef = useRef(false);
-    const seenOrderIdsRef = useRef<Set<string>>(new Set());
-
-    // Mute helper
     const handleSilenceAlarm = () => {
-        stopAlarm();
-        setActiveAlarmOrder(null);
+        alarm.pause();
+        setActiveTab('pending');
+        setPlaceFilter('all');
     };
 
     // --- Fetch pending + active + pre-orders with request sequencing and graceful error recovery ---
@@ -1067,7 +1038,6 @@ export const AdminDashboard: React.FC = () => {
                             if (first) seenRealtimeEventIdsRef.current.delete(first);
                         }
 
-                        playForegroundAttentionSound();
                         void fetchOrders(true);
                     } catch (error) {
                         console.error('[realtime] ORDER_CREATED parse failed', error);
@@ -1099,10 +1069,12 @@ export const AdminDashboard: React.FC = () => {
             }
         };
 
+        reconnectRealtimeRef.current = connect;
         connect();
 
         return () => {
             closed = true;
+            reconnectRealtimeRef.current = null;
             if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
             if (eventSourceRef.current) {
                 try {
@@ -1192,13 +1164,7 @@ export const AdminDashboard: React.FC = () => {
                 if (!eventSourceRef.current || eventSourceRef.current.readyState === EventSource.CLOSED) {
                     reconnectAttemptsRef.current = 0;
                     if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
-                    try {
-                        const url = adminApi.getRealtimeEventsUrl();
-                        const es = new EventSource(url);
-                        eventSourceRef.current = es;
-                    } catch {
-                        // Fångas av SSE-reconnect loopen
-                    }
+                    reconnectRealtimeRef.current?.();
                 }
             }
         };
@@ -1222,69 +1188,6 @@ export const AdminDashboard: React.FC = () => {
         };
     }, [fetchOrders]);
 
-    // Check if audio context is locked by the browser
-    useEffect(() => {
-        const checkAudioLock = () => {
-            const state = getAudioState();
-            setAudioLocked(state === 'suspended' || state === 'not_initialized');
-        };
-        
-        checkAudioLock();
-        
-        // Try to unlock audio on any document click
-        const handleDocumentClick = async () => {
-            const unlocked = await unlockAudio();
-            if (unlocked) {
-                setAudioLocked(false);
-                document.removeEventListener('click', handleDocumentClick);
-            }
-        };
-
-        document.addEventListener('click', handleDocumentClick);
-        const interval = setInterval(checkAudioLock, 2000);
-
-        return () => {
-            document.removeEventListener('click', handleDocumentClick);
-            clearInterval(interval);
-        };
-    }, []);
-
-    // --- Ljudlarm för nya inkommande ordrar ---
-    useEffect(() => {
-        if (loadingOrders) return;
-
-        // Första gången: seeda nuvarande inkommande ordrar så att de inte sätter igång larmet
-        if (!alarmSeedDoneRef.current) {
-            for (const o of pendingOrders) {
-                seenOrderIdsRef.current.add(o.id);
-            }
-            alarmSeedDoneRef.current = true;
-            return;
-        }
-
-        let newOrderToAlert: Order | null = null;
-        for (const order of pendingOrders) {
-            if (seenOrderIdsRef.current.has(order.id)) continue;
-            seenOrderIdsRef.current.add(order.id);
-            newOrderToAlert = order;
-        }
-
-        if (newOrderToAlert) {
-            setActiveAlarmOrder(newOrderToAlert);
-            // Apply volume setting
-            setAlarmVolume(alarmVolume);
-            // Start the looping sound
-            startAlarm(alarmType);
-        }
-    }, [pendingOrders, loadingOrders, alarmType, alarmVolume]);
-
-    // Stop alarm when dashboard component unmounts
-    useEffect(() => {
-        return () => {
-            stopAlarm();
-        };
-    }, []);
-
     // --- Fetch products + settings on mount ---
     useEffect(() => {
         productApi.getAllAdmin().then(setProducts).finally(() => setLoadingProducts(false));
@@ -1297,7 +1200,7 @@ export const AdminDashboard: React.FC = () => {
 
     useEffect(() => {
         if (isOwner) return;
-        if (activeTab === 'menu' || activeTab === 'stats') {
+        if (activeTab === 'menu' || activeTab === 'stats' || activeTab === 'delivery-pricing') {
             setActiveTab('pending');
             setStatsData(null);
             setShowStatsModal(false);
@@ -1657,47 +1560,39 @@ export const AdminDashboard: React.FC = () => {
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#FEE2E2', padding: '0.2rem 0.5rem', borderRadius: '8px', border: '1px solid #FCA5A5' }}>
                                         <span style={{ fontSize: '1.2rem' }}>⚠️</span>
                                         <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#DC2626', lineHeight: 1.2 }}>AVSTÄNGT</span>
-                                            <span style={{ fontSize: '0.65rem', color: '#7f1d1d' }}>Ljud blockerat</span>
+                                            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#DC2626', lineHeight: 1.2 }}>AKTIVERA LJUDET</span>
+                                            <span style={{ fontSize: '0.65rem', color: '#7f1d1d' }}>Tryck och provlyssna</span>
                                         </div>
                                         <Button 
                                             size="sm" 
                                             variant="ghost" 
-                                            onClick={async () => {
-                                                const unlocked = await unlockAudio();
-                                                if (unlocked) setAudioLocked(false);
-                                            }}
+                                            onClick={() => { void alarm.test(); }}
                                             style={{ padding: '0.2rem 0.5rem', marginLeft: '0.5rem', fontSize: '0.75rem', color: '#ffffff', background: '#DC2626', border: 'none', fontWeight: 'bold' }}
                                         >
-                                            SLÅ PÅ
+                                            AKTIVERA
                                         </Button>
                                     </div>
                                 ) : (
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#D1FAE5', padding: '0.2rem 0.5rem', borderRadius: '8px', border: '1px solid #A7F3D0' }}>
                                         <span style={{ fontSize: '1.2rem' }}>🔔</span>
                                         <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#059669', lineHeight: 1.2 }}>AKTIVT</span>
-                                            <span style={{ fontSize: '0.65rem', color: '#047857' }}>Redo för ordrar</span>
+                                            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#059669', lineHeight: 1.2 }}>LJUD AKTIVERAT</span>
+                                            <span style={{ fontSize: '0.65rem', color: '#047857' }}>Kontrollera att det hörs</span>
                                         </div>
                                         <Button 
                                             variant="ghost" 
                                             size="sm" 
                                             style={{ padding: '0.2rem 0.4rem', marginLeft: '0.5rem', fontSize: '0.7rem', color: '#047857', border: '1px dashed #059669' }}
-                                            onClick={async () => {
-                                                startAlarm(alarmType);
-                                                setAlarmVolume(alarmVolume);
-                                                setTimeout(() => {
-                                                    stopAlarm();
-                                                }, 2000);
-                                            }}
+                                            onClick={() => { void alarm.test(); }}
+                                            disabled={alarm.isTesting}
                                         >
-                                            Testa
+                                            {alarm.isTesting ? 'Testar…' : 'Testa (5 s)'}
                                         </Button>
                                     </div>
                                 )}
                             </div>
                             <span style={{ fontSize: '0.65rem', color: '#64748b', marginTop: '0.25rem', fontStyle: 'italic' }}>
-                                Obs: Håll surfplattans volym på max!
+                                Höj medievolymen på paddan och volymen på högtalaren.
                             </span>
                         </div>
                     </div>
@@ -1734,15 +1629,19 @@ export const AdminDashboard: React.FC = () => {
 
                 {/* --- Autoplay warning banner --- */}
                 {audioLocked && (
-                    <div className="audio-unlock-banner" onClick={async () => {
-                        const unlocked = await unlockAudio();
-                        if (unlocked) setAudioLocked(false);
-                    }}>
+                    <div className="audio-unlock-banner" role="status">
                         <div className="audio-unlock-content">
                             <span className="icon">⚠️</span>
-                            <span>Ljudlarmet är blockerat av webbläsaren. Klicka på "SLÅ PÅ" i menyn högst upp för att aktivera larmet!</span>
+                            <span>Orderljudet behöver aktiveras. Tryck på knappen och kontrollera att larmet hörs i restaurangen.</span>
                         </div>
-                        <button className="audio-unlock-btn" type="button">Aktivera här</button>
+                        <button className="audio-unlock-btn" type="button" onClick={() => { void alarm.test(); }}>Aktivera och testa</button>
+                    </div>
+                )}
+
+                {alarm.pausedSeconds > 0 && (
+                    <div className="alarm-paused-banner" role="status">
+                        <span>{pendingOrders.length} {pendingOrders.length === 1 ? 'order väntar' : 'ordrar väntar'}. Larmet återkommer om {alarm.pausedSeconds} s om de inte accepteras.</span>
+                        <Button size="sm" variant="ghost" onClick={alarm.resume}>Larma nu</Button>
                     </div>
                 )}
 
@@ -1765,6 +1664,11 @@ export const AdminDashboard: React.FC = () => {
                     {isOwner && (
                     <button className={`admin-tab ${activeTab === 'menu' ? 'active' : ''}`} onClick={() => { setActiveTab('menu'); setStatsData(null); }}>
                         Meny
+                    </button>
+                    )}
+                    {isOwner && (
+                    <button className={`admin-tab ${activeTab === 'delivery-pricing' ? 'active' : ''}`} onClick={() => { setActiveTab('delivery-pricing'); setStatsData(null); }}>
+                        Leveranspriser
                     </button>
                     )}
                     <button className={`admin-tab ${activeTab === 'rush' ? 'active' : ''}`} onClick={() => { setActiveTab('rush'); setStatsData(null); }}>
@@ -1967,7 +1871,7 @@ export const AdminDashboard: React.FC = () => {
                                                     <li key={i}>{item.quantity}x {item.productName} – {(item.price * item.quantity / 100).toFixed(0)} kr</li>
                                                 ))}
                                             </ul>
-                                            <p className="order-total">{(order.totalPrice / 100).toFixed(0)} kr</p>
+                                            <p className="order-total">{(order.totalPrice / 100).toLocaleString('sv-SE', { maximumFractionDigits: 2 })} kr</p>
                                             <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
                                                 <Button size="sm" variant="ghost" onClick={() => handleAddTime(order, -5)}>−5 min</Button>
                                                 <Button size="sm" variant="ghost" onClick={() => handleAddTime(order, 5)}>+5 min</Button>
@@ -2048,7 +1952,7 @@ export const AdminDashboard: React.FC = () => {
                                                     <li key={i}>{item.quantity}x {item.productName}</li>
                                                 ))}
                                             </ul>
-                                            <p className="order-total">{(order.totalPrice / 100).toFixed(0)} kr</p>
+                                            <p className="order-total">{(order.totalPrice / 100).toLocaleString('sv-SE', { maximumFractionDigits: 2 })} kr</p>
                                             <OrderContactPanel order={order} />
                                             <p style={{ fontSize: '0.8rem', color: '#888', margin: 0 }}>
                                                 Beställd {formatCreatedAt(order.createdAt, true)}
@@ -2122,6 +2026,8 @@ export const AdminDashboard: React.FC = () => {
                             onError={setError}
                         />
                     )}
+
+                    {activeTab === 'delivery-pricing' && isOwner && <DeliveryPricingSettings />}
 
                     {/* ── STATISTIK ── */}
                     {activeTab === 'stats' && statsData && (() => {
@@ -2353,7 +2259,8 @@ export const AdminDashboard: React.FC = () => {
                             <div className="alarm-settings-card">
                                 <h3 className="settings-section-title" style={{ marginTop: 0 }}>Ljud- & Larmsignaler</h3>
                                 <p style={{ fontSize: '0.9rem', color: '#666', marginBottom: '1rem' }}>
-                                    Konfigurera hur surfplattan ska varna för nya inkommande ordrar.
+                                    Starkt kökslarm med växlande toner. Larmet fortsätter tills ordern hanteras.
+                                    Höj Androids medievolym och kontrollera ljudet på den anslutna högtalaren.
                                 </p>
                                 
 
@@ -2368,15 +2275,13 @@ export const AdminDashboard: React.FC = () => {
                                             min="0.8"
                                             max="1"
                                             step="0.02"
-                                            value={alarmVolume}
+                                            value={alarm.volume}
                                             onChange={(e) => {
                                                 const vol = parseFloat(e.target.value);
-                                                setAlarmVolumeState(vol);
-                                                setAlarmVolume(vol);
-                                                localStorage.setItem('admin_alarm_volume', String(vol));
+                                                alarm.changeVolume(vol);
                                             }}
                                         />
-                                        <span className="volume-value">{Math.round(alarmVolume * 100)}%</span>
+                                        <span className="volume-value">{Math.round(alarm.volume * 100)}%</span>
                                     </div>
                                 </div>
 
@@ -2384,24 +2289,18 @@ export const AdminDashboard: React.FC = () => {
                                     <Button
                                         variant="ghost"
                                         size="sm"
-                                        onClick={async () => {
-                                            await unlockAudio();
-                                            startAlarm(alarmType);
-                                            setAlarmVolume(alarmVolume);
-                                            setTimeout(() => {
-                                                stopAlarm();
-                                            }, 3000);
-                                        }}
+                                        onClick={() => { void alarm.test(); }}
+                                        disabled={alarm.isTesting}
                                     >
-                                        🔊 Testa ljud (3 sek)
+                                        {alarm.isTesting ? '🔊 Testar ljud…' : '🔊 Testa starkt larm (5 sek)'}
                                     </Button>
                                     
-                                    {isAlarmActive() && (
+                                    {alarm.isTesting && (
                                         <Button
                                             variant="ghost"
                                             size="sm"
                                             style={{ color: '#DC2626', borderColor: '#DC2626' }}
-                                            onClick={handleSilenceAlarm}
+                                            onClick={alarm.stopTest}
                                         >
                                             ⏹ Stoppa test
                                         </Button>
@@ -2415,11 +2314,11 @@ export const AdminDashboard: React.FC = () => {
 
             {/* --- Flashing Order Alarm Overlay --- */}
             {activeAlarmOrder && (
-                <div className="alarm-overlay">
+                <div className="alarm-overlay" role="alertdialog" aria-modal="true" aria-labelledby="order-alarm-title" aria-describedby="order-alarm-description">
                     <div className="alarm-overlay-card">
                         <div className="alarm-overlay-header">
                             <span className="alarm-overlay-icon">🔔</span>
-                            <h2>Ny Beställning!</h2>
+                            <h2 id="order-alarm-title">{alarm.orderCount === 1 ? 'Order väntar!' : `${alarm.orderCount} ordrar väntar!`}</h2>
                         </div>
                         <div className="alarm-overlay-details">
                             <div className="alarm-order-header">
@@ -2437,11 +2336,17 @@ export const AdminDashboard: React.FC = () => {
                                 ))}
                             </ul>
                             <div className="alarm-order-total">
-                                Summa: {(activeAlarmOrder.totalPrice / 100).toFixed(0)} kr
+                                Summa: {(activeAlarmOrder.totalPrice / 100).toLocaleString('sv-SE', { maximumFractionDigits: 2 })} kr
                             </div>
                         </div>
-                        <button className="alarm-silence-btn" onClick={handleSilenceAlarm}>
-                            Tysta larm
+                        {audioLocked && (
+                            <button className="alarm-activate-btn" type="button" onClick={() => { void alarm.test(); }}>
+                                Aktivera orderljudet
+                            </button>
+                        )}
+                        <p id="order-alarm-description" className="alarm-help">Larmet återkommer efter pausen om ordern inte har accepterats.</p>
+                        <button className="alarm-silence-btn" type="button" autoFocus onClick={handleSilenceAlarm}>
+                            Visa ordrar · pausa 30 s
                         </button>
                     </div>
                 </div>

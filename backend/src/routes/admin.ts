@@ -7,6 +7,7 @@ import { loadAdminScope, parseAdminRole } from '../services/locationScope.js';
 import { updateLocationFlags } from '../db/locations.js';
 import { isDeliveryFeeLineItem } from '../constants/deliveryFee.js';
 import { registerAdminMediaRoutes } from './adminMedia.js';
+import adminDeliveryPricingRouter from './adminDeliveryPricing.js';
 import {
   disablePushSubscriptionById,
   listActivePushSubscriptions,
@@ -16,6 +17,7 @@ import { getRealtimeStatus, registerRealtimeClient } from '../services/realtimeE
 import { isWebPushConfigured } from '../services/pushNotifications.js';
 
 const router = Router();
+router.use('/delivery-pricing', adminDeliveryPricingRouter);
 registerAdminMediaRoutes(router);
 
 const COMPLETED_STATUSES = ['klar', 'uthämtad', 'levererad'] as const;

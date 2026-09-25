@@ -76,6 +76,8 @@ export interface DeliveryInfo {
   postalCode: string;
   phone: string;
   email?: string;
+  /** Server-calculated terms at order creation; absent on legacy orders. */
+  pricing?: import('../utils/deliveryPricing.js').DeliveryQuote;
 }
 
 // Customer contact info (used for all order types)
@@ -161,6 +163,7 @@ export interface CreateOrderRequest {
   orderType: OrderType;
   customerInfo: CustomerInfo;
   deliveryInfo?: DeliveryInfo;
+  deliveryQuote?: import('../utils/deliveryPricing.js').DeliveryQuote;
   /** Naive `YYYY-MM-DDTHH:mm:ss` (Europe/Stockholm) or ISO with Z/offset */
   scheduledTime?: string;
   paymentMethod: PaymentMethod;

@@ -6,7 +6,8 @@
   "main": "dist/types/index.js",
   "types": "types/index.ts",
   "scripts": {
-    "build": "tsc"
+    "build": "tsc",
+    "test": "npm run build && node --test tests/*.test.mjs"
   },
   "exports": {
     "./types": {
@@ -43,6 +44,11 @@
       "types": "./utils/openingHours.ts",
       "import": "./dist/utils/openingHours.js",
       "default": "./dist/utils/openingHours.js"
+    },
+    "./utils/deliveryPricing": {
+      "types": "./utils/deliveryPricing.ts",
+      "import": "./dist/utils/deliveryPricing.js",
+      "default": "./dist/utils/deliveryPricing.js"
     }
   },
   "devDependencies": {
