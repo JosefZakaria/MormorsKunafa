@@ -433,12 +433,16 @@ export const Cart: React.FC = () => {
         const fullName = `${customerFirstName.trim()} ${customerLastName.trim()}`.trim();
         if (needsInlineCustomerInfo) {
             const phone = customerPhone.trim();
-            if (!customerFirstName.trim() || !customerLastName.trim() || !phone) {
+            const email = customerEmail.trim();
+            if (!customerFirstName.trim() || !customerLastName.trim() || !phone || !email) {
                 setCustomerInfoError(t('cart.customer_info_required'));
                 return;
             }
-            const email = customerEmail.trim();
-            customerInfo = { name: fullName, phone, ...(email ? { email } : {}) };
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                setCustomerInfoError(t('cart.customer_email_invalid'));
+                return;
+            }
+            customerInfo = { name: fullName, phone, email };
         }
 
         let deliveryInfo = undefined;
@@ -731,6 +735,7 @@ export const Cart: React.FC = () => {
                                     <div className="customer-info__field">
                                         <label htmlFor="customer-email" className="customer-info__label">
                                             {t('cart.customer_email')}
+                                            <span className="customer-info__required" aria-hidden="true">*</span>
                                         </label>
                                         <input
                                             id="customer-email"
@@ -739,6 +744,8 @@ export const Cart: React.FC = () => {
                                             placeholder={t('cart.customer_email_placeholder')}
                                             value={customerEmail}
                                             onChange={(e) => setCustomerEmail(e.target.value)}
+                                            autoComplete="email"
+                                            required
                                         />
                                     </div>
 
@@ -779,36 +786,38 @@ export const Cart: React.FC = () => {
                                                 />
                                             </div>
 
-                                            <div className="customer-info__field">
-                                                <label htmlFor="delivery-postal-code" className="customer-info__label">
-                                                    {t('delivery.postal_code_label')}
-                                                    <span className="customer-info__required" aria-hidden="true">*</span>
-                                                </label>
-                                                <input
-                                                    id="delivery-postal-code"
-                                                    type="text"
-                                                    className="customer-info__input"
-                                                    placeholder={t('delivery.postal_code_placeholder')}
-                                                    value={deliveryPostalCode}
-                                                    onChange={(e) => setDeliveryPostalCode(e.target.value)}
-                                                    required
-                                                />
-                                            </div>
+                                            <div className="customer-info__row">
+                                                <div className="customer-info__field">
+                                                    <label htmlFor="delivery-postal-code" className="customer-info__label">
+                                                        {t('delivery.postal_code_label')}
+                                                        <span className="customer-info__required" aria-hidden="true">*</span>
+                                                    </label>
+                                                    <input
+                                                        id="delivery-postal-code"
+                                                        type="text"
+                                                        className="customer-info__input"
+                                                        placeholder={t('delivery.postal_code_placeholder')}
+                                                        value={deliveryPostalCode}
+                                                        onChange={(e) => setDeliveryPostalCode(e.target.value)}
+                                                        required
+                                                    />
+                                                </div>
 
-                                            <div className="customer-info__field">
-                                                <label htmlFor="delivery-city" className="customer-info__label">
-                                                    {t('delivery.ort_label')}
-                                                    <span className="customer-info__required" aria-hidden="true">*</span>
-                                                </label>
-                                                <input
-                                                    id="delivery-city"
-                                                    type="text"
-                                                    className="customer-info__input"
-                                                    placeholder={t('delivery.ort_placeholder')}
-                                                    value={deliveryCity}
-                                                    onChange={(e) => setDeliveryCity(e.target.value)}
-                                                    required
-                                                />
+                                                <div className="customer-info__field">
+                                                    <label htmlFor="delivery-city" className="customer-info__label">
+                                                        {t('delivery.ort_label')}
+                                                        <span className="customer-info__required" aria-hidden="true">*</span>
+                                                    </label>
+                                                    <input
+                                                        id="delivery-city"
+                                                        type="text"
+                                                        className="customer-info__input"
+                                                        placeholder={t('delivery.ort_placeholder')}
+                                                        value={deliveryCity}
+                                                        onChange={(e) => setDeliveryCity(e.target.value)}
+                                                        required
+                                                    />
+                                                </div>
                                             </div>
                                         </>
                                     )}
