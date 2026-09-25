@@ -43,6 +43,7 @@ npm-debug.log*
 *.tsbuildinfo
 coverage/
 test-results/
+output/playwright/
 .cache/
 
 # Stripe CLI (lokal nedladdning – ska inte committas)
