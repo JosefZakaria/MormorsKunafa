@@ -132,6 +132,16 @@ router.post('/', async (req: Request, res: Response) => {
       return;
     }
 
+    const customerEmail = String(body.customerInfo?.email ?? body.deliveryInfo?.email ?? '').trim();
+    if (!customerEmail) {
+      res.status(400).json({ error: 'E-postadress krävs för beställning.' });
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail)) {
+      res.status(400).json({ error: 'Ange en giltig e-postadress.' });
+      return;
+    }
+
     const paymentMethod = String(body.paymentMethod ?? 'cash').trim().toLowerCase();
     if (!isAllowedPaymentMethod(paymentMethod)) {
       res.status(400).json({ error: 'Invalid payment method' });
@@ -227,7 +237,6 @@ router.post('/', async (req: Request, res: Response) => {
     const estimatedReady = new Date(baseTime.getTime() + defaultPrep * 60 * 1000);
 
     const customerName = String(body.customerInfo?.name ?? body.deliveryInfo?.name ?? '').trim() || null;
-    const customerEmail = String(body.customerInfo?.email ?? body.deliveryInfo?.email ?? '').trim() || null;
     const customerPhone = String(body.customerInfo?.phone ?? body.deliveryInfo?.phone ?? '').trim();
 
     if (!customerPhone) {
