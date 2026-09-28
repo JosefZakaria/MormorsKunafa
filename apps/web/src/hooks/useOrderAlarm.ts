@@ -6,14 +6,15 @@ import {
   testAlarm, stopAlarmTest,
 } from '../utils/alarmPlayer';
 import { normalizeAlarmVolume } from '../utils/alarmSignal';
+import { readPersistentValue, writePersistentValue, STORAGE_KEYS, STORAGE_TTL_MS } from '../utils/browserStorage';
 
-const VOLUME_KEY = 'admin_alarm_volume_v2';
 export const ALARM_PAUSE_MS = 30_000;
 
 function readVolume(): number {
   try {
-    const saved = localStorage.getItem(VOLUME_KEY);
-    return saved === null ? 1 : normalizeAlarmVolume(Number(saved));
+    return readPersistentValue(STORAGE_KEYS.adminAlarmVolumeV2,
+      (value): value is number => typeof value === 'number' && Number.isFinite(value) && value >= 0.8 && value <= 1,
+      STORAGE_TTL_MS.preference, raw => normalizeAlarmVolume(Number(raw))) ?? 1;
   } catch {
     return 1;
   }
@@ -81,7 +82,7 @@ export function useOrderAlarm(orders: Order[], enabled: boolean) {
     const next = normalizeAlarmVolume(value);
     setVolume(next);
     setAlarmVolume(next);
-    try { localStorage.setItem(VOLUME_KEY, String(next)); } catch { /* Works without storage. */ }
+    try { writePersistentValue(STORAGE_KEYS.adminAlarmVolumeV2, next, STORAGE_TTL_MS.preference); } catch { /* Works without storage. */ }
   }, []);
 
   const pause = () => {

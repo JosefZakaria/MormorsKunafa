@@ -18,7 +18,104 @@ export type OrderType = 'eat-here' | 'takeaway' | 'delivery';
 export type PaymentMethod = 'card' | 'swish' | 'cash' | 'app';
 
 export type CheckoutPaymentChoice = 'card' | 'swish';
-export type RefundStatus = 'none' | 'pending' | 'refunded' | 'failed';
+export type RefundStatus = 'none' | 'pending' | 'partially_refunded' | 'refunded' | 'failed';
+
+export type RefundAttemptStatus = 'pending' | 'succeeded' | 'failed';
+
+export interface OrderRefundAllocation {
+  orderItemId: string;
+  quantity: number;
+  amount: number;
+}
+
+export interface OrderRefundAttempt {
+  id: string;
+  amount: number;
+  status: RefundAttemptStatus;
+  createdAt: string;
+  completedAt?: string;
+  allocations: OrderRefundAllocation[];
+}
+
+export interface AdminRefundableItem {
+  orderItemId: string;
+  productName: string;
+  unitPrice: number;
+  orderedQuantity: number;
+  pendingQuantity: number;
+  refundedQuantity: number;
+  refundableQuantity: number;
+  isDeliveryFee: boolean;
+}
+
+export interface AdminRefundOverview {
+  orderId: string;
+  orderNumber: string;
+  paymentMethod: PaymentMethod;
+  paymentStatus: 'pending' | 'paid';
+  refundStatus: RefundStatus;
+  totalPrice: number;
+  refundedAmount: number;
+  pendingAmount: number;
+  refundableAmount: number;
+  items: AdminRefundableItem[];
+  attempts: OrderRefundAttempt[];
+}
+
+export interface CreateOrderRefundResult {
+  refundId: string;
+  status: RefundAttemptStatus;
+  refundStatus: RefundStatus;
+  amount: number;
+}
+
+export interface PaymentSecurityAlert {
+  eventId: string;
+  eventType: string;
+  outcome:
+    | 'alert_missing_order_id'
+    | 'alert_order_not_found'
+    | 'alert_paid_session_validation_failed';
+  orderId?: string;
+  receivedAt: string;
+  processedAt?: string;
+}
+
+export type DuplicatePaymentRefundStatus =
+  | 'eligible'
+  | 'investigation_only'
+  | RefundAttemptStatus;
+
+export interface DuplicatePaymentAlertDetail {
+  eventId: string;
+  status: DuplicatePaymentRefundStatus;
+  orderId?: string;
+  orderNumber?: string;
+  amount?: number;
+  confirmation?: string;
+}
+
+export type FoodAllergen =
+  | 'gluten'
+  | 'crustaceans'
+  | 'eggs'
+  | 'fish'
+  | 'peanuts'
+  | 'soybeans'
+  | 'milk'
+  | 'nuts'
+  | 'celery'
+  | 'mustard'
+  | 'sesame'
+  | 'sulphites'
+  | 'lupin'
+  | 'molluscs';
+
+export interface ProductIngredient {
+  name: string;
+  /** The whole ingredient name is emphasized when it contains an allergen. */
+  allergens?: FoodAllergen[];
+}
 
 export type LocationSlug = 'hoja' | 'mollevangen';
 export type AdminRole = 'owner' | 'location';
@@ -57,15 +154,41 @@ export interface Product {
   variantPrices?: Record<string, number>;
   createdAt: string;
   updatedAt: string;
+  ingredients?: ProductIngredient[];
+  allergens?: FoodAllergen[];
+  mayContainAllergens?: FoodAllergen[];
+  isPrepacked?: boolean;
+  foodInformationVerifiedAt?: string;
+}
+
+export interface VerifiedFoodInformationUpdate {
+  ingredients: ProductIngredient[];
+  allergens: FoodAllergen[];
+  mayContainAllergens: FoodAllergen[];
+  isPrepacked: boolean;
+  verificationConfirmed: true;
 }
 
 // Order Item Interface
 export interface OrderItem {
+  id: string;
   productId: string;
   productName: string;
   quantity: number;
   price: number; // price at time of order (in öre)
   modifications?: string[]; // ingredient additions/removals
+}
+
+/**
+ * Names/prices are carried only so the bridge web remains readable by locked
+ * main. The current backend always resolves both from its own catalog.
+ */
+export interface CreateOrderItemRequest {
+  productId: string;
+  variantId?: string;
+  productName?: string;
+  price?: number;
+  quantity: number;
 }
 
 // Delivery Information
@@ -107,11 +230,29 @@ export interface Order {
   cancellationReason?: string;
   cancelledAt?: string;
   refundStatus: RefundStatus;
+  refundedAmount: number;
+  refunds?: OrderRefundAttempt[];
   internalNotes?: string;
   paymentMethod: PaymentMethod;
   paymentStatus: 'pending' | 'paid';
+  /** Immutable VAT values captured by the verified payment transition. */
+  receiptVatRate?: 6 | 12;
+  receiptVatAmount?: number;
   /** Set for eat-here / takeaway. Null for delivery. */
   locationId?: string | null;
+}
+
+/** Deliberately minimal response for a customer-facing order status page. */
+export interface PublicOrderStatus {
+  /** Frozen delivery timing classification only; never the address or city. */
+  showDeliveryEstimate?: boolean;
+  orderNumber: string;
+  status: OrderStatus;
+  paymentStatus: 'pending' | 'paid';
+  orderType: OrderType;
+  scheduledTime?: string;
+  locationId?: string | null;
+  estimatedReadyTime?: string;
 }
 
 // Admin User Interface (F.Admin.1)
@@ -159,7 +300,7 @@ export interface SalesHistoryEntry {
 
 // Create Order Request
 export interface CreateOrderRequest {
-  items: OrderItem[];
+  items: CreateOrderItemRequest[];
   orderType: OrderType;
   customerInfo: CustomerInfo;
   deliveryInfo?: DeliveryInfo;
@@ -169,6 +310,16 @@ export interface CreateOrderRequest {
   paymentMethod: PaymentMethod;
   /** Required for eat-here / takeaway. Ignored for delivery. */
   locationId?: string;
+}
+
+/** Minimal replay-safe result from the public order creation endpoint. */
+export interface CreateOrderResponse {
+  id: string;
+  orderNumber: string;
+  totalPrice: number;
+  locationId: string | null;
+  checkoutContract: string;
+  statusToken: string;
 }
 
 // Update Order Status Request
@@ -208,6 +359,23 @@ export interface Notification {
   message: string;
   createdAt: string;
   read: boolean;
+}
+
+export type OutboundMessageFailureStatus = 'retryable' | 'uncertain' | 'permanent_failed';
+export type OutboundMessageFailureEvent = 'order_confirmation' | 'order_accepted';
+export type OutboundMessageFailureChannel = 'email' | 'sms';
+
+/** Safe, staff-facing view of an unresolved customer-message delivery job. */
+export interface OutboundMessageFailureAlert {
+  id: string;
+  orderNumber: string;
+  channel: OutboundMessageFailureChannel;
+  event: OutboundMessageFailureEvent;
+  status: OutboundMessageFailureStatus;
+  attemptCount: number;
+  maxAttempts: number;
+  errorCode: string;
+  updatedAt: string;
 }
 
 export interface PushSubscriptionRecord {

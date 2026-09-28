@@ -2,7 +2,6 @@ import type { Response } from 'express';
 import type { OrderType } from '@mormors-kunafa/shared/types';
 import type { AdminScope } from './locationScope.js';
 import { orderVisibleToScope } from './locationScope.js';
-import { sendOrderCreatedPush } from './pushNotifications.js';
 
 export type OrderCreatedEvent = {
   event_id: string;
@@ -18,6 +17,7 @@ type Client = {
   id: string;
   adminId: string;
   scope: AdminScope;
+  refreshScope: () => Promise<AdminScope>;
   res: Response;
 };
 
@@ -28,9 +28,9 @@ function sseWrite(res: Response, event: string, payload: unknown): void {
   res.write(`data: ${JSON.stringify(payload)}\n\n`);
 }
 
-export function registerRealtimeClient(scope: AdminScope, res: Response): () => void {
+export function registerRealtimeClient(scope: AdminScope, res: Response, refreshScope: () => Promise<AdminScope>): () => void {
   const clientId = crypto.randomUUID();
-  clients.set(clientId, { id: clientId, adminId: scope.adminId, scope, res });
+  clients.set(clientId, { id: clientId, adminId: scope.adminId, scope, res, refreshScope });
 
   sseWrite(res, 'ready', {
     ok: true,
@@ -45,55 +45,29 @@ export function registerRealtimeClient(scope: AdminScope, res: Response): () => 
     }
   }, 25000);
 
-  return () => {
+  const cleanup = () => {
     clearInterval(heartbeat);
     clients.delete(clientId);
   };
+  const expiry = setTimeout(() => { cleanup(); res.end(); }, 60_000);
+  return () => { clearTimeout(expiry); cleanup(); };
 }
 
-export function broadcastOrderCreated(event: OrderCreatedEvent): void {
-  for (const client of clients.values()) {
+export async function broadcastOrderCreated(event: OrderCreatedEvent): Promise<void> {
+  await Promise.allSettled([...clients.values()].map(async client => {
+    try { client.scope = await client.refreshScope(); }
+    catch { clients.delete(client.id); client.res.end(); return; }
+    if (!clients.has(client.id)) return;
     if (
       !orderVisibleToScope(client.scope, {
         orderType: event.order_type,
         locationId: event.location_id,
       })
     ) {
-      continue;
+      return;
     }
     sseWrite(client.res, 'ORDER_CREATED', event);
-  }
-}
-
-function asOrderType(value: string): OrderType {
-  if (value === 'eat-here' || value === 'takeaway' || value === 'delivery') return value;
-  return 'takeaway';
-}
-
-export function dispatchOrderCreatedEvent(
-  orderId: string,
-  orderNumber: string,
-  orderType: string,
-  locationId: string | null
-): void {
-  const event: OrderCreatedEvent = {
-    event_id: crypto.randomUUID(),
-    event_type: 'ORDER_CREATED',
-    order_id: orderId,
-    order_number: orderNumber,
-    created_at: new Date().toISOString(),
-    order_type: asOrderType(orderType),
-    location_id: locationId,
-  };
-
-  broadcastOrderCreated(event);
-  void sendOrderCreatedPush(event).catch((error) => {
-    console.error('[push] sendOrderCreatedPush failed', {
-      eventId: event.event_id,
-      orderId: orderId,
-      error,
-    });
-  });
+  }));
 }
 
 export function getRealtimeStatus(): { totalClients: number; byAdmin: Record<string, number> } {

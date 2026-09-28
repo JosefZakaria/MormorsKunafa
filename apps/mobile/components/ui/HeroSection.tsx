@@ -143,10 +143,10 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 40,
   },
   gradient: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   patternOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     opacity: 0.15,
   },
   patternCircle1: {

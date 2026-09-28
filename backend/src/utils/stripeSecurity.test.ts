@@ -1,0 +1,39 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {
+  assertStripeServerKey,
+  assertStripeWebhookSecret,
+  isExpectedStripeEventMode,
+  safeStripeVerificationError,
+} from './stripeSecurity.js';
+
+test('accepts server keys but requires live mode in production', () => {
+  assert.doesNotThrow(() => assertStripeServerKey('sk_test_1234567890', 'development'));
+  assert.doesNotThrow(() => assertStripeServerKey('rk_live_1234567890', 'production'));
+  assert.throws(() => assertStripeServerKey('pk_live_1234567890', 'production'));
+  assert.throws(() => assertStripeServerKey('sk_test_1234567890', 'production'));
+  assert.throws(() => assertStripeServerKey('sk_live_bad key', 'production'));
+});
+
+test('validates webhook secret shape and event deployment mode', () => {
+  assert.doesNotThrow(() => assertStripeWebhookSecret('whsec_1234567890123456'));
+  assert.throws(() => assertStripeWebhookSecret('secret'));
+  assert.equal(isExpectedStripeEventMode(true, 'production'), true);
+  assert.equal(isExpectedStripeEventMode(false, 'production'), false);
+  assert.equal(isExpectedStripeEventMode(false, 'production', 'preview'), true);
+  assert.equal(isExpectedStripeEventMode(true, 'production', 'preview'), false);
+  assert.equal(isExpectedStripeEventMode(true, 'development'), false);
+});
+
+test('Preview accepts only test server keys even when NODE_ENV is production', () => {
+  for (const prefix of ['sk', 'rk']) {
+    assert.doesNotThrow(() => assertStripeServerKey(`${prefix}_test_1234567890`, 'production', 'preview'));
+    assert.throws(() => assertStripeServerKey(`${prefix}_live_1234567890`, 'production', 'preview'), /test Stripe server key/);
+    assert.throws(() => assertStripeServerKey(`${prefix}_live_1234567890`, 'development'), /test Stripe server key/);
+  }
+});
+
+test('never returns provider error messages for signature failures', () => {
+  assert.equal(safeStripeVerificationError(new TypeError('raw signing secret leaked')), 'TypeError');
+  assert.equal(safeStripeVerificationError({ message: 'raw signing secret leaked' }), 'StripeVerificationError');
+});

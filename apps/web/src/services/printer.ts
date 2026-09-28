@@ -2,15 +2,31 @@ import { showOrderDeliveryEstimate } from '@shared/utils/deliveryPricing';
 /**
  * Service for direct client-side thermal receipt and kitchen printing via Epson ePOS XML.
  */
-import type { Order, Location } from '@shared/types';
 import { HOJA_LOCATION_ID, MOLLEVANGEN_LOCATION_ID } from '@shared/types';
 
 export type PrinterLocationSlug = 'hoja' | 'mollevangen';
 
 export const DEFAULT_HOJA_PRINTER_IP = '192.168.1.100';
+import type { Order, Location } from '@shared/types';
+import { safePrinterText } from '@shared/utils/safePrinterText';
+import { includedVatForReceipt } from '@shared/utils/vat';
+import {
+  readPersistentValue,
+  STORAGE_KEYS,
+  STORAGE_TTL_MS,
+  writePersistentValue,
+} from '../utils/browserStorage';
 
-const PRINTER_IP_KEY = 'printer_ip';
-const PRINTER_DEVID_KEY = 'printer_devid';
+
+function isPrinterIpv4(value: unknown): value is string {
+  if (typeof value !== 'string' || value.length > 15) return false;
+  const parts = value.split('.');
+  return parts.length === 4 && parts.every((part) => /^\d{1,3}$/.test(part) && Number(part) <= 255);
+}
+
+function isPrinterDeviceId(value: unknown): value is string {
+  return typeof value === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(value);
+}
 
 export function normalizeLocationSlug(locationIdOrSlug?: string | null): PrinterLocationSlug {
   if (!locationIdOrSlug) return 'hoja';
@@ -40,59 +56,38 @@ export function getOrderTargetLocationSlug(order: Order, _locations?: Location[]
 
 function getPrinterIpKey(slug: PrinterLocationSlug): string {
   return `printer_ip_${slug}`;
+
 }
 
 function getPrinterDevidKey(slug: PrinterLocationSlug): string {
   return `printer_devid_${slug}`;
 }
 
+function readPrinterPreference(key: string, validate: (value: unknown) => value is string): string | null {
+  return readPersistentValue(key, validate, STORAGE_TTL_MS.preference, raw => raw.trim());
+}
+
 export function getPrinterIp(locationIdOrSlug?: string | null): string {
   const slug = normalizeLocationSlug(locationIdOrSlug);
-  const locationSpecific = localStorage.getItem(getPrinterIpKey(slug));
-  if (locationSpecific && locationSpecific.trim().length > 0) {
-    return locationSpecific.trim();
-  }
-
-  // För Höja: bakåtkompatibilitet med gamla globala nyckeln 'printer_ip'
-  if (slug === 'hoja') {
-    const legacy = localStorage.getItem(PRINTER_IP_KEY);
-    if (legacy && legacy.trim().length > 0) {
-      return legacy.trim();
-    }
-    // Säker fallback så att Höja fungerar direkt även om localStorage rensats
-    return DEFAULT_HOJA_PRINTER_IP;
-  }
-
-  // För Möllan: ingen skrivare installerad än som standard
-  return '';
+  return readPrinterPreference(getPrinterIpKey(slug), isPrinterIpv4)
+    ?? (slug === 'hoja' ? readPrinterPreference(STORAGE_KEYS.printerIp, isPrinterIpv4) ?? DEFAULT_HOJA_PRINTER_IP : '');
 }
 
 export function getDeviceId(locationIdOrSlug?: string | null): string {
   const slug = normalizeLocationSlug(locationIdOrSlug);
-  const locationSpecific = localStorage.getItem(getPrinterDevidKey(slug));
-  if (locationSpecific && locationSpecific.trim().length > 0) {
-    return locationSpecific.trim();
-  }
-  if (slug === 'hoja') {
-    const legacy = localStorage.getItem(PRINTER_DEVID_KEY);
-    if (legacy && legacy.trim().length > 0) return legacy.trim();
-  }
-  return 'local_printer';
+  return readPrinterPreference(getPrinterDevidKey(slug), isPrinterDeviceId)
+    ?? (slug === 'hoja' ? readPrinterPreference(STORAGE_KEYS.printerDeviceId, isPrinterDeviceId) : null)
+    ?? 'local_printer';
 }
 
 export function setPrinterConfig(ip: string, deviceId?: string, locationIdOrSlug?: string | null) {
   const slug = normalizeLocationSlug(locationIdOrSlug);
-  const trimmedIp = ip.trim();
-  const trimmedDeviceId = deviceId?.trim() || 'local_printer';
-
-  localStorage.setItem(getPrinterIpKey(slug), trimmedIp);
-  localStorage.setItem(getPrinterDevidKey(slug), trimmedDeviceId);
-
-  // Om vi sparar för Höja, synka även gamla nycklarna så eventuell äldre kod fortsätter fungera
-  if (slug === 'hoja') {
-    localStorage.setItem(PRINTER_IP_KEY, trimmedIp);
-    localStorage.setItem(PRINTER_DEVID_KEY, trimmedDeviceId);
-  }
+  const address = ip.trim();
+  const device = deviceId?.trim() || 'local_printer';
+  if (!isPrinterIpv4(address)) throw new Error('Ange en giltig IPv4-adress till skrivaren.');
+  if (!isPrinterDeviceId(device)) throw new Error('Ogiltigt enhets-ID för skrivaren.');
+  writePersistentValue(getPrinterIpKey(slug), address, STORAGE_TTL_MS.preference);
+  writePersistentValue(getPrinterDevidKey(slug), device, STORAGE_TTL_MS.preference);
 }
 
 export function getPrinterConfig(locationIdOrSlug?: string | null): { ip: string; deviceId: string } {
@@ -120,10 +115,6 @@ function deliveryPhone(order: Order): string {
   return order.customerInfo?.phone?.trim() || order.deliveryInfo?.phone?.trim() || '';
 }
 
-function deliveryEmail(order: Order): string {
-  return order.customerInfo?.email?.trim() || order.deliveryInfo?.email?.trim() || '';
-}
-
 function escapeXml(str: string): string {
   return str
     .replace(/&/g, '&amp;')
@@ -135,7 +126,7 @@ function escapeXml(str: string): string {
 
 /** Minimal ePOS text — samma stil som fungerande testutskrift (endast align). */
 function textLine(content: string, align: 'left' | 'center' | 'right' = 'left'): string {
-  return `<text align="${align}">${escapeXml(content)}&#10;</text>`;
+  return `<text align="${align}">${escapeXml(safePrinterText(content))}&#10;</text>`;
 }
 
 function separator(): string {
@@ -219,9 +210,8 @@ function appendDeliveryBlock(xml: string, order: Order): string {
   const d = order.deliveryInfo;
   const name = deliveryCustomerName(order);
   const phone = deliveryPhone(order);
-  const email = deliveryEmail(order);
   const postalCity = d ? [d.postalCode, d.city].filter(Boolean).join(' ').trim() : '';
-  const hasContent = !!(name || phone || email || d?.address || postalCity);
+  const hasContent = !!(name || phone || d?.address || postalCity);
 
   if (!hasContent) return xml;
 
@@ -231,8 +221,8 @@ function appendDeliveryBlock(xml: string, order: Order): string {
   if (d?.address) xml += textLine(d.address);
   if (postalCity) xml += textLine(postalCity);
   if (phone) xml += textLine(`Tel: ${phone}`);
-  if (email) xml += textLine(email);
   if (!order.scheduledTime && showOrderDeliveryEstimate(d)) {
+
     xml += textLine('Leverans: 1-2 arbetsdagar');
   }
   xml += separator();
@@ -326,7 +316,18 @@ export async function printReceipt(order: Order, locationIdOrSlug?: string | nul
   xml += separator();
   const total = ((order.totalPrice || 0) / 100).toFixed(2);
   xml += textLine(`Totalt: ${total} kr`);
+  const { rate: vatRate, vatOre } = includedVatForReceipt(
+    order.totalPrice,
+    order.orderType,
+    order.receiptVatRate,
+    order.receiptVatAmount
+  );
+  xml += textLine(`Varav ${vatRate}% moms: ${(vatOre / 100).toFixed(2)} kr`);
   xml += `<feed unit="24"/>`;
+  xml += textLine('Mormors Kunafa Aktiebolag', 'center');
+  xml += textLine('Org.nr 559424-4823', 'center');
+  xml += textLine('Karolingatan 1, 212 34 Malmo', 'center');
+  xml += `<feed unit="12"/>`;
   xml += textLine('Tack for din bestallning!', 'center');
   xml = finishPrint(xml);
 

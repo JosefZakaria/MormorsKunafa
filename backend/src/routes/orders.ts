@@ -1,32 +1,41 @@
 import { Router, Request, Response } from 'express';
+import crypto from 'crypto';
+import { canCancelOrderPayment, canStartOrderPayment } from '../utils/orderPaymentState.js';
 import { supabase, generateId, type Row, logSupabaseError, nowIso } from '../db/connection.js';
-import { getOrderById, getNextOrderNumber, updateOrder } from '../db/orderRepository.js';
-import { orderRowToOrder, rowsToOrders } from '../db/ordersList.js';
-import { requireAdmin, requireOwner, getRequestAdmin } from '../middleware/auth.js';
-import { loadAdminScope, orderRowVisibleToScope } from '../services/locationScope.js';
-import { PrinterService } from '../services/PrinterService.js';
-import { sendOrderConfirmationEmail } from '../services/OrderConfirmationEmail.js';
-import { sendSms } from '../services/SmsService.js';
-import { getStripe } from '../services/stripeClient.js';
-import { broadcastOrderCreated, dispatchOrderCreatedEvent, type OrderCreatedEvent } from '../services/realtimeEvents.js';
-import { sendOrderCreatedPush } from '../services/pushNotifications.js';
-import { resolveOrderLocationId, locationOrderTypeError, inStorePickupSmsSuffix } from '../db/locations.js';
-import { outOfStockProductNames, stockLocationIdForOrder } from '../db/productLocationStock.js';
-import type { OrderType } from '@mormors-kunafa/shared/types';
-import { parseOrderScheduledAt, formatStockholmDateTime } from '../utils/stockholmWallTime.js';
-import { validateScheduledOrderTime } from '../shared/utils/openingHours.js';
 import {
-  isAllowedPaymentMethod,
+  acceptOrderWithMessages,
+  compareAndUpdateOrder,
+  createOrderAtomic,
+  fetchOrderRow,
+  getOrderById,
+  updateOrder,
+} from '../db/orderRepository.js';
+import { orderRowToOrder, orderRowToPublicStatus, rowsToOrders } from '../db/ordersList.js';
+import { requireAdmin, requireOwner, getRequestAdmin } from '../middleware/auth.js';
+import { requireOrderAccess } from '../middleware/orderAccess.js';
+import {
+  createRateLimiter,
+  getTrustedClientIp,
+  hashRateLimitIdentifier,
+} from '../middleware/rateLimit.js';
+import { PrinterService } from '../services/PrinterService.js';
+import { getStripe, isStripeConfigured } from '../services/stripeClient.js';
+import { loadAdminScope, orderRowVisibleToScope } from '../services/locationScope.js';
+import { resolveOrderLocationId, locationOrderTypeError } from '../db/locations.js';
+import { outOfStockProductNames, stockLocationIdForOrder } from '../db/productLocationStock.js';
+import { resolveAcceptedReadyTime, validateOrderSchedule } from '../utils/orderSchedule.js';
+import {
   isCardPayment,
   isOnlinePayment,
+  isPublicPaymentMethodAvailable,
 } from '../utils/paymentMethod.js';
-import { resolveProductIdFromLineId } from '../utils/resolveProductId.js';
-import { resolveLineOption, resolveUnitPriceOre, variantPricesForProduct } from '../utils/productPrices.js';
+import { isSwishConfigured, isSwishCheckoutEnabled } from '../services/swishClient.js';
 import {
   DELIVERY_FEE_LINE_NAME,
-  isDeliveryFeeLineItem,
 } from '../constants/deliveryFee.js';
 import { getPublicWebAppUrl } from '../utils/publicWebAppUrl.js';
+import { loadDeliveryPricing } from '../db/deliveryPricing.js';
+import { deliveryQuoteMatches, quoteDelivery, type DeliveryQuote } from '../shared/utils/deliveryPricing.js';
 import { confirmStripeCheckoutSession } from '../utils/confirmStripeCheckout.js';
 import { sanitizeProductName } from '../utils/sanitizeProductName.js';
 import {
@@ -35,34 +44,126 @@ import {
   adminSettingsFromRow,
 } from '../db/adminSettings.js';
 import swishPaymentRouter from './swishPayment.js';
-import { loadDeliveryPricing } from '../db/deliveryPricing.js';
-import { deliveryQuoteMatches, quoteDelivery, type DeliveryQuote } from '../shared/utils/deliveryPricing.js';
+import { isCanonicalUuidV4 } from '../utils/resourceId.js';
+import {
+  buildServerPricedOrderLines,
+  OrderValidationError,
+  type OrderItemInput,
+} from '../services/orderPricing.js';
+import {
+  createOrderStatusToken,
+  requireOrderStatusToken,
+} from '../middleware/orderStatusToken.js';
+import {
+  CustomerInputError,
+  sanitizeOperationalText,
+  validateCustomerInput,
+  validateScheduledTimeInput,
+} from '../utils/customerInput.js';
+import {
+  canTransitionOrderStatus,
+  canUseGeneralStatusRoute,
+  isOrderStatus,
+} from '../utils/orderStateMachine.js';
+import {
+  AdminInputError,
+  parseDateOnly,
+  parseEstimatedReadyTime,
+  parseHistoryLimit,
+  parseInternalNotes,
+  parsePreparationMinutes,
+} from '../utils/adminInput.js';
+import { logUnexpectedError } from '../utils/safeErrorMetadata.js';
+import {
+  abandonOrderIdempotency,
+  beginOrderIdempotency,
+  completeOrderIdempotency,
+  OrderIdempotencyError,
+  type OrderIdempotencyContext,
+} from '../middleware/orderIdempotency.js';
+import { requireCurrentCheckoutContract } from '../middleware/checkoutContract.js';
+import { CHECKOUT_CONTRACT_VERSION } from '../shared/constants/checkoutContract.js';
+import { singleRouteParam } from '../utils/routeParam.js';
+
+const orderLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000, // 15 min window
+  max: 15, // max 15 orders per IP per 15 minutes
+  message: 'För många beställningsförsök. Vänta en stund och försök igen.',
+  prefix: 'create-order',
+});
+
+const orderContactLimiter = createRateLimiter({
+  windowMs: 60 * 60 * 1000,
+  max: 8,
+  message: 'För många beställningar med samma kontaktuppgifter. Försök igen senare.',
+  prefix: 'create-order-contact',
+  keyGenerator: (req) => {
+    const phone = String(req.body?.customerInfo?.phone ?? req.body?.deliveryInfo?.phone ?? '');
+    const email = String(req.body?.customerInfo?.email ?? req.body?.deliveryInfo?.email ?? '');
+    return hashRateLimitIdentifier(`${getTrustedClientIp(req)}:${phone}:${email}`);
+  },
+});
+
+function orderTokenRateKey(req: Request): string {
+  const token = Array.isArray(req.headers['x-order-status-token'])
+    ? req.headers['x-order-status-token'][0]
+    : req.headers['x-order-status-token'];
+  return hashRateLimitIdentifier(`${getTrustedClientIp(req)}:${token ?? 'missing'}`);
+}
+
+const checkoutLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  prefix: 'checkout-session',
+  keyGenerator: orderTokenRateKey,
+});
+
+const paymentConfirmLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  prefix: 'payment-confirm',
+  keyGenerator: orderTokenRateKey,
+});
+
+const orderStatusLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 180,
+  prefix: 'order-status',
+  keyGenerator: orderTokenRateKey,
+});
+
+function safeCompareStrings(a?: string, b?: string): boolean {
+  if (!a || !b) return false;
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
 
 const router = Router();
 
-router.use('/swish-payment', swishPaymentRouter);
-
 router.get('/delivery-pricing', async (_req, res) => {
   res.setHeader('Cache-Control', 'no-store');
-  try {
-    res.json(await loadDeliveryPricing());
-  } catch (error) {
-    console.error('[GET delivery pricing]', error);
+  try { res.json(await loadDeliveryPricing()); }
+  catch (error) {
+    logUnexpectedError('GET delivery pricing', error);
     res.status(503).json({ error: 'Leveranspriser kunde inte hämtas. Försök igen.' });
   }
 });
 
+for (const parameter of ['id', 'orderId']) {
+  router.param(parameter, (req, res, next, value) => {
+    if (!isCanonicalUuidV4(value)) {
+      res.status(400).json({ error: 'Invalid resource identifier' });
+      return;
+    }
+    next();
+  });
+}
+
+router.use('/swish-payment', requireCurrentCheckoutContract, swishPaymentRouter);
+
 const ACTIVE_STATUSES = ['mottagen', 'påbörjad'] as const;
-
-function asOrderType(value: string): OrderType {
-  if (value === 'eat-here' || value === 'takeaway' || value === 'delivery') return value;
-  return 'takeaway';
-}
-
-function paramId(req: Request, key = 'id'): string {
-  const v = req.params[key];
-  return Array.isArray(v) ? String(v[0] ?? '') : String(v ?? '');
-}
 
 // Returns "YYYY-MM-DD" for the given date in the Europe/Stockholm timezone.
 // Used because the Namecheap DB server is not in Swedish time and lacks
@@ -101,10 +202,12 @@ async function assertOrderVisible(req: Request, res: Response, order: Row): Prom
 }
 
 // Create order (public)
-router.post('/', async (req: Request, res: Response) => {
+router.post('/', requireCurrentCheckoutContract, orderLimiter, orderContactLimiter, async (req: Request, res: Response) => {
+  let idempotencyContext: OrderIdempotencyContext | undefined;
+  let orderPersisted = false;
   try {
     const body = req.body as {
-      items: Array<{ productId: string; productName: string; quantity: number; price: number; modifications?: string[] }>;
+      items: OrderItemInput[];
       orderType: string;
       customerInfo?: { name?: string; phone?: string; email?: string };
       deliveryInfo?: Record<string, string>;
@@ -113,63 +216,32 @@ router.post('/', async (req: Request, res: Response) => {
       paymentMethod: string;
       locationId?: string;
     };
-    if (!body.items?.length) {
-      res.status(400).json({ error: 'items required' });
-      return;
-    }
-
     const orderType = String(body.orderType ?? 'takeaway').trim();
     const isDelivery = orderType === 'delivery';
-    const productItems = body.items.filter((it) => !isDeliveryFeeLineItem(it));
-    if (!productItems.length) {
-      res.status(400).json({ error: 'items required' });
+    if (!['takeaway', 'eat-here', 'delivery'].includes(orderType)) {
+      res.status(400).json({ error: 'Invalid order type' });
       return;
     }
-    if (isDelivery && (!body.deliveryInfo || ['city', 'address', 'postalCode'].some(
-      (key) => typeof body.deliveryInfo?.[key] !== 'string' || !body.deliveryInfo[key].trim()
-    ))) {
+    if (isDelivery && !body.deliveryInfo) {
       res.status(400).json({ error: 'Leveransinformation krävs för hemleverans.' });
       return;
     }
 
-    const customerEmail = String(body.customerInfo?.email ?? body.deliveryInfo?.email ?? '').trim();
-    if (!customerEmail) {
-      res.status(400).json({ error: 'E-postadress krävs för beställning.' });
-      return;
-    }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail)) {
-      res.status(400).json({ error: 'Ange en giltig e-postadress.' });
-      return;
-    }
-
-    const paymentMethod = String(body.paymentMethod ?? 'cash').trim().toLowerCase();
-    if (!isAllowedPaymentMethod(paymentMethod)) {
+    const paymentMethod = String(body.paymentMethod ?? '').trim().toLowerCase();
+    if (paymentMethod !== 'card' && paymentMethod !== 'swish') {
       res.status(400).json({ error: 'Invalid payment method' });
       return;
     }
-
-    let deliveryQuote: DeliveryQuote | undefined;
-    if (isDelivery) {
-      let pricing;
-      try {
-        pricing = await loadDeliveryPricing();
-      } catch (error) {
-        console.error('[POST order delivery pricing]', error);
-        res.status(503).json({ error: 'Leveranspriser kunde inte hämtas. Försök igen.' });
-        return;
-      }
-      deliveryQuote = quoteDelivery(body.deliveryInfo!.city, pricing);
-      if (!deliveryQuoteMatches(body.deliveryQuote, deliveryQuote)) {
-        res.status(409).json({
-          code: 'DELIVERY_QUOTE_CHANGED',
-          error: 'Leveransvillkoren har uppdaterats. Kontrollera avgiften och bekräfta beställningen igen.',
-          deliveryPricing: pricing,
-        });
-        return;
-      }
+    if (!isPublicPaymentMethodAvailable(paymentMethod, {
+      stripe: isStripeConfigured(),
+      swish: isSwishCheckoutEnabled() && isSwishConfigured(),
+    })) {
+      res.status(503).json({ error: 'Den valda betalningsmetoden är inte tillgänglig.' });
+      return;
     }
 
-    const orderNumber = await getNextOrderNumber();
+    const serverPricedLines = await buildServerPricedOrderLines(body.items);
+    const scheduledTimeInput = validateScheduledTimeInput(body.scheduledTime);
 
     const { data: settingsRows, error: settingsError } = await supabase
       .from('admin_settings')
@@ -178,7 +250,7 @@ router.post('/', async (req: Request, res: Response) => {
 
     if (settingsError) {
       logSupabaseError('POST /api/orders settings', settingsError);
-      res.status(500).json({ error: 'Failed to fetch settings', details: settingsError.message });
+      res.status(500).json({ error: 'Failed to fetch settings' });
       return;
     }
 
@@ -215,45 +287,64 @@ router.post('/', async (req: Request, res: Response) => {
       ? Number(settings.default_preparation_time_minutes) || 30
       : 30;
 
-    // Home delivery has no customer-chosen time; ignore any scheduledTime.
+    // Hemkörning has no customer-chosen time (1–2 business days); ignore any scheduledTime.
     let scheduledAt: Date | null = null;
     if (!isDelivery) {
-      if (body.scheduledTime != null && String(body.scheduledTime).trim() !== '') {
-        scheduledAt = parseOrderScheduledAt(body.scheduledTime);
-        if (!scheduledAt || Number.isNaN(scheduledAt.getTime())) {
-          res.status(400).json({ error: 'Ogiltig förbeställningstid. Välj datum och tid igen.' });
-          return;
-        }
-      }
-
-      const hoursValidation = validateScheduledOrderTime(body.scheduledTime, defaultPrep);
+      const hoursValidation = validateOrderSchedule(scheduledTimeInput, defaultPrep);
       if (!hoursValidation.valid) {
         res.status(400).json({ error: hoursValidation.error });
         return;
       }
+      scheduledAt = hoursValidation.scheduledAt;
     }
 
     const baseTime = scheduledAt && scheduledAt.getTime() > Date.now() ? scheduledAt : new Date();
     const estimatedReady = new Date(baseTime.getTime() + defaultPrep * 60 * 1000);
 
-    const customerName = String(body.customerInfo?.name ?? body.deliveryInfo?.name ?? '').trim() || null;
-    const customerPhone = String(body.customerInfo?.phone ?? body.deliveryInfo?.phone ?? '').trim();
+    const customer = validateCustomerInput(body.customerInfo, body.deliveryInfo, isDelivery);
 
-    if (!customerPhone) {
-      res.status(400).json({ error: 'Telefonnummer krävs för beställning.' });
+    const idempotency = await beginOrderIdempotency(req.headers['idempotency-key'], body);
+    if (idempotency.kind === 'replay') {
+      res.setHeader('Idempotent-Replayed', 'true');
+      res.status(201).json(idempotency.response);
       return;
+    }
+    if (idempotency.kind === 'processing') {
+      res.setHeader('Retry-After', '5');
+      res.status(409).json({ error: 'En identisk order behandlas redan. Försök igen om några sekunder.' });
+      return;
+    }
+    if (idempotency.kind === 'conflict') {
+      res.status(409).json({ error: 'Idempotency-Key has already been used for different order data' });
+      return;
+    }
+    idempotencyContext = idempotency.context;
+
+    // Replay a committed order before checking mutable delivery settings.
+    let deliveryQuote: DeliveryQuote | undefined;
+    if (isDelivery) {
+      let pricing;
+      try { pricing = await loadDeliveryPricing(); }
+      catch (error) {
+        logUnexpectedError('POST delivery pricing', error);
+        res.status(503).json({ error: 'Leveranspriser kunde inte hämtas. Försök igen.' });
+        return;
+      }
+      deliveryQuote = quoteDelivery(customer.deliveryInfo!.city, pricing);
+      if (!deliveryQuoteMatches(body.deliveryQuote, deliveryQuote)) {
+        res.status(409).json({
+          code: 'DELIVERY_QUOTE_CHANGED',
+          error: 'Leveransvillkoren har uppdaterats. Kontrollera avgiften och bekräfta beställningen igen.',
+          deliveryPricing: pricing,
+        });
+        return;
+      }
     }
 
     const stockLocationId = stockLocationIdForOrder(orderType, locationId);
     if (stockLocationId) {
       try {
-        const stockProductIds = [
-          ...new Set(
-            productItems
-              .map((it) => resolveProductIdFromLineId(it.productId))
-              .filter((id): id is string => Boolean(id))
-          ),
-        ];
+        const stockProductIds = [...new Set(serverPricedLines.map((line) => line.productId))];
         const unavailable = await outOfStockProductNames(stockProductIds, stockLocationId);
         if (unavailable.length > 0) {
           res.status(403).json({
@@ -262,103 +353,50 @@ router.post('/', async (req: Request, res: Response) => {
           return;
         }
       } catch (e) {
-        console.error('[POST /api/orders] stock check', e);
+        logUnexpectedError('POST /api/orders stock check', e);
+        throw new Error('Stock verification unavailable');
       }
     }
 
     const orderId = generateId();
+    const statusAccess = createOrderStatusToken(orderId, Date.now(), scheduledAt);
     const orderInsert = {
       id: orderId,
-      order_number: orderNumber,
       status: 'ny',
       order_type: orderType,
       payment_method: paymentMethod,
       payment_status: 'pending',
-      total_ore: 0,
       default_preparation_time_minutes: defaultPrep,
       estimated_ready_at: estimatedReady.toISOString(),
       scheduled_at: scheduledAt ? scheduledAt.toISOString() : null,
-      customer_name: customerName,
-      customer_email: customerEmail,
-      customer_phone: customerPhone,
-      delivery_info_json: isDelivery ? {
-        name: customerName, phone: customerPhone, email: customerEmail,
-        address: body.deliveryInfo!.address.trim(),
-        postalCode: body.deliveryInfo!.postalCode.trim(), city: body.deliveryInfo!.city.trim(),
-        pricing: deliveryQuote,
-      } : null,
+      customer_name: customer.customerName,
+      customer_email: customer.customerEmail,
+      customer_phone: customer.customerPhone,
+      delivery_info_json: customer.deliveryInfo ? { ...customer.deliveryInfo, pricing: deliveryQuote } : null,
       location_id: locationId,
+      order_status_token_hash: statusAccess.tokenHash,
+      order_status_token_expires_at: statusAccess.expiresAt,
     };
 
-    const { error: orderInsertError } = await supabase.from('orders').insert(orderInsert);
-    if (orderInsertError) {
-      logSupabaseError('POST /api/orders insert', orderInsertError);
-      res.status(500).json({ error: 'Failed to create order', details: orderInsertError.message });
-      return;
-    }
-
-    let totalOre = 0;
-    const itemRows = [];
-    const productIds = [
-      ...new Set(
-        productItems
-          .map((it) => resolveProductIdFromLineId(it.productId))
-          .filter((id): id is string => Boolean(id))
-      ),
-    ];
-    const catalog = new Map<string, { priceOre: number; variantPrices: Record<string, number> | null; hidden: boolean }>();
-    if (productIds.length > 0) {
-      const { data: catalogRows, error: catalogError } = await supabase
-        .from('products')
-        .select('id, price_ore, variant_prices, hidden')
-        .in('id', productIds);
-      if (catalogError) {
-        logSupabaseError('POST /api/orders products', catalogError);
-        await supabase.from('orders').delete().eq('id', orderId);
-        res.status(500).json({ error: 'Failed to create order', details: catalogError.message });
-        return;
-      }
-      for (const row of catalogRows ?? []) {
-        const id = String((row as Row).id);
-        catalog.set(id, {
-          priceOre: Number((row as Row).price_ore),
-          variantPrices: variantPricesForProduct(id, (row as Row).variant_prices),
-          hidden: (row as Row).hidden === true,
-        });
-      }
-    }
-
-    for (const it of productItems) {
-      const itemId = generateId();
-      const productId = resolveProductIdFromLineId(it.productId);
-      const option = resolveLineOption(it.productId);
-      const catalogProduct = productId ? catalog.get(productId) : undefined;
-      if (catalogProduct?.hidden) {
-        await supabase.from('orders').delete().eq('id', orderId);
-        res.status(400).json({ error: 'En eller flera varor finns inte längre på menyn' });
-        return;
-      }
-      const unitPriceOre = catalogProduct
-        ? resolveUnitPriceOre(catalogProduct.priceOre, catalogProduct.variantPrices, option)
-        : (it.price ?? 0);
-      const quantity = it.quantity ?? 1;
-      totalOre += unitPriceOre * quantity;
-      itemRows.push({
-        id: itemId,
-        order_id: orderId,
-        product_id: productId,
-        product_name_snapshot: sanitizeProductName(String(it.productName ?? '')),
-        quantity,
-        price_ore: unitPriceOre,
-        modifications_json: it.modifications?.length ? it.modifications : null,
-      });
-    }
+    const itemRows: Array<{
+      id: string;
+      product_id: string | null;
+      product_name_snapshot: string;
+      quantity: number;
+      price_ore: number;
+      modifications_json: null;
+    }> = serverPricedLines.map((line) => ({
+      id: generateId(),
+      product_id: line.productId,
+      product_name_snapshot: line.productNameSnapshot,
+      quantity: line.quantity,
+      price_ore: line.priceOre,
+      modifications_json: null,
+    }));
 
     if (isDelivery) {
-      totalOre += deliveryQuote!.feeOre;
       itemRows.push({
         id: generateId(),
-        order_id: orderId,
         product_id: null,
         product_name_snapshot: DELIVERY_FEE_LINE_NAME,
         quantity: 1,
@@ -367,70 +405,58 @@ router.post('/', async (req: Request, res: Response) => {
       });
     }
 
-    const { error: itemsError } = await supabase.from('order_items').insert(itemRows);
-    if (itemsError) {
-      logSupabaseError('POST /api/orders items', itemsError);
-      await supabase.from('orders').delete().eq('id', orderId);
-      res.status(500).json({
-        error: 'Kunde inte spara orderrader',
-        details: itemsError.message,
-      });
-      return;
-    }
-
-    const { error: totalError } = await supabase
-      .from('orders')
-      .update({ total_ore: totalOre })
-      .eq('id', orderId);
-
-    if (totalError) {
-      logSupabaseError('POST /api/orders total', totalError);
-      res.status(500).json({ error: 'Failed to update order total', details: totalError.message });
-      return;
-    }
+    await createOrderAtomic(orderInsert, itemRows);
+    orderPersisted = true;
 
     const result = await getOrderById(orderId);
     if (!result) {
       res.status(500).json({ error: 'Order created but fetch failed' });
       return;
     }
-    const emailOut = String(result.order.customer_email ?? '').trim();
-    if (emailOut && !isOnlinePayment(paymentMethod)) {
-      void sendOrderConfirmationEmail({ order: result.order, items: result.items }).catch((err) =>
-        console.error('[order confirmation email]', err)
-      );
+    const responseBody = {
+      id: String(result.order.id),
+      orderNumber: String(result.order.order_number),
+      totalPrice: Number(result.order.total_ore),
+      locationId: result.order.location_id == null ? null : String(result.order.location_id),
+      checkoutContract: CHECKOUT_CONTRACT_VERSION,
+      statusToken: statusAccess.token,
+    };
+    try {
+      await completeOrderIdempotency(idempotencyContext, responseBody);
+    } catch (error) {
+      logUnexpectedError('order idempotency failed to persist completed response', error);
     }
-
-    const phoneOut = String(result.order.customer_phone ?? '').trim();
-    const smsCustomerName = String(result.order.customer_name ?? '').trim();
-    // Hemleverans får inga SMS – endast "Ta med" och "Äta här".
-    if (phoneOut && !isOnlinePayment(paymentMethod) && !isDelivery) {
-      const schedStr = result.order.scheduled_at ? formatStockholmDateTime(result.order.scheduled_at as string) : '';
-      const schedSuffix = schedStr ? ` Planerad upphämtning: ${schedStr}.` : '';
-      const placeSuffix = await inStorePickupSmsSuffix(result.order);
-      void sendSms(phoneOut, `Tack för din beställning från Mormors Kunafa${smsCustomerName ? ', ' + smsCustomerName : ''}! Vi tar snart emot din beställning.${placeSuffix}${schedSuffix}`).catch((err) =>
-        console.error('[order confirmation sms]', err)
-      );
-    }
-
-    if (!isOnlinePayment(paymentMethod)) {
-      dispatchOrderCreatedEvent(
-        orderId,
-        String(result.order.order_number ?? orderNumber),
-        String(result.order.order_type ?? orderType),
-        result.order.location_id != null ? String(result.order.location_id) : locationId
-      );
-    }
-
-    res.status(201).json(orderRowToOrder(result.order, result.items));
+    res.status(201).json(responseBody);
   } catch (e) {
-    console.error(e);
+    if (e instanceof OrderIdempotencyError) {
+      res.status(400).json({ error: e.message });
+      return;
+    }
+    if (e instanceof OrderValidationError) {
+      res.status(e.status).json({ error: e.message });
+      return;
+    }
+    if (e instanceof CustomerInputError) {
+      res.status(400).json({ error: e.message });
+      return;
+    }
+    logUnexpectedError('POST /api/orders', e);
     res.status(500).json({ error: 'Failed to create order' });
+  } finally {
+    // Keep the short processing lock after a persisted order fails so an
+    // immediate retry cannot create a duplicate partial order.
+    if (idempotencyContext && !orderPersisted) {
+      try {
+        await abandonOrderIdempotency(idempotencyContext);
+      } catch (error) {
+        logUnexpectedError('order idempotency cleanup', error);
+      }
+    }
   }
 });
 
 // Stripe Checkout: start payment for an existing order (must be before GET /:id)
-router.post('/checkout-session/:orderId', async (req: Request, res: Response) => {
+router.post('/checkout-session/:orderId', requireCurrentCheckoutContract, checkoutLimiter, async (req: Request, res: Response) => {
   try {
     let stripe;
     try {
@@ -440,7 +466,8 @@ router.post('/checkout-session/:orderId', async (req: Request, res: Response) =>
       return;
     }
 
-    const orderId = paramId(req, 'orderId');
+    const orderId = singleRouteParam(req.params.orderId);
+    if (!await requireOrderStatusToken(req, res, orderId)) return;
     const result = await getOrderById(orderId);
     if (!result) {
       res.status(404).json({ error: 'Order not found' });
@@ -452,15 +479,32 @@ router.post('/checkout-session/:orderId', async (req: Request, res: Response) =>
       res.status(400).json({ error: 'Order does not use card payment' });
       return;
     }
-    if (String(order.payment_status ?? '') !== 'pending') {
-      res.status(400).json({ error: 'Order is not awaiting payment' });
+    if (!canStartOrderPayment(order)) {
+      res.status(409).json({ error: 'Order is not eligible for payment' });
       return;
     }
 
     const totalOre = Number(order.total_ore ?? 0);
-    if (totalOre <= 0) {
+    if (!Number.isSafeInteger(totalOre) || totalOre <= 0) {
       res.status(400).json({ error: 'Order has no payable total' });
       return;
+    }
+
+    const storedSessionId = String(order.stripe_checkout_session_id ?? '').trim();
+    if (storedSessionId) {
+      const existingSession = await stripe.checkout.sessions.retrieve(storedSessionId);
+      if (existingSession.status === 'open' && existingSession.url) {
+        res.json({ url: existingSession.url });
+        return;
+      }
+      if (existingSession.payment_status === 'paid') {
+        res.status(409).json({ error: 'Order payment has already completed' });
+        return;
+      }
+      if (existingSession.status !== 'expired') {
+        res.status(409).json({ error: 'Order already has an active checkout session' });
+        return;
+      }
     }
 
     const base = getPublicWebAppUrl();
@@ -484,20 +528,37 @@ router.post('/checkout-session/:orderId', async (req: Request, res: Response) =>
 
     const custEmail = order.customer_email ? String(order.customer_email).trim() : '';
 
-    const session = await stripe.checkout.sessions.create({
-      mode: 'payment',
-      payment_method_types: ['card'],
-      ...(custEmail ? { customer_email: custEmail } : {}),
-      line_items: lineItems,
-      metadata: { orderId },
-      success_url: successUrl,
-      cancel_url: cancelUrl,
-    });
+    const session = await stripe.checkout.sessions.create(
+      {
+        mode: 'payment',
+        payment_method_types: ['card'],
+        client_reference_id: orderId,
+        ...(custEmail ? { customer_email: custEmail } : {}),
+        line_items: lineItems,
+        metadata: { orderId },
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+      },
+      {
+        // Concurrent retries for the same attempt receive the same Stripe object.
+        idempotencyKey: `checkout-${orderId}-${storedSessionId || 'initial'}`,
+      }
+    );
 
-    const { error: stripeUpdateError } = await supabase
+    if (!session.url) {
+      res.status(500).json({ error: 'Checkout session missing URL' });
+      return;
+    }
+
+    const updateQuery = supabase
       .from('orders')
       .update({ stripe_checkout_session_id: session.id })
-      .eq('id', orderId);
+      .eq('id', orderId)
+      .eq('status', 'ny')
+      .eq('payment_status', 'pending');
+    const { data: updatedRows, error: stripeUpdateError } = storedSessionId
+      ? await updateQuery.eq('stripe_checkout_session_id', storedSessionId).select('id')
+      : await updateQuery.is('stripe_checkout_session_id', null).select('id');
 
     if (stripeUpdateError) {
       logSupabaseError('checkout-session stripe id', stripeUpdateError);
@@ -505,20 +566,30 @@ router.post('/checkout-session/:orderId', async (req: Request, res: Response) =>
       return;
     }
 
-    if (!session.url) {
-      res.status(500).json({ error: 'Checkout session missing URL' });
+    if (!updatedRows || updatedRows.length === 0) {
+      const current = await getOrderById(orderId);
+      if (!current || !canStartOrderPayment(current.order) ||
+        String(current.order.stripe_checkout_session_id ?? '') !== session.id) {
+        res.status(409).json({ error: 'Checkout session changed; retry the request' });
+        return;
+      }
+    }
+
+    if (String(session.currency ?? '').toLowerCase() !== 'sek' || session.mode !== 'payment') {
+      console.error('[checkout-session] Stripe returned unexpected session configuration');
+      res.status(502).json({ error: 'Invalid checkout session configuration' });
       return;
     }
 
     res.json({ url: session.url });
   } catch (e) {
-    console.error(e);
+    logUnexpectedError('POST /api/orders/checkout-session/:orderId', e);
     res.status(500).json({ error: 'Failed to create checkout session' });
   }
 });
 
 /** Confirm card payment after Stripe redirect (backup when webhook is slow/missing). */
-router.post('/stripe-confirm', async (req: Request, res: Response) => {
+router.post('/stripe-confirm', requireCurrentCheckoutContract, paymentConfirmLimiter, async (req: Request, res: Response) => {
   try {
     const orderId = String(req.body?.orderId ?? '').trim();
     const sessionId = String(req.body?.sessionId ?? '').trim();
@@ -526,6 +597,7 @@ router.post('/stripe-confirm', async (req: Request, res: Response) => {
       res.status(400).json({ error: 'orderId and sessionId required' });
       return;
     }
+    if (!await requireOrderStatusToken(req, res, orderId)) return;
 
     const outcome = await confirmStripeCheckoutSession(orderId, sessionId);
     if (!outcome.ok) {
@@ -534,22 +606,22 @@ router.post('/stripe-confirm', async (req: Request, res: Response) => {
       return;
     }
 
-    const result = await getOrderById(orderId);
-    if (!result) {
+    const order = await fetchOrderRow(orderId);
+    if (!order) {
       res.status(404).json({ error: 'Order not found' });
       return;
     }
-    res.json(orderRowToOrder(result.order, result.items));
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json(orderRowToPublicStatus(order));
   } catch (e) {
-    console.error('[stripe-confirm]', e);
+    logUnexpectedError('stripe confirm', e);
     res.status(500).json({ error: 'Failed to confirm payment' });
   }
 });
 
 // Admin routes must be before /:id so /admin/active is not matched as id=admin
 
-// Admin: pending orders (status 'ny', waiting for acceptance).
-// Excludes pre-orders scheduled for a future date (in Europe/Stockholm time).
+// Admin: every paid order still waiting for acceptance, including pre-orders.
 router.get('/admin/pending', requireAdmin, async (req: Request, res: Response) => {
   try {
     const { data, error } = await supabase
@@ -561,18 +633,13 @@ router.get('/admin/pending', requireAdmin, async (req: Request, res: Response) =
 
     if (error) {
       logSupabaseError('GET /admin/pending', error);
-      res.status(500).json({ error: 'Failed to fetch pending orders', details: error.message });
+      res.status(500).json({ error: 'Failed to fetch pending orders' });
       return;
     }
 
-    const today = todayInStockholm();
-    const sameDay = (data ?? []).filter((r) => {
-      const schedDate = toStockholmDateString((r as Row).scheduled_at as Date | string | null);
-      return schedDate == null || schedDate <= today;
-    });
-    res.json(await rowsToOrders(await ordersVisibleToRequest(req, sameDay as Row[])));
+    res.json(await rowsToOrders(await ordersVisibleToRequest(req, (data ?? []) as Row[])));
   } catch (e) {
-    console.error('[GET /admin/pending]', e);
+    logUnexpectedError('GET /admin/pending', e);
     res.status(500).json({ error: 'Failed to fetch pending orders' });
   }
 });
@@ -580,10 +647,17 @@ router.get('/admin/pending', requireAdmin, async (req: Request, res: Response) =
 // Admin: accept order (ny → mottagen), optionally adjust estimated time
 router.patch('/admin/:id/accept', requireAdmin, async (req: Request, res: Response) => {
   try {
-    const id = paramId(req);
     const { extraMinutes } = req.body as { extraMinutes?: number };
 
-    const result = await getOrderById(id);
+    if (
+      extraMinutes != null &&
+      (!Number.isInteger(extraMinutes) || extraMinutes < -180 || extraMinutes > 180)
+    ) {
+      res.status(400).json({ error: 'extraMinutes must be an integer between -180 and 180' });
+      return;
+    }
+
+    const result = await getOrderById(singleRouteParam(req.params.id));
     if (!result) {
       res.status(404).json({ error: 'Order not found' });
       return;
@@ -601,41 +675,45 @@ router.patch('/admin/:id/accept', requireAdmin, async (req: Request, res: Respon
       return;
     }
 
-    const defaultPrep = Number(result.order.default_preparation_time_minutes) || 30;
-    const totalMinutes = defaultPrep + (extraMinutes ?? 0);
-    const estimatedReady = new Date(Date.now() + totalMinutes * 60 * 1000);
+    const storedReadyTime = typeof result.order.estimated_ready_at === 'string'
+      ? new Date(result.order.estimated_ready_at)
+      : null;
+    const hasStoredReadyTime = storedReadyTime != null && !Number.isNaN(storedReadyTime.getTime());
+    const shouldAdjustReadyTime = extraMinutes != null && extraMinutes !== 0;
+    const estimatedReady = resolveAcceptedReadyTime(
+      result.order.estimated_ready_at,
+      result.order.default_preparation_time_minutes,
+      extraMinutes ?? 0
+    );
+    if (shouldAdjustReadyTime && estimatedReady.getTime() <= Date.now()) {
+      res.status(400).json({ error: 'Den justerade klartiden måste ligga i framtiden.' });
+      return;
+    }
 
-    await updateOrder(id, {
-      status: 'mottagen',
-      estimated_ready_at: estimatedReady.toISOString(),
-    });
+    const persistedReadyTime = shouldAdjustReadyTime || !hasStoredReadyTime
+      ? estimatedReady.toISOString()
+      : null;
+    const accepted = await acceptOrderWithMessages(
+      singleRouteParam(req.params.id),
+      persistedReadyTime,
+      nowIso()
+    );
+    if (!accepted) {
+      res.status(409).json({ error: 'Order status changed before it could be accepted' });
+      return;
+    }
 
-    const updated = await getOrderById(id);
+    const updated = await getOrderById(singleRouteParam(req.params.id));
     if (!updated) {
       res.status(500).json({ error: 'Accept succeeded but fetch failed' });
       return;
     }
 
-    const phoneOut = String(updated.order.customer_phone ?? '').trim();
-    const customerName = String(updated.order.customer_name ?? '').trim();
-    // Hemleverans får inga SMS – endast "Ta med" och "Äta här".
-    if (phoneOut && String(updated.order.order_type ?? '') !== 'delivery') {
-      const readyTimeStr = estimatedReady.toLocaleTimeString('sv-SE', {
-        timeZone: 'Europe/Stockholm',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-      const placeSuffix = await inStorePickupSmsSuffix(updated.order);
-      void sendSms(phoneOut, `Hej${customerName ? ', ' + customerName : ''}! Din order är mottagen och beräknas vara klar kl ${readyTimeStr}.${placeSuffix}`).catch((err) =>
-        console.error('[order accepted sms]', err)
-      );
-    }
-
     const payload = orderRowToOrder(updated.order, updated.items);
-    payload.estimatedReadyTime = estimatedReady.toISOString();
+    payload.estimatedReadyTime = new Date(String(updated.order.estimated_ready_at)).toISOString();
     res.json(payload);
   } catch (e) {
-    console.error(e);
+    logUnexpectedError('POST /admin/:id/accept', e);
     res.status(500).json({ error: 'Failed to accept order' });
   }
 });
@@ -652,12 +730,12 @@ router.get('/admin/active', requireAdmin, async (req: Request, res: Response) =>
 
     if (error) {
       logSupabaseError('GET /admin/active', error);
-      res.status(500).json({ error: 'Failed to fetch active orders', details: error.message });
+      res.status(500).json({ error: 'Failed to fetch active orders' });
       return;
     }
     res.json(await rowsToOrders(await ordersVisibleToRequest(req, (data ?? []) as Row[])));
   } catch (e) {
-    console.error('[GET /admin/active]', e);
+    logUnexpectedError('GET /admin/active', e);
     res.status(500).json({ error: 'Failed to fetch active orders' });
   }
 });
@@ -676,7 +754,7 @@ router.get('/admin/pre-orders', requireAdmin, async (req: Request, res: Response
 
     if (error) {
       logSupabaseError('GET /admin/pre-orders', error);
-      res.status(500).json({ error: 'Failed to fetch pre-orders', details: error.message });
+      res.status(500).json({ error: 'Failed to fetch pre-orders' });
       return;
     }
 
@@ -687,7 +765,7 @@ router.get('/admin/pre-orders', requireAdmin, async (req: Request, res: Response
     });
     res.json(await rowsToOrders(await ordersVisibleToRequest(req, futureOnly as Row[])));
   } catch (e) {
-    console.error('[GET /admin/pre-orders]', e);
+    logUnexpectedError('GET /admin/pre-orders', e);
     res.status(500).json({ error: 'Failed to fetch pre-orders' });
   }
 });
@@ -695,9 +773,9 @@ router.get('/admin/pre-orders', requireAdmin, async (req: Request, res: Response
 // Admin: history
 router.get('/admin/history', requireAdmin, async (req: Request, res: Response) => {
   try {
-    const limit = Math.min(Number(req.query.limit) || 50, 500);
-    const dateFrom = req.query.from as string | undefined;
-    const dateTo = req.query.to as string | undefined;
+    const limit = parseHistoryLimit(req.query.limit);
+    const dateFrom = parseDateOnly(req.query.from, 'Från-datum');
+    const dateTo = parseDateOnly(req.query.to, 'Till-datum');
 
     let query = supabase
       .from('orders')
@@ -718,160 +796,174 @@ router.get('/admin/history', requireAdmin, async (req: Request, res: Response) =
     const { data, error } = await query;
     if (error) {
       logSupabaseError('GET /admin/history', error);
-      res.status(500).json({ error: 'Failed to fetch history', details: error.message });
+      res.status(500).json({ error: 'Failed to fetch history' });
       return;
     }
     res.json(await rowsToOrders(await ordersVisibleToRequest(req, (data ?? []) as Row[])));
   } catch (e) {
-    console.error(e);
+    if (e instanceof AdminInputError) {
+      res.status(400).json({ error: e.message });
+      return;
+    }
+    logUnexpectedError('GET /admin/history', e);
     res.status(500).json({ error: 'Failed to fetch history' });
   }
 });
 
-// Admin: delete all history (completed/cancelled orders only) — must be before :id route.
-// Uses POST so a password can be supplied in the body.
-router.post('/admin/history/all/delete', requireAdmin, requireOwner, async (req: Request, res: Response) => {
-  try {
-    const { password } = req.body as { password?: string };
-    const deletePassword = process.env.DELETE_PASSWORD;
-    if (!deletePassword || !password || password !== deletePassword) {
-      res.status(401).json({ error: 'Felaktigt lösenord' });
-      return;
-    }
-    const { error } = await supabase
-      .from('orders')
-      .delete()
-      .in('status', ['klar', 'avbruten', 'uthämtad', 'levererad']);
+function rejectAccountingHistoryDeletion(res: Response): void {
+  res.status(409).json({
+    code: 'ACCOUNTING_HISTORY_PROTECTED',
+    error: 'Orderhistorik får inte raderas. Använd avbokning och den granskade anonymiseringsprocessen.',
+  });
+}
 
-    if (error) {
-      logSupabaseError('DELETE /admin/history/all', error);
-      res.status(500).json({ error: 'Failed to clear history', details: error.message });
-      return;
-    }
-    res.status(204).end();
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: 'Failed to clear history' });
-  }
+// Compatibility endpoints for older admin clients. Physical deletion could
+// remove the only receipt/payment evidence, so every authenticated request is
+// rejected. The database trigger provides a second boundary for paid or
+// operational orders while still permitting guarded abandoned-draft cleanup.
+router.post('/admin/history/all/delete', requireAdmin, requireOwner, (_req: Request, res: Response) => {
+  rejectAccountingHistoryDeletion(res);
 });
 
-// Admin: delete single order. Uses POST so a password can be supplied in the body.
-router.post('/admin/:id/delete', requireAdmin, async (req: Request, res: Response) => {
-  try {
-    const id = paramId(req);
-    const { password } = req.body as { password?: string };
-    const deletePassword = process.env.DELETE_PASSWORD;
-    if (!deletePassword || !password || password !== deletePassword) {
-      res.status(401).json({ error: 'Felaktigt lösenord' });
-      return;
-    }
-
-    const existing = await getOrderById(id);
-    if (!existing) {
-      res.status(404).json({ error: 'Order not found' });
-      return;
-    }
-    if (!(await assertOrderVisible(req, res, existing.order))) return;
-
-    const { error } = await supabase.from('orders').delete().eq('id', id);
-    if (error) {
-      logSupabaseError('DELETE /admin/:id', error);
-      res.status(500).json({ error: 'Failed to delete order', details: error.message });
-      return;
-    }
-    res.status(204).end();
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: 'Failed to delete order' });
-  }
+router.post('/admin/:id/delete', requireAdmin, (_req: Request, res: Response) => {
+  rejectAccountingHistoryDeletion(res);
 });
 
 // Admin: cancel order (password protected).
 router.post('/admin/:id/cancel', requireAdmin, async (req: Request, res: Response) => {
   try {
-    const id = paramId(req);
     const { password, cancellationReason } = req.body as { password?: string; cancellationReason?: string };
     const deletePassword = process.env.DELETE_PASSWORD;
-    if (!deletePassword || !password || password !== deletePassword) {
+    if (!deletePassword || !password || !safeCompareStrings(password, deletePassword)) {
       res.status(401).json({ error: 'Felaktigt lösenord' });
       return;
     }
-    if (!cancellationReason || !cancellationReason.trim()) {
+    let reason: string;
+    try {
+      reason = sanitizeOperationalText(cancellationReason, 'Avbokningsorsak', 500);
+    } catch (error) {
+      if (error instanceof CustomerInputError) {
+        res.status(400).json({ error: error.message });
+        return;
+      }
+      throw error;
+    }
+    if (!reason) {
       res.status(400).json({ error: 'cancellationReason is required' });
       return;
     }
 
-    const existing = await getOrderById(id);
+    const existing = await getOrderById(singleRouteParam(req.params.id));
     if (!existing) {
       res.status(404).json({ error: 'Order not found' });
       return;
     }
     if (!(await assertOrderVisible(req, res, existing.order))) return;
-    await updateOrder(id, {
+    const currentStatus = existing.order.status;
+    if (!isOrderStatus(currentStatus) || !canTransitionOrderStatus(currentStatus, 'avbruten')) {
+      res.status(409).json({ error: 'Order cannot be cancelled from its current status' });
+      return;
+    }
+    if (!canCancelOrderPayment(existing.order)) {
+      res.status(409).json({
+        error: 'Online payment must be confirmed and fully refunded before cancellation',
+      });
+      return;
+    }
+
+    const cancelled = await compareAndUpdateOrder(singleRouteParam(req.params.id), currentStatus, {
       status: 'avbruten',
       cancelled_at: existing.order.cancelled_at
         ? String(existing.order.cancelled_at)
         : nowIso(),
-      cancellation_reason: cancellationReason.trim(),
-    });
+      cancellation_reason: reason,
+    }, existing.order);
+    if (!cancelled) {
+      res.status(409).json({ error: 'Order status changed before it could be cancelled' });
+      return;
+    }
 
-    const result = await getOrderById(id);
+    const result = await getOrderById(singleRouteParam(req.params.id));
     if (!result) {
       res.status(404).json({ error: 'Order not found' });
       return;
     }
     res.json(orderRowToOrder(result.order, result.items));
   } catch (e) {
-    console.error(e);
+    logUnexpectedError('POST /admin/:id/cancel', e);
     res.status(500).json({ error: 'Failed to cancel order' });
   }
 });
 
-// Admin: update status
-router.patch('/admin/:id/status', requireAdmin, async (req: Request, res: Response) => {
+router.post('/admin/:id/revoke-status-token', requireAdmin, requireOrderAccess, async (req: Request, res: Response) => {
   try {
-    const id = paramId(req);
-    const { status, estimatedReadyTime, cancellationReason } = req.body as {
+    const { data, error } = await supabase
+      .from('orders')
+      .update({
+        order_status_token_hash: null,
+        order_status_token_expires_at: null,
+        updated_at: nowIso(),
+      })
+      .eq('id', singleRouteParam(req.params.id))
+      .select('id')
+      .maybeSingle();
+    if (error) {
+      logSupabaseError('POST /admin/:id/revoke-status-token', error);
+      res.status(500).json({ error: 'Failed to revoke order status token' });
+      return;
+    }
+    if (!data) {
+      res.status(404).json({ error: 'Order not found' });
+      return;
+    }
+    res.status(204).send();
+  } catch (error) {
+    logUnexpectedError('POST /admin/:id/revoke-status-token', error);
+    res.status(500).json({ error: 'Failed to revoke order status token' });
+  }
+});
+
+// Admin: update status
+router.patch('/admin/:id/status', requireAdmin, requireOrderAccess, async (req: Request, res: Response) => {
+  try {
+    const { status, estimatedReadyTime } = req.body as {
       status?: string;
       estimatedReadyTime?: string;
-      cancellationReason?: string;
     };
-    if (!status || !['ny', 'mottagen', 'påbörjad', 'klar', 'avbruten', 'uthämtad', 'levererad'].includes(status)) {
+    if (!isOrderStatus(status) || !canUseGeneralStatusRoute(status)) {
       res.status(400).json({ error: 'Invalid status' });
       return;
     }
-    if (status === 'avbruten' && (!cancellationReason || !cancellationReason.trim())) {
-      res.status(400).json({ error: 'cancellationReason is required when status is avbruten' });
-      return;
-    }
 
-    const existing = await getOrderById(id);
+    const existing = await getOrderById(singleRouteParam(req.params.id));
     if (!existing) {
       res.status(404).json({ error: 'Order not found' });
       return;
     }
-    if (!(await assertOrderVisible(req, res, existing.order))) return;
-    const patch: Record<string, unknown> = { status };
-    if (estimatedReadyTime) {
-      patch.estimated_ready_at = new Date(estimatedReadyTime).toISOString();
+    const currentStatus = existing.order.status;
+    if (!isOrderStatus(currentStatus) || !canTransitionOrderStatus(currentStatus, status)) {
+      res.status(409).json({ error: 'Invalid order status transition' });
+      return;
     }
+
+    const patch: Record<string, unknown> = { status };
+    const parsedReadyTime = parseEstimatedReadyTime(estimatedReadyTime);
+    if (parsedReadyTime) patch.estimated_ready_at = parsedReadyTime;
     if (status === 'påbörjad') {
-      patch.started_at = existing?.order.started_at ? String(existing.order.started_at) : nowIso();
+      patch.started_at = existing.order.started_at ? String(existing.order.started_at) : nowIso();
     }
     if (status === 'klar') {
-      patch.completed_at = existing?.order.completed_at
+      patch.completed_at = existing.order.completed_at
         ? String(existing.order.completed_at)
         : nowIso();
     }
-    if (status === 'avbruten') {
-      patch.cancelled_at = existing?.order.cancelled_at
-        ? String(existing.order.cancelled_at)
-        : nowIso();
-      patch.cancellation_reason = cancellationReason?.trim() ?? null;
+    const updated = await compareAndUpdateOrder(singleRouteParam(req.params.id), currentStatus, patch);
+    if (!updated) {
+      res.status(409).json({ error: 'Order status changed before it could be updated' });
+      return;
     }
-    await updateOrder(id, patch);
 
-    const result = await getOrderById(id);
+    const result = await getOrderById(singleRouteParam(req.params.id));
     if (!result) {
       res.status(404).json({ error: 'Order not found' });
       return;
@@ -879,7 +971,11 @@ router.patch('/admin/:id/status', requireAdmin, async (req: Request, res: Respon
 
     res.json(orderRowToOrder(result.order, result.items));
   } catch (e) {
-    console.error(e);
+    if (e instanceof AdminInputError) {
+      res.status(400).json({ error: e.message });
+      return;
+    }
+    logUnexpectedError('PATCH /admin/:id/status', e);
     res.status(500).json({ error: 'Failed to update status' });
   }
 });
@@ -887,35 +983,36 @@ router.patch('/admin/:id/status', requireAdmin, async (req: Request, res: Respon
 // Admin: update time
 router.patch('/admin/:id/time', requireAdmin, async (req: Request, res: Response) => {
   try {
-    const id = paramId(req);
     const { estimatedReadyTime, preparationTime } = req.body as { estimatedReadyTime?: string; preparationTime?: number };
     const patch: Record<string, unknown> = {};
-    if (estimatedReadyTime) {
-      patch.estimated_ready_at = new Date(estimatedReadyTime).toISOString();
-    }
-    if (typeof preparationTime === 'number') {
-      patch.default_preparation_time_minutes = preparationTime;
-    }
+    const parsedReadyTime = parseEstimatedReadyTime(estimatedReadyTime);
+    const parsedPreparationTime = parsePreparationMinutes(preparationTime);
+    if (parsedReadyTime) patch.estimated_ready_at = parsedReadyTime;
+    if (parsedPreparationTime != null) patch.default_preparation_time_minutes = parsedPreparationTime;
     if (Object.keys(patch).length === 0) {
       res.status(400).json({ error: 'estimatedReadyTime or preparationTime required' });
       return;
     }
-    const existing = await getOrderById(id);
+    const existing = await getOrderById(singleRouteParam(req.params.id));
     if (!existing) {
       res.status(404).json({ error: 'Order not found' });
       return;
     }
     if (!(await assertOrderVisible(req, res, existing.order))) return;
-    await updateOrder(id, patch);
+    await updateOrder(singleRouteParam(req.params.id), patch);
 
-    const result = await getOrderById(id);
+    const result = await getOrderById(singleRouteParam(req.params.id));
     if (!result) {
       res.status(404).json({ error: 'Order not found' });
       return;
     }
     res.json(orderRowToOrder(result.order, result.items));
   } catch (e) {
-    console.error(e);
+    if (e instanceof AdminInputError) {
+      res.status(400).json({ error: e.message });
+      return;
+    }
+    logUnexpectedError('PATCH /admin/:id/time', e);
     res.status(500).json({ error: 'Failed to update time' });
   }
 });
@@ -923,27 +1020,30 @@ router.patch('/admin/:id/time', requireAdmin, async (req: Request, res: Response
 // Admin: update internal notes
 router.patch('/admin/:id/notes', requireAdmin, async (req: Request, res: Response) => {
   try {
-    const id = paramId(req);
     const { internalNotes } = req.body as { internalNotes?: string };
-    const trimmed = typeof internalNotes === 'string' ? internalNotes.trim() : '';
-    const existing = await getOrderById(id);
+    const notes = parseInternalNotes(internalNotes);
+    const existing = await getOrderById(singleRouteParam(req.params.id));
     if (!existing) {
       res.status(404).json({ error: 'Order not found' });
       return;
     }
     if (!(await assertOrderVisible(req, res, existing.order))) return;
-    await updateOrder(id, {
-      internal_notes: trimmed.length > 0 ? trimmed : null,
+    await updateOrder(singleRouteParam(req.params.id), {
+      internal_notes: notes,
     });
 
-    const result = await getOrderById(id);
+    const result = await getOrderById(singleRouteParam(req.params.id));
     if (!result) {
       res.status(404).json({ error: 'Order not found' });
       return;
     }
     res.json(orderRowToOrder(result.order, result.items));
   } catch (e) {
-    console.error(e);
+    if (e instanceof AdminInputError) {
+      res.status(400).json({ error: e.message });
+      return;
+    }
+    logUnexpectedError('PATCH /admin/:id/notes', e);
     res.status(500).json({ error: 'Failed to update internal notes' });
   }
 });
@@ -951,8 +1051,7 @@ router.patch('/admin/:id/notes', requireAdmin, async (req: Request, res: Respons
 // Admin: print receipt
 router.post('/admin/:id/print', requireAdmin, async (req: Request, res: Response) => {
   try {
-    const id = paramId(req);
-    const result = await getOrderById(id);
+    const result = await getOrderById(singleRouteParam(req.params.id));
     if (!result) {
       res.status(404).json({ error: 'Order not found' });
       return;
@@ -971,7 +1070,7 @@ router.post('/admin/:id/print', requireAdmin, async (req: Request, res: Response
     
     res.json({ success: true, message: 'Kvitto utskrivet' });
   } catch (e) {
-    console.error(e);
+    logUnexpectedError('POST /admin/:id/print', e);
     res.status(500).json({ error: 'Failed to print receipt' });
   }
 });
@@ -997,22 +1096,24 @@ router.get('/settings', async (_req: Request, res: Response) => {
 
     res.json(await adminSettingsFromRow(data as Row));
   } catch (e) {
-    console.error('[GET /api/orders/settings]', e);
+    logUnexpectedError('GET /api/orders/settings', e);
     res.status(500).json({ error: 'Failed to fetch settings' });
   }
 });
 
-router.get('/:id', async (req: Request, res: Response) => {
+router.get('/:id', orderStatusLimiter, async (req: Request, res: Response) => {
   try {
-    const id = paramId(req);
-    const result = await getOrderById(id);
-    if (!result) {
+    const orderId = singleRouteParam(req.params.id);
+    if (!await requireOrderStatusToken(req, res, orderId)) return;
+    const order = await fetchOrderRow(orderId);
+    if (!order) {
       res.status(404).json({ error: 'Order not found' });
       return;
     }
-    res.json(orderRowToOrder(result.order, result.items));
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json(orderRowToPublicStatus(order));
   } catch (e) {
-    console.error(e);
+    logUnexpectedError('GET /api/orders/:id', e);
     res.status(500).json({ error: 'Failed to fetch order' });
   }
 });

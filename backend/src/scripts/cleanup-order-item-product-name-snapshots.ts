@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { supabase, logSupabaseError, type Row } from '../db/connection.js';
 import { sanitizeProductName } from '../utils/sanitizeProductName.js';
+import { logUnexpectedError } from '../utils/safeErrorMetadata.js';
 
 const BATCH_SIZE = 500;
 
@@ -57,6 +58,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error(error);
+  logUnexpectedError('cleanup order item snapshots failed', error);
   process.exit(1);
 });

@@ -13,6 +13,17 @@ export function isSwishPayment(method: string): boolean {
   return method.trim().toLowerCase() === 'swish';
 }
 
+export function isPublicPaymentMethodAvailable(
+  method: string,
+  providers: { stripe: boolean; swish: boolean }
+): boolean {
+  const normalized = method.trim().toLowerCase();
+  return (
+    (normalized === 'card' && providers.stripe) ||
+    (normalized === 'swish' && providers.swish)
+  );
+}
+
 export const ALLOWED_PAYMENT_METHODS = ['card', 'swish', 'cash', 'app'] as const;
 
 export function isAllowedPaymentMethod(method: string): boolean {

@@ -1,7 +1,14 @@
 import { Resend } from 'resend';
 import type { Row } from '../db/connection.js';
 import { formatStockholmDateTime } from '../utils/stockholmWallTime.js';
+import { includedVatForReceipt } from '../shared/utils/vat.js';
+import { formatVerifiedReceiptDate } from '../utils/receiptDate.js';
+import {
+  getPublicWebAppUrl,
+  normalizePublicHttpsAssetUrl,
+} from '../utils/publicWebAppUrl.js';
 import { getLocationById, pickupPlaceLabel } from '../db/locations.js';
+import { OutboundDeliveryError } from './outboundDeliveryError.js';
 
 /** Same asset as `apps/web/public/images/logo.png` (must resolve to an absolute public URL in email). */
 const ORDER_EMAIL_LOGO_PUBLIC_PATH = '/images/logo.png';
@@ -43,11 +50,9 @@ function orderTypeLabelSv(orderType: string): string {
  * Without a domain, set `ORDER_EMAIL_LOGO_URL` to a direct image link (temporary host).
  */
 function logoUrl(): string | undefined {
-  const explicit = process.env.ORDER_EMAIL_LOGO_URL?.trim();
+  const explicit = normalizePublicHttpsAssetUrl(process.env.ORDER_EMAIL_LOGO_URL);
   if (explicit) return explicit;
-  const base = process.env.SITE_PUBLIC_URL?.trim().replace(/\/$/, '');
-  if (base) return `${base}${ORDER_EMAIL_LOGO_PUBLIC_PATH}`;
-  return undefined;
+  return `${getPublicWebAppUrl()}${ORDER_EMAIL_LOGO_PUBLIC_PATH}`;
 }
 
 function parseModifications(raw: Row['modifications_json']): string[] {
@@ -67,15 +72,37 @@ function parseModifications(raw: Row['modifications_json']): string[] {
 export type OrderConfirmationRowContext = {
   order: Row;
   items: Row[];
+  /** Server timestamp captured by the verified payment transition. */
+  paidAt?: string;
+  /** Stable across retries for this one order/event/channel job. */
+  idempotencyKey: string;
 };
 
-/** Fire-and-forget from order router; logs errors, never throws. */
-export async function sendOrderConfirmationEmail(ctx: OrderConfirmationRowContext): Promise<void> {
+export function classifyResendFailure(statusCode: number | null | undefined): OutboundDeliveryError {
+  // Resend represents transport failures as an error with statusCode=null.
+  // The stable per-job idempotency key makes retrying that unknown response safe.
+  if (statusCode == null) {
+    return new OutboundDeliveryError('retryable', 'provider_network_error');
+  }
+  if (statusCode === 429 || (statusCode != null && statusCode >= 500)) {
+    return new OutboundDeliveryError('retryable', statusCode === 429 ? 'provider_rate_limited' : 'provider_unavailable', statusCode ?? undefined);
+  }
+  return new OutboundDeliveryError('permanent', 'provider_rejected', statusCode ?? undefined);
+}
+
+export async function sendOrderConfirmationEmail(
+  ctx: OrderConfirmationRowContext
+): Promise<{ providerMessageId: string }> {
   const apiKey = process.env.RESEND_API_KEY?.trim();
-  if (!apiKey) return;
+  if (!apiKey) throw new OutboundDeliveryError('permanent', 'provider_not_configured');
 
   const to = String(ctx.order.customer_email ?? '').trim();
-  if (!to || !isValidEmail(to)) return;
+  if (!to || !isValidEmail(to)) {
+    throw new OutboundDeliveryError('permanent', 'invalid_recipient');
+  }
+  if (!/^[A-Za-z0-9_./:-]{16,255}$/.test(ctx.idempotencyKey)) {
+    throw new OutboundDeliveryError('permanent', 'invalid_idempotency_key');
+  }
 
   const from = process.env.RESEND_FROM_EMAIL?.trim() || 'onboarding@resend.dev';
   const customerName = String(ctx.order.customer_name ?? '').trim();
@@ -85,25 +112,15 @@ export async function sendOrderConfirmationEmail(ctx: OrderConfirmationRowContex
   const imgSrc = logoUrl();
 
   // Förenklad faktura (kvitto): priserna inkluderar moms, så momsen räknas ut baklänges.
-  const VAT_RATE = 6;
-  const vatOre = Math.round((totalOre * VAT_RATE) / (100 + VAT_RATE));
+  const { rate: vatRate, vatOre } = includedVatForReceipt(
+    totalOre,
+    ctx.order.order_type,
+    ctx.order.receipt_vat_rate_percent,
+    ctx.order.receipt_vat_ore
+  );
 
-  // Kvittodatum: tidpunkten då köpet genomfördes.
-  const createdAtRaw = ctx.order.created_at as Date | string | null | undefined;
-  let receiptDateSv = '';
-  if (createdAtRaw != null) {
-    const d = createdAtRaw instanceof Date ? createdAtRaw : new Date(createdAtRaw);
-    if (!Number.isNaN(d.getTime())) {
-      receiptDateSv = new Intl.DateTimeFormat('sv-SE', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        timeZone: 'Europe/Stockholm',
-      }).format(d);
-    }
-  }
+  // A receipt must use the verified payment instant, never the pending-order creation time.
+  const receiptDateSv = formatVerifiedReceiptDate(ctx.paidAt);
 
   // Planerat datum/tid om angivet.
   const scheduledAtRaw = ctx.order.scheduled_at as Date | string | null | undefined;
@@ -184,7 +201,7 @@ export async function sendOrderConfirmationEmail(ctx: OrderConfirmationRowContex
             <td style="padding-top:18px;text-align:right;font-size:17px;color:#1A3D32"><strong>${formatSekFromOre(totalOre)}</strong></td>
           </tr>
           <tr>
-            <td style="padding-top:6px;font-size:13px;color:#555">Varav ${VAT_RATE}% moms</td>
+            <td style="padding-top:6px;font-size:13px;color:#555">Varav ${vatRate}% moms</td>
             <td style="padding-top:6px;text-align:right;font-size:13px;color:#555">${formatSekFromOre(vatOre)}</td>
           </tr>
         </tbody>
@@ -203,15 +220,23 @@ export async function sendOrderConfirmationEmail(ctx: OrderConfirmationRowContex
 </body>
 </html>`.trim();
 
-  const resend = new Resend(apiKey);
-  const { error } = await resend.emails.send({
-    from,
-    to: [to],
-    subject: `Tack för din beställning ${orderNumber} – Mormors Kunafa`,
-    html,
-  });
+  try {
+    const resend = new Resend(apiKey);
+    const { data, error } = await resend.emails.send({
+      from,
+      to: [to],
+      subject: `Tack för din beställning ${orderNumber} – Mormors Kunafa`,
+      html,
+    }, { idempotencyKey: ctx.idempotencyKey });
 
-  if (error) {
-    console.error('[order confirmation email] Resend error:', error);
+    if (error) throw classifyResendFailure(error.statusCode);
+    if (!data?.id || data.id.length > 255) {
+      throw new OutboundDeliveryError('retryable', 'provider_invalid_response');
+    }
+    return { providerMessageId: data.id };
+  } catch (error) {
+    if (error instanceof OutboundDeliveryError) throw error;
+    // The stable Resend idempotency key makes retrying a lost response safe.
+    throw new OutboundDeliveryError('retryable', 'provider_network_error');
   }
 }

@@ -4,6 +4,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { Container } from '../../../components/common/Container/Container';
 import { Button } from '../../../components/common/Button/Button';
+import { AccessibleDialog } from '../../../components/common/AccessibleDialog/AccessibleDialog';
 import { orderApi, productApi, adminApi, locationApi } from '../../../services/api';
 import { printKitchenTicket, printReceipt, testConnection, isPrinterConfigured, getPrinterConfig, setPrinterConfig, getOrderTargetLocationSlug, PrinterLocationSlug, DEFAULT_HOJA_PRINTER_IP } from '../../../services/printer';
 import type {
@@ -12,7 +13,9 @@ import type {
     Product,
     AdminSettings,
     OrderCreatedRealtimeEvent,
+    PaymentSecurityAlert,
     Location,
+    OutboundMessageFailureAlert,
 } from '@shared/types';
 import { HOJA_LOCATION_ID, MOLLEVANGEN_LOCATION_ID } from '@shared/types';
 import { parseApiTimestamp } from '@shared/utils/parseApiTimestamp';
@@ -20,8 +23,13 @@ import { isKitchenTicketPrintDue } from '@shared/utils/scheduledTime';
 import '../Admin.css';
 import { requestWakeLock, releaseWakeLock } from '../../../utils/wakeLock';
 import { useOrderAlarm } from '../../../hooks/useOrderAlarm';
-import { MenuTab } from './MenuTab';
 import { DeliveryPricingSettings } from './DeliveryPricingSettings';
+import { RefundOrderModal } from './RefundOrderModal';
+import { DuplicatePaymentRefundModal } from './DuplicatePaymentRefundModal';
+import { FoodInformationModal } from './FoodInformationModal';
+import { MenuTab } from './MenuTab';
+import { enableAdminPush, getAdminPushState, type AdminPushState } from '../../../services/pwa';
+
 
 // --- Helper: countdown string from ISO time ---
 function getCountdown(isoTime: string | undefined): string {
@@ -146,6 +154,16 @@ function OrderTimer({ estimatedReadyTime }: { estimatedReadyTime: string }) {
 
 type StatsData = Awaited<ReturnType<typeof adminApi.getStatistics>>;
 
+function outboundChannelLabel(channel: OutboundMessageFailureAlert['channel']): string {
+    return channel === 'email' ? 'E-post' : 'SMS';
+}
+function outboundEventLabel(event: OutboundMessageFailureAlert['event']): string {
+    return event === 'order_confirmation' ? 'Orderbekräftelse' : 'Order mottagen';
+}
+function outboundStatusLabel(status: OutboundMessageFailureAlert['status']): string {
+    return status === 'retryable' ? 'Återförsök väntar' : status === 'uncertain' ? 'Leverans osäker' : 'Permanent misslyckad';
+}
+
 function PrinterSettings({
     locations: _locations,
     myLocation,
@@ -159,6 +177,7 @@ function PrinterSettings({
     const [selectedSlug, setSelectedSlug] = useState<PrinterLocationSlug>(defaultSlug);
 
     const config = getPrinterConfig(selectedSlug);
+
     const [ip, setIp] = useState(config.ip);
     const [deviceId, setDeviceId] = useState(config.deviceId);
     const [testResult, setTestResult] = useState<string | null>(null);
@@ -175,8 +194,10 @@ function PrinterSettings({
     const molleConfigured = isPrinterConfigured('mollevangen');
 
     const handleSave = () => {
-        setPrinterConfig(ip.trim(), deviceId.trim() || undefined, selectedSlug);
+        try { setPrinterConfig(ip.trim(), deviceId.trim() || undefined, selectedSlug); }
+        catch (error) { setTestResult(error instanceof Error ? error.message : 'Ogiltiga skrivarinställningar.'); return; }
         setTestResult(`Inställningar för ${selectedSlug === 'hoja' ? 'Höja' : 'Möllevången'} sparade.`);
+
     };
 
     const handleTest = async () => {
@@ -184,7 +205,9 @@ function PrinterSettings({
             setTestResult('Ange en IP-adress först.');
             return;
         }
-        setPrinterConfig(ip.trim(), deviceId.trim() || undefined, selectedSlug);
+        try { setPrinterConfig(ip.trim(), deviceId.trim() || undefined, selectedSlug); }
+        catch (error) { setTestResult(error instanceof Error ? error.message : 'Ogiltiga skrivarinställningar.'); return; }
+
         setTesting(true);
         setTestResult(null);
         const res = await testConnection(selectedSlug);
@@ -235,10 +258,12 @@ function PrinterSettings({
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.75rem' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                    <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>
+                    <label htmlFor="printer-ip" style={{ fontSize: '0.85rem', fontWeight: 600 }}>
                         Skrivarens IP-adress ({currentLocName})
                     </label>
+
                     <input
+                        id="printer-ip"
                         type="text"
                         placeholder={selectedSlug === 'hoja' ? DEFAULT_HOJA_PRINTER_IP : 't.ex. 192.168.1.50'}
                         value={ip}
@@ -257,8 +282,9 @@ function PrinterSettings({
                     )}
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                    <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Enhets-ID</label>
+                    <label htmlFor="printer-device-id" style={{ fontSize: '0.85rem', fontWeight: 600 }}>Enhets-ID</label>
                     <input
+                        id="printer-device-id"
                         type="text"
                         placeholder="local_printer"
                         value={deviceId}
@@ -320,6 +346,20 @@ function daysUntil(iso: string | undefined): number | null {
     return Math.round((targetUtc - todayUtc) / (1000 * 60 * 60 * 24));
 }
 
+function canRefundOrder(order: Order): boolean {
+    return order.paymentStatus === 'paid'
+        && ['card', 'app', 'swish'].includes(order.paymentMethod)
+        && order.refundStatus !== 'refunded';
+}
+
+function RefundStatusBadge({ order }: { order: Order }) {
+    if (!order.refundStatus || order.refundStatus === 'none') return null;
+    const label = order.refundStatus === 'refunded' ? 'Återbetald'
+        : order.refundStatus === 'partially_refunded' ? 'Delvis återbetald'
+            : order.refundStatus === 'pending' ? 'Återbetalning pågår' : 'Återbetalning misslyckades';
+    return <span className="status-badge refund-status">{label}</span>;
+}
+
 function stockholmDateKey(iso: string | undefined): string {
     if (!iso) return '';
     const d = new Date(iso);
@@ -368,11 +408,12 @@ function ScheduledOrderInfo({ order }: { order: Order }) {
     );
 }
 
-function PreOrderCard({ order, locations, onEditNotes, onCancel }: {
+function PreOrderCard({ order, locations, onEditNotes, onCancel, onRefund }: {
     order: Order;
     locations: Location[];
     onEditNotes: (order: Order) => void;
     onCancel: (order: Order) => void;
+    onRefund: (order: Order) => void;
 }) {
     const dateLabel = formatScheduledDate(order.scheduledTime);
     const clockLabel = formatScheduledClock(order.scheduledTime);
@@ -392,6 +433,7 @@ function PreOrderCard({ order, locations, onEditNotes, onCancel }: {
                     &nbsp;·&nbsp;
                     <PlaceBadge order={order} locations={locations} />
                 </h3>
+                <RefundStatusBadge order={order} />
                 <div className="preorder-date-banner">
                     <span className="preorder-date-relative">{relativeLabel}</span>
                     <span className="preorder-date-absolute">
@@ -422,19 +464,27 @@ function PreOrderCard({ order, locations, onEditNotes, onCancel }: {
                 <Button size="sm" variant="ghost" style={{ color: '#DC2626' }} onClick={() => onCancel(order)}>
                     Avbryt
                 </Button>
+                {canRefundOrder(order) && <Button size="sm" variant="ghost" style={{ color: '#B91C1C' }} onClick={() => onRefund(order)}>Återbetala</Button>}
             </div>
         </div>
     );
 }
 
-function PendingOrderCard({ order, locations, defaultPrepTime, onAccept }: {
+function PendingOrderCard({ order, locations, defaultPrepTime, onAccept, onRefund }: {
     order: Order;
     locations: Location[];
     defaultPrepTime: number;
-    onAccept: (orderId: string, extraMinutes: number) => void;
+    onAccept: (orderId: string, extraMinutes?: number) => void;
+    onRefund: (order: Order) => void;
 }) {
     const [extraMinutes, setExtraMinutes] = useState(0);
-    const totalMinutes = defaultPrepTime + extraMinutes;
+    const readyTimeMs = order.estimatedReadyTime ? new Date(order.estimatedReadyTime).getTime() : Number.NaN;
+    const fallbackMinutes = order.defaultPreparationTime || defaultPrepTime;
+    const remainingMinutes = Number.isFinite(readyTimeMs)
+        ? Math.max(0, Math.ceil((readyTimeMs - Date.now()) / 60_000))
+        : fallbackMinutes;
+    const totalMinutes = Math.max(5, remainingMinutes + extraMinutes);
+    const minimumAdjustment = 5 - remainingMinutes;
 
     return (
         <div className="admin-order-card pending-order-card">
@@ -447,6 +497,7 @@ function PendingOrderCard({ order, locations, defaultPrepTime, onAccept }: {
                     <PlaceBadge order={order} locations={locations} />
                 </h3>
                 <span className="status-badge status-ny">Ny</span>
+                <RefundStatusBadge order={order} />
                 <ScheduledOrderInfo order={order} />
                 <ul className="order-items">
                     {order.items.map((item, i) => (
@@ -462,16 +513,17 @@ function PendingOrderCard({ order, locations, defaultPrepTime, onAccept }: {
             <div className="pending-actions">
                 <div className="pending-time-display">
                     <span className="pending-time-value">{totalMinutes}</span>
-                    <span className="pending-time-unit">min</span>
+                    <span className="pending-time-unit">min kvar</span>
                 </div>
                 <div className="pending-time-buttons">
-                    <Button size="sm" variant="ghost" onClick={() => setExtraMinutes(prev => Math.max(-defaultPrepTime + 5, prev - 5))}>−5</Button>
+                    <Button size="sm" variant="ghost" onClick={() => setExtraMinutes(prev => Math.max(minimumAdjustment, prev - 5))}>−5</Button>
                     <Button size="sm" variant="ghost" onClick={() => setExtraMinutes(prev => prev + 5)}>+5</Button>
                     <Button size="sm" variant="ghost" onClick={() => setExtraMinutes(prev => prev + 10)}>+10</Button>
                 </div>
-                <Button size="sm" variant="primary" onClick={() => onAccept(order.id, extraMinutes)}>
-                    Acceptera
+                <Button size="sm" variant="primary" onClick={() => onAccept(order.id, extraMinutes === 0 ? undefined : extraMinutes)}>
+                    Ta emot
                 </Button>
+                {canRefundOrder(order) && <Button size="sm" variant="ghost" style={{ color: '#B91C1C' }} onClick={() => onRefund(order)}>Återbetala</Button>}
             </div>
         </div>
     );
@@ -500,11 +552,11 @@ function CancelOrderModal({
 }) {
     if (!open) return null;
     return (
-        <div className="stats-modal-overlay" onClick={onClose}>
-            <div className="stats-modal" onClick={(e) => e.stopPropagation()}>
-                <h2>Avbryt beställning</h2>
+        <AccessibleDialog labelledBy="cancel-order-title" onClose={onClose} closeDisabled={loading}>
+                <h2 id="cancel-order-title">Avbryt beställning</h2>
                 <p>Ange anledning till avbokning.</p>
                 <textarea
+                    aria-label="Anledning till avbokning"
                     value={reason}
                     onChange={(e) => onReasonChange(e.target.value)}
                     className="stats-modal-input"
@@ -513,6 +565,7 @@ function CancelOrderModal({
                     autoFocus
                 />
                 <input
+                    aria-label="Lösenord för avbokning"
                     className="stats-modal-input"
                     type="password"
                     placeholder="Lösenord"
@@ -534,8 +587,7 @@ function CancelOrderModal({
                         {loading ? 'Sparar...' : 'Spara och avbryt'}
                     </Button>
                 </div>
-            </div>
-        </div>
+        </AccessibleDialog>
     );
 }
 
@@ -556,11 +608,11 @@ function InternalNotesModal({
 }) {
     if (!open) return null;
     return (
-        <div className="stats-modal-overlay" onClick={onClose}>
-            <div className="stats-modal" onClick={(e) => e.stopPropagation()}>
-                <h2>Intern notis</h2>
+        <AccessibleDialog labelledBy="internal-notes-title" onClose={onClose} closeDisabled={loading}>
+                <h2 id="internal-notes-title">Intern notis</h2>
                 <p>Spara en intern anteckning för ordern.</p>
                 <textarea
+                    aria-label="Intern anteckning"
                     value={notes}
                     onChange={(e) => onNotesChange(e.target.value)}
                     className="stats-modal-input"
@@ -577,107 +629,7 @@ function InternalNotesModal({
                         {loading ? 'Sparar...' : 'Spara'}
                     </Button>
                 </div>
-            </div>
-        </div>
-    );
-}
-
-function ConfirmDeleteOrderModal({
-    open,
-    orderNumber,
-    password,
-    onPasswordChange,
-    errorMsg,
-    onClose,
-    onConfirm,
-    loading,
-}: {
-    open: boolean;
-    orderNumber?: string;
-    password: string;
-    onPasswordChange: (value: string) => void;
-    errorMsg: string | null;
-    onClose: () => void;
-    onConfirm: () => void;
-    loading: boolean;
-}) {
-    if (!open) return null;
-    return (
-        <div className="stats-modal-overlay" onClick={onClose}>
-            <div className="stats-modal" onClick={(e) => e.stopPropagation()}>
-                <h2>Ta bort order</h2>
-                <p>
-                    Är du säker på att du vill ta bort {orderNumber ? `order ${orderNumber}` : 'den här ordern'}?
-                    Detta går inte att ångra.
-                </p>
-                <input
-                    className="stats-modal-input"
-                    type="password"
-                    placeholder="Lösenord"
-                    value={password}
-                    onChange={(e) => onPasswordChange(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter' && password.trim() && !loading) onConfirm(); }}
-                    autoFocus
-                />
-                {errorMsg && <p className="stats-modal-error">{errorMsg}</p>}
-                <div className="stats-modal-actions">
-                    <Button variant="ghost" onClick={onClose} style={{ flex: 1 }}>
-                        Avbryt
-                    </Button>
-                    <Button variant="primary" onClick={onConfirm} style={{ flex: 1 }} disabled={loading || !password.trim()}>
-                        {loading ? 'Tar bort...' : 'Ta bort'}
-                    </Button>
-                </div>
-            </div>
-        </div>
-    );
-}
-
-function ConfirmDeleteAllHistoryModal({
-    open,
-    password,
-    onPasswordChange,
-    errorMsg,
-    onClose,
-    onConfirm,
-    loading,
-}: {
-    open: boolean;
-    password: string;
-    onPasswordChange: (value: string) => void;
-    errorMsg: string | null;
-    onClose: () => void;
-    onConfirm: () => void;
-    loading: boolean;
-}) {
-    if (!open) return null;
-    return (
-        <div className="stats-modal-overlay" onClick={onClose}>
-            <div className="stats-modal" onClick={(e) => e.stopPropagation()}>
-                <h2>Radera all historik</h2>
-                <p>
-                    Är du säker på att du vill radera hela orderhistoriken? Detta går inte att ångra.
-                </p>
-                <input
-                    className="stats-modal-input"
-                    type="password"
-                    placeholder="Lösenord"
-                    value={password}
-                    onChange={(e) => onPasswordChange(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter' && password.trim() && !loading) onConfirm(); }}
-                    autoFocus
-                />
-                {errorMsg && <p className="stats-modal-error">{errorMsg}</p>}
-                <div className="stats-modal-actions">
-                    <Button variant="ghost" onClick={onClose} style={{ flex: 1 }}>
-                        Avbryt
-                    </Button>
-                    <Button variant="primary" onClick={onConfirm} style={{ flex: 1 }} disabled={loading || !password.trim()}>
-                        {loading ? 'Raderar...' : 'Radera allt'}
-                    </Button>
-                </div>
-            </div>
-        </div>
+        </AccessibleDialog>
     );
 }
 
@@ -787,10 +739,12 @@ function StockRow({
     product,
     locations,
     onToggle,
+    onEditFoodInformation,
 }: {
     product: Product;
     locations: Location[];
     onToggle: (product: Product, locationId: string) => void;
+    onEditFoodInformation?: (product: Product) => void;
 }) {
     const allOut = locations.length > 0 && locations.every((location) => !locationInStock(product, location.id));
 
@@ -820,6 +774,12 @@ function StockRow({
                     );
                 })}
             </div>
+            <span className={product.foodInformationVerifiedAt ? 'text-success' : 'text-error'}>
+                {product.foodInformationVerifiedAt ? 'Matinfo verifierad' : 'Matinfo saknas'}
+            </span>
+            {onEditFoodInformation && <Button type="button" size="sm" variant="outline" onClick={() => onEditFoodInformation(product)}>
+                Ingredienser
+            </Button>}
         </div>
     );
 }
@@ -838,7 +798,7 @@ export const AdminDashboard: React.FC = () => {
     const [settings, setSettings] = useState<AdminSettings | null>(null);
     const [locations, setLocations] = useState<Location[]>([]);
     const [placeFilter, setPlaceFilter] = useState<PlaceFilter>('all');
-    const isOwner = admin?.role !== 'location';
+    const isOwner = admin?.role === 'owner';
     const myLocation = admin?.role === 'location'
         ? locations.find((location) => location.id === admin.locationId)
         : undefined;
@@ -858,6 +818,8 @@ export const AdminDashboard: React.FC = () => {
     const [loadingHistory, setLoadingHistory] = useState(false);
     const [loadingProducts, setLoadingProducts] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [logoutError, setLogoutError] = useState<string | null>(null);
+    const [isLoggingOut, setIsLoggingOut] = useState(false);
     const [historyDateFrom, setHistoryDateFrom] = useState('');
     const [historyDateTo, setHistoryDateTo] = useState('');
     const [cancelModalOpen, setCancelModalOpen] = useState(false);
@@ -870,17 +832,13 @@ export const AdminDashboard: React.FC = () => {
     const [notesOrderId, setNotesOrderId] = useState<string | null>(null);
     const [notesValue, setNotesValue] = useState('');
     const [notesSubmitting, setNotesSubmitting] = useState(false);
-    const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-    const [deleteOrderId, setDeleteOrderId] = useState<string | null>(null);
-    const [deleteOrderNumber, setDeleteOrderNumber] = useState<string>('');
-    const [deleteSubmitting, setDeleteSubmitting] = useState(false);
-    const [deletePassword, setDeletePassword] = useState('');
-    const [deleteError, setDeleteError] = useState<string | null>(null);
-    const [deleteAllModalOpen, setDeleteAllModalOpen] = useState(false);
-    const [deleteAllSubmitting, setDeleteAllSubmitting] = useState(false);
-    const [deleteAllPassword, setDeleteAllPassword] = useState('');
-    const [deleteAllError, setDeleteAllError] = useState<string | null>(null);
-    const [isReconnecting, setIsReconnecting] = useState(false);
+    const [refundOrder, setRefundOrder] = useState<Order | null>(null);
+    const [paymentAlerts, setPaymentAlerts] = useState<PaymentSecurityAlert[]>([]);
+    const [outboundMessageFailures, setOutboundMessageFailures] = useState<OutboundMessageFailureAlert[]>([]);
+    const [outboundMessageFailuresUnavailable, setOutboundMessageFailuresUnavailable] = useState(false);
+    const [selectedPaymentAlertId, setSelectedPaymentAlertId] = useState<string | null>(null);
+    const [foodInformationProduct, setFoodInformationProduct] = useState<Product | null>(null);
+
 
     const isFetchingRef = useRef(false);
     const fetchSeqRef = useRef(0);
@@ -905,6 +863,10 @@ export const AdminDashboard: React.FC = () => {
     const [printTick, setPrintTick] = useState(0);
 
     const alarm = useOrderAlarm(pendingOrders, !loadingOrders && Boolean(admin));
+    const [isReconnecting, setIsReconnecting] = useState(false);
+    const [pushState, setPushState] = useState<AdminPushState>('available');
+    const [pushBusy, setPushBusy] = useState(false);
+    const [pushError, setPushError] = useState<string | null>(null);
     const activeAlarmOrder = alarm.activeOrder;
     const audioLocked = !alarm.audioReady;
 
@@ -913,6 +875,7 @@ export const AdminDashboard: React.FC = () => {
         setActiveTab('pending');
         setPlaceFilter('all');
     };
+
 
     // --- Fetch pending + active + pre-orders with request sequencing and graceful error recovery ---
     const fetchOrders = useCallback(async (isManualOrWake = false) => {
@@ -953,11 +916,17 @@ export const AdminDashboard: React.FC = () => {
 
             // If 401 Unauthorized: auth session token expired
             if (e?.status === 401 || e?.message === 'Not authenticated') {
+                setPendingOrders([]);
+                setActiveOrders([]);
+                setPreOrders([]);
+                setPaymentAlerts([]);
                 setError('Sessionen har löpt ut. Logga in igen.');
-                setTimeout(() => {
-                    logout();
+                try {
+                    await logout();
                     navigate('/admin/login');
-                }, 2000);
+                } catch {
+                    setError('Utloggningen kunde inte bekräftas. Försök logga ut igen.');
+                }
                 return;
             }
 
@@ -969,8 +938,10 @@ export const AdminDashboard: React.FC = () => {
                 setIsReconnecting(true);
             }
         } finally {
-            isFetchingRef.current = false;
-            setLoadingOrders(false);
+            if (currentSeq === fetchSeqRef.current) {
+                isFetchingRef.current = false;
+                setLoadingOrders(false);
+            }
         }
     }, [logout, navigate]);
 
@@ -1005,85 +976,72 @@ export const AdminDashboard: React.FC = () => {
 
     // --- Realtidshändelser via Server-Sent Events (SSE) med självläkande återanslutning ---
     useEffect(() => {
-        let closed = false;
-
-        const connect = () => {
-            if (closed) return;
-            if (eventSourceRef.current) {
-                try {
-                    eventSourceRef.current.close();
-                } catch {
-                    // Ignore
-                }
-                eventSourceRef.current = null;
-            }
-
+        let active = true;
+        const refreshPaymentAlerts = async () => {
+            if (admin?.role !== 'owner') { if (active) setPaymentAlerts([]); return; }
             try {
-                const url = adminApi.getRealtimeEventsUrl();
-                const es = new EventSource(url);
+                const alerts = await adminApi.getPaymentAlerts();
+                if (active) setPaymentAlerts(alerts);
+            } catch {
+                // Order polling remains available; the next alert poll retries.
+            }
+        };
+        void refreshPaymentAlerts();
+        const id = setInterval(() => { void refreshPaymentAlerts(); }, 60_000);
+        return () => { active = false; clearInterval(id); };
+    }, [admin?.role]);
+
+    useEffect(() => {
+        let closed = false;
+        let generation = 0;
+        const retry = () => {
+            if (closed) return;
+            if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+            const delay = Math.min(15000, 1500 * Math.pow(1.3, reconnectAttemptsRef.current++));
+            reconnectTimerRef.current = setTimeout(() => { void connect(); }, delay);
+        };
+        const connect = async () => {
+            if (closed) return;
+            const attempt = ++generation;
+            if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+            eventSourceRef.current?.close();
+            eventSourceRef.current = null;
+            try {
+                const { ticket } = await adminApi.createRealtimeTicket();
+                if (closed || attempt !== generation) return;
+                const es = new EventSource(adminApi.getRealtimeEventsUrl(ticket));
                 eventSourceRef.current = es;
-
-                es.onopen = () => {
-                    reconnectAttemptsRef.current = 0;
-                };
-
-                es.addEventListener('ORDER_CREATED', (rawEvent) => {
+                es.onopen = () => { reconnectAttemptsRef.current = 0; };
+                es.addEventListener('ORDER_CREATED', raw => {
+                    if (closed || attempt !== generation) return;
                     try {
-                        const event = JSON.parse((rawEvent as MessageEvent).data) as OrderCreatedRealtimeEvent;
+                        const event = JSON.parse((raw as MessageEvent).data) as OrderCreatedRealtimeEvent;
                         if (seenRealtimeEventIdsRef.current.has(event.event_id)) return;
-
                         seenRealtimeEventIdsRef.current.add(event.event_id);
                         if (seenRealtimeEventIdsRef.current.size > 1000) {
                             const first = seenRealtimeEventIdsRef.current.values().next().value;
                             if (first) seenRealtimeEventIdsRef.current.delete(first);
                         }
-
                         void fetchOrders(true);
-                    } catch (error) {
-                        console.error('[realtime] ORDER_CREATED parse failed', error);
-                    }
+                    } catch { /* The next authoritative poll recovers malformed events. */ }
                 });
-
                 es.onerror = () => {
-                    try {
-                        es.close();
-                    } catch {
-                        // Ignore
-                    }
+                    es.close();
+                    if (closed || attempt !== generation) return;
                     eventSourceRef.current = null;
-                    if (!closed) {
-                        reconnectAttemptsRef.current += 1;
-                        const backoff = Math.min(15000, 2000 * Math.pow(1.3, reconnectAttemptsRef.current));
-                        if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
-                        reconnectTimerRef.current = setTimeout(connect, backoff);
-                    }
+                    retry();
                 };
-            } catch (err) {
-                console.warn('[realtime] kunde inte skapa EventSource, schemalägger återförsök:', err);
-                if (!closed) {
-                    reconnectAttemptsRef.current += 1;
-                    const backoff = Math.min(15000, 2000 * Math.pow(1.3, reconnectAttemptsRef.current));
-                    if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
-                    reconnectTimerRef.current = setTimeout(connect, backoff);
-                }
-            }
+            } catch { if (!closed && attempt === generation) retry(); }
         };
-
-        reconnectRealtimeRef.current = connect;
-        connect();
-
+        reconnectRealtimeRef.current = () => { void connect(); };
+        void connect();
         return () => {
             closed = true;
+            generation++;
             reconnectRealtimeRef.current = null;
             if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
-            if (eventSourceRef.current) {
-                try {
-                    eventSourceRef.current.close();
-                } catch {
-                    // Ignore
-                }
-                eventSourceRef.current = null;
-            }
+            eventSourceRef.current?.close();
+            eventSourceRef.current = null;
         };
     }, [fetchOrders]);
 
@@ -1186,7 +1144,46 @@ export const AdminDashboard: React.FC = () => {
             window.removeEventListener('online', handleOnline);
             void releaseWakeLock();
         };
-    }, [fetchOrders]);
+    }, []);
+
+    useEffect(() => {
+        let active = true;
+        void adminApi.getNotificationHealth()
+            .then(async (health) => {
+                if (!health.webPushConfigured) return 'unconfigured' as AdminPushState;
+                return getAdminPushState();
+            })
+            .then(async (state) => {
+                if (!active) return;
+                setPushState(state);
+                if (state === 'enabled') {
+                    const subscription = await enableAdminPush();
+                    await adminApi.savePushSubscription(subscription, 'Orderenhet');
+                }
+            })
+            .catch(() => {
+                if (active) setPushError('Pushregistreringen kunde inte verifieras.');
+            });
+        return () => { active = false; };
+    }, []);
+
+    useEffect(() => {
+        let active = true;
+        const refreshOutboundMessageFailures = async () => {
+            try {
+                const failures = await adminApi.getNotifications(100);
+                if (active) {
+                    setOutboundMessageFailures(failures);
+                    setOutboundMessageFailuresUnavailable(false);
+                }
+            } catch {
+                if (active) setOutboundMessageFailuresUnavailable(true);
+            }
+        };
+        void refreshOutboundMessageFailures();
+        const id = setInterval(() => { void refreshOutboundMessageFailures(); }, 30_000);
+        return () => { active = false; clearInterval(id); };
+    }, []);
 
     // --- Fetch products + settings on mount ---
     useEffect(() => {
@@ -1197,6 +1194,7 @@ export const AdminDashboard: React.FC = () => {
         });
         locationApi.getAll().then(setLocations).catch(() => undefined);
     }, []);
+
 
     useEffect(() => {
         if (isOwner) return;
@@ -1252,6 +1250,27 @@ export const AdminDashboard: React.FC = () => {
             // "inkommande" (se auto-print-effekten ovan), inte vid accept.
         } catch {
             setError('Kunde inte acceptera ordern.');
+        }
+    };
+
+    const handleEnablePush = async () => {
+        setPushBusy(true);
+        setPushError(null);
+        try {
+            const health = await adminApi.getNotificationHealth();
+            if (!health.webPushConfigured) {
+                setPushState('unconfigured');
+                setPushError('Push är inte konfigurerat i backendmiljön.');
+                return;
+            }
+            const subscription = await enableAdminPush();
+            await adminApi.savePushSubscription(subscription, 'Orderenhet');
+            setPushState('enabled');
+        } catch (pushFailure) {
+            setPushState(await getAdminPushState().catch((): AdminPushState => 'available'));
+            setPushError(pushFailure instanceof Error ? pushFailure.message : 'Push kunde inte aktiveras.');
+        } finally {
+            setPushBusy(false);
         }
     };
 
@@ -1331,65 +1350,6 @@ export const AdminDashboard: React.FC = () => {
         }
     };
 
-    const openDeleteModal = (order: Order) => {
-        setDeleteOrderId(order.id);
-        setDeleteOrderNumber(order.orderNumber || '');
-        setDeleteModalOpen(true);
-    };
-
-    const closeDeleteModal = () => {
-        setDeleteModalOpen(false);
-        setDeleteOrderId(null);
-        setDeleteOrderNumber('');
-        setDeleteSubmitting(false);
-        setDeletePassword('');
-        setDeleteError(null);
-    };
-
-    const handleDeleteOrder = async () => {
-        if (!deleteOrderId || !deletePassword.trim()) return;
-        setDeleteSubmitting(true);
-        setDeleteError(null);
-        try {
-            await orderApi.deleteOrder(deleteOrderId, deletePassword.trim());
-            setHistoryOrders(prev => prev.filter(o => o.id !== deleteOrderId));
-            setPreOrders(prev => prev.filter(o => o.id !== deleteOrderId));
-            closeDeleteModal();
-        } catch (e: any) {
-            const msg = e?.status === 401 ? 'Felaktigt lösenord.' : 'Kunde inte ta bort ordern.';
-            setDeleteError(msg);
-            setDeleteSubmitting(false);
-        }
-    };
-
-    const openDeleteAllModal = () => {
-        setDeleteAllPassword('');
-        setDeleteAllError(null);
-        setDeleteAllModalOpen(true);
-    };
-
-    const closeDeleteAllModal = () => {
-        setDeleteAllModalOpen(false);
-        setDeleteAllSubmitting(false);
-        setDeleteAllPassword('');
-        setDeleteAllError(null);
-    };
-
-    const handleDeleteAllHistory = async () => {
-        if (!deleteAllPassword.trim()) return;
-        setDeleteAllSubmitting(true);
-        setDeleteAllError(null);
-        try {
-            await orderApi.deleteAllHistory(deleteAllPassword.trim());
-            setHistoryOrders([]);
-            closeDeleteAllModal();
-        } catch (e: any) {
-            const msg = e?.status === 401 ? 'Felaktigt lösenord.' : 'Kunde inte radera historiken.';
-            setDeleteAllError(msg);
-            setDeleteAllSubmitting(false);
-        }
-    };
-
     const handleAddTime = async (order: Order, extraMinutes: number) => {
         const current = parseApiTimestamp(order.estimatedReadyTime)?.getTime() ?? Date.now();
         const newTime = new Date(current + extraMinutes * 60000).toISOString();
@@ -1423,6 +1383,11 @@ export const AdminDashboard: React.FC = () => {
         } catch {
             setError('Kunde inte uppdatera lagerstatus.');
         }
+    };
+
+    const handleFoodInformationSaved = (product: Product) => {
+        setProducts(current => current.map(item => item.id === product.id ? product : item));
+        setFoodInformationProduct(null);
     };
 
     // --- Settings ---
@@ -1460,9 +1425,18 @@ export const AdminDashboard: React.FC = () => {
         }
     };
 
-    const handleLogout = () => {
-        logout();
-        navigate('/admin/login');
+    const handleLogout = async () => {
+        if (isLoggingOut) return;
+        setIsLoggingOut(true);
+        setLogoutError(null);
+        try {
+            await logout();
+            navigate('/admin/login');
+        } catch {
+            setLogoutError('Utloggningen kunde inte bekräftas. Försök igen innan du lämnar enheten.');
+        } finally {
+            setIsLoggingOut(false);
+        }
     };
 
     const handleStatsTabClick = () => {
@@ -1597,7 +1571,9 @@ export const AdminDashboard: React.FC = () => {
                         </div>
                     </div>
                     <div className="admin-header-actions">
-                        <Button variant="ghost" onClick={handleLogout}>Logga ut</Button>
+                        <Button variant="ghost" onClick={handleLogout} disabled={isLoggingOut}>
+                            {isLoggingOut ? 'Loggar ut…' : 'Logga ut'}
+                        </Button>
                     </div>
                 </header>
 
@@ -1621,10 +1597,73 @@ export const AdminDashboard: React.FC = () => {
                     </div>
                 )}
 
+                {logoutError && <p role="alert" className="admin-error-message">{logoutError}</p>}
+
                 {error && (
-                    <div style={{ padding: '0.75rem 1rem', background: '#fee', color: '#c00', borderRadius: '8px', marginBottom: '1rem' }}>
-                        {error} <button onClick={() => setError(null)} style={{ marginLeft: '1rem', cursor: 'pointer' }}>✕</button>
+                    <div role="alert" style={{ padding: '0.75rem 1rem', background: '#fee', color: '#c00', borderRadius: '8px', marginBottom: '1rem' }}>
+                        {error}{' '}
+                        <button type="button" aria-label="Stäng felmeddelande" onClick={() => setError(null)} style={{ marginLeft: '1rem', cursor: 'pointer' }}>✕</button>
                     </div>
+                )}
+
+                {paymentAlerts.length > 0 && (
+                    <section className="payment-security-alert" role="alert" aria-live="assertive">
+                        <h2>⚠ Kritiskt betalningslarm</h2>
+                        <p>
+                            Stripe har rapporterat {paymentAlerts.length} betald checkout-händelse
+                            {paymentAlerts.length === 1 ? '' : 'r'} som inte säkert kunde kopplas till den sparade ordern.
+                            Kontrollera varje Event-ID i Stripe innan ordern lämnas ut eller pengar återbetalas.
+                        </p>
+                        <ul>
+                            {paymentAlerts.map((alert) => (
+                                <li key={alert.eventId}>
+                                    <span>
+                                        <code>{alert.eventId}</code>
+                                        {alert.orderId ? <> · order-ID <code>{alert.orderId}</code></> : ' · order-ID saknas'}
+                                        {' · '}{new Date(alert.receivedAt).toLocaleString('sv-SE')}
+                                    </span>
+                                    <Button size="sm" variant="ghost" onClick={() => setSelectedPaymentAlertId(alert.eventId)}>
+                                        Granska larm
+                                    </Button>
+                                </li>
+                            ))}
+                        </ul>
+                        <p className="payment-security-alert__instruction">
+                            Använd inte den vanliga returknappen för en andra okänd Stripe-session;
+                            den är bunden till orderns sparade originalbetalning.
+                        </p>
+                    </section>
+                )}
+
+                {(outboundMessageFailures.length > 0 || outboundMessageFailuresUnavailable) && (
+                    <section className="outbound-message-alert" role="alert" aria-live="assertive">
+                        <h2>⚠ Kundmeddelanden behöver åtgärd</h2>
+                        {outboundMessageFailuresUnavailable && (
+                            <p className="outbound-message-alert__unavailable">
+                                Listan över meddelandefel kunde inte hämtas. Varningen ligger kvar tills kontrollen fungerar igen.
+                            </p>
+                        )}
+                        {outboundMessageFailures.length > 0 && (
+                            <>
+                                <p>
+                                    {outboundMessageFailures.length} utskick har inte en säker, slutförd leverans.
+                                    Osäkra utskick får inte skickas om blint.
+                                </p>
+                                <ul>
+                                    {outboundMessageFailures.map((failure) => (
+                                        <li key={failure.id}>
+                                            <strong>{failure.orderNumber}</strong>
+                                            <span>{outboundChannelLabel(failure.channel)}</span>
+                                            <span>{outboundEventLabel(failure.event)}</span>
+                                            <span>{outboundStatusLabel(failure.status)}</span>
+                                            <span>Försök {failure.attemptCount}/{failure.maxAttempts}</span>
+                                            <code>{failure.errorCode}</code>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </>
+                        )}
+                    </section>
                 )}
 
                 {/* --- Autoplay warning banner --- */}
@@ -1642,27 +1681,28 @@ export const AdminDashboard: React.FC = () => {
                     <div className="alarm-paused-banner" role="status">
                         <span>{pendingOrders.length} {pendingOrders.length === 1 ? 'order väntar' : 'ordrar väntar'}. Larmet återkommer om {alarm.pausedSeconds} s om de inte accepteras.</span>
                         <Button size="sm" variant="ghost" onClick={alarm.resume}>Larma nu</Button>
+
                     </div>
                 )}
 
-                <div className="admin-tabs">
-                    <button className={`admin-tab ${activeTab === 'preorders' ? 'active' : ''}`} onClick={() => { setActiveTab('preorders'); setStatsData(null); }}>
+                <nav className="admin-tabs" aria-label="Adminsektioner">
+                    <button type="button" aria-current={activeTab === 'preorders' ? 'page' : undefined} className={`admin-tab ${activeTab === 'preorders' ? 'active' : ''}`} onClick={() => { setActiveTab('preorders'); setStatsData(null); }}>
                         Förbeställningar {visiblePreOrders.length > 0 && <span className="tab-badge">{visiblePreOrders.length}</span>}
                     </button>
-                    <button className={`admin-tab ${activeTab === 'pending' ? 'active' : ''}`} onClick={() => { setActiveTab('pending'); setStatsData(null); }}>
+                    <button type="button" aria-current={activeTab === 'pending' ? 'page' : undefined} className={`admin-tab ${activeTab === 'pending' ? 'active' : ''}`} onClick={() => { setActiveTab('pending'); setStatsData(null); }}>
                         Inkommande {visiblePending.length > 0 && <span className="tab-badge">{visiblePending.length}</span>}
                     </button>
-                    <button className={`admin-tab ${activeTab === 'active' ? 'active' : ''}`} onClick={() => { setActiveTab('active'); setStatsData(null); }}>
+                    <button type="button" aria-current={activeTab === 'active' ? 'page' : undefined} className={`admin-tab ${activeTab === 'active' ? 'active' : ''}`} onClick={() => { setActiveTab('active'); setStatsData(null); }}>
                         Aktiva Ordrar ({visibleActive.length})
                     </button>
-                    <button className={`admin-tab ${activeTab === 'history' ? 'active' : ''}`} onClick={() => { setActiveTab('history'); setStatsData(null); }}>
+                    <button type="button" aria-current={activeTab === 'history' ? 'page' : undefined} className={`admin-tab ${activeTab === 'history' ? 'active' : ''}`} onClick={() => { setActiveTab('history'); setStatsData(null); }}>
                         Orderhistorik
                     </button>
-                    <button className={`admin-tab ${activeTab === 'stock' ? 'active' : ''}`} onClick={() => { setActiveTab('stock'); setStatsData(null); }}>
+                    <button type="button" aria-current={activeTab === 'stock' ? 'page' : undefined} className={`admin-tab ${activeTab === 'stock' ? 'active' : ''}`} onClick={() => { setActiveTab('stock'); setStatsData(null); }}>
                         Lager
                     </button>
                     {isOwner && (
-                    <button className={`admin-tab ${activeTab === 'menu' ? 'active' : ''}`} onClick={() => { setActiveTab('menu'); setStatsData(null); }}>
+                    <button type="button" className={`admin-tab ${activeTab === 'menu' ? 'active' : ''}`} onClick={() => { setActiveTab('menu'); setStatsData(null); }}>
                         Meny
                     </button>
                     )}
@@ -1672,14 +1712,15 @@ export const AdminDashboard: React.FC = () => {
                     </button>
                     )}
                     <button className={`admin-tab ${activeTab === 'rush' ? 'active' : ''}`} onClick={() => { setActiveTab('rush'); setStatsData(null); }}>
+
                         Inställningar
                     </button>
                     {isOwner && (
-                    <button className={`admin-tab ${activeTab === 'stats' ? 'active' : ''}`} onClick={handleStatsTabClick}>
+                    <button type="button" className={`admin-tab ${activeTab === 'stats' ? 'active' : ''}`} onClick={handleStatsTabClick}>
                         Statistik
                     </button>
                     )}
-                </div>
+                </nav>
 
                 {isOwner && (activeTab === 'pending' || activeTab === 'preorders' || activeTab === 'active' || activeTab === 'history') && (
                     <div className="place-filter" role="group" aria-label="Filtrera plats">
@@ -1703,12 +1744,16 @@ export const AdminDashboard: React.FC = () => {
 
                 {/* ── STATISTIK LÖSENORDS-POPUP ── */}
                 {showStatsModal && (
-                    <div className="stats-modal-overlay">
-                        <div className="stats-modal">
-                            <h2>Statistik</h2>
+                    <AccessibleDialog
+                        labelledBy="statistics-login-title"
+                        onClose={() => { setShowStatsModal(false); setStatsPassword(''); setStatsError(null); }}
+                        closeDisabled={statsLoading}
+                    >
+                            <h2 id="statistics-login-title">Statistik</h2>
                             <p>Ange lösenord för att se statistiken</p>
                             <input
                                 id="stats-password-input"
+                                aria-label="Lösenord för statistik"
                                 className="stats-modal-input"
                                 type="password"
                                 placeholder="Lösenord"
@@ -1724,8 +1769,7 @@ export const AdminDashboard: React.FC = () => {
                                     {statsLoading ? 'Laddar...' : 'Öppna'}
                                 </Button>
                             </div>
-                        </div>
-                    </div>
+                    </AccessibleDialog>
                 )}
                 <CancelOrderModal
                     open={cancelModalOpen}
@@ -1746,24 +1790,18 @@ export const AdminDashboard: React.FC = () => {
                     onConfirm={handleUpdateInternalNotes}
                     loading={notesSubmitting}
                 />
-                <ConfirmDeleteOrderModal
-                    open={deleteModalOpen}
-                    orderNumber={deleteOrderNumber}
-                    password={deletePassword}
-                    onPasswordChange={setDeletePassword}
-                    errorMsg={deleteError}
-                    onClose={closeDeleteModal}
-                    onConfirm={handleDeleteOrder}
-                    loading={deleteSubmitting}
+                <RefundOrderModal
+                    open={refundOrder !== null}
+                    order={refundOrder}
+                    onClose={() => setRefundOrder(null)}
+                    onChanged={() => { void fetchOrders(); }}
                 />
-                <ConfirmDeleteAllHistoryModal
-                    open={deleteAllModalOpen}
-                    password={deleteAllPassword}
-                    onPasswordChange={setDeleteAllPassword}
-                    errorMsg={deleteAllError}
-                    onClose={closeDeleteAllModal}
-                    onConfirm={handleDeleteAllHistory}
-                    loading={deleteAllSubmitting}
+                <DuplicatePaymentRefundModal
+                    eventId={selectedPaymentAlertId}
+                    onClose={() => setSelectedPaymentAlertId(null)}
+                    onResolved={(eventId) => {
+                        setPaymentAlerts((current) => current.filter((alert) => alert.eventId !== eventId));
+                    }}
                 />
 
                 <div className="admin-content animate-in">
@@ -1782,6 +1820,7 @@ export const AdminDashboard: React.FC = () => {
                                         locations={locations}
                                         defaultPrepTime={settings?.defaultPreparationTime ?? 30}
                                         onAccept={handleAcceptOrder}
+                                        onRefund={setRefundOrder}
                                     />
                                 ))
                             )}
@@ -1827,6 +1866,7 @@ export const AdminDashboard: React.FC = () => {
                                                         locations={locations}
                                                         onEditNotes={openNotesModal}
                                                         onCancel={(order) => openCancelModal(order.id)}
+                                                        onRefund={setRefundOrder}
                                                     />
                                                 ))}
                                             </div>
@@ -1858,6 +1898,7 @@ export const AdminDashboard: React.FC = () => {
                                             <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
                                                 <OrderTimer estimatedReadyTime={order.estimatedReadyTime} />
                                                 <span className={`status-badge status-${order.status}`}>{order.status}</span>
+                                                <RefundStatusBadge order={order} />
                                             </div>
                                             {order.orderType === 'delivery' && (
                                                 <p style={{ fontSize: '0.8rem', color: '#6b5f52', margin: '0.25rem 0 0' }}>
@@ -1888,6 +1929,7 @@ export const AdminDashboard: React.FC = () => {
                                             <Button size="sm" variant="ghost" onClick={() => handlePrintReceipt(order)}>
                                                 Kvitto
                                             </Button>
+                                            {canRefundOrder(order) && <Button size="sm" variant="ghost" style={{ color: '#B91C1C' }} onClick={() => setRefundOrder(order)}>Återbetala</Button>}
                                         </div>
                                     </div>
                                 ))
@@ -1900,16 +1942,18 @@ export const AdminDashboard: React.FC = () => {
                         <div className="orders-list">
                             <div className="history-date-filter">
                                 <div className="history-date-field">
-                                    <label>Från</label>
+                                    <label htmlFor="history-date-from">Från</label>
                                     <input
+                                        id="history-date-from"
                                         type="date"
                                         value={historyDateFrom}
                                         onChange={(e) => setHistoryDateFrom(e.target.value)}
                                     />
                                 </div>
                                 <div className="history-date-field">
-                                    <label>Till</label>
+                                    <label htmlFor="history-date-to">Till</label>
                                     <input
+                                        id="history-date-to"
                                         type="date"
                                         value={historyDateTo}
                                         onChange={(e) => setHistoryDateTo(e.target.value)}
@@ -1921,14 +1965,6 @@ export const AdminDashboard: React.FC = () => {
                                         onClick={() => { setHistoryDateFrom(''); setHistoryDateTo(''); }}
                                     >
                                         Rensa filter
-                                    </button>
-                                )}
-                                {historyOrders.length > 0 && isOwner && (
-                                    <button
-                                        className="history-delete-all"
-                                        onClick={openDeleteAllModal}
-                                    >
-                                        Radera all historik
                                     </button>
                                 )}
                             </div>
@@ -1946,6 +1982,7 @@ export const AdminDashboard: React.FC = () => {
                                             <span className={`status-badge ${order.status === 'avbruten' ? 'status-avbruten' : 'status-klar'}`}>
                                                 {order.status === 'avbruten' ? 'Avbruten' : 'Klar'}
                                             </span>
+                                            <RefundStatusBadge order={order} />
                                             <ScheduledOrderInfo order={order} />
                                             <ul style={{ margin: '0.5rem 0', paddingLeft: '1.2rem' }}>
                                                 {order.items.map((item, i) => (
@@ -1984,9 +2021,7 @@ export const AdminDashboard: React.FC = () => {
                                             <Button size="sm" variant="ghost" onClick={() => handlePrintReceipt(order)}>
                                                 Kvitto
                                             </Button>
-                                            <Button size="sm" variant="ghost" style={{ color: '#DC2626' }} onClick={() => openDeleteModal(order)}>
-                                                Ta bort
-                                            </Button>
+                                            {canRefundOrder(order) && <Button size="sm" variant="ghost" style={{ color: '#B91C1C' }} onClick={() => setRefundOrder(order)}>Återbetala</Button>}
                                         </div>
                                     </div>
                                 ))
@@ -2010,9 +2045,18 @@ export const AdminDashboard: React.FC = () => {
                                     product={product}
                                     locations={stockLocations}
                                     onToggle={handleToggleStock}
+                                    onEditFoodInformation={isOwner ? setFoodInformationProduct : undefined}
                                 />
                             ))}
                         </div>
+                    )}
+
+                    {foodInformationProduct && (
+                        <FoodInformationModal
+                            product={foodInformationProduct}
+                            onClose={() => setFoodInformationProduct(null)}
+                            onSaved={handleFoodInformationSaved}
+                        />
                     )}
 
                     {/* ── MENY ── */}
@@ -2067,6 +2111,7 @@ export const AdminDashboard: React.FC = () => {
                                     <h3 className="stats-overview-title">Översikt</h3>
                                     <select
                                         id="stats-period-select"
+                                        aria-label="Statistikperiod"
                                         className="stats-period-select"
                                         value={statsPeriod === 'custom' ? 'custom' : statsPeriod}
                                         onChange={e => {
@@ -2088,16 +2133,18 @@ export const AdminDashboard: React.FC = () => {
 
                                 <div className="history-date-filter">
                                     <div className="history-date-field">
-                                        <label>Från</label>
+                                        <label htmlFor="stats-date-from">Från</label>
                                         <input
+                                            id="stats-date-from"
                                             type="date"
                                             value={statsStartDate}
                                             onChange={(e) => setStatsStartDate(e.target.value)}
                                         />
                                     </div>
                                     <div className="history-date-field">
-                                        <label>Till</label>
+                                        <label htmlFor="stats-date-to">Till</label>
                                         <input
+                                            id="stats-date-to"
                                             type="date"
                                             value={statsEndDate}
                                             onChange={(e) => setStatsEndDate(e.target.value)}
@@ -2279,6 +2326,7 @@ export const AdminDashboard: React.FC = () => {
                                             onChange={(e) => {
                                                 const vol = parseFloat(e.target.value);
                                                 alarm.changeVolume(vol);
+
                                             }}
                                         />
                                         <span className="volume-value">{Math.round(alarm.volume * 100)}%</span>
@@ -2301,10 +2349,33 @@ export const AdminDashboard: React.FC = () => {
                                             size="sm"
                                             style={{ color: '#DC2626', borderColor: '#DC2626' }}
                                             onClick={alarm.stopTest}
+
                                         >
                                             ⏹ Stoppa test
                                         </Button>
                                     )}
+                                </div>
+                                <div className="alarm-settings-row" style={{ marginTop: '1.25rem' }}>
+                                    <div>
+                                        <strong>Push på denna enhet</strong>
+                                        <p style={{ fontSize: '0.85rem', color: '#666', margin: '0.25rem 0 0' }}>
+                                            {pushState === 'enabled' && 'Aktiverad och registrerad för det inloggade butikskontot.'}
+                                            {pushState === 'available' && 'Inte aktiverad. Behövs för prov i annan app och på låst skärm.'}
+                                            {pushState === 'denied' && 'Blockerad i webbläsarens eller Androids aviseringsinställningar.'}
+                                            {pushState === 'unconfigured' && 'Publik VAPID-nyckel saknas i webbkonfigurationen.'}
+                                            {pushState === 'unsupported' && 'Den här webbläsaren stöder inte Web Push.'}
+                                        </p>
+                                        {pushError && <p role="alert" style={{ color: '#b91c1c', margin: '0.4rem 0 0' }}>{pushError}</p>}
+                                    </div>
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="ghost"
+                                        disabled={pushBusy || pushState === 'unsupported' || pushState === 'unconfigured' || pushState === 'denied'}
+                                        onClick={() => void handleEnablePush()}
+                                    >
+                                        {pushBusy ? 'Aktiverar…' : pushState === 'enabled' ? 'Verifiera registrering' : 'Aktivera push'}
+                                    </Button>
                                 </div>
                             </div>
                         </div>
@@ -2347,6 +2418,7 @@ export const AdminDashboard: React.FC = () => {
                         <p id="order-alarm-description" className="alarm-help">Larmet återkommer efter pausen om ordern inte har accepterats.</p>
                         <button className="alarm-silence-btn" type="button" autoFocus onClick={handleSilenceAlarm}>
                             Visa ordrar · pausa 30 s
+
                         </button>
                     </div>
                 </div>
@@ -2354,7 +2426,5 @@ export const AdminDashboard: React.FC = () => {
         </div>
     );
 };
-
-
 
 

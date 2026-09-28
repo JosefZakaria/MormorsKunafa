@@ -1,6 +1,39 @@
 import { Router, Request, Response } from 'express';
-import { resolveProductImage } from '../utils/productImage.js';
-import { generateId, supabase, type Row, logSupabaseError, nowIso } from '../db/connection.js';
+import { resolveProductImage } from '../shared/utils/productImage.js';
+import { supabase, type Row, logSupabaseError, nowIso } from '../db/connection.js';
+
+import { isCanonicalUuidV4 } from '../utils/resourceId.js';
+import { logUnexpectedError } from '../utils/safeErrorMetadata.js';
+import { normalizeSiteMediaUrl } from '../utils/siteMediaUrl.js';
+import type { FoodAllergen, ProductIngredient } from '../shared/types/index.js';
+import {
+  FOOD_ALLERGEN_VALUES,
+  parseVerifiedFoodInformationInput,
+} from '../utils/foodInformationInput.js';
+
+
+
+const FOOD_ALLERGENS = new Set<FoodAllergen>(FOOD_ALLERGEN_VALUES);
+
+function parseAllergens(value: unknown): FoodAllergen[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is FoodAllergen =>
+    typeof item === 'string' && FOOD_ALLERGENS.has(item as FoodAllergen)
+  );
+}
+
+function parseIngredients(value: unknown): ProductIngredient[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!item || typeof item !== 'object') return [];
+    const row = item as Record<string, unknown>;
+    const name = typeof row.name === 'string' ? row.name.trim().slice(0, 200) : '';
+    if (!name) return [];
+    const allergens = parseAllergens(row.allergens);
+    return [{ name, ...(allergens.length ? { allergens } : {}) }];
+  }).slice(0, 100);
+}
+import { generateId } from '../db/connection.js';
 import { getRequestAdmin, readAdminFromRequest, requireAdmin, requireOwner } from '../middleware/auth.js';
 import { loadAdminScope } from '../services/locationScope.js';
 import { getLocationById, listLocations } from '../db/locations.js';
@@ -17,8 +50,25 @@ import { parsePriceOre, parseVariantPricesInput, variantPricesForProduct } from 
 
 const router = Router();
 
+// Catalog visibility depends on the current admin cookie. Never share a staff
+// response with public clients or retain a stale hidden/stock/price response.
+router.use((_req, res, next) => {
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.vary('Cookie');
+  res.vary('Authorization');
+  next();
+});
+
+router.param('id', (_req, res, next, value) => {
+  if (!isCanonicalUuidV4(value)) {
+    res.status(400).json({ error: 'Invalid resource identifier' });
+    return;
+  }
+  next();
+});
+
 export const PRODUCT_COLUMNS =
-  'id, name, slug, description, image_url, price_ore, variant_prices, stock_status, hidden, sort_order, created_at, updated_at';
+  'id, name, slug, description, image_url, price_ore, variant_prices, stock_status, hidden, sort_order, created_at, updated_at, ingredients_json, allergens, may_contain_allergens, is_prepacked, food_information_verified_at';
 
 export function rowToProduct(r: Row): {
   id: string;
@@ -33,6 +83,11 @@ export function rowToProduct(r: Row): {
   variantPrices?: Record<string, number>;
   createdAt: string;
   updatedAt: string;
+  ingredients?: ProductIngredient[];
+  allergens?: FoodAllergen[];
+  mayContainAllergens?: FoodAllergen[];
+  isPrepacked?: boolean;
+  foodInformationVerifiedAt?: string;
 } {
   const status = (r.stock_status as string) ?? 'instock';
   const inStock = status === 'instock';
@@ -40,12 +95,12 @@ export function rowToProduct(r: Row): {
   const updatedAt = r.updated_at as string | Date | undefined;
   const id = String(r.id);
   const variantPrices = variantPricesForProduct(id, r.variant_prices) ?? undefined;
-  return {
+  const product = {
     id,
     name: String(r.name),
     price: Number(r.price_ore),
     description: String(r.description ?? ''),
-    image: resolveProductImage(id, r.image_url as string | null, r.slug as string | null),
+    image: resolveProductImage(id, normalizeSiteMediaUrl(r.image_url) ?? r.image_url as string | null, r.slug as string | null),
     inStock,
     hidden: r.hidden === true,
     sortOrder: Number(r.sort_order) || 0,
@@ -54,6 +109,17 @@ export function rowToProduct(r: Row): {
       createdAt instanceof Date ? createdAt.toISOString() : String(createdAt ?? ''),
     updatedAt:
       updatedAt instanceof Date ? updatedAt.toISOString() : String(updatedAt ?? ''),
+  };
+  const verifiedAt = String(r.food_information_verified_at ?? '').trim();
+  if (!verifiedAt) return product;
+
+  return {
+    ...product,
+    ingredients: parseIngredients(r.ingredients_json),
+    allergens: parseAllergens(r.allergens),
+    mayContainAllergens: parseAllergens(r.may_contain_allergens),
+    isPrepacked: r.is_prepacked === true,
+    foodInformationVerifiedAt: verifiedAt,
   };
 }
 
@@ -139,7 +205,7 @@ async function nextSortOrder(): Promise<number> {
 
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const includeHidden = Boolean(readAdminFromRequest(req));
+    const includeHidden = Boolean(await readAdminFromRequest(req));
     let query = supabase
       .from('products')
       .select(PRODUCT_COLUMNS)
@@ -152,16 +218,13 @@ router.get('/', async (req: Request, res: Response) => {
 
     if (error) {
       logSupabaseError('GET /api/products', error);
-      return res.status(500).json({
-        error: 'Failed to fetch products',
-        details: error.message,
-      });
+      return res.status(500).json({ error: 'Failed to fetch products' });
     }
 
     const locationId = String(req.query.locationId ?? '').trim() || null;
     return res.status(200).json(await productsWithLocationStock((data ?? []) as Row[], locationId));
   } catch (e) {
-    console.error('[GET /api/products] unexpected error:', e);
+    logUnexpectedError('GET /api/products unexpected error', e);
     return res.status(500).json({ error: 'Failed to fetch products' });
   }
 });
@@ -176,24 +239,21 @@ router.get('/:id', async (req: Request, res: Response) => {
 
     if (error) {
       logSupabaseError('GET /api/products/:id', error);
-      return res.status(500).json({
-        error: 'Failed to fetch product',
-        details: error.message,
-      });
+      return res.status(500).json({ error: 'Failed to fetch product' });
     }
 
     if (!data) {
       return res.status(404).json({ error: 'Product not found' });
     }
 
-    if ((data as Row).hidden === true && !readAdminFromRequest(req)) {
+    if ((data as Row).hidden === true && !(await readAdminFromRequest(req))) {
       return res.status(404).json({ error: 'Product not found' });
     }
 
     const [product] = await productsWithLocationStock([data as Row]);
     return res.status(200).json(product);
   } catch (e) {
-    console.error('[GET /api/products/:id] unexpected error:', e);
+    logUnexpectedError('GET /api/products/:id unexpected error', e);
     return res.status(500).json({ error: 'Failed to fetch product' });
   }
 });
@@ -236,10 +296,7 @@ router.patch('/:id/stock', requireAdmin, async (req: Request, res: Response) => 
 
     if (error) {
       logSupabaseError('PATCH /api/products/:id/stock', error);
-      return res.status(500).json({
-        error: 'Failed to update stock',
-        details: error.message,
-      });
+      return res.status(500).json({ error: 'Failed to update stock' });
     }
 
     if (!data) {
@@ -257,14 +314,80 @@ router.patch('/:id/stock', requireAdmin, async (req: Request, res: Response) => 
 
     if (refreshError) {
       logSupabaseError('PATCH /api/products/:id/stock refresh', refreshError);
-      return res.status(500).json({ error: 'Failed to update stock', details: refreshError.message });
+      return res.status(500).json({ error: 'Failed to update stock' });
     }
 
     const [product] = await productsWithLocationStock([(refreshed ?? data) as Row]);
     return res.status(200).json(product);
   } catch (e) {
-    console.error('[PATCH /api/products/:id/stock] unexpected error:', e);
+    logUnexpectedError('PATCH /api/products/:id/stock unexpected error', e);
     return res.status(500).json({ error: 'Failed to update stock' });
+  }
+});
+
+router.patch('/:id/food-information', requireAdmin, requireOwner, async (req: Request, res: Response) => {
+  const input = parseVerifiedFoodInformationInput(req.body);
+  if (!input) {
+    return res.status(400).json({
+      error: 'Food information must be complete, consistent and explicitly verified',
+    });
+  }
+  const admin = (req as Request & { admin?: { adminId?: string } }).admin;
+  if (!admin?.adminId) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    const verifiedAt = nowIso();
+    const { data, error } = await supabase
+      .from('products')
+      .update({
+        ingredients_json: input.ingredients,
+        allergens: input.allergens,
+        may_contain_allergens: input.mayContainAllergens,
+        is_prepacked: input.isPrepacked,
+        food_information_verified_at: verifiedAt,
+        food_information_verified_by: admin.adminId,
+        updated_at: verifiedAt,
+      })
+      .eq('id', req.params.id)
+      .select(PRODUCT_COLUMNS)
+      .maybeSingle();
+    if (error) {
+      logSupabaseError('PATCH /api/products/:id/food-information', error);
+      return res.status(500).json({ error: 'Failed to update food information' });
+    }
+    if (!data) return res.status(404).json({ error: 'Product not found' });
+    return res.status(200).json(rowToProduct(data as Row));
+  } catch (error) {
+    logUnexpectedError('PATCH /api/products/:id/food-information unexpected error', error);
+    return res.status(500).json({ error: 'Failed to update food information' });
+  }
+});
+
+router.delete('/:id/food-information', requireAdmin, requireOwner, async (req: Request, res: Response) => {
+  try {
+    const { data, error } = await supabase
+      .from('products')
+      .update({
+        ingredients_json: null,
+        allergens: null,
+        may_contain_allergens: null,
+        is_prepacked: null,
+        food_information_verified_at: null,
+        food_information_verified_by: null,
+        updated_at: nowIso(),
+      })
+      .eq('id', req.params.id)
+      .select(PRODUCT_COLUMNS)
+      .maybeSingle();
+    if (error) {
+      logSupabaseError('DELETE /api/products/:id/food-information', error);
+      return res.status(500).json({ error: 'Failed to revoke food information' });
+    }
+    if (!data) return res.status(404).json({ error: 'Product not found' });
+    return res.status(200).json(rowToProduct(data as Row));
+  } catch (error) {
+    logUnexpectedError('DELETE /api/products/:id/food-information unexpected error', error);
+    return res.status(500).json({ error: 'Failed to revoke food information' });
   }
 });
 
@@ -285,7 +408,7 @@ router.patch('/reorder', requireAdmin, requireOwner, async (req: Request, res: R
     const { data: existing, error: existingError } = await supabase.from('products').select('id');
     if (existingError) {
       logSupabaseError('PATCH /api/products/reorder', existingError);
-      return res.status(500).json({ error: 'Failed to reorder products', details: existingError.message });
+      return res.status(500).json({ error: 'Failed to reorder products' });
     }
     const known = new Set((existing ?? []).map((r) => String((r as Row).id)));
     const unknown = ids.filter((id) => !known.has(id));
@@ -300,7 +423,7 @@ router.patch('/reorder', requireAdmin, requireOwner, async (req: Request, res: R
         .eq('id', ids[i]);
       if (error) {
         logSupabaseError('PATCH /api/products/reorder update', error);
-        return res.status(500).json({ error: 'Failed to reorder products', details: error.message });
+        return res.status(500).json({ error: 'Failed to reorder products' });
       }
     }
 
@@ -313,7 +436,7 @@ router.patch('/reorder', requireAdmin, requireOwner, async (req: Request, res: R
         .eq('id', leftover[i]);
       if (error) {
         logSupabaseError('PATCH /api/products/reorder leftover', error);
-        return res.status(500).json({ error: 'Failed to reorder products', details: error.message });
+        return res.status(500).json({ error: 'Failed to reorder products' });
       }
     }
 
@@ -324,11 +447,11 @@ router.patch('/reorder', requireAdmin, requireOwner, async (req: Request, res: R
       .order('name', { ascending: true });
     if (error) {
       logSupabaseError('PATCH /api/products/reorder list', error);
-      return res.status(500).json({ error: 'Failed to reorder products', details: error.message });
+      return res.status(500).json({ error: 'Failed to reorder products' });
     }
     return res.status(200).json((data ?? []).map((r) => rowToProduct(r as Row)));
   } catch (e) {
-    console.error('[PATCH /api/products/reorder] unexpected error:', e);
+    logUnexpectedError('PATCH /api/products/reorder unexpected error', e);
     return res.status(500).json({ error: 'Failed to reorder products' });
   }
 });
@@ -386,7 +509,7 @@ router.post('/', requireAdmin, requireOwner, async (req: Request, res: Response)
 
     if (error) {
       logSupabaseError('POST /api/products', error);
-      return res.status(500).json({ error: 'Failed to create product', details: error.message });
+      return res.status(500).json({ error: 'Failed to create product' });
     }
     if (!data) {
       return res.status(500).json({ error: 'Failed to create product' });
@@ -395,7 +518,7 @@ router.post('/', requireAdmin, requireOwner, async (req: Request, res: Response)
     const [product] = await productsWithLocationStock([data as Row]);
     return res.status(201).json(product);
   } catch (e) {
-    console.error('[POST /api/products] unexpected error:', e);
+    logUnexpectedError('POST /api/products unexpected error', e);
     return res.status(500).json({ error: 'Failed to create product' });
   }
 });
@@ -459,14 +582,14 @@ router.patch('/:id', requireAdmin, requireOwner, async (req: Request, res: Respo
 
     if (error) {
       logSupabaseError('PATCH /api/products/:id', error);
-      return res.status(500).json({ error: 'Failed to update product', details: error.message });
+      return res.status(500).json({ error: 'Failed to update product' });
     }
     if (!data) {
       return res.status(404).json({ error: 'Product not found' });
     }
     return res.status(200).json(rowToProduct(data as Row));
   } catch (e) {
-    console.error('[PATCH /api/products/:id] unexpected error:', e);
+    logUnexpectedError('PATCH /api/products/:id unexpected error', e);
     return res.status(500).json({ error: 'Failed to update product' });
   }
 });
@@ -485,7 +608,7 @@ router.delete('/:id', requireAdmin, requireOwner, async (req: Request, res: Resp
       .maybeSingle();
     if (lookupError) {
       logSupabaseError('DELETE /api/products/:id lookup', lookupError);
-      return res.status(500).json({ error: 'Failed to delete product', details: lookupError.message });
+      return res.status(500).json({ error: 'Failed to delete product' });
     }
     if (!existing) {
       return res.status(404).json({ error: 'Product not found' });
@@ -497,17 +620,17 @@ router.delete('/:id', requireAdmin, requireOwner, async (req: Request, res: Resp
       .eq('product_id', id);
     if (unlinkError) {
       logSupabaseError('DELETE /api/products/:id unlink', unlinkError);
-      return res.status(500).json({ error: 'Failed to delete product', details: unlinkError.message });
+      return res.status(500).json({ error: 'Failed to delete product' });
     }
 
     const { error } = await supabase.from('products').delete().eq('id', id);
     if (error) {
       logSupabaseError('DELETE /api/products/:id', error);
-      return res.status(500).json({ error: 'Failed to delete product', details: error.message });
+      return res.status(500).json({ error: 'Failed to delete product' });
     }
     return res.status(200).json({ ok: true });
   } catch (e) {
-    console.error('[DELETE /api/products/:id] unexpected error:', e);
+    logUnexpectedError('DELETE /api/products/:id unexpected error', e);
     return res.status(500).json({ error: 'Failed to delete product' });
   }
 });

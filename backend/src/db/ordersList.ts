@@ -70,6 +70,8 @@ export function orderRowToOrder(r: Row, items: Row[]): Record<string, unknown> {
     orderType: r.order_type,
     paymentMethod: r.payment_method,
     paymentStatus: r.payment_status,
+    receiptVatRate: r.receipt_vat_rate_percent ?? undefined,
+    receiptVatAmount: r.receipt_vat_ore ?? undefined,
     totalPrice: r.total_ore,
     defaultPreparationTime: r.default_preparation_time_minutes,
     estimatedReadyTime: dbTimestampToIso(r.estimated_ready_at),
@@ -83,9 +85,11 @@ export function orderRowToOrder(r: Row, items: Row[]): Record<string, unknown> {
     cancellationReason: r.cancellation_reason ?? undefined,
     cancelledAt: dbTimestampToIso(r.cancelled_at),
     refundStatus: r.refund_status ?? 'none',
+    refundedAmount: Number(r.refunded_amount_ore ?? 0),
     internalNotes: r.internal_notes ?? undefined,
     locationId: r.location_id != null ? String(r.location_id) : null,
     items: items.map((i) => ({
+      id: String(i.id ?? ''),
       productId: i.product_id ?? '',
       productName: sanitizeProductName(String(i.product_name_snapshot ?? '')),
       quantity: i.quantity,
@@ -97,5 +101,21 @@ export function orderRowToOrder(r: Row, items: Row[]): Record<string, unknown> {
             : i.modifications_json
           : undefined,
     })),
+  };
+}
+
+/** Never expose customer details, addresses, notes, refunds or line items publicly. */
+export function orderRowToPublicStatus(r: Row): Record<string, unknown> {
+  return {
+    ...(r.order_type === 'delivery' ? {
+      showDeliveryEstimate: (r.delivery_info_json as { pricing?: { showDeliveryEstimate?: boolean } } | null)?.pricing?.showDeliveryEstimate !== false,
+    } : {}),
+    orderNumber: String(r.order_number ?? ''),
+    status: String(r.status ?? 'ny'),
+    paymentStatus: String(r.payment_status ?? 'pending'),
+    orderType: String(r.order_type ?? 'takeaway'),
+    scheduledTime: dbTimestampToIso(r.scheduled_at),
+    locationId: r.location_id ? String(r.location_id) : null,
+    estimatedReadyTime: dbTimestampToIso(r.estimated_ready_at),
   };
 }

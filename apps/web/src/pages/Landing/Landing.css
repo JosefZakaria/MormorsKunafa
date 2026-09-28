@@ -238,6 +238,11 @@
 
 .favorites__img-wrap { aspect-ratio: 1 / 1; overflow: hidden; cursor: pointer; }
 
+.favorites__img-wrap:focus-visible {
+    outline: 3px solid var(--color-primary-red);
+    outline-offset: 3px;
+}
+
 .favorites__img {
     width: 100%;
     height: 100%;
@@ -601,8 +606,18 @@
     flex: 1;
     min-height: 180px;
     border: 0;
-    display: block;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-xl);
+    color: var(--color-white);
+    text-align: center;
+    text-decoration: none;
 }
+
+.findus__map span { color: var(--color-secondary-gold); font-weight: 700; }
 
 @media (max-width: 860px) {
     .findus__grid { grid-template-columns: 1fr; }

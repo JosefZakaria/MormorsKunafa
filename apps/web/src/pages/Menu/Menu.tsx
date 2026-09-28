@@ -1,13 +1,16 @@
+import { AllergenNotice } from '../../components/common/AllergenNotice/AllergenNotice';
+import DOMPurify from 'dompurify';
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Container } from '../../components/common/Container/Container';
 import { Button } from '../../components/common/Button/Button';
+import { AccessibleDialog } from '../../components/common/AccessibleDialog/AccessibleDialog';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useCart } from '../../contexts/CartContext';
 import { productApi } from '../../services/api';
 import { API_CONFIG } from '@shared/api';
 import { resolveProductImage } from '@shared/utils/productImage.ts';
-import type { Product } from '@shared/types';
+import type { FoodAllergen, Product } from '@shared/types';
 import { getTranslationIndex } from '../../utils/productDisplayName';
 import {
     formatBreadOption,
@@ -22,7 +25,6 @@ import {
     isMenuExcluded,
 } from '../../utils/productVariantPrices';
 import './Menu.css';
-import { AllergenNotice } from '../../components/common/AllergenNotice/AllergenNotice';
 import {
     normalizeLineBreaks,
     prepareDescriptionHtml,
@@ -31,10 +33,28 @@ import { getStoredLocationId, needsPickupLocation, stockLocationIdForCustomer } 
 
 const SHORT_DESC_LENGTH = 100;
 
+const ALLERGEN_LABELS: Record<FoodAllergen, string> = {
+    gluten: 'gluten',
+    crustaceans: 'kräftdjur',
+    eggs: 'ägg',
+    fish: 'fisk',
+    peanuts: 'jordnötter',
+    soybeans: 'soja',
+    milk: 'mjölk',
+    nuts: 'nötter',
+    celery: 'selleri',
+    mustard: 'senap',
+    sesame: 'sesam',
+    sulphites: 'sulfiter',
+    lupin: 'lupin',
+    molluscs: 'blötdjur',
+};
+
 function stripHtmlAndTruncate(html: string, maxLen: number): string {
+    const sanitized = DOMPurify.sanitize(html, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] });
     const div = typeof document !== 'undefined' ? document.createElement('div') : null;
-    if (!div) return html.replace(/<[^>]*>/g, '').slice(0, maxLen).trim();
-    div.innerHTML = html;
+    if (!div) return sanitized.slice(0, maxLen).trim();
+    div.innerHTML = sanitized;
     const text = (div.textContent || div.innerText || '').replace(/\s+/g, ' ').trim();
     if (text.length <= maxLen) return text;
     return text.slice(0, maxLen).trim() + '…';
@@ -327,6 +347,7 @@ export const Menu: React.FC = () => {
                                     onClick={() => setSelectedProduct(product)}
                                     role="button"
                                     tabIndex={0}
+                                    aria-label={`Visa ${product.name}`}
                                     onKeyDown={(e) => {
                                         if (e.key === 'Enter' || e.key === ' ') {
                                             e.preventDefault();
@@ -374,18 +395,13 @@ export const Menu: React.FC = () => {
             </div>
 
             {selectedProduct && (
-                <div
-                    className="menu-modal-overlay"
-                    onClick={() => setSelectedProduct(null)}
-                    role="dialog"
-                    aria-modal="true"
-                    aria-labelledby="menu-modal-title"
+                <AccessibleDialog
+                    key={`modal-${selectedProduct.id}-${language}`}
+                    overlayClassName="menu-modal-overlay"
+                    dialogClassName="menu-modal"
+                    onClose={() => setSelectedProduct(null)}
+                    labelledBy="menu-modal-title"
                 >
-                    <div
-                        key={`modal-${selectedProduct.id}-${language}`}
-                        className="menu-modal"
-                        onClick={(e) => e.stopPropagation()}
-                    >
                         <button
                             type="button"
                             className="menu-modal__close"
@@ -450,8 +466,8 @@ export const Menu: React.FC = () => {
                                                 : 'Välj vikt';
                                         return (
                                             <>
-                                                <label className="menu-modal__options-label">{label}</label>
-                                                <select
+                                                <label htmlFor="menu-product-option" className="menu-modal__options-label">{label}</label>
+                                                <select id="menu-product-option"
                                                     className="menu-modal__select"
                                                     value={selectedOption}
                                                     onChange={(e) => setSelectedOption(e.target.value)}
@@ -534,6 +550,33 @@ export const Menu: React.FC = () => {
                                     />
                                 );
                             })()}
+                            {selectedProduct.foodInformationVerifiedAt && selectedProduct.ingredients && (
+                                <section className="menu-modal__food-info" aria-label="Ingredienser och allergener">
+                                    <h3>Ingredienser</h3>
+                                    <p>
+                                        {selectedProduct.ingredients.map((ingredient, index) => (
+                                            <React.Fragment key={`${ingredient.name}-${index}`}>
+                                                {index > 0 && ', '}
+                                                {ingredient.allergens?.length
+                                                    ? <strong>{ingredient.name}</strong>
+                                                    : ingredient.name}
+                                            </React.Fragment>
+                                        ))}
+                                    </p>
+                                    <p>
+                                        <strong>Allergener:</strong>{' '}
+                                        {selectedProduct.allergens?.length
+                                            ? selectedProduct.allergens.map((item) => ALLERGEN_LABELS[item]).join(', ')
+                                            : 'Inga deklarerade allergener'}
+                                    </p>
+                                    {!!selectedProduct.mayContainAllergens?.length && (
+                                        <p>
+                                            <strong>Kan innehålla spår av:</strong>{' '}
+                                            {selectedProduct.mayContainAllergens.map((item) => ALLERGEN_LABELS[item]).join(', ')}
+                                        </p>
+                                    )}
+                                </section>
+                            )}
                             <AllergenNotice />
                         </div>
                         <div className="menu-modal__footer">
@@ -564,8 +607,7 @@ export const Menu: React.FC = () => {
                                     : t('menu.out_of_stock')}
                             </Button>
                         </div>
-                    </div>
-                </div>
+                </AccessibleDialog>
             )}
         </>
     );
