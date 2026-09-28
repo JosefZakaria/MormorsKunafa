@@ -72,6 +72,9 @@ export async function withTestDatabase(callback) {
     await run(binary('initdb'), ['-D', data, '-U', 'mk_test_runner', '-A', 'scram-sha-256',
       '--pwfile', passwordFile, '--encoding=UTF8', '--locale=C'], { env, timeout: 60_000 });
     await rm(passwordFile);
+    // Every test client uses authenticated IPv4 loopback. Disable Unix sockets
+    // so unprivileged Linux runners never need /var/run/postgresql access.
+    await writeFile(path.join(data, 'postgresql.auto.conf'), "\nunix_socket_directories = ''\n", { flag: 'a' });
     await control(binary('pg_ctl'), ['-D', data, '-l', path.join(cluster, 'postgres.log'), '-w', '-t', '30',
       '-o', `-h 127.0.0.1 -p ${port}`, 'start'], env);
     started = true;
@@ -81,6 +84,7 @@ export async function withTestDatabase(callback) {
       [...args, '--dbname', db, ...extra], { env, timeout: 60_000, maxBuffer: 2 * 1024 * 1024 })).stdout.trim();
     await psql(['--command', `CREATE DATABASE ${database}`], 'postgres');
     assert.equal(await psql(['--command', 'SELECT current_database()']), database);
+    assert.equal(await psql(['--command', 'SHOW unix_socket_directories']), '');
     // Windows command-line arguments pass through the active code page in psql.
     // UTF-8 files preserve Swedish order statuses and customer text exactly.
     const sql = (statement) => {

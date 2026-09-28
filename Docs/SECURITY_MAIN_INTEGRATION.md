@@ -80,6 +80,23 @@ from hosted PostgREST, so the missing-schema test asserts denial without claimin
 an identical hosted error mapping.
 
 Hosted CI, real provider/device behavior, deployed schema and rollout sequencing
-are not established by local verification. There has been no push, PR, production
-migration or deployment. The existing main checkout and other worktrees remain
-untouched.
+are not established by local verification. The existing main checkout and other
+worktrees remain untouched.
+
+### Hosted PR verification (2026-09-29)
+
+PR #123 is open for `fix/security-main-integration`; it has not been merged.
+At commit `818bece`, GitHub build-and-test and integration-windows passed.
+The Ubuntu browser job failed before tests started because PostgreSQL tried to
+create its Unix socket lock under the runner's unwritable `/var/run/postgresql`.
+The test harness now disables Unix sockets explicitly, retaining authenticated
+IPv4 loopback connections, and asserts the effective setting. Fresh and phased
+database tests passed locally after this correction; Linux CI must verify it.
+
+Vercel's frontend Preview failed with `PREVIEW_API_ORIGIN must be an explicit
+HTTPS origin without a path`. The committed Preview allowlist is intentionally
+empty until an isolated backend's database, Upstash and providers are verified.
+A successful backend deployment alone does not establish that isolation. This
+external Preview prerequisite remains open; do not bypass the guard or point
+Preview at Production to clear the check. No production migration or manual
+deployment was performed.
