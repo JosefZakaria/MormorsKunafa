@@ -11,10 +11,11 @@ import {
   uploadSiteMedia,
 } from '../services/siteMedia.js';
 import { PRODUCT_COLUMNS, rowToProduct } from './products.js';
+import { logUnexpectedError } from '../utils/safeErrorMetadata.js';
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: SITE_MEDIA_MAX_BYTES },
+  limits: { fileSize: SITE_MEDIA_MAX_BYTES, files: 1, fields: 2, parts: 3, fieldSize: 128 },
 });
 
 const UPLOAD_KINDS = ['product', 'hero-desktop', 'hero-mobile'] as const;
@@ -35,8 +36,8 @@ function runMulter(req: Request, res: Response, next: () => void): void {
       res.status(400).json({ error: 'Image is too large (max 4 MB)' });
       return;
     }
-    const message = err instanceof Error ? err.message : 'Upload failed';
-    res.status(400).json({ error: message });
+    logUnexpectedError('POST /admin/uploads multipart rejected', err);
+    res.status(400).json({ error: 'Invalid multipart upload' });
   });
 }
 
@@ -103,6 +104,10 @@ async function handleUpload(req: Request, res: Response): Promise<void> {
   }
 
   const productId = String(req.body?.productId ?? '').trim();
+  if (productId && !/^[A-Za-z0-9-]{1,64}$/.test(productId)) {
+    res.status(400).json({ error: 'Invalid product identifier' });
+    return;
+  }
   const stamp = Date.now();
   let storagePath: string;
   if (kindRaw === 'hero-desktop') {
@@ -138,7 +143,7 @@ async function handleUpload(req: Request, res: Response): Promise<void> {
         .maybeSingle();
       if (error) {
         logSupabaseError('POST /admin/uploads product', error);
-        res.status(500).json({ error: 'Failed to update product image', details: error.message });
+        res.status(500).json({ error: 'Failed to update product image' });
         return;
       }
       if (!data) {
@@ -151,8 +156,7 @@ async function handleUpload(req: Request, res: Response): Promise<void> {
 
     res.status(200).json({ url });
   } catch (e) {
-    console.error('[POST /admin/uploads]', e);
-    const message = e instanceof Error ? e.message : 'Upload failed';
-    res.status(500).json({ error: message });
+    logUnexpectedError('POST /admin/uploads', e);
+    res.status(500).json({ error: 'Upload failed' });
   }
 }

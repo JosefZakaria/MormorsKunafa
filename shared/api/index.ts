@@ -13,6 +13,7 @@
 declare const process: any;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 declare const Constants: any; // Expo Constants
+declare const document: { cookie?: string } | undefined;
 
 function normalizeBaseUrl(url: string): string {
   return url.trim().replace(/\/+$/, '');
@@ -58,12 +59,14 @@ const getEnvVar = (key: string, fallback: string): string => {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const viteProd = (import.meta as any)?.env?.PROD === true;
 const defaultApiBaseUrl = viteProd
-  ? 'https://mormors-kunafa-backend.vercel.app/api'
+  ? '/api'
   : 'http://localhost:3001/api';
 
 // API configuration - works for both web and mobile
 export const API_CONFIG = {
-  baseUrl: getEnvVar('API_BASE_URL', defaultApiBaseUrl),
+  // Web production traffic stays same-origin so Strict admin cookies work and
+  // credentials never need to cross from the shop domain to a vercel.app host.
+  baseUrl: viteProd ? '/api' : getEnvVar('API_BASE_URL', defaultApiBaseUrl),
   timeout: 10000,
 };
 
@@ -97,6 +100,17 @@ export async function apiRequest<T>(
     ...(fetchOptions.headers as Record<string, string>),
   };
 
+  const method = String(fetchOptions.method ?? 'GET').toUpperCase();
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(method) && typeof document !== 'undefined') {
+    const csrfCookie = String(document.cookie ?? '')
+      .split(';')
+      .map((part) => part.trim())
+      .find((part) => part.startsWith('mk_csrf='));
+    if (csrfCookie && !headers['X-CSRF-Token']) {
+      headers['X-CSRF-Token'] = decodeURIComponent(csrfCookie.slice('mk_csrf='.length));
+    }
+  }
+
   // Add authentication token if provided
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
@@ -113,6 +127,7 @@ export async function apiRequest<T>(
       ...fetchOptions,
       headers,
       signal: controller.signal,
+      credentials: fetchOptions.credentials ?? 'include',
       cache: 'no-store', // ensures polling always gets fresh DB results
     });
 

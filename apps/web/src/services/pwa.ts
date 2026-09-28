@@ -3,7 +3,8 @@ export function registerServiceWorker(): void {
 
   window.addEventListener('load', () => {
     navigator.serviceWorker
-      .register('/sw.js')
+      .register('/sw.js', { scope: '/', updateViaCache: 'none' })
+      .then((registration) => registration.update())
       .catch((error) => console.error('[PWA] service worker register failed', error));
   });
 }
@@ -19,4 +20,64 @@ export function urlBase64ToUint8Array(base64String: string): Uint8Array {
   }
 
   return outputArray;
+}
+
+export type AdminPushState = 'unsupported' | 'unconfigured' | 'denied' | 'available' | 'enabled';
+
+function publicVapidKey(): string {
+  return String(import.meta.env.VITE_WEB_PUSH_VAPID_PUBLIC_KEY ?? '').trim();
+}
+
+export function supportsAdminPush(): boolean {
+  return typeof window !== 'undefined'
+    && 'serviceWorker' in navigator
+    && 'PushManager' in window
+    && 'Notification' in window;
+}
+
+export async function getAdminPushState(): Promise<AdminPushState> {
+  if (!supportsAdminPush()) return 'unsupported';
+  if (!publicVapidKey()) return 'unconfigured';
+  if (Notification.permission === 'denied') return 'denied';
+
+  const registration = await navigator.serviceWorker.ready;
+  const subscription = await registration.pushManager.getSubscription();
+  return subscription ? 'enabled' : 'available';
+}
+
+export async function getCurrentAdminPushEndpoint(): Promise<string | undefined> {
+  if (!supportsAdminPush()) return undefined;
+  try {
+    const registration = await navigator.serviceWorker.getRegistration();
+    const subscription = await registration?.pushManager.getSubscription();
+    return subscription?.endpoint;
+  } catch {
+    // Session revocation must remain available if the browser's optional push
+    // API is temporarily unavailable. A later registration still transfers the
+    // endpoint atomically before it can receive another account's messages.
+    return undefined;
+  }
+}
+
+/** Browser permission must only be requested from an explicit staff action. */
+export async function enableAdminPush(): Promise<PushSubscription> {
+  if (!supportsAdminPush()) throw new Error('Push stöds inte av den här webbläsaren.');
+  const vapidKey = publicVapidKey();
+  if (!vapidKey) throw new Error('Push är inte konfigurerat för den här webbversionen.');
+
+  const permission = Notification.permission === 'granted'
+    ? 'granted'
+    : await Notification.requestPermission();
+  if (permission !== 'granted') {
+    throw new Error('Pushbehörighet nekades. Tillåt aviseringar i Androids webbplatsinställningar.');
+  }
+
+  const registration = await navigator.serviceWorker.ready;
+  const existing = await registration.pushManager.getSubscription();
+  if (existing) return existing;
+
+  return registration.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: urlBase64ToUint8Array(vapidKey) as BufferSource,
+  });
 }

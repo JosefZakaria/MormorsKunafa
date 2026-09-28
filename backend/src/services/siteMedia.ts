@@ -18,7 +18,7 @@ export function sniffImageKind(buffer: Buffer): ImageKind | null {
     buffer[0] === 0x89 &&
     buffer[1] === 0x50 &&
     buffer[2] === 0x4e &&
-    buffer[3] === 0x47
+    buffer[3] === 0x47 && buffer.subarray(4, 8).equals(Buffer.from([13, 10, 26, 10]))
   ) {
     return 'png';
   }
@@ -89,6 +89,5 @@ export async function uploadSiteMedia(params: {
     throw new Error(`Upload failed: ${error.message}`);
   }
 
-  const { data } = supabase.storage.from(SITE_MEDIA_BUCKET).getPublicUrl(params.path);
-  return withCacheBuster(data.publicUrl);
+  return `/api/media/${params.path}`;
 }

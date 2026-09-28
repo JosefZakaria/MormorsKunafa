@@ -46,3 +46,9 @@ a {
     text-decoration: none;
     color: inherit;
 }
+
+/* Never let component-level border styling erase keyboard focus. */
+:focus-visible {
+  outline: 3px solid #1d4ed8 !important;
+  outline-offset: 3px !important;
+}

@@ -1,10 +1,9 @@
+import { randomUUID } from 'node:crypto';
 import { supabase, type Row, logSupabaseError, nowIso } from '../db/connection.js';
 import { getOrderById } from '../db/orderRepository.js';
-import { sendOrderConfirmationEmail } from './OrderConfirmationEmail.js';
-import { sendSms } from './SmsService.js';
-import { formatStockholmDateTime } from '../utils/stockholmWallTime.js';
-import { inStorePickupSmsSuffix } from '../db/locations.js';
-import { dispatchOrderCreatedEvent } from './realtimeEvents.js';
+import { isOnlinePayment } from '../utils/paymentMethod.js';
+import { dispatchPaidOrderCreatedEvent } from './orderNotifications.js';
+import { swishInstructionIdCandidates } from './swishClient.js';
 
 export type MarkOrderPaidOptions = {
   expectedAmountOre?: number;
@@ -12,7 +11,7 @@ export type MarkOrderPaidOptions = {
 };
 
 /**
- * Sets payment_status to paid (idempotent) and sends confirmation email/SMS when applicable.
+ * Sets payment_status to paid and creates durable customer-message jobs atomically.
  * @returns true if the order was newly marked paid
  */
 export async function markOrderPaid(orderId: string, options?: MarkOrderPaidOptions): Promise<boolean> {
@@ -24,53 +23,44 @@ export async function markOrderPaid(orderId: string, options?: MarkOrderPaidOpti
 
   const expectedOre = options?.expectedAmountOre ?? Number(result.order.total_ore ?? 0);
   const paidOre = options?.paidAmountOre;
+  const paymentMethod = String(result.order.payment_method ?? '');
 
-  if (expectedOre > 0 && paidOre != null && paidOre !== expectedOre) {
+  if (!Number.isSafeInteger(expectedOre) || expectedOre <= 0) {
+    console.error('[markOrderPaid] invalid expected amount', { orderId, expectedOre });
+    return false;
+  }
+
+  if (isOnlinePayment(paymentMethod) && !Number.isSafeInteger(paidOre)) {
+    console.error('[markOrderPaid] verified paid amount required', { orderId });
+    return false;
+  }
+
+  if (paidOre != null && paidOre !== expectedOre) {
     console.error('[markOrderPaid] amount mismatch', { orderId, paidOre, expectedOre });
     return false;
   }
 
-  const { data, error } = await supabase
-    .from('orders')
-    .update({ payment_status: 'paid', updated_at: nowIso() })
-    .eq('id', orderId)
-    .eq('payment_status', 'pending')
-    .select('id');
+  const paidAt = nowIso();
+  const { data, error } = await supabase.rpc('mark_order_paid_with_audit_and_messages', {
+    p_order_id: orderId,
+    p_paid_at: paidAt,
+    p_event_id: randomUUID(),
+  });
 
   if (error) {
     logSupabaseError('markOrderPaid', error);
     throw error;
   }
 
-  if (!data || data.length === 0) return false;
+  if (data !== true) return false;
 
   const refreshed = await getOrderById(orderId);
   if (!refreshed) return true;
 
-  const emailOut = String(refreshed.order.customer_email ?? '').trim();
-  if (emailOut) {
-    void sendOrderConfirmationEmail({ order: refreshed.order, items: refreshed.items }).catch((err) =>
-      console.error('[order confirmation email after payment]', err)
-    );
-  }
-
-  const phoneOut = String(refreshed.order.customer_phone ?? '').trim();
-  const smsCustomerName = String(refreshed.order.customer_name ?? '').trim();
-  // Hemleverans får inga SMS – endast "Ta med" och "Äta här".
-  if (phoneOut && String(refreshed.order.order_type ?? '') !== 'delivery') {
-    const schedStr = refreshed.order.scheduled_at ? formatStockholmDateTime(refreshed.order.scheduled_at as string) : '';
-    const schedSuffix = schedStr ? ` Planerad upphämtning: ${schedStr}.` : '';
-    const placeSuffix = await inStorePickupSmsSuffix(refreshed.order);
-    void sendSms(phoneOut, `Tack för din beställning från Mormors Kunafa${smsCustomerName ? ', ' + smsCustomerName : ''}! Vi tar snart emot din beställning.${placeSuffix}${schedSuffix}`).catch((err) =>
-      console.error('[order confirmation sms after payment]', err)
-    );
-  }
-
-  dispatchOrderCreatedEvent(
+  dispatchPaidOrderCreatedEvent(
     orderId,
     String(refreshed.order.order_number ?? ''),
-    String(refreshed.order.order_type ?? 'takeaway'),
-    refreshed.order.location_id != null ? String(refreshed.order.location_id) : null
+    refreshed.order
   );
 
   return true;
@@ -80,15 +70,15 @@ export async function getOrderIdBySwishInstructionId(instructionId: string): Pro
   const { data, error } = await supabase
     .from('orders')
     .select('id')
-    .eq('swish_instruction_id', instructionId)
-    .limit(1)
-    .maybeSingle();
+    .in('swish_instruction_id', swishInstructionIdCandidates(instructionId))
+    .limit(2);
 
   if (error) {
     logSupabaseError('getOrderIdBySwishInstructionId', error);
     throw error;
   }
 
-  if (!data) return null;
-  return String((data as Row).id ?? '');
+  if (!data?.length) return null;
+  if (data.length !== 1) throw new Error('Swish instruction matches multiple orders');
+  return String((data[0] as Row).id ?? '');
 }

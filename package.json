@@ -2,6 +2,11 @@
   "name": "mormors-kunafa-monorepo",
   "version": "1.0.0",
   "private": true,
+  "packageManager": "npm@11.6.2",
+  "engines": {
+    "node": "24.x",
+    "npm": "11.x"
+  },
   "workspaces": [
     "apps/*",
     "shared",
@@ -14,11 +19,51 @@
     "mobile:android": "npm run android --workspace=apps/mobile",
     "mobile:ios": "npm run ios --workspace=apps/mobile",
     "web": "npm run dev --workspace=apps/web",
+    "build": "npm run build:web && npm run build:backend",
+    "build:web": "npm run build --workspace=@mormors-kunafa/web",
+    "build:backend": "npm run build --workspace=@mormors-kunafa/backend",
+    "test": "npm run test:shared && npm run test:backend && npm run test:web && npm run typecheck:mobile",
+    "test:db": "node scripts/test-database.mjs",
+    "test:backup-restore": "node scripts/test-backup-restore.mjs",
+    "test:api": "npm run build:backend && node scripts/test-api.mjs && node scripts/test-catalog-api.mjs && node scripts/test-swish-api.mjs && node scripts/test-notifications-api.mjs && node scripts/test-push-wakeup-api.mjs && node scripts/test-delivery-integration.mjs",
+    "test:browser": "playwright test",
+    "test:backend": "npm run test --workspace=@mormors-kunafa/backend && node --test scripts/test-push-worker.mjs",
+    "typecheck:mobile": "npm exec --workspace=@mormors-kunafa/mobile -- tsc --noEmit",
+    "doctor:mobile": "npm exec --workspace=@mormors-kunafa/mobile -- expo-doctor",
+    "export:mobile:android": "npm exec --workspace=@mormors-kunafa/mobile -- expo export --platform android --output-dir ../../.cache/security-test/mobile-export-android",
+    "export:mobile:ios": "npm exec --workspace=@mormors-kunafa/mobile -- expo export --platform ios --output-dir ../../.cache/security-test/mobile-export-ios",
+    "check": "npm run verify:dependencies && npm run verify:mobile-links && npm run verify:browser-storage && npm run verify:web-deployment && npm run build:web && npm run verify:web-build && npm test",
+    "verify:dependencies": "node scripts/verify-dependency-security.mjs",
+    "verify:mobile-links": "node scripts/verify-mobile-deep-links.mjs",
+    "verify:browser-storage": "node scripts/verify-browser-storage.mjs",
+    "verify:web-deployment": "node scripts/verify-web-deployment-config.mjs",
+    "verify:web-build": "node scripts/verify-web-build-security.mjs",
     "web:build": "npm run build --workspace=apps/web",
-    "web:preview": "npm run preview --workspace=apps/web"
+    "web:preview": "npm run preview --workspace=apps/web",
+    "test:shared": "npm run test --workspace=@mormors-kunafa/shared",
+    "test:web": "npm run test:alarm --workspace=@mormors-kunafa/web && node --test apps/web/tests/printer.test.cjs",
+    "build:browser-test": "node scripts/build-browser-test.mjs"
+  },
+  "overrides": {
+    "@babel/core": "7.29.7",
+    "@xmldom/xmldom@^0.8": "0.8.15",
+    "body-parser": "2.3.0",
+    "brace-expansion@^1": "1.1.18",
+    "brace-expansion@^2": "2.1.4",
+    "browserslist": "4.28.9",
+    "js-yaml@^3": "3.15.2",
+    "js-yaml@^4": "4.3.2",
+    "postcss": "8.5.28",
+    "qs": "6.16.0",
+    "shell-quote": "1.10.0",
+    "socket.io-parser": "4.2.7",
+    "tar": "7.5.22"
   },
   "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "expo-doctor": "1.20.4",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
     "typescript": "~5.6.2"
   }
 }
-

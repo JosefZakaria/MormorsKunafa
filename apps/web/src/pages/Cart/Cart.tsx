@@ -1,15 +1,31 @@
-import React, { useMemo, useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { AllergenNotice } from '../../components/common/AllergenNotice/AllergenNotice';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { Container } from '../../components/common/Container/Container';
 import { Button } from '../../components/common/Button/Button';
-import { AllergenNotice } from '../../components/common/AllergenNotice/AllergenNotice';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useCart } from '../../contexts/CartContext';
-import { orderApi, locationApi } from '../../services/api';
+import {
+    clearPendingCheckoutCreateAttempt,
+    clearPendingCheckoutOrder,
+    locationApi,
+    markPendingCheckoutPaymentStarted,
+    orderApi,
+    readPendingCheckoutOrder,
+    readPendingCheckoutCreateAttempt,
+    storeOrderStatusToken,
+    storePendingCheckoutCreateAttempt,
+    storePendingCheckoutOrder,
+    type PendingCheckoutOrder,
+} from '../../services/api';
 import type { CheckoutPaymentChoice, CustomerInfo, Location, OrderType } from '@shared/types';
 import { parseDeliveryPricing, quoteDelivery, type DeliveryPricing } from '@shared/utils/deliveryPricing';
+import { cartItemToOrderLine } from '@shared/utils/cartOrderLine';
+import { safePaymentRedirectUrl } from '@shared/utils/paymentRedirect.ts';
+
 import {
     dateToStockholmInputValue,
+    MAX_PREORDER_DAYS,
     roundClockToNext5Min,
     todayInStockholmDateString,
 } from '@shared/utils/scheduledTime';
@@ -21,15 +37,23 @@ import {
     isStoreClosedNow,
 } from '@shared/utils/openingHours';
 import './Cart.css';
+import { LEGACY_STORAGE_KEYS, removePersistentValue, STORAGE_KEYS } from '../../utils/browserStorage';
 import {
     clearStoredLocation,
     getStoredLocationId,
     needsPickupLocation,
 } from '../../utils/selectedLocation';
 import { anyLocationAcceptsOrderType, locationAcceptsOrderType } from '../../utils/orderTypeAvailability';
+import {
+    classifyCheckoutCreateResponse,
+    CLIENT_UPGRADE_REQUIRED_CODE,
+    isOrderStatusCapability,
+} from '@shared/constants/checkoutContract';
 
 /** Set to true when Swish checkout is ready for customers. */
 const SWISH_CHECKOUT_ENABLED = false;
+const CREATED_ORDER_RECONCILIATION_MESSAGE =
+    'En beställning kan redan ha skapats, men betalningen kunde inte bekräftas säkert. Varukorgen är kvar. Betala eller beställ inte igen innan personalen har kontrollerat beställningen. Ring 072-868 25 92 eller mejla Mormorskunafa@gmail.com.';
 
 type OrderTypeFlags = {
     isPaused: boolean;
@@ -78,8 +102,10 @@ export const Cart: React.FC = () => {
     const { items, updateQuantity, removeItem, getTotal, clearCart } = useCart();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [upgradeRequired, setUpgradeRequired] = useState(false);
     const [pausedPopup, setPausedPopup] = useState<OrderType | 'all' | null>(null);
     const [orderTypeFlags, setOrderTypeFlags] = useState<OrderTypeFlags>(DEFAULT_ORDER_TYPE_FLAGS);
+    const [acceptedTerms, setAcceptedTerms] = useState(false);
     const [orderType, setOrderType] = useState<OrderType | ''>(() => {
         const fromUrl = searchParams.get('type') as OrderType;
         if (fromUrl) return fromUrl;
@@ -112,12 +138,13 @@ export const Cart: React.FC = () => {
     }, [orderType, pricingAttempt]);
     const [customerInfoError, setCustomerInfoError] = useState<string | null>(null);
     const [paymentChoice, setPaymentChoice] = useState<CheckoutPaymentChoice>('card');
+    const orderIdempotencyRef = useRef<{ payload: string; key: string } | null>(null);
     const [locations, setLocations] = useState<Location[]>([]);
     const [locationId, setLocationId] = useState(() => getStoredLocationId());
     const [placeError, setPlaceError] = useState<string | null>(null);
 
     useEffect(() => {
-        localStorage.removeItem('deliveryInfo');
+        removePersistentValue(LEGACY_STORAGE_KEYS.deliveryInfo);
     }, []);
 
     useEffect(() => {
@@ -135,7 +162,7 @@ export const Cart: React.FC = () => {
     // --- Scheduled pickup/delivery date ---
     const todayStr = todayInStockholmDateString();
     const maxDate = new Date();
-    maxDate.setDate(maxDate.getDate() + 30);
+    maxDate.setDate(maxDate.getDate() + MAX_PREORDER_DAYS);
     const maxDateStr = dateToStockholmInputValue(maxDate);
 
     const [prepTime, setPrepTime] = useState<number>(30);
@@ -413,9 +440,86 @@ export const Cart: React.FC = () => {
         void handleCheckout(true);
     };
 
+    const showCheckoutFailure = (
+        err: unknown,
+        pending?: PendingCheckoutOrder | null,
+        hasUnresolvedCreateAttempt = false
+    ) => {
+        const apiData = err && typeof err === 'object' && 'data' in err
+            ? (err as { data?: { code?: unknown; error?: unknown } }).data
+            : undefined;
+        const status = err && typeof err === 'object' && 'status' in err
+            ? Number((err as { status?: unknown }).status)
+            : 0;
+        const message = typeof apiData?.error === 'string'
+            ? apiData.error
+            : err instanceof Error
+                ? err.message
+                : 'Kunde inte skapa beställning. Försök igen.';
+
+        if (apiData?.code === CLIENT_UPGRADE_REQUIRED_CODE || status === 426) {
+            setUpgradeRequired(true);
+            setError(message);
+        } else if (hasUnresolvedCreateAttempt) {
+            setError(CREATED_ORDER_RECONCILIATION_MESSAGE);
+        } else if (pending?.contract === 'legacy' || pending?.contract === 'unknown') {
+            setError(CREATED_ORDER_RECONCILIATION_MESSAGE);
+        } else if (pending) {
+            setError(`Beställningen är skapad men betalningen öppnades inte. Varukorgen är kvar. Klicka på ”Gå till betalning” för att återuppta samma betalningsförsök. ${message}`);
+        } else if (message.toLowerCase().includes('pausa') || status === 403) {
+            setPausedPopup(orderTypeFlags.isPaused || !orderType ? 'all' : orderType);
+        } else {
+            setError(message);
+        }
+        console.error('Checkout failed:', err);
+    };
+
+    const continuePendingCheckout = async (pending: PendingCheckoutOrder) => {
+        if (pending.contract !== 'current') throw new Error(CREATED_ORDER_RECONCILIATION_MESSAGE);
+
+        if (pending.paymentMethod === 'swish') {
+            navigate(`/pay/swish?orderId=${encodeURIComponent(pending.orderId)}`);
+            return;
+        }
+        if (!markPendingCheckoutPaymentStarted(pending.orderId)) {
+            throw new Error('Beställningsförsöket kunde inte bevaras lokalt.');
+        }
+        const { url } = await orderApi.createCheckoutSession(pending.orderId);
+        const checkoutUrl = safePaymentRedirectUrl(url, 'stripe');
+        if (!checkoutUrl) throw new Error('Betaltjänsten returnerade en ogiltig adress.');
+
+        clearPendingCheckoutOrder(pending.orderId);
+        clearCart();
+        removePersistentValue(STORAGE_KEYS.cart);
+        window.location.assign(checkoutUrl);
+    };
+
     const handleCheckout = async (bypassClosedCheck = false) => {
         if (items.length === 0) {
             setError('Din varukorg är tom');
+            return;
+        }
+
+        const existingPending = readPendingCheckoutOrder();
+        if (existingPending) {
+            // The durable order record wins if a page close happened between the
+            // two storage operations that transition out of the create attempt.
+            clearPendingCheckoutCreateAttempt();
+            setIsSubmitting(true);
+            setError(null);
+            setUpgradeRequired(false);
+            try {
+                await continuePendingCheckout(existingPending);
+            } catch (err: unknown) {
+                showCheckoutFailure(err, existingPending);
+            } finally {
+                setIsSubmitting(false);
+            }
+            return;
+        }
+        if (readPendingCheckoutCreateAttempt()) {
+            setUpgradeRequired(false);
+            setError(CREATED_ORDER_RECONCILIATION_MESSAGE);
             return;
         }
         if (!orderType) {
@@ -487,20 +591,23 @@ export const Cart: React.FC = () => {
         if (orderType === 'delivery' && !deliveryQuote) return;
         setIsSubmitting(true);
         setError(null);
+        setUpgradeRequired(false);
         setOrderTypeError(null);
         setCustomerInfoError(null);
 
+        let createAttemptId: string | null = null;
         try {
-            // Convert cart items to order items format
-            const orderItems = items.map(item => ({
-                productId: item.productId,
-                productName: item.productName,
-                quantity: item.quantity,
-                price: item.price, // Already in öre
-            }));
+            // Compatibility name/price fields keep this request readable by
+            // locked main. Current backends ignore them and price by identifier.
+            const orderItems = items.map(cartItemToOrderLine);
 
             if (!customerInfo) {
                 setError(t('cart.customer_info_required'));
+                return;
+            }
+
+            if (!acceptedTerms) {
+                setError(t('cart.terms_required_error'));
                 return;
             }
 
@@ -520,20 +627,7 @@ export const Cart: React.FC = () => {
                 }
             }
 
-            if (paymentChoice === 'swish') {
-                const phoneForSwish =
-                    customerInfo?.phone?.trim() ||
-                    (deliveryInfo?.phone as string | undefined)?.trim() ||
-                    '';
-                if (!phoneForSwish) {
-                    setError('Ange telefonnummer för Swish-betalning.');
-                    setIsSubmitting(false);
-                    return;
-                }
-                sessionStorage.setItem('swishPayerPhone', phoneForSwish);
-            }
-
-            const order = await orderApi.create({
+            const orderRequest = {
                 items: orderItems,
                 orderType: orderType as OrderType,
                 customerInfo,
@@ -542,37 +636,48 @@ export const Cart: React.FC = () => {
                 ...(scheduledTime ? { scheduledTime } : {}),
                 paymentMethod: paymentChoice,
                 ...(needsPickupLocation(orderType) ? { locationId } : {}),
-            });
-
-            clearCart();
-
-            if (paymentChoice === 'card') {
-                const { url } = await orderApi.createCheckoutSession(order.id);
-                window.location.href = url;
-            } else {
-                navigate(`/pay/swish?orderId=${encodeURIComponent(order.id)}`);
+            };
+            const payload = JSON.stringify(orderRequest);
+            if (!orderIdempotencyRef.current || orderIdempotencyRef.current.payload !== payload) {
+                orderIdempotencyRef.current = { payload, key: crypto.randomUUID() };
             }
-        } catch (err: any) {
-            if (err.status === 409 && err.data?.code === 'DELIVERY_QUOTE_CHANGED') {
-                try {
-                    setDeliveryPricing(parseDeliveryPricing(err.data.deliveryPricing));
-                } catch {
-                    setDeliveryPricing(null);
-                    setPricingFailed(true);
-                }
+            const createAttempt = storePendingCheckoutCreateAttempt(orderIdempotencyRef.current.key);
+            createAttemptId = createAttempt.idempotencyKey;
+            const order = await orderApi.create(orderRequest, orderIdempotencyRef.current.key);
+            const contract = classifyCheckoutCreateResponse(order);
+            const pending = storePendingCheckoutOrder(order.id, paymentChoice, contract);
+            clearPendingCheckoutCreateAttempt(createAttempt.idempotencyKey);
+            orderIdempotencyRef.current = null;
+
+            if (contract === 'current' && isOrderStatusCapability(order.statusToken)) {
+                storeOrderStatusToken(order.id, order.statusToken);
+            }
+            await continuePendingCheckout(pending);
+        } catch (err: unknown) {
+            const pending = readPendingCheckoutOrder();
+            const apiData = err && typeof err === 'object' && 'data' in err
+                ? (err as { data?: { code?: unknown; deliveryPricing?: unknown } }).data
+                : undefined;
+            const status = err && typeof err === 'object' && 'status' in err
+                ? Number((err as { status?: unknown }).status)
+                : 0;
+            if (!pending && status === 409 && apiData?.code === 'DELIVERY_QUOTE_CHANGED') {
+                // This response guarantees no order was created. A new quote may be submitted.
+                if (createAttemptId) clearPendingCheckoutCreateAttempt(createAttemptId);
+                orderIdempotencyRef.current = null;
+                try { setDeliveryPricing(parseDeliveryPricing(apiData.deliveryPricing)); }
+                catch { setDeliveryPricing(null); setPricingFailed(true); }
                 setError(t('delivery.price_changed'));
                 return;
             }
-            let errorMsg = err.message || 'Kunde inte skapa beställning. Försök igen.';
-            if (err.data && err.data.error) {
-                errorMsg = err.data.error;
+            const isDefinitiveUpgradeRejection =
+                apiData?.code === CLIENT_UPGRADE_REQUIRED_CODE || status === 426;
+            if (!pending && createAttemptId && isDefinitiveUpgradeRejection) {
+                clearPendingCheckoutCreateAttempt(createAttemptId);
+                orderIdempotencyRef.current = null;
+
             }
-            if (errorMsg.toLowerCase().includes('pausa') || err.status === 403) {
-                setPausedPopup(orderTypeFlags.isPaused || !orderType ? 'all' : orderType);
-            } else {
-                setError(errorMsg);
-            }
-            console.error('Error creating order:', err);
+            showCheckoutFailure(err, pending, Boolean(!pending && readPendingCheckoutCreateAttempt()));
         } finally {
             setIsSubmitting(false);
         }
@@ -618,7 +723,12 @@ export const Cart: React.FC = () => {
                         borderRadius: '8px',
                         marginBottom: '1rem'
                     }}>
-                        {error}
+                        <p>{error}</p>
+                        {upgradeRequired && (
+                            <button type="button" onClick={() => window.location.reload()}>
+                                Ladda om sidan
+                            </button>
+                        )}
                     </div>
                 )}
 
@@ -668,8 +778,9 @@ export const Cart: React.FC = () => {
 
                         <div className="cart-summary">
                             <div className="order-type-selector">
-                                <label className="order-type-label">Leveranssätt</label>
+                                <label htmlFor="order-type" className="order-type-label">Leveranssätt</label>
                                 <select
+                                    id="order-type"
                                     className={`order-type-select ${orderTypeError ? 'order-type-select--error' : ''}`}
                                     value={orderType}
                                     onChange={(e) => handleOrderTypeChange(e.target.value)}
@@ -895,6 +1006,27 @@ export const Cart: React.FC = () => {
 
                             <AllergenNotice />
 
+                            <div className="cart-terms-checkbox" style={{ margin: '1.25rem 0 1rem 0', textAlign: 'left' }}>
+                                <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.65rem', fontSize: '0.875rem', cursor: 'pointer', color: '#444', lineHeight: '1.4' }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={acceptedTerms}
+                                        onChange={(e) => setAcceptedTerms(e.target.checked)}
+                                        style={{ marginTop: '0.15rem', accentColor: '#8b1d1d', width: '17px', height: '17px', cursor: 'pointer', flexShrink: 0 }}
+                                    />
+                                    <span>
+                                        Jag har läst och godkänner{' '}
+                                        <Link to="/terms" target="_blank" style={{ color: '#8b1d1d', textDecoration: 'underline', fontWeight: 600 }}>
+                                            {t('cart.terms_link')}
+                                        </Link>{' '}
+                                        samt{' '}
+                                        <Link to="/privacy" target="_blank" style={{ color: '#8b1d1d', textDecoration: 'underline', fontWeight: 600 }}>
+                                            {t('cart.privacy_link')}
+                                        </Link>.
+                                    </span>
+                                </label>
+                            </div>
+
                             <Button
                                 variant="primary"
                                 fullWidth
@@ -922,14 +1054,15 @@ export const Cart: React.FC = () => {
                                 max={maxDateStr}
                                 onChange={(e) => handleScheduledDateChange(e.target.value)}
                             />
-                            <label className="cart-schedule__label cart-schedule__label--time">
+                            <span id="cart-schedule-time-label" className="cart-schedule__label cart-schedule__label--time">
                                 {t('cart.schedule_time_label')}
-                            </label>
+                            </span>
                             <div 
                                 className={`cart-schedule__time-picker ${!clockRange ? 'cart-schedule__time-picker--disabled' : ''}`}
                                 ref={timePickerRef}
                             >
                                 <button
+                                    aria-labelledby="cart-schedule-time-label"
                                     type="button"
                                     className={`cart-schedule__time-trigger ${isDropdownOpen ? 'cart-schedule__time-trigger--open' : ''}`}
                                     disabled={!clockRange}

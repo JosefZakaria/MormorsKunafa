@@ -88,10 +88,6 @@ const FALLBACK_PLACES: Location[] = [
     },
 ];
 
-function mapsEmbedUrl(address: string): string {
-    return `https://maps.google.com/maps?q=${encodeURIComponent(address)}&output=embed`;
-}
-
 function mapsDirectionsUrl(address: string): string {
     return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
 }
@@ -372,14 +368,16 @@ export const Landing: React.FC = () => {
                             {mappedPlaces.map((place) => (
                                 <div className="findus__map-wrap" key={place.id}>
                                     <span className="findus__map-label">{place.name}</span>
-                                    <iframe
-                                        src={mapsEmbedUrl(place.address)}
+                                    <a
+                                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.address)}`}
                                         title={`${place.name} — ${place.address}`}
                                         className="findus__map"
-                                        loading="lazy"
-                                        allowFullScreen
-                                        referrerPolicy="no-referrer-when-downgrade"
-                                    />
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                    >
+                                        <strong>{place.address}</strong>
+                                        <span>{t('findus.directions_btn')} →</span>
+                                    </a>
                                 </div>
                             ))}
                         </div>

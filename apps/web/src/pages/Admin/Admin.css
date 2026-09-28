@@ -85,6 +85,7 @@
     display: flex;
     flex-wrap: wrap;
     gap: 1rem;
+
     justify-content: space-between;
     align-items: center;
     margin-bottom: var(--spacing-xl);
@@ -118,6 +119,11 @@
 .admin-tab.active {
     color: var(--color-primary-red);
     font-weight: 700;
+}
+
+.admin-tab:focus-visible {
+    outline: 3px solid var(--color-primary-red);
+    outline-offset: 3px;
 }
 
 .admin-tab.active::after {
@@ -251,12 +257,14 @@
     flex-wrap: wrap;
     min-width: 0;
     flex: 1;
+
     align-items: center;
     gap: var(--spacing-md);
 }
 
 .admin-header-actions {
     display: flex;
+    flex-shrink: 0;
     gap: var(--spacing-sm);
 }
 
@@ -790,6 +798,164 @@ select.stats-modal-input {
     gap: var(--spacing-sm);
     margin-top: var(--spacing-md);
 }
+
+.refund-modal {
+    max-width: 640px;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+.food-information-modal {
+    max-width: 820px;
+    max-height: 92vh;
+    overflow-y: auto;
+}
+
+.food-information-warning {
+    padding: 0.85rem;
+    margin-bottom: 1rem;
+    border-left: 4px solid #B91C1C;
+    background: #FEF2F2;
+    color: #7F1D1D;
+}
+
+.food-information-ingredients {
+    display: grid;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.food-information-ingredient,
+.food-information-traces {
+    border: 1px solid var(--color-gray-200);
+    border-radius: var(--radius-md);
+    padding: 1rem;
+    margin: 1rem 0;
+}
+
+.food-information-checkboxes {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 0.45rem 0.75rem;
+    margin: 0.5rem 0 1rem;
+}
+
+.food-information-checkboxes label,
+.food-information-confirmation {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.45rem;
+}
+
+.food-information-confirmation {
+    padding: 1rem;
+    background: var(--color-gray-100);
+    border-radius: var(--radius-md);
+}
+
+.food-information-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.refund-warning {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    border: 2px solid #DC2626;
+    border-radius: var(--radius-md);
+    background: #FEF2F2;
+    color: #991B1B;
+}
+
+.refund-danger-text { color: #B91C1C !important; font-weight: 700; }
+.refund-summary { display: grid; gap: 0.35rem; margin-bottom: 1rem; color: #4B5563; }
+.refund-select-all { display: flex; gap: 0.6rem; align-items: center; font-weight: 700; margin-bottom: 0.75rem; }
+.refund-items { display: grid; gap: 0.6rem; }
+.refund-item { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.75rem; border: 1px solid #E5E7EB; border-radius: var(--radius-md); }
+.refund-item label { display: flex; align-items: center; gap: 0.65rem; min-width: 0; }
+.refund-item label span { display: flex; flex-direction: column; min-width: 0; }
+.refund-item small { color: #6B7280; }
+.refund-quantity { width: 72px; padding: 0.5rem; border: 1px solid #D1D5DB; border-radius: var(--radius-sm); }
+.refund-total { margin-top: 1rem; padding: 0.75rem; border-radius: var(--radius-md); background: #F3F4F6; }
+.refund-field-label { display: block; margin: 1rem 0 0.4rem; color: #374151; }
+.refund-pending-list { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 1rem; padding: 0.75rem; background: #FFFBEB; border-radius: var(--radius-md); }
+
+.payment-security-alert {
+  margin-bottom: 1rem;
+  padding: 1rem;
+  border: 2px solid #b91c1c;
+  border-radius: var(--radius-md);
+  background: #fef2f2;
+  color: #7f1d1d;
+}
+
+.payment-security-alert h2 { margin: 0 0 0.5rem; font-size: 1.1rem; }
+.payment-security-alert p { margin: 0.4rem 0; }
+.payment-security-alert ul { margin: 0.75rem 0; padding-left: 1.25rem; }
+.payment-security-alert code { overflow-wrap: anywhere; color: #450a0a; }
+.payment-security-alert__instruction { font-weight: 700; }
+.payment-security-alert li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0.5rem 0;
+}
+
+.outbound-message-alert {
+    margin-bottom: 1rem;
+    padding: 1rem;
+    border: 2px solid #c2410c;
+    border-radius: 12px;
+    background: #fff7ed;
+    color: #7c2d12;
+    box-shadow: 0 8px 20px rgba(124, 45, 18, 0.12);
+}
+
+.outbound-message-alert h2 {
+    margin: 0 0 0.5rem;
+    font-size: 1.1rem;
+}
+
+.outbound-message-alert p { margin: 0.4rem 0; }
+.outbound-message-alert ul { margin: 0.75rem 0 0; padding: 0; list-style: none; }
+.outbound-message-alert li {
+    display: grid;
+    grid-template-columns: minmax(5rem, 0.7fr) repeat(4, minmax(7rem, 1fr)) minmax(10rem, 1.2fr);
+    gap: 0.5rem;
+    align-items: center;
+    padding: 0.65rem 0;
+    border-top: 1px solid rgba(194, 65, 12, 0.28);
+}
+
+.outbound-message-alert code {
+    overflow-wrap: anywhere;
+    color: #7c2d12;
+    font-weight: 700;
+}
+
+.outbound-message-alert__unavailable { font-weight: 700; }
+
+@media (max-width: 900px) {
+    .outbound-message-alert li { grid-template-columns: 1fr 1fr; }
+}
+.duplicate-refund-modal { border: 2px solid #b91c1c; }
+.duplicate-refund-event {
+  display: block;
+  margin: -0.25rem 0 1rem;
+  overflow-wrap: anywhere;
+  color: #7f1d1d;
+}
+.duplicate-refund-summary { border-color: #fecaca; background: #fff7f7; }
+
+@media (max-width: 640px) {
+  .payment-security-alert li { align-items: flex-start; flex-direction: column; }
+}
+.refund-success { color: #047857 !important; font-weight: 700; margin-top: 1rem !important; }
+.refund-status { margin-left: 0.5rem; background: #FEE2E2; color: #991B1B; }
 
 /* History cards */
 .history-card-done {
@@ -1346,7 +1512,7 @@ select.stats-modal-input {
     padding-top: 0.25rem;
 }
 
-.alarm-silence-btn {
+.alarm-accept-btn {
     background: linear-gradient(135deg, #dc2626, #b91c1c) !important;
     color: #ffffff !important;
     border: none !important;
@@ -1363,13 +1529,13 @@ select.stats-modal-input {
     display: block;
 }
 
-.alarm-silence-btn:hover {
+.alarm-accept-btn:hover {
     transform: scale(1.02);
     filter: brightness(1.1);
     box-shadow: 0 12px 20px -3px rgba(220, 38, 38, 0.6) !important;
 }
 
-.alarm-silence-btn:active {
+.alarm-accept-btn:active {
     transform: scale(0.98);
 }
 

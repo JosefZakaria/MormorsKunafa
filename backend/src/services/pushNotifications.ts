@@ -1,13 +1,20 @@
 import webpush from 'web-push';
 import {
   createPushDeliveryLog,
-  disablePushSubscriptionByEndpoint,
+  disablePushSubscriptionIfCurrent,
   hasPushDeliveryLog,
+  isPushSubscriptionCurrent,
   listActivePushSubscriptions,
   markPushDeliveryFailure,
   markPushDeliverySuccess,
 } from '../db/pushSubscriptionsRepository.js';
 import type { OrderCreatedEvent } from './realtimeEvents.js';
+import {
+  parseSafePushEndpoint,
+  safePushFailureReason,
+  sendWebPushSafely,
+} from '../utils/webPushSecurity.js';
+import { safeErrorMetadata } from '../utils/safeErrorMetadata.js';
 import { loadAdminScopes, orderVisibleToScope } from './locationScope.js';
 
 const deliveredInRuntime = new Map<string, Set<string>>();
@@ -33,7 +40,7 @@ export function configureWebPush(): void {
   if (vapidConfigured) return;
   const publicKey = process.env.WEB_PUSH_VAPID_PUBLIC_KEY?.trim();
   const privateKey = process.env.WEB_PUSH_VAPID_PRIVATE_KEY?.trim();
-  const subject = process.env.WEB_PUSH_SUBJECT?.trim() || 'mailto:admin@mormorskunafa.se';
+  const subject = process.env.WEB_PUSH_SUBJECT?.trim() || 'mailto:Mormorskunafa@gmail.com';
 
   if (!publicKey || !privateKey) {
     console.warn('[push] VAPID keys missing; Web Push disabled');
@@ -43,8 +50,8 @@ export function configureWebPush(): void {
   try {
     webpush.setVapidDetails(subject, publicKey, privateKey);
     vapidConfigured = true;
-  } catch (error: any) {
-    console.error('[push] Failed to configure Web Push VAPID details:', error?.message || error);
+  } catch (error: unknown) {
+    console.error('[push] Failed to configure Web Push VAPID details:', safeErrorMetadata(error));
     vapidConfigured = false;
   }
 }
@@ -71,15 +78,10 @@ export async function sendOrderCreatedPush(event: OrderCreatedEvent): Promise<vo
   if (!visibleSubscriptions.length) return;
 
   const payload = JSON.stringify({
-    event_id: event.event_id,
-    event_type: event.event_type,
-    order_id: event.order_id,
-    order_number: event.order_number,
-    created_at: event.created_at,
+    type: 'order_wakeup',
     title: 'Ny order',
-    body: `Order ${event.order_number} har kommit in`,
-    url: `/admin/dashboard?orderId=${encodeURIComponent(event.order_id)}`,
-    tag: `order-${event.order_id}`,
+    body: 'Det finns beställningar att ta emot',
+    url: '/admin/dashboard',
   });
 
   await Promise.all(
@@ -94,6 +96,22 @@ export async function sendOrderCreatedPush(event: OrderCreatedEvent): Promise<vo
         return;
       }
 
+      // The list and location scope are snapshots. Revalidate the exact row
+      // version immediately before dispatch so a transferred endpoint is not
+      // intentionally targeted using its former owner's scope.
+      // Transfer can still win after this check. The payload is a generic wakeup;
+      // the worker authorizes the current browser session before displaying it.
+      if (!(await isPushSubscriptionCurrent(subscription))) {
+        return;
+      }
+
+      if (!parseSafePushEndpoint(subscription.endpoint)) {
+        await disablePushSubscriptionIfCurrent(subscription, {
+          reason: 'Push endpoint is not allowed',
+        });
+        return;
+      }
+
       const target = {
         endpoint: subscription.endpoint,
         keys: {
@@ -103,13 +121,10 @@ export async function sendOrderCreatedPush(event: OrderCreatedEvent): Promise<vo
       };
 
       try {
-        await webpush.sendNotification(target, payload, {
-          TTL: 60,
-          urgency: 'high',
-        });
+        await sendWebPushSafely(target, payload);
 
         setRuntimeDelivered(event.event_id, subscription.id);
-        await markPushDeliverySuccess(subscription.id);
+        await markPushDeliverySuccess(subscription);
         await createPushDeliveryLog({
           eventId: event.event_id,
           subscriptionId: subscription.id,
@@ -118,8 +133,12 @@ export async function sendOrderCreatedPush(event: OrderCreatedEvent): Promise<vo
         });
       } catch (error: any) {
         const statusCode = Number(error?.statusCode ?? 0) || undefined;
-        const message = String(error?.body || error?.message || 'push failed');
-        await markPushDeliveryFailure(subscription.id, message, statusCode);
+        const message = safePushFailureReason(error);
+        if (statusCode === 404 || statusCode === 410) {
+          await disablePushSubscriptionIfCurrent(subscription, { reason: message, statusCode });
+        } else {
+          await markPushDeliveryFailure(subscription, message, statusCode);
+        }
         await createPushDeliveryLog({
           eventId: event.event_id,
           subscriptionId: subscription.id,
@@ -127,10 +146,6 @@ export async function sendOrderCreatedPush(event: OrderCreatedEvent): Promise<vo
           statusCode,
           errorMessage: message,
         });
-
-        if (statusCode === 404 || statusCode === 410) {
-          await disablePushSubscriptionByEndpoint(subscription.endpoint);
-        }
       }
     })
   );

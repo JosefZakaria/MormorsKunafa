@@ -1,6 +1,8 @@
 import type { Location } from '@mormors-kunafa/shared/types';
 import type { Row } from './connection.js';
 import { listLocations } from './locations.js';
+import { parsePreparationMinutes, AdminInputError } from '../utils/adminInput.js';
+import { normalizeSiteMediaUrl } from '../utils/siteMediaUrl.js';
 
 const DEFAULT_HERO_DESKTOP = '/images/kunafa-ashta.jpg';
 const DEFAULT_HERO_MOBILE = '/images/ny-kunafa-bild.jpg';
@@ -37,7 +39,7 @@ function flagEnabled(value: unknown): boolean {
 
 function heroUrl(value: unknown, fallback: string): string {
   const trimmed = String(value ?? '').trim();
-  return trimmed || fallback;
+  return normalizeSiteMediaUrl(trimmed) || (/^\/images\/[A-Za-z0-9_-]+\.(?:jpg|png|webp)$/.test(trimmed) ? trimmed : fallback);
 }
 
 export function rowToAdminSettings(r: Row, locations: Location[] = []): AdminSettingsDto {
@@ -71,8 +73,8 @@ export function applyAdminSettingsPatch(
   body: Record<string, unknown>,
   patch: Record<string, unknown>
 ): void {
-  if (typeof body.defaultPreparationTime === 'number') {
-    patch.default_preparation_time_minutes = body.defaultPreparationTime;
+  if (body.defaultPreparationTime !== undefined) {
+    patch.default_preparation_time_minutes = parsePreparationMinutes(body.defaultPreparationTime);
   }
   if (typeof body.isPaused === 'boolean') {
     patch.is_paused = body.isPaused;
@@ -87,9 +89,11 @@ export function applyAdminSettingsPatch(
     patch.delivery_enabled = body.deliveryEnabled;
   }
   if (typeof body.heroImageDesktop === 'string') {
+    if (body.heroImageDesktop.trim() && heroUrl(body.heroImageDesktop, '') === '') throw new AdminInputError('Invalid hero image');
     patch.hero_image_desktop_url = body.heroImageDesktop.trim() || DEFAULT_HERO_DESKTOP;
   }
   if (typeof body.heroImageMobile === 'string') {
+    if (body.heroImageMobile.trim() && heroUrl(body.heroImageMobile, '') === '') throw new AdminInputError('Invalid hero image');
     patch.hero_image_mobile_url = body.heroImageMobile.trim() || DEFAULT_HERO_MOBILE;
   }
 }

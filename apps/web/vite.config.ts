@@ -5,6 +5,15 @@ import path from 'path'
 export default defineConfig({
   plugins: [react()],
   envDir: __dirname,
+  build: {
+    // Keep production implementation details out of deploy artifacts.
+    sourcemap: false,
+  },
+  server: {
+    proxy: {
+      '/api': 'http://localhost:3001'
+    }
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

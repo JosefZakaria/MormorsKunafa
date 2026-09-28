@@ -2,12 +2,40 @@ import type { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import type { AdminRole } from '@mormors-kunafa/shared/types';
 import { loadAdminScope, parseAdminRole } from '../services/locationScope.js';
+import { timingSafeEqual } from 'node:crypto';
+import { supabase, type Row, logSupabaseError } from '../db/connection.js';
+import { logUnexpectedError } from '../utils/safeErrorMetadata.js';
+import {
+  auditOutcomeForHttpStatus,
+  authenticatedRequestAuditEvent,
+  recordSecurityAuditEvent,
+} from '../services/securityAudit.js';
 
-const secret = process.env.JWT_SECRET ?? 'dev-secret-change-in-production';
+const JWT_ISSUER = 'mormors-kunafa-backend';
+const JWT_AUDIENCE = 'mormors-kunafa-admin';
+const MINIMUM_SECRET_BYTES = 32;
+const ADMIN_SESSION_COOKIE = 'mk_admin_session';
+const CSRF_COOKIE = 'mk_csrf';
+const SESSION_MAX_AGE_SECONDS = 30 * 60;
+
+function getJwtSecret(): string {
+  const secret = process.env.JWT_SECRET?.trim() ?? '';
+  if (Buffer.byteLength(secret, 'utf8') < MINIMUM_SECRET_BYTES) {
+    throw new Error(
+      `[SECURITY FATAL] JWT_SECRET must be configured with at least ${MINIMUM_SECRET_BYTES} bytes`
+    );
+  }
+  return secret;
+}
+
+export function assertJwtConfiguration(): void {
+  getJwtSecret();
+}
 
 export interface JwtPayload {
   adminId: string;
   email: string;
+  tokenVersion: number;
   role?: AdminRole;
   locationId?: string | null;
 }
@@ -18,62 +46,211 @@ export function getRequestAdmin(req: Request): JwtPayload | undefined {
 
 export function verifyAdminToken(token: string): JwtPayload | null {
   try {
-    const decoded = jwt.verify(token, secret) as JwtPayload;
-    if (!decoded?.adminId || !decoded?.email) return null;
+    const secret = getJwtSecret();
+    const decoded = jwt.verify(token, secret, {
+      algorithms: ['HS256'],
+      issuer: JWT_ISSUER,
+      audience: JWT_AUDIENCE,
+    });
+    if (
+      typeof decoded === 'string' ||
+      typeof decoded.adminId !== 'string' ||
+      !decoded.adminId ||
+      typeof decoded.email !== 'string' ||
+      !decoded.email ||
+      !Number.isSafeInteger(decoded.tokenVersion) ||
+      decoded.tokenVersion < 1
+    ) {
+      return null;
+    }
     return {
       adminId: decoded.adminId,
       email: decoded.email,
-      role: parseAdminRole(decoded.role),
-      locationId: decoded.locationId ?? null,
+      tokenVersion: decoded.tokenVersion,
     };
   } catch {
     return null;
   }
 }
 
-export function readAdminFromRequest(req: Request): JwtPayload | null {
-  const auth = req.headers.authorization;
-  const token = auth?.startsWith('Bearer ') ? auth.slice(7) : null;
-  if (!token) return null;
-  return verifyAdminToken(token);
+function parseCookies(req: Request): Map<string, string> {
+  const cookies = new Map<string, string>();
+  for (const part of String(req.headers.cookie ?? '').split(';')) {
+    const separator = part.indexOf('=');
+    if (separator < 1) continue;
+    const name = part.slice(0, separator).trim();
+    const value = part.slice(separator + 1).trim();
+    try {
+      cookies.set(name, decodeURIComponent(value));
+    } catch {
+      // Ignore malformed cookie values.
+    }
+  }
+  return cookies;
 }
 
-export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
+function secureCookieSuffix(): string {
+  const secure = process.env.NODE_ENV === 'production' || Boolean(process.env.VERCEL_ENV);
+  return `Path=/; Max-Age=${SESSION_MAX_AGE_SECONDS}; SameSite=Strict${secure ? '; Secure' : ''}`;
+}
+
+export function createAdminSessionCookies(token: string, csrfToken: string): string[] {
+  const suffix = secureCookieSuffix();
+  return [
+    `${ADMIN_SESSION_COOKIE}=${encodeURIComponent(token)}; ${suffix}; HttpOnly`,
+    `${CSRF_COOKIE}=${encodeURIComponent(csrfToken)}; ${suffix}`,
+  ];
+}
+
+export function clearAdminSessionCookies(): string[] {
+  const secure = process.env.NODE_ENV === 'production' || Boolean(process.env.VERCEL_ENV);
+  const suffix = `Path=/; Max-Age=0; SameSite=Strict${secure ? '; Secure' : ''}`;
+  return [
+    `${ADMIN_SESSION_COOKIE}=; ${suffix}; HttpOnly`,
+    `${CSRF_COOKIE}=; ${suffix}`,
+  ];
+}
+
+export function verifyCsrfTokens(cookieToken?: string, headerToken?: string): boolean {
+  if (!cookieToken || !headerToken) return false;
+  const cookieBuffer = Buffer.from(cookieToken);
+  const headerBuffer = Buffer.from(headerToken);
+  return cookieBuffer.length === headerBuffer.length && timingSafeEqual(cookieBuffer, headerBuffer);
+}
+
+export function getAdminToken(req: Request): string | null {
+  const cookieToken = parseCookies(req).get(ADMIN_SESSION_COOKIE);
+  if (cookieToken) return cookieToken;
+  const auth = req.headers.authorization;
+  return auth?.startsWith('Bearer ') ? auth.slice(7).trim() : null;
+}
+
+/** Optional authentication for public reads; never trusts token claims alone. */
+export async function readAdminFromRequest(req: Request): Promise<JwtPayload | null> {
+  const token = getAdminToken(req);
+  const decoded = token ? verifyAdminToken(token) : null;
+  if (!decoded) return null;
+  const { data: admin, error } = await supabase.from('admin_users')
+    .select('id, email, token_version, is_active, role, location_id')
+    .eq('id', decoded.adminId).eq('email', decoded.email).maybeSingle();
+  if (error) throw new Error('Authentication service unavailable');
+  if (!admin || admin.is_active !== true || Number(admin.token_version) !== decoded.tokenVersion
+    || !parseAdminRole(admin.role)) return null;
+  const scope = await loadAdminScope(decoded.adminId);
+  return { ...decoded, role: scope.role, locationId: scope.locationId };
+}
+
+export async function requireOwner(req: Request, res: Response, next: NextFunction): Promise<void> {
+  // requireAdmin refreshes the role and active session from the database.
+  const admin = getRequestAdmin(req);
+  if (!admin) { res.status(401).json({ error: 'Unauthorized' }); return; }
+  if (admin.role !== 'owner') { res.status(403).json({ error: 'Endast ägare har åtkomst.' }); return; }
+  next();
+}
+
+export async function requireAdmin(req: Request, res: Response, next: NextFunction): Promise<void> {
+  const token = getAdminToken(req);
+  if (!token) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
   try {
-    const decoded = readAdminFromRequest(req);
+    const decoded = await readAdminFromRequest(req);
     if (!decoded) {
-      res.status(401).json({ error: 'Unauthorized' });
+      res.status(401).json({ error: 'Invalid or expired token' });
       return;
     }
+    const { data: admin, error } = await supabase
+      .from('admin_users')
+      .select('id, email, token_version, is_active')
+      .eq('id', decoded.adminId)
+      .eq('email', decoded.email)
+      .maybeSingle();
+    if (error) {
+      logSupabaseError('requireAdmin', error);
+      res.status(503).json({ error: 'Authentication service unavailable' });
+      return;
+    }
+    if (
+      !admin ||
+      String((admin as Row).id) !== decoded.adminId ||
+      (admin as Row).is_active !== true ||
+      Number((admin as Row).token_version) !== decoded.tokenVersion
+    ) {
+      res.status(401).json({ error: 'Admin account is no longer valid' });
+      return;
+    }
+
     (req as Request & { admin?: JwtPayload }).admin = decoded;
+    const auditInput = {
+      adminId: decoded.adminId,
+      method: req.method,
+      baseUrl: req.baseUrl,
+      routePath: req.route?.path,
+      resourceId: req.params?.id,
+    };
+    await recordSecurityAuditEvent(authenticatedRequestAuditEvent(auditInput));
+    res.once('finish', () => {
+      void recordSecurityAuditEvent(
+        authenticatedRequestAuditEvent(auditInput, auditOutcomeForHttpStatus(res.statusCode))
+      ).catch((auditError) => {
+        logUnexpectedError('admin request outcome audit failed', auditError);
+      });
+    });
+    res.setHeader('Cache-Control', 'private, no-store');
     next();
-  } catch {
-    res.status(401).json({ error: 'Invalid or expired token' });
+  } catch (error) {
+    logUnexpectedError('requireAdmin authentication failed', error);
+    res.status(503).json({ error: 'Authentication service unavailable' });
   }
 }
 
-/** Must run after requireAdmin. Checks live role in the database (not only JWT). */
-export function requireOwner(req: Request, res: Response, next: NextFunction): void {
-  void (async () => {
-    try {
-      const admin = getRequestAdmin(req);
-      if (!admin) {
-        res.status(401).json({ error: 'Unauthorized' });
-        return;
-      }
-      const scope = await loadAdminScope(admin.adminId);
-      if (scope.role !== 'owner') {
-        res.status(403).json({ error: 'Endast ägare har åtkomst.' });
-        return;
-      }
-      next();
-    } catch (e) {
-      console.error('[requireOwner]', e);
-      res.status(500).json({ error: 'Failed to verify access' });
-    }
-  })();
+export async function revokeAdminSessions(payload: JwtPayload): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('admin_users')
+    .update({ token_version: payload.tokenVersion + 1 })
+    .eq('id', payload.adminId)
+    .eq('token_version', payload.tokenVersion)
+    .select('id');
+
+  if (error) {
+    logSupabaseError('revokeAdminSessions', error);
+    throw error;
+  }
+  return Array.isArray(data) && data.length === 1;
+}
+
+export function requireCsrfProtection(req: Request, res: Response, next: NextFunction): void {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method.toUpperCase())) {
+    next();
+    return;
+  }
+  if (req.method.toUpperCase() === 'POST' && req.path === '/login') {
+    next();
+    return;
+  }
+
+  const cookies = parseCookies(req);
+  // Bearer-authenticated non-browser clients are not vulnerable to cookie CSRF.
+  if (!cookies.has(ADMIN_SESSION_COOKIE)) {
+    next();
+    return;
+  }
+  const header = req.headers['x-csrf-token'];
+  const headerToken = Array.isArray(header) ? header[0] : header;
+  if (!verifyCsrfTokens(cookies.get(CSRF_COOKIE), headerToken)) {
+    res.status(403).json({ error: 'CSRF validation failed' });
+    return;
+  }
+  next();
 }
 
 export function signToken(payload: JwtPayload): string {
-  return jwt.sign(payload, secret, { expiresIn: '7d' });
+  const secret = getJwtSecret();
+  return jwt.sign(payload, secret, {
+    algorithm: 'HS256',
+    issuer: JWT_ISSUER,
+    audience: JWT_AUDIENCE,
+    expiresIn: '30m',
+  });
 }

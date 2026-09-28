@@ -1,6 +1,8 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import type { AdminRole } from '@shared/types';
 import { adminApi } from '../services/api';
+import { getCurrentAdminPushEndpoint } from '../services/pwa';
+import { LEGACY_STORAGE_KEYS, removePersistentValue } from '../utils/browserStorage';
 
 interface AdminInfo {
     id: string;
@@ -13,7 +15,7 @@ interface AdminInfo {
 function normalizeAdmin(raw: unknown): AdminInfo | null {
     if (!raw || typeof raw !== 'object') return null;
     const value = raw as Partial<AdminInfo>;
-    if (!value.id || !value.email) return null;
+    if (!value.id || !value.email || !['owner', 'location'].includes(String(value.role))) return null;
     return {
         id: String(value.id),
         email: String(value.email),
@@ -25,34 +27,49 @@ function normalizeAdmin(raw: unknown): AdminInfo | null {
 
 interface AuthContextType {
     isAuthenticated: boolean;
+    isLoading: boolean;
     admin: AdminInfo | null;
     login: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
-    logout: () => void;
+    logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-    const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-        return !!localStorage.getItem('authToken');
-    });
+    const [isAuthenticated, setIsAuthenticated] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
+    const [admin, setAdmin] = useState<AdminInfo | null>(null);
 
-    const [admin, setAdmin] = useState<AdminInfo | null>(() => {
-        try {
-            const stored = localStorage.getItem('adminInfo');
-            return stored ? normalizeAdmin(JSON.parse(stored)) : null;
-        } catch {
-            return null;
-        }
-    });
+    useEffect(() => {
+        // Remove credentials left by older builds; authentication now lives only
+        // in the HttpOnly cookie that JavaScript cannot read.
+        removePersistentValue(LEGACY_STORAGE_KEYS.adminToken);
+        removePersistentValue(LEGACY_STORAGE_KEYS.adminInfo);
+        let active = true;
+        void adminApi.getSession()
+            .then((result) => {
+                if (!active) return;
+                const sessionAdmin = normalizeAdmin(result.admin);
+                if (!sessionAdmin) throw new Error('Invalid admin session');
+                setAdmin(sessionAdmin);
+                setIsAuthenticated(true);
+            })
+            .catch(() => {
+                if (!active) return;
+                setAdmin(null);
+                setIsAuthenticated(false);
+            })
+            .finally(() => {
+                if (active) setIsLoading(false);
+            });
+        return () => { active = false; };
+    }, []);
 
     const login = async (email: string, password: string): Promise<{ ok: boolean; error?: string }> => {
         try {
             const result = await adminApi.login(email, password);
             const admin = normalizeAdmin(result.admin);
             if (!admin) return { ok: false, error: 'Inloggning misslyckades' };
-            localStorage.setItem('authToken', result.token);
-            localStorage.setItem('adminInfo', JSON.stringify(admin));
             setIsAuthenticated(true);
             setAdmin(admin);
             return { ok: true };
@@ -62,15 +79,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
     };
 
-    const logout = () => {
-        localStorage.removeItem('authToken');
-        localStorage.removeItem('adminInfo');
+    const logout = async () => {
+        const pushEndpoint = await getCurrentAdminPushEndpoint();
+        await adminApi.logout(pushEndpoint);
         setIsAuthenticated(false);
         setAdmin(null);
     };
 
     return (
-        <AuthContext.Provider value={{ isAuthenticated, admin, login, logout }}>
+        <AuthContext.Provider value={{ isAuthenticated, isLoading, admin, login, logout }}>
             {children}
         </AuthContext.Provider>
     );

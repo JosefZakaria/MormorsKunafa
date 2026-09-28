@@ -1,20 +1,71 @@
 import { Router, Request, Response } from 'express';
-import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
+import { readAllRows } from '../db/pagination.js';
 import { supabase, type Row, logSupabaseError, nowIso } from '../db/connection.js';
+import {
+  clearAdminSessionCookies,
+  createAdminSessionCookies,
+  requireAdmin,
+  requireOwner,
+  getRequestAdmin,
+  getAdminToken,
+  verifyAdminToken,
+  revokeAdminSessions,
+  signToken,
+} from '../middleware/auth.js';
+import {
+  createRateLimiter,
+  getTrustedClientIp,
+  hashRateLimitIdentifier,
+} from '../middleware/rateLimit.js';
 import { applyAdminSettingsPatch, adminSettingsFromRow } from '../db/adminSettings.js';
-import { requireAdmin, requireOwner, signToken, verifyAdminToken, getRequestAdmin } from '../middleware/auth.js';
 import { loadAdminScope, parseAdminRole } from '../services/locationScope.js';
 import { updateLocationFlags } from '../db/locations.js';
 import { isDeliveryFeeLineItem } from '../constants/deliveryFee.js';
 import { registerAdminMediaRoutes } from './adminMedia.js';
 import adminDeliveryPricingRouter from './adminDeliveryPricing.js';
 import {
+  disablePushSubscriptionForAdminEndpoint,
   disablePushSubscriptionById,
   listActivePushSubscriptions,
   upsertPushSubscription,
 } from '../db/pushSubscriptionsRepository.js';
 import { getRealtimeStatus, registerRealtimeClient } from '../services/realtimeEvents.js';
 import { isWebPushConfigured } from '../services/pushNotifications.js';
+import { shouldNotifyPendingOrder } from '../services/pendingOrderNotification.js';
+import {
+  parsePushEndpointForRevocation,
+  validatePushSubscription,
+} from '../utils/webPushSecurity.js';
+import {
+  AdminInputError,
+  parseAdminLoginInput,
+  parseOptionalBoolean,
+  parsePreparationMinutes,
+  parseStatisticsRange,
+} from '../utils/adminInput.js';
+import { verifyAdminPassword } from '../utils/adminPassword.js';
+import { hasRealtimeCapacity } from '../utils/realtimeCapacity.js';
+import { logUnexpectedError } from '../utils/safeErrorMetadata.js';
+import { consumeRealtimeTicket, issueRealtimeTicket } from '../middleware/realtimeTicket.js';
+import { hashAuditSubject, recordSecurityAuditEvent } from '../services/securityAudit.js';
+import { listPaymentSecurityAlerts } from '../db/paymentEventRepository.js';
+import { listOutboundMessageFailureAlerts } from '../db/outboundMessageAlertsRepository.js';
+
+const loginLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000, // 15 min window
+  max: 10, // max 10 attempts
+  message: 'För många inloggningsförsök. Försök igen om 15 minuter.',
+  prefix: 'admin-login',
+});
+
+function safeCompareStrings(a?: string, b?: string): boolean {
+  if (!a || !b) return false;
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
 
 const router = Router();
 router.use('/delivery-pricing', adminDeliveryPricingRouter);
@@ -22,35 +73,25 @@ registerAdminMediaRoutes(router);
 
 const COMPLETED_STATUSES = ['klar', 'uthämtad', 'levererad'] as const;
 
-const pushRateWindowMs = 60 * 1000;
-const pushRateLimit = 30;
-const pushRateMap = new Map<string, number[]>();
-
-function isRateLimited(adminId: string): boolean {
-  const now = Date.now();
-  const bucket = pushRateMap.get(adminId) ?? [];
-  const recent = bucket.filter((ts) => now - ts < pushRateWindowMs);
-  if (recent.length >= pushRateLimit) {
-    pushRateMap.set(adminId, recent);
-    return true;
-  }
-  recent.push(now);
-  pushRateMap.set(adminId, recent);
-  return false;
+function getAuthenticatedAdmin(
+  req: Request
+): { adminId: string; email?: string; tokenVersion: number } | null {
+  const admin = (req as Request & {
+    admin?: { adminId?: string; email?: string; tokenVersion?: number };
+  }).admin;
+  return admin?.adminId && Number.isSafeInteger(admin.tokenVersion) && Number(admin.tokenVersion) >= 1
+    ? { adminId: admin.adminId, email: admin.email, tokenVersion: Number(admin.tokenVersion) }
+    : null;
 }
 
-function getAdminFromRequest(req: Request): { adminId: string; email: string } | null {
-  const fromMiddleware = (req as Request & { admin?: { adminId?: string; email?: string } }).admin;
-  if (fromMiddleware?.adminId && fromMiddleware?.email) {
-    return { adminId: fromMiddleware.adminId, email: fromMiddleware.email };
-  }
-
-  const token = String(req.query.token ?? '').trim();
-  if (!token) return null;
-  const decoded = verifyAdminToken(token);
-  if (!decoded) return null;
-  return decoded;
-}
+const pushSubscriptionLimiter = createRateLimiter({
+  windowMs: 60 * 1000,
+  max: 30,
+  prefix: 'admin-push-subscriptions',
+  keyGenerator: (req) => hashRateLimitIdentifier(
+    getAuthenticatedAdmin(req)?.adminId ?? getTrustedClientIp(req)
+  ),
+});
 
 function toStockholmDateString(value: Date | string | null | undefined): string | null {
   if (value == null) return null;
@@ -81,33 +122,37 @@ function inRange(createdAt: string, start: Date | null, end: Date | null): boole
   return true;
 }
 
-router.post('/login', async (req: Request, res: Response) => {
+router.post('/login', loginLimiter, async (req: Request, res: Response) => {
+  let loginSubjectHash = hashAuditSubject(String(req.body?.email ?? '').slice(0, 254));
   try {
-    const { email, password } = req.body as { email?: string; password?: string };
-    if (!email || !password) {
-      res.status(400).json({ error: 'Email and password required' });
-      return;
-    }
+    const { email, password } = parseAdminLoginInput(req.body?.email, req.body?.password);
+    loginSubjectHash = hashAuditSubject(email);
 
     const { data: user, error } = await supabase
       .from('admin_users')
-      .select('id, email, password_hash, display_name, role, location_id')
+      .select('id, email, password_hash, display_name, token_version, is_active, role, location_id')
       .eq('email', email)
       .maybeSingle();
 
     if (error) {
       logSupabaseError('POST /admin/login', error);
-      res.status(500).json({ error: 'Login failed', details: error.message });
+      res.status(500).json({ error: 'Login failed' });
       return;
     }
 
-    if (!user) {
-      res.status(401).json({ error: 'Invalid credentials' });
-      return;
-    }
-
-    const ok = await bcrypt.compare(password, String((user as Row).password_hash));
-    if (!ok) {
+    const ok = await verifyAdminPassword(
+      password,
+      user ? String((user as Row).password_hash ?? '') : undefined
+    );
+    if (!user || !ok || (user as Row).is_active !== true) {
+      await recordSecurityAuditEvent({
+        subjectHash: loginSubjectHash,
+        action: 'admin_login',
+        httpMethod: 'POST',
+        routeTemplate: '/api/admin/login',
+        resourceType: 'admin',
+        outcome: 'denied',
+      });
       res.status(401).json({ error: 'Invalid credentials' });
       return;
     }
@@ -122,17 +167,30 @@ router.post('/login', async (req: Request, res: Response) => {
     }
 
     const role = parseAdminRole((user as Row).role);
+    if (!role) { res.status(401).json({ error: 'Invalid admin role' }); return; }
     const locationId =
       (user as Row).location_id != null ? String((user as Row).location_id) : null;
 
     const token = signToken({
       adminId: String((user as Row).id),
       email: String((user as Row).email),
+      tokenVersion: Number((user as Row).token_version),
       role,
       locationId,
     });
+    const csrfToken = crypto.randomBytes(32).toString('base64url');
+    await recordSecurityAuditEvent({
+      actorAdminId: String((user as Row).id),
+      subjectHash: loginSubjectHash,
+      action: 'admin_login',
+      httpMethod: 'POST',
+      routeTemplate: '/api/admin/login',
+      resourceType: 'admin',
+      resourceId: String((user as Row).id),
+      outcome: 'succeeded',
+    });
+    res.setHeader('Set-Cookie', createAdminSessionCookies(token, csrfToken));
     res.json({
-      token,
       admin: {
         id: (user as Row).id,
         email: (user as Row).email,
@@ -142,32 +200,146 @@ router.post('/login', async (req: Request, res: Response) => {
       },
     });
   } catch (e) {
-    console.error('[POST /admin/login]', e);
+    if (e instanceof AdminInputError) {
+      try {
+        await recordSecurityAuditEvent({
+          subjectHash: loginSubjectHash,
+          action: 'admin_login',
+          httpMethod: 'POST',
+          routeTemplate: '/api/admin/login',
+          resourceType: 'admin',
+          outcome: 'denied',
+        });
+      } catch (auditError) {
+        logUnexpectedError('POST /admin/login audit failed', auditError);
+        res.status(503).json({ error: 'Login unavailable' });
+        return;
+      }
+      res.status(400).json({ error: e.message });
+      return;
+    }
+    logUnexpectedError('POST /admin/login', e);
     res.status(500).json({ error: 'Login failed' });
   }
 });
 
-router.get('/events', (req: Request, res: Response) => {
-  const admin = getAdminFromRequest(req);
-  if (!admin?.adminId) {
+const eventsLimiter = createRateLimiter({
+  windowMs: 60 * 1000,
+  max: 30,
+  message: 'För många realtidsanslutningar. Försök igen om en minut.',
+  prefix: 'admin-events',
+});
+
+router.post('/logout', async (req: Request, res: Response) => {
+  let logoutAdminId: string | undefined;
+  const auditRoute = { action:'admin_logout', httpMethod:'POST', routeTemplate:'/api/admin/logout' };
+  try {
+    // Push cleanup is best-effort metadata for an otherwise independent session
+    // revocation. Provider allowlist drift or malformed input must never block logout.
+    const pushEndpoint = parsePushEndpointForRevocation(req.body?.pushEndpoint)?.toString();
+    // Revocation grants no administrative access. Accept a valid signed token
+    // even for a disabled account, and allow a retry after a lost success reply.
+    // Cookie requests still pass the global double-submit CSRF middleware.
+    const token = getAdminToken(req);
+    const admin = token ? verifyAdminToken(token) : null;
+    if (admin) {
+      logoutAdminId = admin.adminId;
+      await recordSecurityAuditEvent({...auditRoute,actorAdminId:admin.adminId,outcome:'attempted'});
+      await revokeAdminSessions(admin);
+      if (pushEndpoint) {
+        const disabled = await disablePushSubscriptionForAdminEndpoint(pushEndpoint, admin.adminId);
+        if (!disabled) throw new Error('Push subscription revocation failed');
+      }
+      await recordSecurityAuditEvent({...auditRoute,actorAdminId:admin.adminId,outcome:'succeeded'});
+    }
+    // Keep credentials available for retry on a database/revocation failure.
+    res.setHeader('Set-Cookie', clearAdminSessionCookies());
+    res.status(204).send();
+  } catch (error) {
+    logUnexpectedError('POST /admin/logout session revocation failed', error);
+    if (logoutAdminId) {
+      try {
+        await recordSecurityAuditEvent({...auditRoute,actorAdminId:logoutAdminId,outcome:'failed'});
+      } catch (auditError) {
+        logUnexpectedError('POST /admin/logout failure audit unavailable',auditError);
+      }
+    }
+    res.status(503).json({ error: 'Could not revoke session' });
+  }
+});
+
+router.get('/session', requireAdmin, (req: Request, res: Response) => {
+  const admin = getRequestAdmin(req);
+  if (!admin?.adminId || !admin.email) {
     res.status(401).json({ error: 'Unauthorized' });
     return;
   }
+  res.json({
+    admin: {
+      id: admin.adminId,
+      email: admin.email,
+      name: admin.email,
+      role: admin.role,
+      locationId: admin.locationId,
+    },
+  });
+});
 
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache, no-transform');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders();
+router.post('/events/ticket', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const admin = (req as Request & { admin: import('../middleware/auth.js').JwtPayload }).admin;
+    const ticket = await issueRealtimeTicket(admin.adminId, admin.tokenVersion);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json(ticket);
+  } catch (error) {
+    logUnexpectedError('POST /admin/events/ticket failed', error);
+    res.status(503).json({ error: 'Could not create realtime ticket' });
+  }
+});
 
-  void loadAdminScope(admin.adminId)
-    .then((scope) => {
-      const cleanup = registerRealtimeClient(scope, res);
-      req.on('close', cleanup);
-    })
-    .catch((e) => {
-      console.error('[GET /admin/events] scope', e);
-      res.end();
-    });
+router.get('/events', eventsLimiter, async (req: Request, res: Response) => {
+  res.setHeader('Cache-Control', 'private, no-store, no-transform');
+  try {
+    const ticket = await consumeRealtimeTicket(req.query.ticket);
+    if (!ticket) {
+      res.status(401).json({ error: 'Invalid or expired realtime ticket' });
+      return;
+    }
+
+    const { data: admin, error } = await supabase
+      .from('admin_users')
+      .select('id, token_version, is_active')
+      .eq('id', ticket.adminId)
+      .maybeSingle();
+    if (error) {
+      logSupabaseError('GET /admin/events session check', error);
+      res.status(503).json({ error: 'Authentication service unavailable' });
+      return;
+    }
+    if (
+      !admin ||
+      (admin as Row).is_active !== true ||
+      Number((admin as Row).token_version) !== ticket.tokenVersion
+    ) {
+      res.status(401).json({ error: 'Admin session is no longer valid' });
+      return;
+    }
+    if (!hasRealtimeCapacity(getRealtimeStatus(), ticket.adminId)) {
+      res.status(429).json({ error: 'Too many realtime connections' });
+      return;
+    }
+
+    const scope = await loadAdminScope(ticket.adminId, ticket.tokenVersion);
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    const cleanup = registerRealtimeClient(scope, res, () => loadAdminScope(ticket.adminId, ticket.tokenVersion));
+    req.on('close', cleanup);
+  } catch (error) {
+    logUnexpectedError('GET /admin/events failed', error);
+    res.status(503).json({ error: 'Realtime authentication unavailable' });
+  }
 });
 
 router.get('/notifications/health', requireAdmin, (_req: Request, res: Response) => {
@@ -179,93 +351,113 @@ router.get('/notifications/health', requireAdmin, (_req: Request, res: Response)
   });
 });
 
+router.get('/payment-alerts', requireAdmin, requireOwner, async (_req: Request, res: Response) => {
+  try {
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json(await listPaymentSecurityAlerts());
+  } catch (error) {
+    logUnexpectedError('GET /admin/payment-alerts failed', error);
+    res.status(503).json({ error: 'Payment alerts unavailable' });
+  }
+});
+
 router.get('/push-subscriptions', requireAdmin, async (req: Request, res: Response) => {
-  const admin = getAdminFromRequest(req);
-  if (!admin?.adminId) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
+  try {
+    const admin = getAuthenticatedAdmin(req);
+    if (!admin?.adminId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
 
-  const subscriptions = await listActivePushSubscriptions(admin.adminId);
-  res.json(
-    subscriptions.map((it) => ({
-      id: it.id,
-      endpoint: it.endpoint,
-      deviceLabel: it.device_label,
-      userAgent: it.user_agent,
-      createdAt: it.created_at,
-      updatedAt: it.updated_at,
-      lastSuccessAt: it.last_success_at,
-      lastFailureAt: it.last_failure_at,
-      lastFailureReason: it.last_failure_reason,
-    }))
-  );
+    const subscriptions = await listActivePushSubscriptions(admin.adminId);
+    res.json(
+      subscriptions.map((it) => ({
+        id: it.id,
+        endpoint: it.endpoint,
+        deviceLabel: it.device_label,
+        userAgent: it.user_agent,
+        createdAt: it.created_at,
+        updatedAt: it.updated_at,
+        lastSuccessAt: it.last_success_at,
+        lastFailureAt: it.last_failure_at,
+        lastFailureReason: it.last_failure_reason,
+      }))
+    );
+  } catch (error) {
+    logUnexpectedError('GET /admin/push-subscriptions failed', error);
+    res.status(503).json({ error: 'Push subscriptions unavailable' });
+  }
 });
 
-router.post('/push-subscriptions', requireAdmin, async (req: Request, res: Response) => {
-  const admin = getAdminFromRequest(req);
-  if (!admin?.adminId) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
+router.post('/push-subscriptions', requireAdmin, pushSubscriptionLimiter, async (req: Request, res: Response) => {
+  try {
+    const admin = getAuthenticatedAdmin(req);
+    if (!admin?.adminId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    const subscription = req.body?.subscription as
+      | {
+          endpoint?: string;
+          keys?: { p256dh?: string; auth?: string };
+        }
+      | undefined;
+    const validated = validatePushSubscription({
+      endpoint: subscription?.endpoint,
+      p256dh: subscription?.keys?.p256dh,
+      auth: subscription?.keys?.auth,
+      deviceLabel: req.body?.deviceLabel,
+      userAgent: req.headers['user-agent'],
+    });
+
+    if (!validated) {
+      res.status(400).json({ error: 'Invalid subscription payload' });
+      return;
+    }
+
+    const saved = await upsertPushSubscription({
+      adminId: admin.adminId,
+      adminTokenVersion: admin.tokenVersion,
+      ...validated,
+    });
+
+    if (!saved) {
+      res.status(500).json({ error: 'Failed to save subscription' });
+      return;
+    }
+
+    res.status(201).json({
+      id: saved.id,
+      endpoint: saved.endpoint,
+      deviceLabel: saved.device_label,
+      createdAt: saved.created_at,
+      updatedAt: saved.updated_at,
+    });
+  } catch (error) {
+    logUnexpectedError('POST /admin/push-subscriptions failed', error);
+    res.status(503).json({ error: 'Push subscriptions unavailable' });
   }
-  if (isRateLimited(admin.adminId)) {
-    res.status(429).json({ error: 'Too many requests. Try again shortly.' });
-    return;
-  }
-
-  const subscription = req.body?.subscription as
-    | {
-        endpoint?: string;
-        keys?: { p256dh?: string; auth?: string };
-      }
-    | undefined;
-  const deviceLabel = String(req.body?.deviceLabel ?? '').trim();
-  const endpoint = String(subscription?.endpoint ?? '').trim();
-  const p256dh = String(subscription?.keys?.p256dh ?? '').trim();
-  const auth = String(subscription?.keys?.auth ?? '').trim();
-
-  if (!endpoint || !p256dh || !auth) {
-    res.status(400).json({ error: 'Invalid subscription payload' });
-    return;
-  }
-
-  const saved = await upsertPushSubscription({
-    adminId: admin.adminId,
-    endpoint,
-    p256dh,
-    auth,
-    deviceLabel,
-    userAgent: String(req.headers['user-agent'] ?? '').trim() || undefined,
-  });
-
-  if (!saved) {
-    res.status(500).json({ error: 'Failed to save subscription' });
-    return;
-  }
-
-  res.status(201).json({
-    id: saved.id,
-    endpoint: saved.endpoint,
-    deviceLabel: saved.device_label,
-    createdAt: saved.created_at,
-    updatedAt: saved.updated_at,
-  });
 });
 
-router.delete('/push-subscriptions/:id', requireAdmin, async (req: Request, res: Response) => {
-  const admin = getAdminFromRequest(req);
-  if (!admin?.adminId) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
+router.delete('/push-subscriptions/:id', requireAdmin, pushSubscriptionLimiter, async (req: Request, res: Response) => {
+  try {
+    const admin = getAuthenticatedAdmin(req);
+    if (!admin?.adminId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
 
-  const ok = await disablePushSubscriptionById(String(req.params.id), admin.adminId);
-  if (!ok) {
-    res.status(500).json({ error: 'Failed to disable subscription' });
-    return;
-  }
+    const ok = await disablePushSubscriptionById(String(req.params.id), admin.adminId);
+    if (!ok) {
+      res.status(500).json({ error: 'Failed to disable subscription' });
+      return;
+    }
 
-  res.status(204).send();
+    res.status(204).send();
+  } catch (error) {
+    logUnexpectedError('DELETE /admin/push-subscriptions/:id failed', error);
+    res.status(503).json({ error: 'Push subscriptions unavailable' });
+  }
 });
 
 async function fetchAdminSettingsRow(): Promise<Row | null> {
@@ -286,7 +478,7 @@ router.get('/settings', requireAdmin, async (_req: Request, res: Response) => {
     }
     res.json(await adminSettingsFromRow(r));
   } catch (e) {
-    console.error('[GET /admin/settings]', e);
+    logUnexpectedError('GET /admin/settings', e);
     res.status(500).json({ error: 'Failed to fetch settings' });
   }
 });
@@ -329,7 +521,7 @@ router.patch('/settings', requireAdmin, async (req: Request, res: Response) => {
         .eq('id', settings.id);
       if (error) {
         logSupabaseError('PATCH /admin/settings', error);
-        res.status(500).json({ error: 'Failed to update settings', details: error.message });
+        res.status(500).json({ error: 'Failed to update settings' });
         return;
       }
     }
@@ -341,7 +533,11 @@ router.patch('/settings', requireAdmin, async (req: Request, res: Response) => {
     }
     res.json(await adminSettingsFromRow(r));
   } catch (e) {
-    console.error('[PATCH /admin/settings]', e);
+    if (e instanceof AdminInputError) {
+      res.status(400).json({ error: e.message });
+      return;
+    }
+    logUnexpectedError('PATCH /admin/settings', e);
     res.status(500).json({ error: 'Failed to update settings' });
   }
 });
@@ -384,33 +580,73 @@ router.patch('/locations/:id', requireAdmin, async (req: Request, res: Response)
     }
     res.json(updated);
   } catch (e) {
-    console.error('[PATCH /admin/locations/:id]', e);
+    logUnexpectedError('PATCH /admin/locations/:id', e);
     res.status(500).json({ error: 'Failed to update location' });
   }
 });
 
-router.get('/notifications', requireAdmin, async (_req: Request, res: Response) => {
-  res.json([]);
+router.get('/notifications', requireAdmin, async (req: Request, res: Response) => {
+  res.setHeader('Cache-Control', 'private, no-store');
+  try {
+    const rawLimit = req.query.limit;
+    if (rawLimit != null && (typeof rawLimit !== 'string' || !/^[1-9][0-9]{0,2}$/.test(rawLimit))) {
+      res.status(400).json({ error: 'limit must be an integer between 1 and 100' });
+      return;
+    }
+    const limit = rawLimit == null ? 50 : Number(rawLimit);
+    if (limit > 100) {
+      res.status(400).json({ error: 'limit must be an integer between 1 and 100' });
+      return;
+    }
+    const admin = getRequestAdmin(req);
+    if (!admin) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    const scope = await loadAdminScope(admin.adminId);
+    const alerts = await listOutboundMessageFailureAlerts(scope, limit);
+    res.json(alerts);
+  } catch (error) {
+    logUnexpectedError('GET /admin/notifications failed', error);
+    res.status(503).json({ error: 'Message delivery alerts unavailable' });
+  }
+});
+
+router.get('/notifications/pending', requireAdmin, async (req: Request, res: Response) => {
+  res.setHeader('Cache-Control', 'private, no-store');
+  const admin = getAuthenticatedAdmin(req);
+  if (!admin) { res.status(401).json({ shouldNotify: false }); return; }
+  try {
+    res.json({ shouldNotify: await shouldNotifyPendingOrder(admin.adminId, admin.tokenVersion) });
+  } catch (error) {
+    logUnexpectedError('GET /admin/notifications/pending failed', error);
+    res.status(503).json({ shouldNotify: false });
+  }
 });
 
 router.patch('/notifications/:id/read', requireAdmin, async (_req: Request, res: Response) => {
-  res.status(204).send();
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.status(409).json({
+    code: 'OUTBOUND_MESSAGE_FAILURE_CANNOT_BE_DISMISSED',
+    error: 'Olösta meddelandefel kan inte döljas. Åtgärda leveransen eller dess osäkra status.',
+  });
 });
 
 router.post('/statistics', requireAdmin, requireOwner, async (req: Request, res: Response) => {
   try {
-    const { password, startDate, endDate } = req.body as {
+    const { password, startDate: rawStartDate, endDate: rawEndDate } = req.body as {
       password?: string;
-      startDate?: string;
-      endDate?: string;
+      startDate?: unknown;
+      endDate?: unknown;
     };
     const statsPassword = process.env.STATS_PASSWORD;
-    if (!statsPassword || !password || password !== statsPassword) {
+    if (!statsPassword || !password || !safeCompareStrings(password, statsPassword)) {
       res.status(401).json({ error: 'Felaktigt lösenord' });
       return;
     }
 
-    const hasCustomRange = !!(startDate && endDate);
+    const { startDate, endDate } = parseStatisticsRange(rawStartDate, rawEndDate);
+    const hasCustomRange = Boolean(startDate && endDate);
     const customStart = startDate ? new Date(`${startDate}T00:00:00`) : null;
     const customEnd = endDate
       ? new Date(new Date(`${endDate}T23:59:59`).getTime() + 1000)
@@ -421,38 +657,12 @@ router.post('/statistics', requireAdmin, requireOwner, async (req: Request, res:
     const monthStart = daysAgoStockholm(30);
     const yearStart = startOfYearStockholm();
 
-    const { data: products, error: productsError } = await supabase
-      .from('products')
-      .select('id, name')
-      .order('name', { ascending: true });
-
-    if (productsError) {
-      logSupabaseError('POST /admin/statistics products', productsError);
-      res.status(500).json({ error: 'Failed to fetch statistics', details: productsError.message });
-      return;
-    }
-
-    const { data: lineRows, error: linesError } = await supabase
-      .from('order_items')
-      .select(
-        'quantity, price_ore, product_id, product_name_snapshot, orders!inner(id, status, payment_status, created_at)'
-      );
-
-    if (linesError) {
-      logSupabaseError('POST /admin/statistics order_items', linesError);
-      res.status(500).json({ error: 'Failed to fetch statistics', details: linesError.message });
-      return;
-    }
-
-    const { data: allOrders, error: ordersError } = await supabase
-      .from('orders')
-      .select('id, status, payment_status, total_ore, created_at');
-
-    if (ordersError) {
-      logSupabaseError('POST /admin/statistics orders', ordersError);
-      res.status(500).json({ error: 'Failed to fetch statistics', details: ordersError.message });
-      return;
-    }
+    const products = (await readAllRows('products', 'id, name'))
+      .sort((a,b)=>String(a.name).localeCompare(String(b.name),'sv'));
+    const allOrders = await readAllRows('orders', 'id, status, payment_status, total_ore, created_at');
+    const ordersById = new Map(allOrders.map(order=>[String(order.id),order]));
+    const lineRows = (await readAllRows('order_items', 'id, order_id, quantity, price_ore, product_id, product_name_snapshot'))
+      .map(row=>({...row, orders:ordersById.get(String(row.order_id))}));
 
     type ProductAgg = {
       name: string;
@@ -673,7 +883,11 @@ router.post('/statistics', requireAdmin, requireOwner, async (req: Request, res:
       hasCustomRange,
     });
   } catch (e) {
-    console.error('[POST /admin/statistics]', e);
+    if (e instanceof AdminInputError) {
+      res.status(400).json({ error: e.message });
+      return;
+    }
+    logUnexpectedError('POST /admin/statistics', e);
     res.status(500).json({ error: 'Failed to fetch statistics' });
   }
 });

@@ -1,5 +1,6 @@
 /** Minimum lead time before the earliest selectable slot (matches default prep time). */
 export const DEFAULT_ORDER_LEAD_MINUTES = 30;
+export const MAX_PREORDER_DAYS = 30;
 
 /** How long before scheduled pickup/eat-here time the kitchen ticket should print. */
 export const KITCHEN_TICKET_LEAD_MINUTES = 30;

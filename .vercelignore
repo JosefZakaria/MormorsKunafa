@@ -1,0 +1,13 @@
+.git
+.agents
+.codex
+**/.env
+**/.env.*
+**/node_modules
+Docs
+SecurityFixes.md
+SecurityFixesAlper.md
+apps/mobile
+backend/backend.zip
+backend/_zip_extract
+backend/generated-products.sql

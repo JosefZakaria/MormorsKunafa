@@ -61,4 +61,3 @@ END
 $test$;
 ROLLBACK;
 SELECT 'PASS: 72 client access denials, 9 backend reads, backend order/item write cycle; rolled back' AS result;
-

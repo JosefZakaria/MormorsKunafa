@@ -1,0 +1,42 @@
+{
+  "phase1DatabaseBridge": [
+    "2026-06-06-admin-pwa-notifications.sql",
+    "2026-08-15-order-type-enabled.sql",
+    "2026-08-19-admin-session-revocation.sql",
+    "2026-09-09-legacy-order-writer-bridge.sql",
+    "2026-08-19-immutable-security-audit.sql",
+    "2026-08-19-stripe-event-idempotency.sql",
+    "2026-08-19-provider-refunds.sql",
+    "2026-08-19-duplicate-stripe-refunds.sql",
+    "2026-08-19-abandoned-checkout-cleanup.sql",
+    "2026-08-19-initiated-checkout-reconciliation.sql",
+    "2026-09-10-checkout-reconciliation-fairness.sql",
+    "2026-08-19-operational-pii-retention.sql",
+    "2026-08-19-menu-sort-and-hero.sql",
+    "2026-08-19-site-media-bucket.sql",
+    "2026-08-19-structured-food-information.sql",
+    "2026-08-27-product-hidden.sql",
+    "2026-08-27-product-variant-prices.sql",
+    "2026-08-28-locations.sql",
+    "2026-08-30-mollevangen-address.sql",
+    "2026-08-30-product-location-stock.sql",
+    "20260914140557_restrict_public_tables_to_backend.sql",
+    "20260923110008_add_delivery_pricing.sql",
+    "2026-08-19-row-level-security.sql",
+    "2026-09-08-security-location-compatibility.sql",
+    "2026-09-09-shared-order-number-allocation.sql",
+    "2026-09-08-stripe-event-ownership.sql",
+    "2026-09-08-online-cancellation-boundary.sql",
+    "2026-09-08-unsettled-payment-retention.sql",
+    "2026-09-09-accounting-history-protection.sql",
+    "2026-09-09-receipt-vat-snapshot.sql",
+    "2026-09-10-receipt-history-immutability.sql",
+    "2026-09-11-private-function-defaults.sql",
+    "20260912155609_outbound_message_jobs.sql",
+    "20260912193000_single_active_push_endpoint.sql"
+  ],
+  "phase4AfterLegacyDrain": [
+    "2026-09-09-checkout-contract-finalization.sql",
+    "20260928222334_allow_free_delivery_line.sql"
+  ]
+}

@@ -18,7 +18,8 @@ import { ToastProvider } from './contexts/ToastContext';
 import { Toast } from './components/common/Toast/Toast';
 
 const PrivateRoute = ({ children }: { children: React.ReactElement }) => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isLoading } = useAuth();
+  if (isLoading) return <div aria-live="polite">Kontrollerar session…</div>;
   return isAuthenticated ? children : <Navigate to="/admin/login" />;
 };
 
@@ -32,25 +33,25 @@ function App() {
             <ToastProvider>
               <Toast />
               <Routes>
-            <Route path="/" element={<MainLayout />}>
-              <Route index element={<Landing />} />
-              <Route path="menu" element={<Menu />} />
-              <Route path="cart" element={<Cart />} />
-              <Route path="status" element={<OrderStatus />} />
-              <Route path="pay/swish" element={<SwishPay />} />
-              <Route path="select-location" element={<SelectLocation />} />
-              <Route path="terms" element={<Terms />} />
-              <Route path="privacy" element={<Privacy />} />
-            </Route>
+                <Route path="/" element={<MainLayout />}>
+                  <Route index element={<Landing />} />
+                  <Route path="menu" element={<Menu />} />
+                  <Route path="cart" element={<Cart />} />
+                  <Route path="status" element={<OrderStatus />} />
+                  <Route path="pay/swish" element={<SwishPay />} />
+                  <Route path="select-location" element={<SelectLocation />} />
+                  <Route path="terms" element={<Terms />} />
+                  <Route path="privacy" element={<Privacy />} />
+                </Route>
 
-            {/* Admin Routes */}
-            <Route path="/admin/login" element={<AdminLogin />} />
-            <Route path="/admin/dashboard" element={
-              <PrivateRoute>
-                <AdminDashboard />
-              </PrivateRoute>
-            } />
-            </Routes>
+                {/* Admin Routes */}
+                <Route path="/admin/login" element={<AdminLogin />} />
+                <Route path="/admin/dashboard" element={
+                  <PrivateRoute>
+                    <AdminDashboard />
+                  </PrivateRoute>
+                } />
+              </Routes>
             </ToastProvider>
           </CartProvider>
         </LanguageProvider>
