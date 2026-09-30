@@ -171,9 +171,14 @@ export async function testAlarm(): Promise<boolean> {
   return unlocked;
 }
 
-/** Repair a missing source, without repeatedly requesting autoplay permission. */
+/** Repair a missing source or a temporary interruption after an order arrived. */
 export function checkAlarmAudio(): void {
-  if (orderAlarmRequested || testing) ensurePlaying();
+  if (orderAlarmRequested || testing) {
+    ensurePlaying();
+    // A resume attempted during an interruption can fail. Retry while an alarm
+    // is still requested; a gesture-only block remains visible in the UI.
+    if (audioCtx && audioCtx.state !== 'running') void unlockAudio();
+  }
   publishStatus();
 }
 

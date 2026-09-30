@@ -218,3 +218,27 @@ test('dashboard cleanup stops both alarm and preview', async () => {
   assert.equal(player.getAlarmStatus().playing, false);
   assert.ok(contexts[0].sources.every(source => source.stopped));
 });
+
+test('watchdog resumes an order after the first recovery attempt was blocked', () => {
+  const { player, contexts, advance } = setup();
+  player.startOrderAlarm();
+  contexts[0].canResume = false;
+  contexts[0].setState('suspended');
+  advance(2000);
+  assert.equal(player.getAlarmStatus().playing, false);
+  contexts[0].canResume = true;
+  player.checkAlarmAudio();
+  assert.equal(player.getAlarmStatus().playing, true);
+  assert.equal(contexts[0].sources.length, 1);
+});
+
+test('watchdog does not restart audio after the order has been handled', () => {
+  const { player, contexts } = setup();
+  player.startOrderAlarm();
+  player.stopOrderAlarm();
+  contexts[0].setState('suspended');
+  const resumes = contexts[0].resumeCalls;
+  player.checkAlarmAudio();
+  assert.equal(player.getAlarmStatus().playing, false);
+  assert.equal(contexts[0].resumeCalls, resumes);
+});
