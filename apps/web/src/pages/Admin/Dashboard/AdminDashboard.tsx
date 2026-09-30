@@ -20,6 +20,7 @@ import { isKitchenTicketPrintDue } from '@shared/utils/scheduledTime';
 import '../Admin.css';
 import { requestWakeLock, releaseWakeLock } from '../../../utils/wakeLock';
 import { useOrderAlarm } from '../../../hooks/useOrderAlarm';
+import { createOrderQueueRefresh } from '../../../utils/orderQueueRefresh';
 import { MenuTab } from './MenuTab';
 import { DeliveryPricingSettings } from './DeliveryPricingSettings';
 
@@ -825,7 +826,7 @@ function StockRow({
 }
 
 export const AdminDashboard: React.FC = () => {
-    const { logout, admin } = useAuth();
+    const { logout, admin, isAuthenticated } = useAuth();
     const navigate = useNavigate();
     const [activeTab, setActiveTab] = useState<'pending' | 'preorders' | 'active' | 'history' | 'stock' | 'menu' | 'delivery-pricing' | 'rush' | 'stats'>('pending');
 
@@ -882,9 +883,7 @@ export const AdminDashboard: React.FC = () => {
     const [deleteAllError, setDeleteAllError] = useState<string | null>(null);
     const [isReconnecting, setIsReconnecting] = useState(false);
 
-    const isFetchingRef = useRef(false);
-    const fetchSeqRef = useRef(0);
-    const consecutiveErrorsRef = useRef(0);
+    const refreshOrdersRef = useRef<((force?: boolean) => Promise<void>) | null>(null);
     const pollingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const eventSourceRef = useRef<EventSource | null>(null);
     const reconnectRealtimeRef = useRef<(() => void) | null>(null);
@@ -904,7 +903,9 @@ export const AdminDashboard: React.FC = () => {
     // pendingOrders-listan är oförändrad).
     const [printTick, setPrintTick] = useState(0);
 
-    const alarm = useOrderAlarm(pendingOrders, !loadingOrders && Boolean(admin));
+    // The authenticated API scopes the queue. Missing cached profile metadata
+    // must not silence an otherwise authenticated dashboard.
+    const alarm = useOrderAlarm(pendingOrders, !loadingOrders && isAuthenticated);
     const activeAlarmOrder = alarm.activeOrder;
     const audioLocked = !alarm.audioReady;
 
@@ -914,94 +915,80 @@ export const AdminDashboard: React.FC = () => {
         setPlaceFilter('all');
     };
 
-    // --- Fetch pending + active + pre-orders with request sequencing and graceful error recovery ---
-    const fetchOrders = useCallback(async (isManualOrWake = false) => {
-        // Prevent concurrent polling executions unless explicitly forced by wake/event
-        if (isFetchingRef.current && !isManualOrWake) {
-            return;
-        }
+    // Stable entry point used by polling, SSE and wake/manual refreshes.
+    const fetchOrders = useCallback((force = false): Promise<void> => {
+        return refreshOrdersRef.current?.(force) ?? Promise.resolve();
+    }, []);
 
-        const currentSeq = ++fetchSeqRef.current;
-        isFetchingRef.current = true;
-
-        try {
-            const [pending, active, preOrdersList] = await Promise.all([
-                orderApi.getPending(),
-                orderApi.getActive(),
-                orderApi.getPreOrders(),
-            ]);
-
-            // Discard out-of-order response if another request completed earlier
-            if (currentSeq !== fetchSeqRef.current) {
-                return;
-            }
-
-            setPendingOrders(pending);
-            setActiveOrders(active);
-            setPreOrders(preOrdersList);
-
-            // Successfully fetched orders: clear error counters and reconnecting status
-            consecutiveErrorsRef.current = 0;
-            setIsReconnecting(false);
-            setError((prev) => (prev === 'Kunde inte hämta ordrar.' ? null : prev));
-        } catch (e: any) {
-            if (currentSeq !== fetchSeqRef.current) {
-                return;
-            }
-
-            console.warn('[AdminDashboard] fetchOrders error:', e?.message || e);
-
-            // If 401 Unauthorized: auth session token expired
-            if (e?.status === 401 || e?.message === 'Not authenticated') {
-                setError('Sessionen har löpt ut. Logga in igen.');
-                setTimeout(() => {
-                    logout();
-                    navigate('/admin/login');
-                }, 2000);
-                return;
-            }
-
-            consecutiveErrorsRef.current += 1;
-
-            // Only display reconnecting indicator after 3 consecutive failures (~10-12s).
-            // This prevents brief WiFi dips (e.g. tablet waking from sleep) from alarming staff.
-            if (consecutiveErrorsRef.current >= 3) {
-                setIsReconnecting(true);
-            }
-        } finally {
-            isFetchingRef.current = false;
-            setLoadingOrders(false);
-        }
-    }, [logout, navigate]);
-
-    // --- Sekventiell polling som eliminerar överlappande anrop och pausar när skärmen släcks ---
     useEffect(() => {
-        let isMounted = true;
+        let disposed = false;
+        let sessionExpired = false;
+        const failures = { pending: 0, active: 0, preOrders: 0 };
+        type Queue = keyof typeof failures;
 
-        const pollLoop = async () => {
-            if (!isMounted) return;
-
-            // Endast om fliken är aktiv/synlig körs polling i bakgrunden
-            if (document.visibilityState === 'visible') {
-                await fetchOrders();
-            }
-
-            if (!isMounted) return;
-
-            // Schemalägg nästa körning EFTER att föregående slutförts
-            const delay = consecutiveErrorsRef.current > 0 ? 5000 : 3500;
-            pollingTimerRef.current = setTimeout(pollLoop, delay);
+        const updateConnectionStatus = () => {
+            setIsReconnecting(failures.pending > 0 || failures.active >= 3 || failures.preOrders >= 3);
         };
 
+        const reportError = (queue: Queue, error: unknown) => {
+            if (disposed || sessionExpired) return;
+            const failure = error as { status?: number; message?: string } | null;
+            console.warn('[AdminDashboard] ' + queue + ' orders:', failure?.message || error);
+            if (failure?.status === 401 || failure?.message === 'Not authenticated') {
+                sessionExpired = true;
+                logout();
+                navigate('/admin/login');
+                return;
+            }
+            failures[queue] += 1;
+            if (queue === 'pending') setLoadingOrders(false);
+            updateConnectionStatus();
+        };
+
+        const queue = (name: Queue, load: () => Promise<Order[]>, apply: (orders: Order[]) => void) =>
+            createOrderQueueRefresh(load, orders => {
+                if (disposed || sessionExpired) return;
+                apply(orders);
+                failures[name] = 0;
+                if (name === 'pending') setLoadingOrders(false);
+                updateConnectionStatus();
+            }, error => reportError(name, error));
+
+        const pending = queue('pending', orderApi.getPending, setPendingOrders);
+        const active = queue('active', orderApi.getActive, setActiveOrders);
+        const preOrders = queue('preOrders', orderApi.getPreOrders, setPreOrders);
+        const refresh = (force = false) => {
+            if (disposed || sessionExpired) return Promise.resolve();
+            // Secondary requests run independently. Only the pending queue
+            // determines when to poll again and when an order can start ringing.
+            void active.refresh(force);
+            void preOrders.refresh(force);
+            return pending.refresh(force);
+        };
+        refreshOrdersRef.current = refresh;
+
+        const pollLoop = async () => {
+            if (disposed || sessionExpired) return;
+            await refresh();
+            if (disposed || sessionExpired) return;
+            // Keep a fallback when SSE misses an event, including while hidden.
+            // Browsers may still suspend background pages; focus forces a sync.
+            const delay = document.visibilityState === 'visible'
+                ? (failures.pending > 0 ? 5000 : 3500)
+                : 10000;
+            pollingTimerRef.current = setTimeout(pollLoop, delay);
+        };
         void pollLoop();
 
         return () => {
-            isMounted = false;
-            if (pollingTimerRef.current) {
-                clearTimeout(pollingTimerRef.current);
-            }
+            disposed = true;
+            pending.dispose();
+            active.dispose();
+            preOrders.dispose();
+            if (refreshOrdersRef.current === refresh) refreshOrdersRef.current = null;
+            if (pollingTimerRef.current) clearTimeout(pollingTimerRef.current);
         };
-    }, [fetchOrders]);
+    }, [logout, navigate]);
 
     // --- Realtidshändelser via Server-Sent Events (SSE) med självläkande återanslutning ---
     useEffect(() => {
@@ -1025,6 +1012,7 @@ export const AdminDashboard: React.FC = () => {
 
                 es.onopen = () => {
                     reconnectAttemptsRef.current = 0;
+                    void fetchOrders(true);
                 };
 
                 es.addEventListener('ORDER_CREATED', (rawEvent) => {
@@ -1171,7 +1159,6 @@ export const AdminDashboard: React.FC = () => {
 
         const handleOnline = () => {
             console.log('[AdminDashboard] WiFi/nätverk återanslutet, synkroniserar ordrar direkt...');
-            consecutiveErrorsRef.current = 0;
             setIsReconnecting(false);
             void fetchOrders(true);
         };

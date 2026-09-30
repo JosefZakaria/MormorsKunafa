@@ -4,10 +4,11 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "test:alarm": "node --test tests/order-alarm.test.cjs",
+    "test:alarm": "node --test tests/order-alarm.test.cjs tests/order-queue-refresh.test.cjs",
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:alarm:browser": "node --test tests/admin-order-alarm.browser.cjs"
   },
   "dependencies": {
     "@fontsource/playfair-display": "^5.2.8",

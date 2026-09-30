@@ -1,0 +1,38 @@
+name: Admin order alarm
+on:
+  push:
+    paths:
+      - 'apps/web/**'
+      - 'shared/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/order-alarm.yml'
+  pull_request:
+    paths:
+      - 'apps/web/**'
+      - 'shared/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/order-alarm.yml'
+permissions:
+  contents: read
+jobs:
+  alarm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Alarm and queue regression tests
+        run: npm run test:alarm --workspace=apps/web
+      - name: Production build
+        run: npm run web:build
+      - name: Install isolated browser test tooling
+        run: npm install --no-save --package-lock=false --ignore-scripts playwright@1.55.1
+      - run: npx playwright install --with-deps chromium
+      - name: Real Web Audio and dashboard integration
+        run: npm run test:alarm:browser --workspace=apps/web
