@@ -37,17 +37,23 @@ test('new pending orders apply without waiting for a stalled or failed secondary
   await slow;
 });
 
-test('simultaneous wake and SSE refreshes coalesce and fetch again after the in-flight snapshot', async () => {
+test('simultaneous wake and SSE refreshes coalesce and fetch again after the in-flight snapshot', { timeout: 2000 }, async () => {
   const first = deferred();
   const second = deferred();
+  const followUpStarted = deferred();
   const values = [];
   let calls = 0;
-  const queue = createOrderQueueRefresh(() => (++calls === 1 ? first.promise : second.promise), value => values.push(value), assert.fail);
+  const queue = createOrderQueueRefresh(() => {
+    calls += 1;
+    if (calls === 1) return first.promise;
+    followUpStarted.resolve();
+    return second.promise;
+  }, value => values.push(value), assert.fail);
   const finished = queue.refresh();
   for (let i = 0; i < 50; i += 1) assert.equal(queue.refresh(true), finished);
   assert.equal(calls, 1);
   first.resolve(['old']);
-  await Promise.resolve();
+  await followUpStarted.promise;
   assert.equal(calls, 2);
   second.resolve(['old', 'new']);
   await finished;
