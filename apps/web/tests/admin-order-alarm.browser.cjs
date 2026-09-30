@@ -44,11 +44,13 @@ async function setup(t, options = {}) {
   const page = await context.newPage();
   const pageErrors = [];
   page.on('pageerror', error => pageErrors.push(error.message));
+  const state = { pending: [], active: [], pendingStatus: 200, secondaryStatus: 200, holdSecondary: false, releaseSecondary: null, pendingCalls: 0, holdPending: false, releasePending: null, ...options };
   t.after(async () => {
+    state.releaseSecondary?.();
+    state.releasePending?.();
     await context.close();
     assert.deepEqual(pageErrors, [], 'Unhandled browser errors');
   });
-  const state = { pending: [], active: [], pendingStatus: 200, secondaryStatus: 200, holdSecondary: false, releaseSecondary: null, pendingCalls: 0, holdPending: false, releasePending: null, ...options };
   await page.addInitScript(({ profile, MOLLE }) => {
     localStorage.setItem('authToken', 'isolated-test-token');
     if (profile === 'missing') localStorage.removeItem('adminInfo');
@@ -68,10 +70,20 @@ async function setup(t, options = {}) {
       close() { this.readyState = 2; }
     }
     window.EventSource = TestEventSource;
-    window.__alarmProbe = { contexts: [], analysers: [] };
+    window.__alarmProbe = { contexts: [], analysers: [], sources: [] };
     const NativeAudioContext = window.AudioContext;
     window.AudioContext = class extends NativeAudioContext {
       constructor(...args) { super(...args); window.__alarmProbe.contexts.push(this); }
+      createBufferSource() {
+        const source = super.createBufferSource();
+        const record = { started: false, stopped: false };
+        window.__alarmProbe.sources.push(record);
+        const start = source.start.bind(source);
+        const stop = source.stop.bind(source);
+        source.start = (...args) => { start(...args); record.started = true; };
+        source.stop = (...args) => { stop(...args); record.stopped = true; };
+        return source;
+      }
       createGain() {
         const gain = super.createGain();
         const analyser = super.createAnalyser();
@@ -129,7 +141,6 @@ async function setup(t, options = {}) {
   });
   await page.goto(ORIGIN + '/admin/dashboard');
   await page.getByText('AKTIVERA LJUDET', { exact: true }).waitFor();
-  t.after(() => { state.releaseSecondary?.(); state.releasePending?.(); });
   return { page, state };
 }
 
@@ -139,7 +150,7 @@ async function sound(page) {
   assert.ok(result.states.includes('running'), JSON.stringify(result));
 }
 async function silent(page) {
-  await page.waitForFunction(() => window.__alarmRms() < 0.001, null, { timeout: 8000 });
+  await page.waitForFunction(() => !window.__alarmProbe.sources.some(source => source.started && !source.stopped) && window.__alarmRms() < 0.001, null, { timeout: 8000 });
 }
 async function activate(page) {
   await page.getByRole('button', { name: 'AKTIVERA', exact: true }).click();
@@ -282,4 +293,16 @@ test('expired authentication stops an active alarm and returns to login', { time
   await wake(page);
   await page.waitForURL('**/admin/login');
   await silent(page);
+});
+
+test('a waiting paid order alarms on initial load and again after reload', { timeout: 25000 }, async t => {
+  const { page } = await setup(t, { profile: 'missing', pending: [order()] });
+  await overlay(page);
+  const activation = page.getByRole('button', { name: 'Aktivera orderljudet', exact: true });
+  if (await activation.isVisible()) await activation.click();
+  await sound(page);
+  await page.reload();
+  await overlay(page);
+  if (await activation.isVisible()) await activation.click();
+  await sound(page);
 });
