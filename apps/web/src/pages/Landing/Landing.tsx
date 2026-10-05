@@ -104,6 +104,7 @@ export const Landing: React.FC = () => {
     const [flags, setFlags] = useState<OrderTypeFlags>(DEFAULT_ORDER_TYPE_FLAGS);
     const [heroDesktop, setHeroDesktop] = useState(DEFAULT_HERO_DESKTOP);
     const [heroMobile, setHeroMobile] = useState(DEFAULT_HERO_MOBILE);
+    const [settingsLoaded, setSettingsLoaded] = useState(false);
     const [pausedPopup, setPausedPopup] = useState<OrderType | 'all' | null>(null);
     const [places, setPlaces] = useState<Location[]>(FALLBACK_PLACES);
 
@@ -129,6 +130,9 @@ export const Landing: React.FC = () => {
             })
             .catch((err) => {
                 console.error('Failed to fetch public settings:', err);
+            })
+            .finally(() => {
+                setSettingsLoaded(true);
             });
     }, []);
 
@@ -168,14 +172,17 @@ export const Landing: React.FC = () => {
         <div className="landing">
             {/* HERO */}
             <section className="landing__hero" id="top">
-                <picture className="landing__hero-media">
-                    <source media="(max-width: 968px)" srcSet={heroMobile} />
-                    <img
-                        src={heroDesktop}
-                        alt=""
-                        className="landing__hero-img"
-                    />
-                </picture>
+                {/* Wait for settings so the default image never flashes before the saved image. */}
+                {settingsLoaded && (
+                    <picture className="landing__hero-media">
+                        <source media="(max-width: 968px)" srcSet={heroMobile} />
+                        <img
+                            src={heroDesktop}
+                            alt=""
+                            className="landing__hero-img"
+                        />
+                    </picture>
+                )}
                 {/* Orderknappar – samma position som tidigare (överlappar hero-kanten) */}
                 <div id="start-order-button-group-placeholder">
                     <div className="landing__actions">
