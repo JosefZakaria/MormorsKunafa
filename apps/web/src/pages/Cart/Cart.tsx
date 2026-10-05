@@ -715,12 +715,9 @@ export const Cart: React.FC = () => {
                                     <h3 className="customer-info__title">{t('cart.customer_info_title')}</h3>
                                     <div className="customer-info__row">
                                         <div className="customer-info__field">
-                                            <label htmlFor="customer-first-name" className="customer-info__label">
-                                                {t('cart.customer_first_name')}
-                                                <span className="customer-info__required" aria-hidden="true">*</span>
-                                            </label>
                                             <input
                                                 id="customer-first-name"
+                                                aria-label={t('cart.customer_first_name')}
                                                 type="text"
                                                 className="customer-info__input"
                                                 placeholder={t('cart.customer_first_name_placeholder')}
@@ -731,12 +728,9 @@ export const Cart: React.FC = () => {
                                             />
                                         </div>
                                         <div className="customer-info__field">
-                                            <label htmlFor="customer-last-name" className="customer-info__label">
-                                                {t('cart.customer_last_name')}
-                                                <span className="customer-info__required" aria-hidden="true">*</span>
-                                            </label>
                                             <input
                                                 id="customer-last-name"
+                                                aria-label={t('cart.customer_last_name')}
                                                 type="text"
                                                 className="customer-info__input"
                                                 placeholder={t('cart.customer_last_name_placeholder')}
@@ -748,12 +742,9 @@ export const Cart: React.FC = () => {
                                         </div>
                                     </div>
                                     <div className="customer-info__field">
-                                        <label htmlFor="customer-phone" className="customer-info__label">
-                                            {t('cart.customer_phone')}
-                                            <span className="customer-info__required" aria-hidden="true">*</span>
-                                        </label>
                                         <input
                                             id="customer-phone"
+                                            aria-label={t('cart.customer_phone')}
                                             type="tel"
                                             className="customer-info__input"
                                             placeholder={t('cart.customer_phone_placeholder')}
@@ -763,12 +754,9 @@ export const Cart: React.FC = () => {
                                         />
                                     </div>
                                     <div className="customer-info__field">
-                                        <label htmlFor="customer-email" className="customer-info__label">
-                                            {t('cart.customer_email')}
-                                            <span className="customer-info__required" aria-hidden="true">*</span>
-                                        </label>
                                         <input
                                             id="customer-email"
+                                            aria-label={t('cart.customer_email')}
                                             type="email"
                                             className="customer-info__input"
                                             placeholder={t('cart.customer_email_placeholder')}
@@ -782,12 +770,9 @@ export const Cart: React.FC = () => {
                                     {orderType === 'delivery' && (
                                         <>
                                             <div className="customer-info__field">
-                                                <label htmlFor="delivery-address" className="customer-info__label">
-                                                    {t('delivery.address_label')}
-                                                    <span className="customer-info__required" aria-hidden="true">*</span>
-                                                </label>
                                                 <input
                                                     id="delivery-address"
+                                                    aria-label={t('delivery.address_label')}
                                                     type="text"
                                                     className="customer-info__input"
                                                     placeholder={t('delivery.address_placeholder')}
@@ -799,12 +784,9 @@ export const Cart: React.FC = () => {
 
                                             <div className="customer-info__row">
                                                 <div className="customer-info__field">
-                                                    <label htmlFor="delivery-postal-code" className="customer-info__label">
-                                                        {t('delivery.postal_code_label')}
-                                                        <span className="customer-info__required" aria-hidden="true">*</span>
-                                                    </label>
                                                     <input
                                                         id="delivery-postal-code"
+                                                        aria-label={t('delivery.postal_code_label')}
                                                         type="text"
                                                         className="customer-info__input"
                                                         placeholder={t('delivery.postal_code_placeholder')}
@@ -815,12 +797,9 @@ export const Cart: React.FC = () => {
                                                 </div>
 
                                                 <div className="customer-info__field">
-                                                    <label htmlFor="delivery-city" className="customer-info__label">
-                                                        {t('delivery.ort_label')}
-                                                        <span className="customer-info__required" aria-hidden="true">*</span>
-                                                    </label>
                                                     <input
                                                         id="delivery-city"
+                                                        aria-label={t('delivery.ort_label')}
                                                         type="text"
                                                         className="customer-info__input"
                                                         placeholder={t('delivery.ort_placeholder')}
