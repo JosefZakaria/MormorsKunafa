@@ -11,6 +11,7 @@ import type {
   UpdateOrderNotesRequest,
   AdminSettings,
   AdminRole,
+  PhoneOrderRequest,
   PushSubscriptionRecord,
 } from '@shared/types';
 
@@ -299,6 +300,13 @@ export const orderApi = {
 
 // Admin API
 export const adminApi = {
+  createPhoneOrder: async (data: PhoneOrderRequest): Promise<Order> => {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+    return authenticatedRequest<Order>('/orders/admin/phone-orders', {
+      method: 'POST', body: JSON.stringify(data), token,
+    });
+  },
   getDeliveryPricing: async (): Promise<DeliveryPricing> => {
     const token = getToken();
     if (!token) throw new Error('Not authenticated');

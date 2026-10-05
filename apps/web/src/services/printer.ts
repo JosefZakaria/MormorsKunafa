@@ -262,6 +262,14 @@ export async function printKitchenTicket(order: Order, locationIdOrSlug?: string
   }
   xml += textLine(`Typ: ${ORDER_TYPE_LABELS[order.orderType] || order.orderType}`);
 
+  if (order.paymentMethod === 'pay_at_pickup') {
+    xml += textLine('Telefonbestallning');
+    xml += textLine(`${order.paymentStatus === 'paid' ? 'Betald i lokalen' : 'Betalas vid hamtning'}: ${(order.totalPrice / 100).toFixed(2)} kr`);
+    if (order.customerInfo?.phone) xml += textLine(`Tel: ${order.customerInfo.phone}`);
+    if (order.customerInfo?.email) xml += textLine(`E-post: ${order.customerInfo.email}`);
+    if (order.internalNotes) xml += textLine(`Notis: ${order.internalNotes}`);
+  }
+
   if (order.estimatedReadyTime) {
     const ready = new Date(order.estimatedReadyTime);
     const timeStr = ready.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' });
@@ -298,6 +306,9 @@ export async function printReceipt(order: Order, locationIdOrSlug?: string | nul
 
   xml += textLine('Mormors Kunafa', 'center');
   xml += textLine('Order-Kvitto', 'center');
+  if (order.paymentMethod === 'pay_at_pickup') {
+    xml += textLine(order.paymentStatus === 'paid' ? 'Betald i lokalen' : 'OBETALD - Betalas vid hamtning', 'center');
+  }
   xml += textLine(new Date().toLocaleString('sv-SE'), 'center');
   xml += `<feed unit="24"/>`;
 

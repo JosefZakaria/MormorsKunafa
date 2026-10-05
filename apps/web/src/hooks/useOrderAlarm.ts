@@ -24,7 +24,7 @@ export function useOrderAlarm(orders: Order[], enabled: boolean) {
   const [volume, setVolume] = useState(readVolume);
   const [pausedUntil, setPausedUntil] = useState<Map<string, number>>(() => new Map());
   const [now, setNow] = useState(Date.now);
-  // The server's location-scoped paid/pending queue is authoritative. Loading a
+  // The server's location-scoped incoming queue is authoritative. Loading a
   // page, receiving an SSE event or displaying a card is never acknowledgement.
   const soundingOrders = enabled ? orders.filter(order => (pausedUntil.get(order.id) ?? 0) <= now) : [];
   const activeOrder = soundingOrders.reduce<Order | null>((oldest, order) =>
