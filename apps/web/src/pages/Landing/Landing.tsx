@@ -105,6 +105,7 @@ export const Landing: React.FC = () => {
     const [heroDesktop, setHeroDesktop] = useState(DEFAULT_HERO_DESKTOP);
     const [heroMobile, setHeroMobile] = useState(DEFAULT_HERO_MOBILE);
     const [settingsLoaded, setSettingsLoaded] = useState(false);
+    const [heroLoaded, setHeroLoaded] = useState(false);
     const [pausedPopup, setPausedPopup] = useState<OrderType | 'all' | null>(null);
     const [places, setPlaces] = useState<Location[]>(FALLBACK_PLACES);
 
@@ -179,9 +180,10 @@ export const Landing: React.FC = () => {
                         <img
                             src={heroDesktop}
                             alt=""
-                            className="landing__hero-img"
+                            className={`landing__hero-img${heroLoaded ? ' landing__hero-img--loaded' : ''}`}
                             fetchPriority="high"
                             loading="eager"
+                            onLoad={() => setHeroLoaded(true)}
                         />
                     </picture>
                 )}
