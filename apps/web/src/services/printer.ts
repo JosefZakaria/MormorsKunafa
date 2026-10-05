@@ -160,8 +160,8 @@ function buildEndpointUrl(locationIdOrSlug?: string | null): string {
 
 async function sendToPrinter(soapXml: string, locationIdOrSlug?: string | null): Promise<{ success: boolean; error?: string }> {
   const slug = normalizeLocationSlug(locationIdOrSlug);
+  const locName = slug === 'hoja' ? 'Höja' : 'Möllevången';
   if (!isPrinterConfigured(slug)) {
-    const locName = slug === 'hoja' ? 'Höja' : 'Möllevången';
     return { success: false, error: `Skrivaren för ${locName} är inte konfigurerad. Ange IP-adress i inställningarna.` };
   }
 
@@ -170,6 +170,10 @@ async function sendToPrinter(soapXml: string, locationIdOrSlug?: string | null):
     const xhr = new XMLHttpRequest();
 
     return new Promise((resolve) => {
+      const fail = (reason: string, error: string) => {
+        console.warn('[printer] request failed', { location: slug, url, status: xhr.status, reason });
+        resolve({ success: false, error });
+      };
       xhr.open('POST', url, true);
       xhr.setRequestHeader('Content-Type', 'text/xml; charset=utf-8');
       xhr.setRequestHeader('If-Modified-Since', 'Thu, 01 Jan 1970 00:00:00 GMT');
@@ -178,6 +182,9 @@ async function sendToPrinter(soapXml: string, locationIdOrSlug?: string | null):
 
       xhr.onreadystatechange = () => {
         if (xhr.readyState === 4) {
+          // Network errors, timeouts and aborts report DONE/status 0 before their own event.
+          // Let that event provide the actual failure instead of settling with "HTTP-fel 0".
+          if (xhr.status === 0) return;
           if (xhr.status === 200) {
             const res = xhr.responseXML;
             if (res) {
@@ -187,23 +194,27 @@ async function sendToPrinter(soapXml: string, locationIdOrSlug?: string | null):
                 resolve({ success: true });
               } else {
                 const code = responseEl?.getAttribute('code') || 'Okänt fel';
-                resolve({ success: false, error: `Skrivarfel: ${code}` });
+                fail('printer', `Skrivarfel: ${code}`);
               }
             } else {
-              resolve({ success: false, error: 'Tomt svar från skrivaren' });
+              fail('response', 'Tomt svar från skrivaren');
             }
           } else {
-            resolve({ success: false, error: `HTTP-fel ${xhr.status} från skrivaren` });
+            fail('http', `HTTP-fel ${xhr.status} från skrivaren`);
           }
         }
       };
 
       xhr.onerror = () => {
-        resolve({ success: false, error: 'Kunde inte nå skrivaren. Kontrollera IP och nätverk.' });
+        fail('network', `Kunde inte nå skrivaren för ${locName} (${getPrinterIp(slug)}). Kontrollera IP-adressen, att enheten är på skrivarens nätverk och att webbläsaren tillåter åtkomst till det lokala nätverket.`);
       };
 
       xhr.ontimeout = () => {
-        resolve({ success: false, error: 'Timeout - skrivaren svarade inte inom 15 sekunder.' });
+        fail('timeout', `Timeout - skrivaren för ${locName} (${getPrinterIp(slug)}) svarade inte inom 15 sekunder.`);
+      };
+
+      xhr.onabort = () => {
+        fail('abort', `Utskriften till ${locName} avbröts.`);
       };
 
       xhr.send(soapXml);
