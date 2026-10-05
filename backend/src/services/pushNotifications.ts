@@ -8,7 +8,7 @@ import {
   markPushDeliverySuccess,
 } from '../db/pushSubscriptionsRepository.js';
 import type { OrderCreatedEvent } from './realtimeEvents.js';
-import { loadAdminScopes, orderVisibleToScope } from './locationScope.js';
+import { loadAdminScopes, orderNotificationVisibleToScope } from './locationScope.js';
 
 const deliveredInRuntime = new Map<string, Set<string>>();
 
@@ -63,9 +63,10 @@ export async function sendOrderCreatedPush(event: OrderCreatedEvent): Promise<vo
   const visibleSubscriptions = subscriptions.filter((subscription) => {
     const scope = scopes.get(subscription.admin_id);
     if (!scope) return false;
-    return orderVisibleToScope(scope, {
+    return orderNotificationVisibleToScope(scope, {
       orderType: event.order_type,
       locationId: event.location_id,
+      locationAccountsOnly: event.location_accounts_only,
     });
   });
   if (!visibleSubscriptions.length) return;

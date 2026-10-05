@@ -8,7 +8,7 @@ import { PrinterService } from '../services/PrinterService.js';
 import { sendOrderConfirmationEmail } from '../services/OrderConfirmationEmail.js';
 import { sendSms } from '../services/SmsService.js';
 import { getStripe } from '../services/stripeClient.js';
-import { broadcastOrderCreated, dispatchOrderCreatedEvent, type OrderCreatedEvent } from '../services/realtimeEvents.js';
+import { broadcastOrderCreated, dispatchOrderCreatedEvent, dispatchPhoneOrderAcceptedEvent, type OrderCreatedEvent } from '../services/realtimeEvents.js';
 import { sendOrderCreatedPush } from '../services/pushNotifications.js';
 import { resolveOrderLocationId, locationOrderTypeError, inStorePickupSmsSuffix } from '../db/locations.js';
 import { outOfStockProductNames, stockLocationIdForOrder } from '../db/productLocationStock.js';
@@ -81,20 +81,25 @@ function todayInStockholm(): string {
   return new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Stockholm' });
 }
 
-async function ordersVisibleToRequest(req: Request, rows: Row[]): Promise<Row[]> {
+async function ordersVisibleToRequest(req: Request, rows: Row[], hideUnacceptedPhoneOrders = false): Promise<Row[]> {
   const admin = getRequestAdmin(req);
   if (!admin) return [];
   const scope = await loadAdminScope(admin.adminId);
-  return rows.filter((row) => orderRowVisibleToScope(scope, row));
+  return rows.filter((row) => orderRowVisibleToScope(scope, row)
+    && !(hideUnacceptedPhoneOrders && scope.role === 'owner' && row.payment_method === 'pay_at_pickup' && row.status === 'ny'));
 }
 
-async function assertOrderVisible(req: Request, res: Response, order: Row): Promise<boolean> {
+async function assertOrderVisible(req: Request, res: Response, order: Row, locationAcceptanceOnly = false): Promise<boolean> {
   const admin = getRequestAdmin(req);
   if (!admin) {
     res.status(401).json({ error: 'Unauthorized' });
     return false;
   }
   const scope = await loadAdminScope(admin.adminId);
+  if (locationAcceptanceOnly && scope.role !== 'location') {
+    res.status(403).json({ error: 'Telefonbeställningen måste accepteras av den valda lokalen.' });
+    return false;
+  }
   if (!orderRowVisibleToScope(scope, order)) {
     res.status(403).json({ error: 'Ordern tillhör en annan plats.' });
     return false;
@@ -572,7 +577,7 @@ router.get('/admin/pending', requireAdmin, async (req: Request, res: Response) =
       const schedDate = toStockholmDateString((r as Row).scheduled_at as Date | string | null);
       return schedDate == null || schedDate <= today;
     });
-    res.json(await rowsToOrders(await ordersVisibleToRequest(req, sameDay as Row[])));
+    res.json(await rowsToOrders(await ordersVisibleToRequest(req, sameDay as Row[], true)));
   } catch (e) {
     console.error('[GET /admin/pending]', e);
     res.status(500).json({ error: 'Failed to fetch pending orders' });
@@ -590,7 +595,7 @@ router.patch('/admin/:id/accept', requireAdmin, async (req: Request, res: Respon
       res.status(404).json({ error: 'Order not found' });
       return;
     }
-    if (!(await assertOrderVisible(req, res, result.order))) return;
+    if (!(await assertOrderVisible(req, res, result.order, result.order.payment_method === 'pay_at_pickup'))) return;
     if (result.order.status !== 'ny') {
       res.status(400).json({ error: 'Order is not in pending state' });
       return;
@@ -635,6 +640,9 @@ router.patch('/admin/:id/accept', requireAdmin, async (req: Request, res: Respon
 
     const payload = orderRowToOrder(updated.order, updated.items);
     payload.estimatedReadyTime = estimatedReady.toISOString();
+    if (updated.order.payment_method === 'pay_at_pickup') {
+      dispatchPhoneOrderAcceptedEvent(id, updated.order.location_id != null ? String(updated.order.location_id) : null);
+    }
     res.json(payload);
   } catch (e) {
     console.error(e);
@@ -853,7 +861,9 @@ router.patch('/admin/:id/status', requireAdmin, async (req: Request, res: Respon
       res.status(404).json({ error: 'Order not found' });
       return;
     }
-    if (!(await assertOrderVisible(req, res, existing.order))) return;
+    const acceptingPhoneOrder = existing.order.payment_method === 'pay_at_pickup'
+      && existing.order.status === 'ny' && status !== 'ny' && status !== 'avbruten';
+    if (!(await assertOrderVisible(req, res, existing.order, acceptingPhoneOrder))) return;
     const patch: Record<string, unknown> = { status };
     if (status === 'uthämtad' && existing.order.payment_method === 'pay_at_pickup' && existing.order.payment_status !== 'paid') {
       if (existing.order.status !== 'klar' || paymentReceived !== true) {

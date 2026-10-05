@@ -1,5 +1,5 @@
 import { showOrderDeliveryEstimate } from '@shared/utils/deliveryPricing';
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { Container } from '../../../components/common/Container/Container';
@@ -903,9 +903,11 @@ export const AdminDashboard: React.FC = () => {
     // pendingOrders-listan är oförändrad).
     const [printTick, setPrintTick] = useState(0);
 
-    // The authenticated API scopes the queue. Missing cached profile metadata
-    // must not silence an otherwise authenticated dashboard.
-    const alarm = useOrderAlarm(pendingOrders, !loadingOrders && isAuthenticated);
+    // Owner phone orders are monitored after the location accepts them, never alarmed here.
+    const awaitingAcceptance = useMemo(() => pendingOrders.filter(order =>
+        order.status === 'ny' && !(isOwner && order.paymentMethod === 'pay_at_pickup')
+    ), [pendingOrders, isOwner]);
+    const alarm = useOrderAlarm(awaitingAcceptance, !loadingOrders && isAuthenticated);
     const activeAlarmOrder = alarm.activeOrder;
     const audioLocked = !alarm.audioReady;
 
@@ -1032,6 +1034,10 @@ export const AdminDashboard: React.FC = () => {
                     }
                 });
 
+                es.addEventListener('PHONE_ORDER_ACCEPTED', () => {
+                    void fetchOrders(true);
+                });
+
                 es.onerror = () => {
                     try {
                         es.close();
@@ -1085,6 +1091,7 @@ export const AdminDashboard: React.FC = () => {
         // så att de inte skrivs ut vid refresh. Ordrar längre fram i tiden lämnas.
         if (!printSeedDoneRef.current) {
             for (const o of pendingOrders) {
+                if (isOwner && o.paymentMethod === 'pay_at_pickup') continue;
                 if (isKitchenTicketPrintDue(o.scheduledTime)) {
                     printedOrderIdsRef.current.add(o.id);
                 }
@@ -1094,6 +1101,7 @@ export const AdminDashboard: React.FC = () => {
         }
 
         for (const order of pendingOrders) {
+            if (isOwner && order.paymentMethod === 'pay_at_pickup') continue;
             if (printedOrderIdsRef.current.has(order.id)) continue;
             if (!isKitchenTicketPrintDue(order.scheduledTime)) continue;
 
@@ -1129,7 +1137,7 @@ export const AdminDashboard: React.FC = () => {
                     setError(`Kunde inte skriva ut kökslapp för ${locName}. Kontrollera skrivaren.`);
                 });
         }
-    }, [pendingOrders, loadingOrders, printTick, admin, myLocation, locations]);
+    }, [pendingOrders, loadingOrders, printTick, admin, myLocation, locations, isOwner]);
 
     // Tick every 15s so a same-day order scheduled later still prints at T-30
     // even if the pending list content has not changed.
@@ -1506,7 +1514,12 @@ export const AdminDashboard: React.FC = () => {
             ? [myLocation]
             : [];
     const stockLocations = pauseLocations;
-    const visiblePending = isOwner ? pendingOrders.filter((order) => orderMatchesPlaceFilter(order, placeFilter)) : pendingOrders;
+    const visiblePending = isOwner ? awaitingAcceptance.filter((order) => orderMatchesPlaceFilter(order, placeFilter)) : awaitingAcceptance;
+    const acceptedPhoneOrders = isOwner ? activeOrders.filter(order =>
+        order.paymentMethod === 'pay_at_pickup' && ['mottagen', 'påbörjad'].includes(order.status)
+        && orderMatchesPlaceFilter(order, placeFilter)
+    ) : [];
+    const visibleIncomingCount = visiblePending.length + acceptedPhoneOrders.length;
     const visiblePreOrders = isOwner ? preOrders.filter((order) => orderMatchesPlaceFilter(order, placeFilter)) : preOrders;
     const visibleActive = isOwner ? activeOrders.filter((order) => orderMatchesPlaceFilter(order, placeFilter)) : activeOrders;
     const visibleHistory = isOwner ? historyOrders.filter((order) => orderMatchesPlaceFilter(order, placeFilter)) : historyOrders;
@@ -1628,7 +1641,7 @@ export const AdminDashboard: React.FC = () => {
 
                 {alarm.pausedSeconds > 0 && (
                     <div className="alarm-paused-banner" role="status">
-                        <span>{pendingOrders.length} {pendingOrders.length === 1 ? 'order väntar' : 'ordrar väntar'}. Larmet återkommer om {alarm.pausedSeconds} s om de inte accepteras.</span>
+                        <span>{awaitingAcceptance.length} {awaitingAcceptance.length === 1 ? 'order väntar' : 'ordrar väntar'}. Larmet återkommer om {alarm.pausedSeconds} s om de inte accepteras.</span>
                         <Button size="sm" variant="ghost" onClick={alarm.resume}>Larma nu</Button>
                     </div>
                 )}
@@ -1638,7 +1651,7 @@ export const AdminDashboard: React.FC = () => {
                         Förbeställningar {visiblePreOrders.length > 0 && <span className="tab-badge">{visiblePreOrders.length}</span>}
                     </button>
                     <button className={`admin-tab ${activeTab === 'pending' ? 'active' : ''}`} onClick={() => { setActiveTab('pending'); setStatsData(null); }}>
-                        Inkommande {visiblePending.length > 0 && <span className="tab-badge">{visiblePending.length}</span>}
+                        Inkommande {visibleIncomingCount > 0 && <span className="tab-badge">{visibleIncomingCount}</span>}
                     </button>
                     <button className={`admin-tab ${activeTab === 'active' ? 'active' : ''}`} onClick={() => { setActiveTab('active'); setStatsData(null); }}>
                         Aktiva Ordrar ({visibleActive.length})
@@ -1765,7 +1778,7 @@ export const AdminDashboard: React.FC = () => {
                         <div className="orders-list orders-list--grid">
                             {loadingOrders ? (
                                 <p>Laddar ordrar...</p>
-                            ) : visiblePending.length === 0 ? (
+                            ) : visiblePending.length === 0 && acceptedPhoneOrders.length === 0 ? (
                                 <p>Inga inkommande ordrar just nu.</p>
                             ) : (
                                 visiblePending.map(order => (
@@ -1778,6 +1791,22 @@ export const AdminDashboard: React.FC = () => {
                                     />
                                 ))
                             )}
+                            {!loadingOrders && acceptedPhoneOrders.map(order => (
+                                <div key={order.id} className="admin-order-card pending-order-card">
+                                    <div className="order-details">
+                                        <h3>{order.orderNumber} · <OrderTypeLabel type={order.orderType} /> · <PlaceBadge order={order} locations={locations} /></h3>
+                                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                                            <span className="status-badge status-active">Accepterad av lokalen</span>
+                                            <OrderTimer estimatedReadyTime={order.estimatedReadyTime} />
+                                        </div>
+                                        <OrderContactPanel order={order} />
+                                        <ul className="order-items">
+                                            {order.items.map((item, index) => <li key={index}>{item.quantity}x {item.productName}</li>)}
+                                        </ul>
+                                        <p className="order-total">{(order.totalPrice / 100).toLocaleString('sv-SE', { maximumFractionDigits: 2 })} kr</p>
+                                    </div>
+                                </div>
+                            ))}
                         </div>
                     )}
 

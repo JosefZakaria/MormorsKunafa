@@ -25,6 +25,14 @@ export function orderVisibleToScope(scope: AdminScope, order: OrderLocationRef):
   return String(order.locationId ?? '') === scope.locationId;
 }
 
+export function orderNotificationVisibleToScope(
+  scope: AdminScope,
+  order: OrderLocationRef & { locationAccountsOnly?: boolean }
+): boolean {
+  if (order.locationAccountsOnly && scope.role !== 'location') return false;
+  return orderVisibleToScope(scope, order);
+}
+
 export function orderRowVisibleToScope(scope: AdminScope, row: Row): boolean {
   return orderVisibleToScope(scope, {
     orderType: row.order_type != null ? String(row.order_type) : null,
