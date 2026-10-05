@@ -77,6 +77,23 @@
     object-fit: cover;
     object-position: 75% bottom;
     user-select: none;
+    opacity: 0;
+}
+
+.landing__hero-img--loaded {
+    animation: heroFadeIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes heroFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .landing__hero-img--loaded {
+        animation: none;
+        opacity: 1;
+    }
 }
 
 @media (max-width: 968px) {
