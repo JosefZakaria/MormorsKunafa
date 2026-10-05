@@ -37,8 +37,10 @@ import {
 import swishPaymentRouter from './swishPayment.js';
 import { loadDeliveryPricing } from '../db/deliveryPricing.js';
 import { deliveryQuoteMatches, quoteDelivery, type DeliveryQuote } from '../shared/utils/deliveryPricing.js';
+import { registerPhoneOrderRoutes } from './adminPhoneOrders.js';
 
 const router = Router();
+registerPhoneOrderRoutes(router);
 
 router.use('/swish-payment', swishPaymentRouter);
 
@@ -556,7 +558,7 @@ router.get('/admin/pending', requireAdmin, async (req: Request, res: Response) =
       .from('orders')
       .select('*')
       .eq('status', 'ny')
-      .eq('payment_status', 'paid')
+      .or('payment_status.eq.paid,payment_method.eq.pay_at_pickup')
       .order('created_at', { ascending: true });
 
     if (error) {
@@ -647,7 +649,7 @@ router.get('/admin/active', requireAdmin, async (req: Request, res: Response) =>
       .from('orders')
       .select('*')
       .in('status', ['mottagen', 'påbörjad'])
-      .eq('payment_status', 'paid')
+      .or('payment_status.eq.paid,payment_method.eq.pay_at_pickup')
       .order('created_at', { ascending: true });
 
     if (error) {
@@ -671,7 +673,7 @@ router.get('/admin/pre-orders', requireAdmin, async (req: Request, res: Response
       .select('*')
       .not('scheduled_at', 'is', null)
       .in('status', ['ny', 'mottagen', 'påbörjad'])
-      .eq('payment_status', 'paid')
+      .or('payment_status.eq.paid,payment_method.eq.pay_at_pickup')
       .order('scheduled_at', { ascending: true });
 
     if (error) {
@@ -831,10 +833,11 @@ router.post('/admin/:id/cancel', requireAdmin, async (req: Request, res: Respons
 router.patch('/admin/:id/status', requireAdmin, async (req: Request, res: Response) => {
   try {
     const id = paramId(req);
-    const { status, estimatedReadyTime, cancellationReason } = req.body as {
+    const { status, estimatedReadyTime, cancellationReason, paymentReceived } = req.body as {
       status?: string;
       estimatedReadyTime?: string;
       cancellationReason?: string;
+      paymentReceived?: boolean;
     };
     if (!status || !['ny', 'mottagen', 'påbörjad', 'klar', 'avbruten', 'uthämtad', 'levererad'].includes(status)) {
       res.status(400).json({ error: 'Invalid status' });
@@ -852,6 +855,13 @@ router.patch('/admin/:id/status', requireAdmin, async (req: Request, res: Respon
     }
     if (!(await assertOrderVisible(req, res, existing.order))) return;
     const patch: Record<string, unknown> = { status };
+    if (status === 'uthämtad' && existing.order.payment_method === 'pay_at_pickup' && existing.order.payment_status !== 'paid') {
+      if (existing.order.status !== 'klar' || paymentReceived !== true) {
+        res.status(400).json({ error: 'Bekräfta betalning i lokalen innan telefonordern lämnas ut.' });
+        return;
+      }
+      patch.payment_status = 'paid';
+    }
     if (estimatedReadyTime) {
       patch.estimated_ready_at = new Date(estimatedReadyTime).toISOString();
     }
