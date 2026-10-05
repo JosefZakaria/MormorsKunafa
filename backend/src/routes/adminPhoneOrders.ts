@@ -76,7 +76,7 @@ async function createPhoneOrder(req: Request, res: Response): Promise<void> {
       default_preparation_time_minutes: prep,
       estimated_ready_at: new Date(Date.now() + prep * 60000).toISOString(),
       scheduled_at: null, delivery_info_json: null, location_id: location.id,
-      customer_name: `${body.customer.firstName} ${body.customer.lastName}`,
+      customer_name: `${body.customer.firstName} ${body.customer.lastName}`.trim(),
       customer_phone: body.customer.phone, customer_email: body.customer.email,
       internal_notes: body.notes || null,
     });

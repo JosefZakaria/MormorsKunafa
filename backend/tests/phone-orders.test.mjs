@@ -118,7 +118,7 @@ test('owner phone orders enter the selected location queue without online paymen
     await t.test('invalid contacts, quantities, products, variants and unavailable stock create no order', async () => {
       const before = orders.length;
       for (const change of [
-        { customer: { ...payload().customer, firstName: '' } },
+        { customer: { ...payload().customer, firstName: 'a'.repeat(81) } },
         { customer: { ...payload().customer, phone: 'abc' } },
         { customer: { ...payload().customer, email: 'invalid' } },
         { items: [{ productId, quantity: -1 }] },
@@ -158,6 +158,27 @@ test('owner phone orders enter the selected location queue without online paymen
       const collected = await call(`/admin/${phoneOrder.id}/status`, 'PATCH', { status: 'uthämtad', paymentReceived: true }, 'hoja-admin');
       assert.equal(collected.status, 200);
       assert.equal((await collected.json()).paymentStatus, 'paid');
+    });
+    await t.test('contact details may be empty, omitted or partly filled in', async () => {
+      for (const customer of [
+        undefined, {}, { firstName: '', lastName: '', phone: '', email: '' },
+        { firstName: '  ', lastName: '  ', phone: '  ', email: '  ' },
+        { firstName: ' Anna ' }, { lastName: ' Andersson ' },
+        { phone: '0701234567' }, { email: 'anna@example.test' },
+      ]) {
+        const body = { ...payload(mollan), customer };
+        const response = await call('/admin/phone-orders', 'POST', body);
+        assert.equal(response.status, 201);
+        const order = await response.json();
+        const saved = orders.find(row => row.id === body.requestId);
+        const name = `${customer?.firstName?.trim() ?? ''} ${customer?.lastName?.trim() ?? ''}`.trim();
+        assert.equal(saved.customer_name, name);
+        assert.equal(saved.customer_phone, customer?.phone?.trim() ?? '');
+        assert.equal(saved.customer_email, customer?.email?.trim() ?? '');
+        assert.equal(order.paymentStatus, 'pending');
+        if (!name && !saved.customer_phone && !saved.customer_email) assert.equal(order.customerInfo, undefined);
+        else assert.equal(order.customerInfo.name, name);
+      }
     });
     await t.test('public checkout cannot forge the admin-only payment method', async () => {
       const response = await call('/', 'POST', { items: [{ productId, quantity: 1 }], customerInfo: { email: 'anna@example.test' }, paymentMethod: 'pay_at_pickup' }, null);
