@@ -90,14 +90,14 @@ function OrderContactPanel({ order }: { order: Order }) {
             </div>
         );
     }
-    if (order.customerInfo?.name || order.customerInfo?.phone) {
+    if (order.paymentMethod === 'pay_at_pickup' || order.customerInfo?.name || order.customerInfo?.phone) {
         return (
             <div>
                 {order.paymentMethod === 'pay_at_pickup' && <p className="phone-order-payment">Telefonbeställning · {order.paymentStatus === 'paid' ? 'Betald i lokalen' : 'Betalas vid hämtning'}</p>}
-                <p className="order-customer-line">
+                {(order.customerInfo?.name || order.customerInfo?.phone) && <p className="order-customer-line">
                     Kund: {order.customerInfo?.name ?? '—'}
                     {order.customerInfo?.phone ? ` · ${order.customerInfo.phone}` : ''}
-                </p>
+                </p>}
                 {order.paymentMethod === 'pay_at_pickup' && order.customerInfo?.email && <p className="order-customer-line">E-post: {order.customerInfo.email}</p>}
             </div>
         );
