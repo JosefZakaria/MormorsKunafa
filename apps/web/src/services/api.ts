@@ -1,4 +1,5 @@
 import { API_CONFIG, apiRequest, authenticatedRequest } from '@shared/api';
+import { getPublicSettings } from './publicSettings';
 import type { DeliveryPricing } from '@shared/utils/deliveryPricing';
 import type {
   Product,
@@ -292,7 +293,7 @@ export const orderApi = {
   },
 
   getPublicSettings: async (): Promise<AdminSettings> => {
-    return apiRequest<AdminSettings>('/orders/settings');
+    return getPublicSettings();
   },
 };
 
