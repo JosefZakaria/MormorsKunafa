@@ -180,6 +180,8 @@ export const Landing: React.FC = () => {
                             src={heroDesktop}
                             alt=""
                             className="landing__hero-img"
+                            fetchPriority="high"
+                            loading="eager"
                         />
                     </picture>
                 )}
