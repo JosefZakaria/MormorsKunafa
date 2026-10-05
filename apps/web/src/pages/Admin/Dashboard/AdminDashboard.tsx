@@ -23,6 +23,7 @@ import { useOrderAlarm } from '../../../hooks/useOrderAlarm';
 import { createOrderQueueRefresh } from '../../../utils/orderQueueRefresh';
 import { MenuTab } from './MenuTab';
 import { DeliveryPricingSettings } from './DeliveryPricingSettings';
+import { PhoneOrdersTab } from './PhoneOrdersTab';
 
 // --- Helper: countdown string from ISO time ---
 function getCountdown(isoTime: string | undefined): string {
@@ -91,10 +92,14 @@ function OrderContactPanel({ order }: { order: Order }) {
     }
     if (order.customerInfo?.name || order.customerInfo?.phone) {
         return (
-            <p className="order-customer-line">
-                Kund: {order.customerInfo?.name ?? '—'}
-                {order.customerInfo?.phone ? ` · ${order.customerInfo.phone}` : ''}
-            </p>
+            <div>
+                {order.paymentMethod === 'pay_at_pickup' && <p className="phone-order-payment">Telefonbeställning · {order.paymentStatus === 'paid' ? 'Betald i lokalen' : 'Betalas vid hämtning'}</p>}
+                <p className="order-customer-line">
+                    Kund: {order.customerInfo?.name ?? '—'}
+                    {order.customerInfo?.phone ? ` · ${order.customerInfo.phone}` : ''}
+                </p>
+                {order.paymentMethod === 'pay_at_pickup' && order.customerInfo?.email && <p className="order-customer-line">E-post: {order.customerInfo.email}</p>}
+            </div>
         );
     }
     return null;
@@ -828,7 +833,7 @@ function StockRow({
 export const AdminDashboard: React.FC = () => {
     const { logout, admin, isAuthenticated } = useAuth();
     const navigate = useNavigate();
-    const [activeTab, setActiveTab] = useState<'pending' | 'preorders' | 'active' | 'history' | 'stock' | 'menu' | 'delivery-pricing' | 'rush' | 'stats'>('pending');
+    const [activeTab, setActiveTab] = useState<'pending' | 'preorders' | 'active' | 'history' | 'stock' | 'menu' | 'phone-orders' | 'delivery-pricing' | 'rush' | 'stats'>('pending');
 
     // Data state
     const [pendingOrders, setPendingOrders] = useState<Order[]>([]);
@@ -1187,7 +1192,7 @@ export const AdminDashboard: React.FC = () => {
 
     useEffect(() => {
         if (isOwner) return;
-        if (activeTab === 'menu' || activeTab === 'stats' || activeTab === 'delivery-pricing') {
+        if (activeTab === 'menu' || activeTab === 'phone-orders' || activeTab === 'stats' || activeTab === 'delivery-pricing') {
             setActiveTab('pending');
             setStatsData(null);
             setShowStatsModal(false);
@@ -1243,9 +1248,10 @@ export const AdminDashboard: React.FC = () => {
     };
 
     // --- Order actions ---
-    const handleUpdateStatus = async (orderId: string, status: Order['status']) => {
+    const handleUpdateStatus = async (orderId: string, status: Order['status'], paymentReceived = false) => {
         try {
-            const updated = await orderApi.updateStatus(orderId, { status });
+            const updated = await orderApi.updateStatus(orderId, { status, ...(paymentReceived ? { paymentReceived: true } : {}) });
+            setHistoryOrders(prev => prev.map(order => order.id === orderId ? updated : order));
             setActiveOrders(prev =>
                 status === 'klar' || status === 'avbruten' || status === 'uthämtad' || status === 'levererad'
                     ? prev.filter(o => o.id !== orderId)
@@ -1648,6 +1654,11 @@ export const AdminDashboard: React.FC = () => {
                     <button className={`admin-tab ${activeTab === 'stock' ? 'active' : ''}`} onClick={() => { setActiveTab('stock'); setStatsData(null); }}>
                         Lager
                     </button>
+                    {admin?.role === 'owner' && (
+                    <button className={`admin-tab ${activeTab === 'phone-orders' ? 'active' : ''}`} onClick={() => { setActiveTab('phone-orders'); setStatsData(null); }}>
+                        Telefonbeställning
+                    </button>
+                    )}
                     {isOwner && (
                     <button className={`admin-tab ${activeTab === 'menu' ? 'active' : ''}`} onClick={() => { setActiveTab('menu'); setStatsData(null); }}>
                         Meny
@@ -1931,7 +1942,7 @@ export const AdminDashboard: React.FC = () => {
                                                 {order.orderNumber} · <OrderTypeLabel type={order.orderType} /> · <PlaceBadge order={order} locations={locations} />
                                             </h3>
                                             <span className={`status-badge ${order.status === 'avbruten' ? 'status-avbruten' : 'status-klar'}`}>
-                                                {order.status === 'avbruten' ? 'Avbruten' : 'Klar'}
+                                                {order.status === 'avbruten' ? 'Avbruten' : order.status === 'uthämtad' ? 'Hämtad' : 'Klar'}
                                             </span>
                                             <ScheduledOrderInfo order={order} />
                                             <ul style={{ margin: '0.5rem 0', paddingLeft: '1.2rem' }}>
@@ -1965,6 +1976,9 @@ export const AdminDashboard: React.FC = () => {
                                             )}
                                         </div>
                                         <div className="order-actions" style={{ flexDirection: 'column', gap: '0.5rem' }}>
+                                            {order.paymentMethod === 'pay_at_pickup' && order.paymentStatus === 'pending' && order.status === 'klar' && (
+                                                <Button size="sm" onClick={() => handleUpdateStatus(order.id, 'uthämtad', true)}>Betald &amp; hämtad</Button>
+                                            )}
                                             <Button size="sm" variant="ghost" onClick={() => openNotesModal(order)}>
                                                 Intern notis
                                             </Button>
@@ -2002,6 +2016,15 @@ export const AdminDashboard: React.FC = () => {
                         </div>
                     )}
 
+                    {/* ── TELEFONBESTÄLLNING ── */}
+                    {admin?.role === 'owner' && (
+                        <PhoneOrdersTab
+                            active={activeTab === 'phone-orders'}
+                            locations={locations}
+                            paused={settings?.isPaused ?? true}
+                            onCreated={() => { void fetchOrders(true); }}
+                        />
+                    )}
                     {/* ── MENY ── */}
                     {activeTab === 'menu' && (
                         <MenuTab

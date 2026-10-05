@@ -65,7 +65,7 @@ test('delivery checkout uses saved settings and freezes server-calculated terms'
     items: [{ productId, productName: 'Kunafa', quantity: 2, price: 5000 },
       { productId: 'delivery-fee', productName: 'Leveransavgift', quantity: 1, price: 1 }],
     orderType: 'delivery', paymentMethod: 'card',
-    customerInfo: { name: 'Test', phone: '0700000000' },
+    customerInfo: { name: 'Test', phone: '0700000000', email: 'test@example.test' },
     deliveryInfo: { city: ' lUnD ', address: 'Testgatan 1', postalCode: '22222',
       pricing: { feeOre: 1, showDeliveryEstimate: true } },
     deliveryQuote: quote,

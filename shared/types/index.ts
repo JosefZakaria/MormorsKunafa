@@ -15,7 +15,7 @@ export type OrderStatus = 'ny' | 'mottagen' | 'påbörjad' | 'klar' | 'avbruten'
 export type OrderType = 'eat-here' | 'takeaway' | 'delivery';
 
 // Payment Method — `app` is legacy (treated as card on the server)
-export type PaymentMethod = 'card' | 'swish' | 'cash' | 'app';
+export type PaymentMethod = 'card' | 'swish' | 'cash' | 'app' | 'pay_at_pickup';
 
 export type CheckoutPaymentChoice = 'card' | 'swish';
 export type RefundStatus = 'none' | 'pending' | 'refunded' | 'failed';
@@ -171,11 +171,23 @@ export interface CreateOrderRequest {
   locationId?: string;
 }
 
+// Owner-created telephone pickup order
+export interface PhoneOrderRequest {
+  /** Stable across retries so a lost response cannot create a duplicate order. */
+  requestId: string;
+  locationId: string;
+  customer: { firstName: string; lastName: string; phone: string; email: string };
+  items: Array<{ productId: string; quantity: number }>;
+  notes?: string;
+}
+
 // Update Order Status Request
 export interface UpdateOrderStatusRequest {
   status: OrderStatus;
   estimatedReadyTime?: string;
   cancellationReason?: string;
+  /** Staff explicitly confirms in-store payment when a phone order is collected. */
+  paymentReceived?: boolean;
 }
 
 // Update Order Time Request (F.Admin.3)
