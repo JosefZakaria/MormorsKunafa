@@ -91,7 +91,7 @@ async function createPhoneOrder(req: Request, res: Response): Promise<void> {
       .update({ payment_method: 'pay_at_pickup' }).eq('id', body.requestId).select('*').single();
     if (publishError) throw publishError;
     stagedOrderId = null;
-    dispatchOrderCreatedEvent(body.requestId, orderNumber, 'takeaway', location.id);
+    dispatchOrderCreatedEvent(body.requestId, orderNumber, 'takeaway', location.id, true);
     res.status(201).json(orderRowToOrder(published as Row, itemRows));
   } catch (error) {
     if (stagedOrderId) {

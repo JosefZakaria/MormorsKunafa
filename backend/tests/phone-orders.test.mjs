@@ -12,7 +12,7 @@ test('owner phone orders enter the selected location queue without online paymen
   const products = [{ id: productId, name: 'Kunafa', price_ore: 9000, hidden: false, stock_status: 'instock', variant_prices: { '250 gram': 5000 } }];
   const places = [hoja, mollan].map((id, i) => ({ id, name: i ? 'Möllevången' : 'Höja', slug: i ? 'mollevangen' : 'hoja', takeaway_enabled: true, is_paused: false }));
   const users = [{ id: 'owner', role: 'owner', location_id: null }, { id: 'hoja-admin', role: 'location', location_id: hoja }, { id: 'mollan-admin', role: 'location', location_id: mollan }];
-  const orders = [], items = [], requests = [];
+  const orders = [], items = [], requests = [], pushSubscriptions = [], pushLogs = [];
   let unavailable = false, failItems = false;
   const database = createServer(async (req, res) => {
     res.setHeader('Content-Type', 'application/json');
@@ -24,6 +24,7 @@ test('owner phone orders enter the selected location queue without online paymen
     const data = raw ? JSON.parse(raw) : undefined;
     const tables = {
       orders, order_items: items, products, locations: places, admin_users: users,
+      admin_push_subscriptions: pushSubscriptions, admin_push_delivery_logs: pushLogs,
       admin_settings: [{ id: 'settings', is_paused: false, default_preparation_time_minutes: 30 }],
       product_location_stock: unavailable ? [{ product_id: productId, location_id: hoja, in_stock: false }] : [],
     };
@@ -56,11 +57,12 @@ test('owner phone orders enter the selected location queue without online paymen
   process.env.SUPABASE_URL = `http://127.0.0.1:${database.address().port}`;
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'phone-orders-test-only';
   process.env.JWT_SECRET = 'phone-orders-test-only';
-  for (const key of ['RESEND_API_KEY', 'STRIPE_SECRET_KEY', 'SINCH_PROJECT_ID', 'SINCH_KEY_ID', 'SINCH_KEY_SECRET', 'SINCH_APP_ID', 'VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY']) delete process.env[key];
+  for (const key of ['RESEND_API_KEY', 'STRIPE_SECRET_KEY', 'SINCH_PROJECT_ID', 'SINCH_KEY_ID', 'SINCH_KEY_SECRET', 'SINCH_APP_ID', 'WEB_PUSH_VAPID_PUBLIC_KEY', 'WEB_PUSH_VAPID_PRIVATE_KEY']) delete process.env[key];
   const { default: router } = await import('../dist/routes/orders.js');
   const { signToken } = await import('../dist/middleware/auth.js');
-  const { registerRealtimeClient } = await import('../dist/services/realtimeEvents.js');
-  const streamHoja = [], streamMollan = [];
+  const { registerRealtimeClient, dispatchOrderCreatedEvent } = await import('../dist/services/realtimeEvents.js');
+  const streamHoja = [], streamMollan = [], streamOwner = [];
+  const disconnectOwner = registerRealtimeClient({ adminId: 'owner', role: 'owner', locationId: null, fulfillsDelivery: false }, { write: text => streamOwner.push(text) });
   const disconnectHoja = registerRealtimeClient({ adminId: 'hoja-admin', role: 'location', locationId: hoja, fulfillsDelivery: false }, { write: text => streamHoja.push(text) });
   const disconnectMollan = registerRealtimeClient({ adminId: 'mollan-admin', role: 'location', locationId: mollan, fulfillsDelivery: false }, { write: text => streamMollan.push(text) });
   const app = express();
@@ -100,6 +102,7 @@ test('owner phone orders enter the selected location queue without online paymen
       assert.deepEqual(phoneOrder.customerInfo, { name: 'Anna Andersson', phone: '0701234567', email: 'anna@example.test' });
       assert.match(streamHoja.join(''), /ORDER_CREATED/);
       assert.doesNotMatch(streamMollan.join(''), /ORDER_CREATED/);
+      assert.doesNotMatch(streamOwner.join(''), /ORDER_CREATED/);
       const eventsBefore = streamHoja.length;
       assert.equal((await call('/admin/phone-orders', 'POST', body)).status, 200);
       assert.equal(orders.length, 1);
@@ -114,6 +117,7 @@ test('owner phone orders enter the selected location queue without online paymen
       const pending = await (await call('/admin/pending', 'GET', undefined, 'hoja-admin')).json();
       assert.deepEqual(pending.map(order => order.id), [phoneOrder.id]);
       assert.deepEqual(await (await call('/admin/pending', 'GET', undefined, 'mollan-admin')).json(), []);
+      assert.deepEqual(await (await call('/admin/pending')).json(), []);
     });
     await t.test('invalid contacts, quantities, products, variants and unavailable stock create no order', async () => {
       const before = orders.length;
@@ -148,8 +152,17 @@ test('owner phone orders enter the selected location queue without online paymen
       assert.match(streamMollan.join(''), /ORDER_CREATED/);
     });
     await t.test('phone orders remain visible after acceptance and payment requires explicit collection', async () => {
+      assert.equal((await call(`/admin/${phoneOrder.id}/accept`, 'PATCH', {})).status, 403);
+      assert.equal((await call(`/admin/${phoneOrder.id}/status`, 'PATCH', { status: 'mottagen' })).status, 403);
       assert.equal((await call(`/admin/${phoneOrder.id}/accept`, 'PATCH', {}, 'mollan-admin')).status, 403);
       assert.equal((await call(`/admin/${phoneOrder.id}/accept`, 'PATCH', {}, 'hoja-admin')).status, 200);
+      assert.match(streamOwner.join(''), /PHONE_ORDER_ACCEPTED/);
+      assert.doesNotMatch(streamOwner.join(''), /ORDER_CREATED/);
+      assert.doesNotMatch(streamMollan.join(''), /PHONE_ORDER_ACCEPTED/);
+      assert.deepEqual(await (await call('/admin/pending')).json(), []);
+      const ownerActive = await (await call('/admin/active')).json();
+      assert.deepEqual(ownerActive.map(order => order.id), [phoneOrder.id]);
+      assert.equal(ownerActive[0].status, 'mottagen');
       const active = await (await call('/admin/active', 'GET', undefined, 'hoja-admin')).json();
       assert.deepEqual(active.map(order => order.id), [phoneOrder.id]);
       assert.equal(active[0].paymentStatus, 'pending');
@@ -158,6 +171,16 @@ test('owner phone orders enter the selected location queue without online paymen
       const collected = await call(`/admin/${phoneOrder.id}/status`, 'PATCH', { status: 'uthämtad', paymentReceived: true }, 'hoja-admin');
       assert.equal(collected.status, 200);
       assert.equal((await collected.json()).paymentStatus, 'paid');
+    });
+    await t.test('online orders still notify the owner and the selected location', async () => {
+      const online = { id: randomUUID(), order_number: '#online', status: 'ny', order_type: 'takeaway', location_id: hoja, payment_method: 'card', payment_status: 'paid' };
+      orders.push(online);
+      const ownerBefore = streamOwner.length, hojaBefore = streamHoja.length, mollanBefore = streamMollan.length;
+      dispatchOrderCreatedEvent(online.id, online.order_number, 'takeaway', hoja);
+      assert.match(streamOwner.slice(ownerBefore).join(''), /ORDER_CREATED/);
+      assert.match(streamHoja.slice(hojaBefore).join(''), /ORDER_CREATED/);
+      assert.equal(streamMollan.length, mollanBefore);
+      assert.deepEqual((await (await call('/admin/pending')).json()).map(order => order.id), [online.id]);
     });
     await t.test('contact details may be empty, omitted or partly filled in', async () => {
       for (const customer of [
@@ -185,8 +208,25 @@ test('owner phone orders enter the selected location queue without online paymen
       assert.equal(response.status, 400);
       assert.match((await response.json()).error, /payment method/);
     });
+    await t.test('phone push reaches only the selected location; online push still includes the owner', async () => {
+      const { default: webpush } = await import('web-push');
+      const keys = webpush.generateVAPIDKeys();
+      process.env.WEB_PUSH_VAPID_PUBLIC_KEY = keys.publicKey;
+      process.env.WEB_PUSH_VAPID_PRIVATE_KEY = keys.privateKey;
+      const { configureWebPush, sendOrderCreatedPush } = await import('../dist/services/pushNotifications.js');
+      const sent = [];
+      t.mock.method(webpush, 'sendNotification', async target => { sent.push(target.endpoint); return { statusCode: 201 }; });
+      configureWebPush();
+      for (const id of ['owner', 'hoja-admin', 'mollan-admin']) pushSubscriptions.push({ id, admin_id: id, endpoint: `https://push.example.test/${id}`, p256dh: 'test', auth: 'test', disabled_at: null });
+      const event = { event_id: randomUUID(), event_type: 'ORDER_CREATED', order_id: phoneOrder.id, order_number: '#phone', order_type: 'takeaway', location_id: mollan, created_at: new Date().toISOString(), location_accounts_only: true };
+      await sendOrderCreatedPush(event);
+      assert.deepEqual(sent, ['https://push.example.test/mollan-admin']);
+      sent.length = 0;
+      await sendOrderCreatedPush({ ...event, event_id: randomUUID(), location_accounts_only: false });
+      assert.deepEqual(sent.sort(), ['https://push.example.test/mollan-admin', 'https://push.example.test/owner']);
+    });
   } finally {
-    disconnectHoja(); disconnectMollan();
+    disconnectHoja(); disconnectMollan(); disconnectOwner();
     server.close(); database.close();
     await Promise.all([once(server, 'close'), once(database, 'close')]);
   }

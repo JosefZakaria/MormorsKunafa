@@ -1,7 +1,7 @@
 import type { Response } from 'express';
 import type { OrderType } from '@mormors-kunafa/shared/types';
 import type { AdminScope } from './locationScope.js';
-import { orderVisibleToScope } from './locationScope.js';
+import { orderNotificationVisibleToScope } from './locationScope.js';
 import { sendOrderCreatedPush } from './pushNotifications.js';
 
 export type OrderCreatedEvent = {
@@ -12,6 +12,7 @@ export type OrderCreatedEvent = {
   created_at: string;
   order_type: OrderType;
   location_id: string | null;
+  location_accounts_only?: boolean;
 };
 
 type Client = {
@@ -54,9 +55,10 @@ export function registerRealtimeClient(scope: AdminScope, res: Response): () => 
 export function broadcastOrderCreated(event: OrderCreatedEvent): void {
   for (const client of clients.values()) {
     if (
-      !orderVisibleToScope(client.scope, {
+      !orderNotificationVisibleToScope(client.scope, {
         orderType: event.order_type,
         locationId: event.location_id,
+        locationAccountsOnly: event.location_accounts_only,
       })
     ) {
       continue;
@@ -74,7 +76,8 @@ export function dispatchOrderCreatedEvent(
   orderId: string,
   orderNumber: string,
   orderType: string,
-  locationId: string | null
+  locationId: string | null,
+  locationAccountsOnly = false
 ): void {
   const event: OrderCreatedEvent = {
     event_id: crypto.randomUUID(),
@@ -84,6 +87,7 @@ export function dispatchOrderCreatedEvent(
     created_at: new Date().toISOString(),
     order_type: asOrderType(orderType),
     location_id: locationId,
+    ...(locationAccountsOnly ? { location_accounts_only: true } : {}),
   };
 
   broadcastOrderCreated(event);
@@ -94,6 +98,14 @@ export function dispatchOrderCreatedEvent(
       error,
     });
   });
+}
+
+/** Silent refresh for the owner's monitoring view; acceptance does not send a push. */
+export function dispatchPhoneOrderAcceptedEvent(orderId: string, locationId: string | null): void {
+  const event = { event_id: crypto.randomUUID(), order_id: orderId, location_id: locationId };
+  for (const client of clients.values()) {
+    if (client.scope.role === 'owner') sseWrite(client.res, 'PHONE_ORDER_ACCEPTED', event);
+  }
 }
 
 export function getRealtimeStatus(): { totalClients: number; byAdmin: Record<string, number> } {
