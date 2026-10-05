@@ -234,7 +234,7 @@ function PrinterSettings({
                         className={`place-filter-chip ${selectedSlug === 'mollevangen' ? 'active' : ''}`}
                         onClick={() => setSelectedSlug('mollevangen')}
                     >
-                        Möllevången {molleConfigured ? '🟢' : '(ingen än)'}
+                        Möllevången {molleConfigured ? '🟢' : ''}
                     </button>
                 </div>
             )}
@@ -748,11 +748,6 @@ function LocationPauseBlock({
                     {location.isPaused ? `Återuppta ${location.name}` : `Pausa ${location.name}`}
                 </Button>
             </div>
-            <p className="order-availability-hint">
-                {location.isPaused
-                    ? `Äta här och Ta med är stoppade på ${location.name}.`
-                    : `Nya beställningar tas emot på ${location.name}.`}
-            </p>
             {showToggles && (
                 <div className="order-type-toggle-list">
                     {showTypeToggles && (
@@ -2228,11 +2223,6 @@ export const AdminDashboard: React.FC = () => {
                                                 {isPaused ? 'Återuppta allt' : 'Nödstoppa alla beställningar'}
                                             </Button>
                                         </div>
-                                        <p className="order-availability-hint">
-                                            {isPaused
-                                                ? 'Alla nya beställningar är stoppade, inklusive hemleverans.'
-                                                : 'Nödstopp påverkar alla platser och hemleverans.'}
-                                        </p>
                                     </>
                                 )}
                                 {pauseLocations.map((location) => (

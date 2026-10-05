@@ -130,7 +130,6 @@ export function PhoneOrdersTab({ active, locations, paused, onCreated }: {
                     <option value="">Välj lokal</option>
                     {locations.map(place => <option key={place.id} value={place.id}>{place.name}</option>)}
                 </select>
-                <small>Byte av lokal tömmer de valda produkterna. Kunduppgifterna behålls.</small>
             </fieldset>
             {location && unavailable && <p className="phone-orders__error" role="status">Beställningar för upphämtning är pausade på den valda lokalen.</p>}
             {location && (
@@ -171,7 +170,6 @@ export function PhoneOrdersTab({ active, locations, paused, onCreated }: {
                             </div>
                             <label>Notis till lokalen (valfritt)<textarea rows={3} maxLength={500} value={notes} onChange={event => setNotes(event.target.value)} /></label>
                             {error && <p className="phone-orders__error" role="alert">{error}</p>}
-                            <p className="phone-orders__payment">Betalas vid hämtning · Ingen betalning tas här.</p>
                             <Button type="submit" disabled={submitting || unavailable || !items.length || loading || Boolean(menuError)}>{submitting ? 'Skickar…' : `Skicka beställning till ${location.name}`}</Button>
                         </fieldset>
                     </form>

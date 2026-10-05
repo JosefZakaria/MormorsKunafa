@@ -9,7 +9,6 @@
 }
 .phone-orders input:focus-visible, .phone-orders select:focus-visible, .phone-orders textarea:focus-visible { outline: 2px solid #602f34; outline-offset: 2px; }
 .phone-orders .phone-orders__location { max-width: 540px; margin: 1.25rem 0; }
-.phone-orders__location small { color: #6b7280; }
 .phone-orders__layout { display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(320px, 1fr); gap: 1.5rem; align-items: start; }
 .phone-orders .phone-orders__menu, .phone-orders__summary { padding: 1.25rem; border: 1px solid #e2e4e8; border-radius: 12px; background: #fff; }
 .phone-orders__products { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: 1rem; }
@@ -27,7 +26,6 @@
 .phone-orders__quantity button:disabled { opacity: 0.5; cursor: default; }
 .phone-orders__customer { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; }
 .phone-orders__total { font-size: 1.2rem; font-weight: 700; }
-.phone-orders__payment { color: #602f34; font-weight: 600; }
 .phone-orders__success { padding: 1rem; background: #e8f6ed; border: 1px solid #a8d5b8; border-radius: 8px; color: #215e38; }
 .phone-order-payment { color: #854d0e; font-weight: 700; background: #fff4da; padding: 0.5rem; border-radius: 6px; }
 @media (max-width: 850px) { .phone-orders__layout { grid-template-columns: minmax(0, 1fr); } }
