@@ -163,10 +163,10 @@ export function PhoneOrdersTab({ active, locations, paused, onCreated }: {
                             ))}
                             <p className="phone-orders__total">Totalt: {money(total)}</p>
                             <div className="phone-orders__customer">
-                                <label>Förnamn<input required autoComplete="given-name" maxLength={80} value={customer.firstName} onChange={event => setCustomer(current => ({ ...current, firstName: event.target.value }))} /></label>
-                                <label>Efternamn<input required autoComplete="family-name" maxLength={80} value={customer.lastName} onChange={event => setCustomer(current => ({ ...current, lastName: event.target.value }))} /></label>
-                                <label>Telefonnummer<input required type="tel" autoComplete="tel" maxLength={25} value={customer.phone} onChange={event => setCustomer(current => ({ ...current, phone: event.target.value }))} /></label>
-                                <label>E-post<input required type="email" autoComplete="email" maxLength={254} value={customer.email} onChange={event => setCustomer(current => ({ ...current, email: event.target.value }))} /></label>
+                                <label>Förnamn<input autoComplete="given-name" maxLength={80} value={customer.firstName} onChange={event => setCustomer(current => ({ ...current, firstName: event.target.value }))} /></label>
+                                <label>Efternamn<input autoComplete="family-name" maxLength={80} value={customer.lastName} onChange={event => setCustomer(current => ({ ...current, lastName: event.target.value }))} /></label>
+                                <label>Telefonnummer<input type="tel" autoComplete="tel" maxLength={25} value={customer.phone} onChange={event => setCustomer(current => ({ ...current, phone: event.target.value }))} /></label>
+                                <label>E-post<input type="email" autoComplete="email" maxLength={254} value={customer.email} onChange={event => setCustomer(current => ({ ...current, email: event.target.value }))} /></label>
                             </div>
                             <label>Notis till lokalen (valfritt)<textarea rows={3} maxLength={500} value={notes} onChange={event => setNotes(event.target.value)} /></label>
                             {error && <p className="phone-orders__error" role="alert">{error}</p>}

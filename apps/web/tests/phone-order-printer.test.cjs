@@ -42,4 +42,9 @@ test('phone order prints to the selected printer with unpaid amount and customer
   await exports.printKitchenTicket({ ...order, paymentStatus: 'paid' }, 'mollevangen');
   assert.match(prints[3].body, /Betald i lokalen: 100.00 kr/);
   assert.doesNotMatch(prints[3].body, /Betalas vid hamtning/);
+  await exports.printKitchenTicket({ ...order, customerInfo: undefined }, 'mollevangen');
+  assert.match(prints[4].body, /Telefonbestallning/);
+  assert.match(prints[4].body, /Betalas vid hamtning: 100.00 kr/);
+  assert.match(prints[4].body, /2x Kunafa/);
+  assert.doesNotMatch(prints[4].body, /Kund:|Tel:|E-post:/);
 });
