@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "test:phone-orders": "node --test tests/phone-order-printer.test.cjs",
+    "test:printer": "node --test tests/printer-connection.test.cjs tests/phone-order-printer.test.cjs",
     "test:landing": "node --test tests/public-settings-preload.test.cjs",
     "test:alarm": "node --test tests/order-alarm.test.cjs tests/order-queue-refresh.test.cjs",
     "dev": "vite",
