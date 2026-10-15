@@ -255,7 +255,7 @@ function finishPrint(xml: string): string {
 }
 
 /**
- * Skriver ut en kökslapp (utan priser) — auto vid Inkommande / 30 min före planerad tid.
+ * Skriver ut en kökslapp (utan priser) — automatiskt när ordern kommer till Inkommande.
  */
 export async function printKitchenTicket(order: Order, locationIdOrSlug?: string | null): Promise<{ success: boolean; error?: string }> {
   const slug = locationIdOrSlug ? normalizeLocationSlug(locationIdOrSlug) : getOrderTargetLocationSlug(order);

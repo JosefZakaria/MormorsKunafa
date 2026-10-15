@@ -1,23 +1,35 @@
+import { parseApiTimestamp } from './parseApiTimestamp.js';
+
 /** Minimum lead time before the earliest selectable slot (matches default prep time). */
 export const DEFAULT_ORDER_LEAD_MINUTES = 30;
 
-/** How long before scheduled pickup/eat-here time the kitchen ticket should print. */
-export const KITCHEN_TICKET_LEAD_MINUTES = 30;
+/** Unaccepted scheduled orders enter the kitchen queue this long before pickup. */
+export const PRE_ORDER_LEAD_MINUTES = 20;
 
-/**
- * Whether the kitchen ticket should print now.
- * - No scheduled time (e.g. delivery): print immediately.
- * - With scheduled time: print once `scheduledTime - leadMinutes` has passed.
- */
-export function isKitchenTicketPrintDue(
+export function getOrderIncomingAt(scheduledTime: string | null | undefined): number | null {
+  const scheduled = parseApiTimestamp(scheduledTime);
+  return scheduled ? scheduled.getTime() - PRE_ORDER_LEAD_MINUTES * 60_000 : null;
+}
+
+/** No time, an invalid time, and overdue orders must never get stuck outside the queue. */
+export function isPreOrder(
   scheduledTime: string | null | undefined,
   at: Date = new Date(),
-  leadMinutes = KITCHEN_TICKET_LEAD_MINUTES
 ): boolean {
-  if (scheduledTime == null || String(scheduledTime).trim() === '') return true;
-  const scheduledMs = new Date(scheduledTime).getTime();
-  if (Number.isNaN(scheduledMs)) return true;
-  return at.getTime() >= scheduledMs - leadMinutes * 60 * 1000;
+  const incomingAt = getOrderIncomingAt(scheduledTime);
+  return incomingAt !== null && at.getTime() < incomingAt;
+}
+
+/** Scheduled pickup is the ready time; only immediate orders add preparation time. */
+export function calculateOrderReadyTime(
+  scheduledTime: string | null | undefined,
+  preparationMinutes: number,
+  extraMinutes = 0,
+  at: Date = new Date(),
+): Date {
+  const scheduled = parseApiTimestamp(scheduledTime);
+  const base = scheduled?.getTime() ?? at.getTime() + preparationMinutes * 60_000;
+  return new Date(base + extraMinutes * 60_000);
 }
 
 const STOCKHOLM_TZ = 'Europe/Stockholm';

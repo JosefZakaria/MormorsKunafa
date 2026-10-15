@@ -27,7 +27,7 @@ before(async () => {
     await new Promise(resolve => setTimeout(resolve, 100));
   }
   assert.ok(ready, serverOutput || 'Vite did not start');
-  browser = await chromium.launch({ args: ['--autoplay-policy=user-gesture-required'] });
+  browser = await chromium.launch({ args: ['--autoplay-policy=user-gesture-required'], ...(process.env.TEST_BROWSER_PATH ? { executablePath: process.env.TEST_BROWSER_PATH } : {}) });
 });
 after(async () => {
   await browser?.close();
@@ -44,15 +44,16 @@ async function setup(t, options = {}) {
   const page = await context.newPage();
   const pageErrors = [];
   page.on('pageerror', error => pageErrors.push(error.message));
-  const state = { pending: [], active: [], pendingStatus: 200, secondaryStatus: 200, holdSecondary: false, releaseSecondary: null, pendingCalls: 0, holdPending: false, releasePending: null, ...options };
+  const state = { pending: [], scheduled: [], active: [], prints: [], pendingStatus: 200, secondaryStatus: 200, holdSecondary: false, releaseSecondary: null, pendingCalls: 0, holdPending: false, releasePending: null, ...options };
   t.after(async () => {
     state.releaseSecondary?.();
     state.releasePending?.();
     await context.close();
     assert.deepEqual(pageErrors, [], 'Unhandled browser errors');
   });
-  await page.addInitScript(({ profile, MOLLE }) => {
+  await page.addInitScript(({ profile, printer, MOLLE }) => {
     localStorage.setItem('authToken', 'isolated-test-token');
+    if (printer) localStorage.setItem('printer_ip_mollevangen', 'printer.example.test');
     if (profile === 'missing') localStorage.removeItem('adminInfo');
     else if (profile === 'malformed') localStorage.setItem('adminInfo', '{broken-json');
     else localStorage.setItem('adminInfo', JSON.stringify({ id: 'fixture-admin', email: 'fixture@example.invalid', name: 'Fixture', role: 'location', locationId: MOLLE }));
@@ -102,16 +103,20 @@ async function setup(t, options = {}) {
       analyser.getFloatTimeDomainData(samples);
       return Math.sqrt(samples.reduce((sum, value) => sum + value * value, 0) / samples.length);
     }));
-  }, { profile: options.profile || 'valid', MOLLE });
+  }, { profile: options.profile || 'valid', printer: options.printer, MOLLE });
 
   await context.route('**/*', async route => {
     const url = new URL(route.request().url());
     if (url.origin === ORIGIN && !url.pathname.startsWith('/api/')) return route.continue();
     const endpoint = url.pathname.replace(/^\/api/, '');
     const json = (value, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(value) });
+    if (url.hostname === 'printer.example.test') {
+      state.prints.push(route.request().postData());
+      return route.fulfill({ contentType: 'text/xml', body: '<response success="true" />', headers: { 'Access-Control-Allow-Origin': '*' } });
+    }
     if (endpoint === '/orders/admin/pending') {
       state.pendingCalls += 1;
-      const snapshot = [...state.pending];
+      const snapshot = [...state.pending, ...state.scheduled.filter(order => order.status === 'ny' && Date.parse(order.scheduledTime) - Date.now() <= 20 * 60_000)];
       if (state.holdPending) {
         state.holdPending = false;
         await new Promise(resolve => { state.releasePending = resolve; });
@@ -125,16 +130,26 @@ async function setup(t, options = {}) {
           state.releaseSecondary = () => { previous?.(); resolve(); };
         });
       }
-      return json(endpoint.endsWith('/active') ? state.active : [], state.secondaryStatus);
+      return json(endpoint.endsWith('/active') ? state.active : state.scheduled.filter(order => order.status === 'ny' && Date.parse(order.scheduledTime) - Date.now() > 20 * 60_000), state.secondaryStatus);
     }
     if (endpoint === '/admin/settings' || endpoint === '/orders/settings') return json(settings);
     if (endpoint === '/locations') return json([location]);
     if (endpoint === '/products') return json([]);
     if (endpoint.endsWith('/accept') && route.request().method() === 'PATCH') {
-      const accepted = state.pending.shift();
+      const id = endpoint.split('/').at(-2);
+      const accepted = [...state.pending, ...state.scheduled].find(order => order.id === id);
       if (!accepted) return json({ error: 'missing fixture' }, 404);
-      state.active.push({ ...accepted, status: 'mottagen' });
+      state.pending = state.pending.filter(order => order.id !== id);
+      state.scheduled = state.scheduled.filter(order => order.id !== id);
+      const extra = route.request().postDataJSON().extraMinutes ?? 0;
+      const ready = new Date((accepted.scheduledTime ? Date.parse(accepted.scheduledTime) : Date.now() + 30 * 60_000) + extra * 60_000).toISOString();
+      state.active.push({ ...accepted, status: 'mottagen', estimatedReadyTime: ready });
       return json(state.active.at(-1));
+    }
+    if (endpoint.startsWith('/orders/') && !endpoint.includes('/admin/')) {
+      const id = endpoint.split('/').at(-1);
+      const found = [...state.pending, ...state.scheduled, ...state.active].find(order => order.id === id);
+      return found ? json(found) : json({ error: 'missing fixture' }, 404);
     }
     // Deny all non-fixture external traffic, including printer requests.
     return route.abort();
@@ -305,4 +320,59 @@ test('a waiting paid order alarms on initial load and again after reload', { tim
   await overlay(page);
   if (await activation.isVisible()) await activation.click();
   await sound(page);
+});
+
+test('a pre-order moves automatically, rings on another tab, prints once and keeps pickup as its ready time', { timeout: 30000 }, async t => {
+  const { page, state } = await setup(t, { printer: true });
+  await activate(page);
+  // Release after 2 seconds. This is deliberately before the next ordinary poll.
+  const pickup = new Date(Date.now() + 20 * 60_000 + 2000).toISOString();
+  state.scheduled = [{ ...order('scheduled'), scheduledTime: pickup, estimatedReadyTime: pickup }];
+  await wake(page);
+  await page.getByRole('button', { name: /Förbeställningar/ }).click();
+  await page.locator('.preorder-card').waitFor();
+  assert.equal(await page.locator('.pending-order-card').count(), 0);
+  assert.equal(state.prints.length, 0);
+  await silent(page);
+  await overlay(page);
+  await sound(page);
+  await page.waitForFunction(() => !document.querySelector('.preorder-card'));
+  for (let attempt = 0; attempt < 50 && state.prints.length === 0; attempt += 1) await page.waitForTimeout(20);
+  assert.equal(state.prints.length, 1);
+  await page.getByRole('button', { name: /Visa ordrar.*pausa/ }).click();
+  await page.locator('.pending-order-card').waitFor();
+  const clock = new Date(pickup).toLocaleTimeString('sv-SE', { timeZone: 'Europe/Stockholm', hour: '2-digit', minute: '2-digit' });
+  assert.equal(await page.locator('.pending-time-value').textContent(), clock);
+  assert.equal(await page.locator('.pending-time-unit').textContent(), 'klartid');
+  await wake(page);
+  await page.waitForTimeout(300);
+  assert.equal(state.prints.length, 1, 'refresh must not duplicate kitchen tickets');
+  await page.getByRole('button', { name: 'Acceptera', exact: true }).click();
+  await silent(page);
+  assert.equal(state.active[0].estimatedReadyTime, pickup);
+});
+
+test('missed release during a failed request recovers on wake without an SSE event', { timeout: 25000 }, async t => {
+  const { page, state } = await setup(t);
+  await activate(page);
+  state.scheduled = [{ ...order('missed-release'), scheduledTime: new Date(Date.now() + 20 * 60_000 + 800).toISOString() }];
+  await wake(page);
+  await page.getByRole('button', { name: /Förbeställningar/ }).click();
+  await page.locator('.preorder-card').waitFor();
+  state.pendingStatus = 500;
+  await page.waitForTimeout(1200);
+  await silent(page);
+  state.pendingStatus = 200;
+  await wake(page);
+  await overlay(page);
+  await sound(page);
+});
+
+test('customer sees a same-day booking until the release boundary then live pickup tracking', { timeout: 25000 }, async t => {
+  const { page, state } = await setup(t);
+  const pickup = new Date(Date.now() + 20 * 60_000 + 2000).toISOString();
+  state.scheduled = [{ ...order('customer-booking'), scheduledTime: pickup, estimatedReadyTime: pickup }];
+  await page.goto(ORIGIN + '/status?orderId=customer-booking');
+  await page.getByText('Din beställning är bokad', { exact: true }).waitFor();
+  await page.getByText('Väntar på bekräftelse', { exact: true }).waitFor();
 });

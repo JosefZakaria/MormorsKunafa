@@ -6,6 +6,8 @@ import { orderApi } from '../../services/api';
 import type { Order } from '@shared/types';
 import { isAwaitingOnlinePayment } from '../../utils/payment';
 import { parseApiTimestamp } from '@shared/utils/parseApiTimestamp';
+import { isPreOrder } from '@shared/utils/scheduledTime';
+import { scheduleOrderRelease } from '../../utils/scheduleOrderRelease';
 import './OrderStatus.css';
 
 function getCountdown(isoTime: string | undefined): string {
@@ -19,10 +21,6 @@ function getCountdown(isoTime: string | undefined): string {
     const secs = Math.floor((absoluteDiff % 60000) / 1000);
     const formatted = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
     return isOverdue ? `-${formatted}` : formatted;
-}
-
-function todayInStockholm(): string {
-    return new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Stockholm' });
 }
 
 function formatScheduledDate(iso: string | undefined): string {
@@ -50,16 +48,10 @@ function formatScheduledClock(iso: string | undefined): string {
     });
 }
 
-function isFutureScheduled(scheduledTime?: string): boolean {
-    if (!scheduledTime) return false;
-    const schedDate = new Date(scheduledTime).toLocaleDateString('sv-SE', { timeZone: 'Europe/Stockholm' });
-    return schedDate > todayInStockholm();
-}
-
-/** Live timer + steg — endast äta här / ta med samma dag. */
+/** Live pickup tracking starts when the order enters the incoming queue. */
 function usesLivePickupTracking(order: Order): boolean {
     if (order.orderType === 'delivery') return false;
-    if (isFutureScheduled(order.scheduledTime)) return false;
+    if (order.status === 'ny' && isPreOrder(order.scheduledTime)) return false;
     return order.orderType === 'eat-here' || order.orderType === 'takeaway';
 }
 
@@ -128,7 +120,7 @@ function SimpleConfirmationView({
     onBack: () => void;
 }) {
     const isDelivery = order.orderType === 'delivery';
-    const isBooked = isFutureScheduled(order.scheduledTime);
+    const isBooked = order.status === 'ny' && isPreOrder(order.scheduledTime);
     const isDelivered = order.status === 'levererad';
     const isKitchenDone = order.status === 'klar' && isDelivery;
 
@@ -275,8 +267,14 @@ export const OrderStatus: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [confirmingPayment, setConfirmingPayment] = useState(Boolean(stripeSessionId));
+    const [, setScheduleTick] = useState(0);
 
     const liveTracking = order ? usesLivePickupTracking(order) : false;
+
+    useEffect(() => scheduleOrderRelease(
+        [order?.scheduledTime],
+        () => setScheduleTick(tick => tick + 1),
+    ), [order?.scheduledTime]);
 
     useEffect(() => {
         if (!orderId) {
@@ -326,7 +324,7 @@ export const OrderStatus: React.FC = () => {
             void fetchOrder();
         }, intervalMs);
         return () => clearInterval(pollId);
-    }, [orderId, stripeSessionId, order?.paymentMethod, order?.paymentStatus, order?.orderType, order?.scheduledTime]);
+    }, [orderId, stripeSessionId, order?.paymentMethod, order?.paymentStatus, order?.orderType, order?.scheduledTime, liveTracking]);
 
     useEffect(() => {
         if (!liveTracking || !order?.estimatedReadyTime) return;
