@@ -209,7 +209,7 @@ export interface AdminLoginRequest {
 // Notification Types (F.Notis)
 export type NotificationType = 
   | 'new_order'
-  | 'pre_order_reminder' // 30 min before (F.Notis.2)
+  | 'pre_order_reminder' // Scheduled-order reminder
   | 'order_delayed' // (F.Notis.3)
   | 'order_ready'; // (F.Notis.4)
 

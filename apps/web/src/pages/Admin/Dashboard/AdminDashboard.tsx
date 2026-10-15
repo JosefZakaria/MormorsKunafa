@@ -16,11 +16,12 @@ import type {
 } from '@shared/types';
 import { HOJA_LOCATION_ID, MOLLEVANGEN_LOCATION_ID } from '@shared/types';
 import { parseApiTimestamp } from '@shared/utils/parseApiTimestamp';
-import { isKitchenTicketPrintDue } from '@shared/utils/scheduledTime';
+import { calculateOrderReadyTime, isPreOrder } from '@shared/utils/scheduledTime';
 import '../Admin.css';
 import { requestWakeLock, releaseWakeLock } from '../../../utils/wakeLock';
 import { useOrderAlarm } from '../../../hooks/useOrderAlarm';
 import { createOrderQueueRefresh } from '../../../utils/orderQueueRefresh';
+import { scheduleOrderRelease } from '../../../utils/scheduleOrderRelease';
 import { MenuTab } from './MenuTab';
 import { DeliveryPricingSettings } from './DeliveryPricingSettings';
 import { PhoneOrdersTab } from './PhoneOrdersTab';
@@ -326,20 +327,6 @@ function daysUntil(iso: string | undefined): number | null {
     return Math.round((targetUtc - todayUtc) / (1000 * 60 * 60 * 24));
 }
 
-function stockholmDateKey(iso: string | undefined): string {
-    if (!iso) return '';
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return '';
-    return d.toLocaleDateString('sv-SE', { timeZone: 'Europe/Stockholm' });
-}
-
-function isAdvancePreOrder(order: Order): boolean {
-    if (!order.scheduledTime) return false;
-    const scheduled = stockholmDateKey(order.scheduledTime);
-    const created = stockholmDateKey(order.createdAt);
-    return Boolean(scheduled && created && scheduled !== created);
-}
-
 function formatScheduledLabel(iso: string | undefined): string {
     const dateLabel = formatScheduledDate(iso);
     const clockLabel = formatScheduledClock(iso);
@@ -347,17 +334,10 @@ function formatScheduledLabel(iso: string | undefined): string {
     return `${dateLabel}${clockLabel ? ` · ${clockLabel}` : ''}`;
 }
 
-function formatCreatedAt(iso: string, fullDate: boolean): string {
+function formatCreatedAt(iso: string): string {
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return '';
-    if (fullDate) {
-        return d.toLocaleString('sv-SE', { timeZone: 'Europe/Stockholm' });
-    }
-    return d.toLocaleTimeString('sv-SE', {
-        hour: '2-digit',
-        minute: '2-digit',
-        timeZone: 'Europe/Stockholm',
-    });
+    return d.toLocaleString('sv-SE', { timeZone: 'Europe/Stockholm' });
 }
 
 /** Desired pickup time for takeaway / eat-here. Delivery already shows this in OrderContactPanel. */
@@ -365,7 +345,7 @@ function ScheduledOrderInfo({ order }: { order: Order }) {
     if (order.orderType === 'delivery') return null;
     const label = formatScheduledLabel(order.scheduledTime);
     if (!label) return null;
-    const preorder = isAdvancePreOrder(order);
+    const preorder = isPreOrder(order.scheduledTime);
     return (
         <div className={`scheduled-order-info${preorder ? ' scheduled-order-info--preorder' : ''}`}>
             {preorder && <span className="scheduled-order-info__badge">Förbeställning</span>}
@@ -441,6 +421,8 @@ function PendingOrderCard({ order, locations, defaultPrepTime, onAccept }: {
 }) {
     const [extraMinutes, setExtraMinutes] = useState(0);
     const totalMinutes = defaultPrepTime + extraMinutes;
+    const scheduledPickup = order.orderType !== 'delivery' && !!parseApiTimestamp(order.scheduledTime);
+    const readyTime = calculateOrderReadyTime(order.scheduledTime, defaultPrepTime, extraMinutes);
 
     return (
         <div className="admin-order-card pending-order-card">
@@ -462,13 +444,13 @@ function PendingOrderCard({ order, locations, defaultPrepTime, onAccept }: {
                 <p className="order-total">{(order.totalPrice / 100).toLocaleString('sv-SE', { maximumFractionDigits: 2 })} kr</p>
                 <OrderContactPanel order={order} />
                 <p className="order-meta">
-                    Beställd {formatCreatedAt(order.createdAt, isAdvancePreOrder(order))}
+                    Beställd {formatCreatedAt(order.createdAt)}
                 </p>
             </div>
             <div className="pending-actions">
                 <div className="pending-time-display">
-                    <span className="pending-time-value">{totalMinutes}</span>
-                    <span className="pending-time-unit">min</span>
+                    <span className="pending-time-value">{scheduledPickup ? formatScheduledClock(readyTime.toISOString()) : totalMinutes}</span>
+                    <span className="pending-time-unit">{scheduledPickup ? 'klartid' : 'min'}</span>
                 </div>
                 <div className="pending-time-buttons">
                     <Button size="sm" variant="ghost" onClick={() => setExtraMinutes(prev => Math.max(-defaultPrepTime + 5, prev - 5))}>−5</Button>
@@ -895,13 +877,9 @@ export const AdminDashboard: React.FC = () => {
     // Spårar vilka inkommande ordrar som redan skrivits ut (kökslapp) så att
     // pollingen inte skriver ut samma order flera gånger.
     const printedOrderIdsRef = useRef<Set<string>>(new Set());
-    // Vid första laddningen "seedar" vi ordrar som redan är inom utskriftsfönstret
-    // (utan att skriva ut) så refresh inte ger dubbletter. Ordrar som ännu inte
-    // nått 30 min före upphämtning lämnas osedade och skrivs ut när tiden är inne.
+    // Befintliga inkommande ordrar skrivs inte ut igen vid omladdning.
+    // Förbeställningar ligger i en separat kö tills det är 20 minuter kvar.
     const printSeedDoneRef = useRef(false);
-    // Tvingar omkörning av auto-utskrift när utskriftsfönstret öppnas (även om
-    // pendingOrders-listan är oförändrad).
-    const [printTick, setPrintTick] = useState(0);
 
     // Owner phone orders are monitored after the location accepts them, never alarmed here.
     const awaitingAcceptance = useMemo(() => pendingOrders.filter(order =>
@@ -921,6 +899,11 @@ export const AdminDashboard: React.FC = () => {
     const fetchOrders = useCallback((force = false): Promise<void> => {
         return refreshOrdersRef.current?.(force) ?? Promise.resolve();
     }, []);
+
+    useEffect(() => scheduleOrderRelease(
+        preOrders.map(order => order.scheduledTime),
+        () => { void fetchOrders(true); },
+    ), [preOrders, fetchOrders]);
 
     useEffect(() => {
         let disposed = false;
@@ -1081,20 +1064,17 @@ export const AdminDashboard: React.FC = () => {
         };
     }, [fetchOrders]);
 
-    // --- Auto-skriv ut kökslapp 30 min före planerad upphämtning / äta-här ---
-    // Hemkörning (utan scheduledTime) skrivs ut så fort ordern syns i Inkommande.
+    // --- Skriv ut kökslapp när en order kommer till Inkommande ---
+    // Serverns kö styr både utskrift och larm, även vid flytt från Förbeställningar.
     useEffect(() => {
         // Vänta på första hämtningen innan vi gör något.
         if (loadingOrders) return;
 
-        // Första gången: markera ordrar som redan är "print-due" som hanterade
-        // så att de inte skrivs ut vid refresh. Ordrar längre fram i tiden lämnas.
+        // Första gången: markera befintliga inkommande ordrar som hanterade.
         if (!printSeedDoneRef.current) {
             for (const o of pendingOrders) {
                 if (isOwner && o.paymentMethod === 'pay_at_pickup') continue;
-                if (isKitchenTicketPrintDue(o.scheduledTime)) {
-                    printedOrderIdsRef.current.add(o.id);
-                }
+                printedOrderIdsRef.current.add(o.id);
             }
             printSeedDoneRef.current = true;
             return;
@@ -1103,7 +1083,6 @@ export const AdminDashboard: React.FC = () => {
         for (const order of pendingOrders) {
             if (isOwner && order.paymentMethod === 'pay_at_pickup') continue;
             if (printedOrderIdsRef.current.has(order.id)) continue;
-            if (!isKitchenTicketPrintDue(order.scheduledTime)) continue;
 
             const targetSlug = getOrderTargetLocationSlug(order, locations);
 
@@ -1137,14 +1116,7 @@ export const AdminDashboard: React.FC = () => {
                     setError(`Kunde inte skriva ut kökslapp för ${locName}. Kontrollera skrivaren.`);
                 });
         }
-    }, [pendingOrders, loadingOrders, printTick, admin, myLocation, locations, isOwner]);
-
-    // Tick every 15s so a same-day order scheduled later still prints at T-30
-    // even if the pending list content has not changed.
-    useEffect(() => {
-        const id = setInterval(() => setPrintTick((n) => n + 1), 15_000);
-        return () => clearInterval(id);
-    }, []);
+    }, [pendingOrders, loadingOrders, admin, myLocation, locations, isOwner]);
 
     // --- Screen Wake Lock & Android Livscykel (Uppvaknande ur viloläge, WiFi online, Fokus) ---
     useEffect(() => {
@@ -1977,7 +1949,7 @@ export const AdminDashboard: React.FC = () => {
                                             <p className="order-total">{(order.totalPrice / 100).toLocaleString('sv-SE', { maximumFractionDigits: 2 })} kr</p>
                                             <OrderContactPanel order={order} />
                                             <p style={{ fontSize: '0.8rem', color: '#888', margin: 0 }}>
-                                                Beställd {formatCreatedAt(order.createdAt, true)}
+                                                Beställd {formatCreatedAt(order.createdAt)}
                                             </p>
                                             {order.status === 'avbruten' && (
                                                 <>

@@ -182,6 +182,78 @@ test('owner phone orders enter the selected location queue without online paymen
       assert.equal(streamMollan.length, mollanBefore);
       assert.deepEqual((await (await call('/admin/pending')).json()).map(order => order.id), [online.id]);
     });
+    await t.test('scheduled orders release at 20 minutes, keep manual acceptance and respect payment/location scope', async t => {
+      t.mock.timers.enable({ apis: ['Date'], now: Date.parse('2026-10-15T16:00:00+02:00') });
+      const fixtureIds = new Set();
+      const scheduled = (name, time, patch = {}) => {
+        const row = { id: randomUUID(), order_number: '#' + name, status: 'ny', order_type: 'takeaway',
+          location_id: hoja, payment_method: 'card', payment_status: 'paid', default_preparation_time_minutes: 30,
+          scheduled_at: time, created_at: new Date().toISOString(), ...patch };
+        orders.push(row); fixtureIds.add(row.id); return row;
+      };
+      const queue = async (path, user = 'hoja-admin') => {
+        const response = await call('/admin/' + path, 'GET', undefined, user);
+        assert.equal(response.status, 200);
+        return (await response.json()).filter(order => fixtureIds.has(order.id));
+      };
+      try {
+        const future = scheduled('same-day', '2026-10-15T16:00:00Z'); // 18:00 Stockholm
+        const tomorrow = scheduled('tomorrow', '2026-10-16T16:00:00Z');
+        const boundary = scheduled('boundary', '2026-10-15T14:20:00'); // UTC DB value without suffix
+        const overdue = scheduled('overdue', '2026-10-15T13:00:00Z');
+        const unpaid = scheduled('unpaid', future.scheduled_at, { payment_status: 'pending' });
+        const otherLocation = scheduled('other-location', future.scheduled_at, { location_id: mollan });
+        const accepted = scheduled('already-accepted', future.scheduled_at, { status: 'mottagen' });
+        scheduled('cancelled', future.scheduled_at, { status: 'avbruten' });
+        scheduled('completed', future.scheduled_at, { status: 'klar' });
+        assert.deepEqual(new Set((await queue('pre-orders')).map(order => order.id)), new Set([future.id, tomorrow.id]));
+        assert.deepEqual(new Set((await queue('pending')).map(order => order.id)), new Set([boundary.id, overdue.id]));
+        assert.deepEqual((await queue('pre-orders', 'mollan-admin')).map(order => order.id), [otherLocation.id]);
+        assert.deepEqual((await queue('active')).map(order => order.id), [accepted.id]);
+        assert.equal((await call(`/admin/${future.id}/accept`, 'PATCH', {}, 'hoja-admin')).status, 400);
+        assert.equal((await call(`/admin/${future.id}/status`, 'PATCH', { status: 'påbörjad' }, 'hoja-admin')).status, 400);
+        assert.equal(future.status, 'ny');
+
+        t.mock.timers.setTime(Date.parse('2026-10-15T17:39:59.999+02:00'));
+        assert.ok((await queue('pre-orders')).some(order => order.id === future.id));
+        assert.ok(!(await queue('pending')).some(order => order.id === future.id));
+        t.mock.timers.setTime(Date.parse('2026-10-15T17:40:00+02:00'));
+        assert.ok(!(await queue('pre-orders')).some(order => order.id === future.id));
+        assert.ok((await queue('pending')).some(order => order.id === future.id));
+        assert.equal(future.status, 'ny', 'time passing never auto-accepts the order');
+        assert.ok(!(await queue('pending')).some(order => order.id === unpaid.id));
+        assert.equal((await call(`/admin/${future.id}/accept`, 'PATCH', {}, 'mollan-admin')).status, 403);
+        const response = await call(`/admin/${future.id}/accept`, 'PATCH', {}, 'hoja-admin');
+        assert.equal(response.status, 200);
+        assert.equal((await response.json()).estimatedReadyTime, '2026-10-15T16:00:00.000Z');
+        assert.ok(!(await queue('pending')).some(order => order.id === future.id));
+        assert.ok((await queue('active')).some(order => order.id === future.id));
+
+        const adjusted = await call(`/admin/${boundary.id}/accept`, 'PATCH', { extraMinutes: 10 }, 'hoja-admin');
+        assert.equal(adjusted.status, 200);
+        assert.equal((await adjusted.json()).estimatedReadyTime, '2026-10-15T14:30:00.000Z');
+        assert.equal((await call(`/admin/${overdue.id}/accept`, 'PATCH', { extraMinutes: '10' }, 'hoja-admin')).status, 400);
+        const late = await call(`/admin/${overdue.id}/accept`, 'PATCH', {}, 'hoja-admin');
+        assert.equal((await late.json()).estimatedReadyTime, '2026-10-15T13:00:00.000Z');
+        t.mock.timers.setTime(Date.parse('2026-10-16T00:00:00+02:00'));
+        assert.ok((await queue('pre-orders')).some(order => order.id === tomorrow.id), 'midnight must not release an afternoon order');
+
+        t.mock.timers.setTime(Date.parse('2026-10-15T16:00:00+02:00'));
+        const created = await call('/', 'POST', {
+          items: [{ productId: `${productId}-250 gram`, quantity: 1 }], orderType: 'takeaway', locationId: hoja,
+          paymentMethod: 'card', customerInfo: { name: 'Anna', email: 'anna@example.test', phone: '0701234567' },
+          scheduledTime: '2026-10-15T18:00:00',
+        }, null);
+        const body = await created.json();
+        if (body.id) fixtureIds.add(body.id);
+        assert.equal(created.status, 201, JSON.stringify(body));
+        assert.equal(body.scheduledTime, '2026-10-15T16:00:00.000Z');
+        assert.equal(body.estimatedReadyTime, body.scheduledTime, 'creation must not add preparation time to pickup');
+      } finally {
+        orders.splice(0, orders.length, ...orders.filter(order => !fixtureIds.has(order.id)));
+        items.splice(0, items.length, ...items.filter(item => !fixtureIds.has(item.order_id)));
+      }
+    });
     await t.test('contact details may be empty, omitted or partly filled in', async () => {
       for (const customer of [
         undefined, {}, { firstName: '', lastName: '', phone: '', email: '' },
