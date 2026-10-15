@@ -388,7 +388,7 @@ test('customer sees a same-day booking until the release boundary then live pick
   await page.getByText('Väntar på bekräftelse', { exact: true }).waitFor();
 });
 
-test('owner chooses pickup today or another day for a phone order and can still order immediately', { timeout: 30000 }, async t => {
+test('phone pickup shows date and time directly, preserves chosen times and keeps the default current', { timeout: 30000 }, async t => {
   const product = { id: '11111111-1111-4111-8111-111111111111', name: 'Kunafa', price: 5000,
     category: 'Kunafa', inStock: true, hidden: false, stockByLocation: { [MOLLE]: true }, variantPrices: { '250 gram': 5000 } };
   const { page, state } = await setup(t, { profile: 'owner', products: [product], nowMs: Date.parse('2026-10-15T16:00:00+02:00') });
@@ -396,25 +396,39 @@ test('owner chooses pickup today or another day for a phone order and can still 
   await page.clock.setFixedTime(new Date('2026-10-15T16:00:00+02:00'));
   await page.getByRole('button', { name: 'Telefonbeställning', exact: true }).click();
   await page.getByLabel('Lokal för upphämtning').selectOption(MOLLE);
+  assert.equal(await page.getByLabel('Datum för hämtning').inputValue(), '2026-10-15');
+  assert.equal(await page.getByLabel('Tid för hämtning').inputValue(), '16:30');
+  assert.equal(await page.locator('#phone-pickup-mode').count(), 0);
+  assert.equal(await page.getByText(/Tiderna anges i svensk tid/).count(), 0);
   for (const date of ['2026-10-15', '2026-10-16']) {
     await page.getByRole('button', { name: 'Lägg till Kunafa', exact: true }).click();
-    await page.getByLabel('När ska beställningen hämtas?').selectOption('scheduled');
     await page.getByLabel('Datum för hämtning').fill(date);
     await page.getByLabel('Tid för hämtning').fill('18:00');
+    // Leaving and returning must preserve an explicit selection.
+    await page.getByRole('button', { name: /Förbeställningar/ }).click();
+    await page.getByRole('button', { name: 'Telefonbeställning', exact: true }).click();
+    assert.equal(await page.getByLabel('Datum för hämtning').inputValue(), date);
+    assert.equal(await page.getByLabel('Tid för hämtning').inputValue(), '18:00');
     await page.getByRole('button', { name: 'Skicka beställning till Möllevången', exact: true }).click();
     await page.locator('.phone-orders__success').waitFor();
     assert.equal(state.phoneRequests.at(-1).scheduledTime, date + 'T18:00:00');
-    assert.equal(await page.getByLabel('När ska beställningen hämtas?').inputValue(), 'asap');
+    assert.equal(await page.getByLabel('Datum för hämtning').inputValue(), '2026-10-15');
+    assert.equal(await page.getByLabel('Tid för hämtning').inputValue(), '16:30');
     assert.ok((await page.locator('.phone-orders__success').textContent()).includes(date));
     await page.getByRole('button', { name: /Förbeställningar/ }).click();
     await page.locator('.preorder-card').filter({ hasText: state.phoneRequests.at(-1).requestId }).waitFor();
     await silent(page); // Owner monitors phone pre-orders; only the location may accept them.
     await page.getByRole('button', { name: 'Telefonbeställning', exact: true }).click();
   }
+  await page.clock.setFixedTime(new Date('2026-10-15T16:20:00+02:00'));
+  state.nowMs = Date.parse('2026-10-15T16:20:00+02:00');
+  await page.getByRole('button', { name: /Förbeställningar/ }).click();
+  await page.getByRole('button', { name: 'Telefonbeställning', exact: true }).click();
+  assert.equal(await page.getByLabel('Tid för hämtning').inputValue(), '16:50');
   await page.getByRole('button', { name: 'Lägg till Kunafa', exact: true }).click();
   await page.getByRole('button', { name: 'Skicka beställning till Möllevången', exact: true }).click();
   await page.locator('.phone-orders__success').waitFor();
   assert.equal(state.phoneRequests.length, 3);
-  assert.equal(state.phoneRequests.at(-1).scheduledTime, undefined);
+  assert.equal(state.phoneRequests.at(-1).scheduledTime, '2026-10-15T16:50:00');
   assert.equal(new Set(state.phoneRequests.map(request => request.requestId)).size, 3);
 });
