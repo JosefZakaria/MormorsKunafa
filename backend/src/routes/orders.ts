@@ -14,6 +14,8 @@ import { resolveOrderLocationId, locationOrderTypeError, inStorePickupSmsSuffix 
 import { outOfStockProductNames, stockLocationIdForOrder } from '../db/productLocationStock.js';
 import type { OrderType } from '@mormors-kunafa/shared/types';
 import { parseOrderScheduledAt, formatStockholmDateTime } from '../utils/stockholmWallTime.js';
+import { dbTimestampToIso } from '../utils/dbTimestamp.js';
+import { calculateOrderReadyTime, isPreOrder } from '../shared/utils/scheduledTime.js';
 import { validateScheduledOrderTime } from '../shared/utils/openingHours.js';
 import {
   isAllowedPaymentMethod,
@@ -64,21 +66,6 @@ function asOrderType(value: string): OrderType {
 function paramId(req: Request, key = 'id'): string {
   const v = req.params[key];
   return Array.isArray(v) ? String(v[0] ?? '') : String(v ?? '');
-}
-
-// Returns "YYYY-MM-DD" for the given date in the Europe/Stockholm timezone.
-// Used because the Namecheap DB server is not in Swedish time and lacks
-// timezone tables, so we can't rely on MySQL CURDATE()/DATE() for
-// same-day-vs-future comparisons.
-function toStockholmDateString(value: Date | string | null | undefined): string | null {
-  if (value == null) return null;
-  const d = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(d.getTime())) return null;
-  return d.toLocaleDateString('sv-SE', { timeZone: 'Europe/Stockholm' });
-}
-
-function todayInStockholm(): string {
-  return new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Stockholm' });
 }
 
 async function ordersVisibleToRequest(req: Request, rows: Row[], hideUnacceptedPhoneOrders = false): Promise<Row[]> {
@@ -240,8 +227,7 @@ router.post('/', async (req: Request, res: Response) => {
       }
     }
 
-    const baseTime = scheduledAt && scheduledAt.getTime() > Date.now() ? scheduledAt : new Date();
-    const estimatedReady = new Date(baseTime.getTime() + defaultPrep * 60 * 1000);
+    const estimatedReady = calculateOrderReadyTime(scheduledAt?.toISOString(), defaultPrep);
 
     const customerName = String(body.customerInfo?.name ?? body.deliveryInfo?.name ?? '').trim() || null;
     const customerPhone = String(body.customerInfo?.phone ?? body.deliveryInfo?.phone ?? '').trim();
@@ -556,7 +542,7 @@ router.post('/stripe-confirm', async (req: Request, res: Response) => {
 // Admin routes must be before /:id so /admin/active is not matched as id=admin
 
 // Admin: pending orders (status 'ny', waiting for acceptance).
-// Excludes pre-orders scheduled for a future date (in Europe/Stockholm time).
+// Scheduled orders enter this queue at pickup minus 20 minutes, still awaiting acceptance.
 router.get('/admin/pending', requireAdmin, async (req: Request, res: Response) => {
   try {
     const { data, error } = await supabase
@@ -572,12 +558,9 @@ router.get('/admin/pending', requireAdmin, async (req: Request, res: Response) =
       return;
     }
 
-    const today = todayInStockholm();
-    const sameDay = (data ?? []).filter((r) => {
-      const schedDate = toStockholmDateString((r as Row).scheduled_at as Date | string | null);
-      return schedDate == null || schedDate <= today;
-    });
-    res.json(await rowsToOrders(await ordersVisibleToRequest(req, sameDay as Row[], true)));
+    const now = new Date();
+    const incoming = (data ?? []).filter((r) => !isPreOrder(dbTimestampToIso(r.scheduled_at), now));
+    res.json(await rowsToOrders(await ordersVisibleToRequest(req, incoming as Row[], true)));
   } catch (e) {
     console.error('[GET /admin/pending]', e);
     res.status(500).json({ error: 'Failed to fetch pending orders' });
@@ -608,9 +591,21 @@ router.patch('/admin/:id/accept', requireAdmin, async (req: Request, res: Respon
       return;
     }
 
+    const scheduledTime = dbTimestampToIso(result.order.scheduled_at);
+    if (isPreOrder(scheduledTime)) {
+      res.status(400).json({ error: 'Förbeställningen kan accepteras när det är högst 20 minuter kvar till hämtning.' });
+      return;
+    }
+    if (extraMinutes != null && !Number.isInteger(extraMinutes)) {
+      res.status(400).json({ error: 'Tidsjusteringen måste vara ett helt antal minuter.' });
+      return;
+    }
     const defaultPrep = Number(result.order.default_preparation_time_minutes) || 30;
-    const totalMinutes = defaultPrep + (extraMinutes ?? 0);
-    const estimatedReady = new Date(Date.now() + totalMinutes * 60 * 1000);
+    const estimatedReady = calculateOrderReadyTime(scheduledTime, defaultPrep, extraMinutes ?? 0);
+    if (Number.isNaN(estimatedReady.getTime())) {
+      res.status(400).json({ error: 'Ogiltig klartid.' });
+      return;
+    }
 
     await updateOrder(id, {
       status: 'mottagen',
@@ -672,15 +667,14 @@ router.get('/admin/active', requireAdmin, async (req: Request, res: Response) =>
   }
 });
 
-// Admin: pre-orders (scheduled for a future date in Europe/Stockholm time).
-// Includes both unaccepted ('ny') and accepted ('mottagen', 'påbörjad') pre-orders.
+// Admin: unaccepted orders with more than 20 minutes left until scheduled pickup.
 router.get('/admin/pre-orders', requireAdmin, async (req: Request, res: Response) => {
   try {
     const { data, error } = await supabase
       .from('orders')
       .select('*')
       .not('scheduled_at', 'is', null)
-      .in('status', ['ny', 'mottagen', 'påbörjad'])
+      .eq('status', 'ny')
       .or('payment_status.eq.paid,payment_method.eq.pay_at_pickup')
       .order('scheduled_at', { ascending: true });
 
@@ -690,11 +684,8 @@ router.get('/admin/pre-orders', requireAdmin, async (req: Request, res: Response
       return;
     }
 
-    const today = todayInStockholm();
-    const futureOnly = (data ?? []).filter((r) => {
-      const schedDate = toStockholmDateString((r as Row).scheduled_at as Date | string | null);
-      return schedDate != null && schedDate > today;
-    });
+    const now = new Date();
+    const futureOnly = (data ?? []).filter((r) => isPreOrder(dbTimestampToIso(r.scheduled_at), now));
     res.json(await rowsToOrders(await ordersVisibleToRequest(req, futureOnly as Row[])));
   } catch (e) {
     console.error('[GET /admin/pre-orders]', e);
@@ -864,6 +855,11 @@ router.patch('/admin/:id/status', requireAdmin, async (req: Request, res: Respon
     const acceptingPhoneOrder = existing.order.payment_method === 'pay_at_pickup'
       && existing.order.status === 'ny' && status !== 'ny' && status !== 'avbruten';
     if (!(await assertOrderVisible(req, res, existing.order, acceptingPhoneOrder))) return;
+    if (existing.order.status === 'ny' && status !== 'ny' && status !== 'avbruten'
+      && isPreOrder(dbTimestampToIso(existing.order.scheduled_at))) {
+      res.status(400).json({ error: 'Förbeställningen kan hanteras när det är högst 20 minuter kvar till hämtning.' });
+      return;
+    }
     const patch: Record<string, unknown> = { status };
     if (status === 'uthämtad' && existing.order.payment_method === 'pay_at_pickup' && existing.order.payment_status !== 'paid') {
       if (existing.order.status !== 'klar' || paymentReceived !== true) {
