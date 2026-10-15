@@ -10,6 +10,9 @@ import { resolveProductIdFromLineId } from '../utils/resolveProductId.js';
 import { resolveLineOption, resolveUnitPriceOre, variantPricesForProduct } from '../utils/productPrices.js';
 import { sanitizeProductName } from '../utils/sanitizeProductName.js';
 import { parsePhoneOrder, PhoneOrderError } from '../utils/phoneOrderInput.js';
+import { parseOrderScheduledAt } from '../utils/stockholmWallTime.js';
+import { STOCKHOLM_TZ, validateScheduledOrderTime } from '../shared/utils/openingHours.js';
+import { calculateOrderReadyTime, dateToStockholmInputValue } from '../shared/utils/scheduledTime.js';
 
 async function createPhoneOrder(req: Request, res: Response): Promise<void> {
   let stagedOrderId: string | null = null;
@@ -39,6 +42,18 @@ async function createPhoneOrder(req: Request, res: Response): Promise<void> {
     if (!location) throw new PhoneOrderError(400, 'Den valda lokalen finns inte.');
     const paused = locationOrderTypeError('takeaway', location);
     if (settingsResult.data?.is_paused || paused) throw new PhoneOrderError(403, paused || 'Beställningar är pausade.');
+    const prep = Number(settingsResult.data?.default_preparation_time_minutes) || 30;
+    let scheduledAt: Date | null = null;
+    if (body.scheduledTime) {
+      scheduledAt = parseOrderScheduledAt(body.scheduledTime);
+      if (!scheduledAt || scheduledAt.getTime() <= Date.now()) {
+        throw new PhoneOrderError(400, 'Välj ett giltigt datum och klockslag i framtiden för hämtning.');
+      }
+      // Validate the Stockholm wall clock even when the request uses UTC or an explicit offset.
+      const clock = scheduledAt.toLocaleTimeString('sv-SE', { timeZone: STOCKHOLM_TZ, hour12: false });
+      const validation = validateScheduledOrderTime(`${dateToStockholmInputValue(scheduledAt)}T${clock}`, prep);
+      if (!validation.valid) throw new PhoneOrderError(400, validation.error);
+    }
     const ids = [...new Set(body.items.map(item => resolveProductIdFromLineId(item.productId)))];
     if (ids.some(id => !id)) throw new PhoneOrderError(400, 'Ogiltig produkt.');
     const { data: products, error: productError } = await supabase.from('products')
@@ -67,15 +82,14 @@ async function createPhoneOrder(req: Request, res: Response): Promise<void> {
       };
     });
     const total = itemRows.reduce((sum, item) => sum + item.quantity * item.price_ore, 0);
-    const prep = Number(settingsResult.data?.default_preparation_time_minutes) || 30;
     const orderNumber = await getNextOrderNumber();
     const { error: insertError } = await supabase.from('orders').insert({
       id: body.requestId, order_number: orderNumber, status: 'ny', order_type: 'takeaway',
       // Keep the staging row outside the operational queues until all items are saved.
       payment_method: 'cash', payment_status: 'pending', total_ore: total,
       default_preparation_time_minutes: prep,
-      estimated_ready_at: new Date(Date.now() + prep * 60000).toISOString(),
-      scheduled_at: null, delivery_info_json: null, location_id: location.id,
+      estimated_ready_at: calculateOrderReadyTime(scheduledAt?.toISOString(), prep).toISOString(),
+      scheduled_at: scheduledAt?.toISOString() ?? null, delivery_info_json: null, location_id: location.id,
       customer_name: `${body.customer.firstName} ${body.customer.lastName}`.trim(),
       customer_phone: body.customer.phone, customer_email: body.customer.email,
       internal_notes: body.notes || null,

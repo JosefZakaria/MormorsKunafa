@@ -44,7 +44,7 @@ async function setup(t, options = {}) {
   const page = await context.newPage();
   const pageErrors = [];
   page.on('pageerror', error => pageErrors.push(error.message));
-  const state = { pending: [], scheduled: [], active: [], prints: [], pendingStatus: 200, secondaryStatus: 200, holdSecondary: false, releaseSecondary: null, pendingCalls: 0, holdPending: false, releasePending: null, ...options };
+  const state = { pending: [], scheduled: [], active: [], prints: [], products: [], phoneRequests: [], pendingStatus: 200, secondaryStatus: 200, holdSecondary: false, releaseSecondary: null, pendingCalls: 0, holdPending: false, releasePending: null, ...options };
   t.after(async () => {
     state.releaseSecondary?.();
     state.releasePending?.();
@@ -56,7 +56,7 @@ async function setup(t, options = {}) {
     if (printer) localStorage.setItem('printer_ip_mollevangen', 'printer.example.test');
     if (profile === 'missing') localStorage.removeItem('adminInfo');
     else if (profile === 'malformed') localStorage.setItem('adminInfo', '{broken-json');
-    else localStorage.setItem('adminInfo', JSON.stringify({ id: 'fixture-admin', email: 'fixture@example.invalid', name: 'Fixture', role: 'location', locationId: MOLLE }));
+    else localStorage.setItem('adminInfo', JSON.stringify({ id: 'fixture-admin', email: 'fixture@example.invalid', name: 'Fixture', role: profile === 'owner' ? 'owner' : 'location', locationId: profile === 'owner' ? null : MOLLE }));
     window.__eventSources = [];
     class TestEventSource extends EventTarget {
       static CONNECTING = 0;
@@ -109,6 +109,7 @@ async function setup(t, options = {}) {
     const url = new URL(route.request().url());
     if (url.origin === ORIGIN && !url.pathname.startsWith('/api/')) return route.continue();
     const endpoint = url.pathname.replace(/^\/api/, '');
+    const nowMs = state.nowMs ?? Date.now();
     const json = (value, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(value) });
     if (url.hostname === 'printer.example.test') {
       state.prints.push(route.request().postData());
@@ -116,7 +117,7 @@ async function setup(t, options = {}) {
     }
     if (endpoint === '/orders/admin/pending') {
       state.pendingCalls += 1;
-      const snapshot = [...state.pending, ...state.scheduled.filter(order => order.status === 'ny' && Date.parse(order.scheduledTime) - Date.now() <= 20 * 60_000)];
+      const snapshot = [...state.pending, ...state.scheduled.filter(order => order.status === 'ny' && Date.parse(order.scheduledTime) - nowMs <= 20 * 60_000)];
       if (state.holdPending) {
         state.holdPending = false;
         await new Promise(resolve => { state.releasePending = resolve; });
@@ -130,11 +131,21 @@ async function setup(t, options = {}) {
           state.releaseSecondary = () => { previous?.(); resolve(); };
         });
       }
-      return json(endpoint.endsWith('/active') ? state.active : state.scheduled.filter(order => order.status === 'ny' && Date.parse(order.scheduledTime) - Date.now() > 20 * 60_000), state.secondaryStatus);
+      return json(endpoint.endsWith('/active') ? state.active : state.scheduled.filter(order => order.status === 'ny' && Date.parse(order.scheduledTime) - nowMs > 20 * 60_000), state.secondaryStatus);
     }
     if (endpoint === '/admin/settings' || endpoint === '/orders/settings') return json(settings);
     if (endpoint === '/locations') return json([location]);
-    if (endpoint === '/products') return json([]);
+    if (endpoint === '/products') return json(state.products);
+    if (endpoint === '/orders/admin/phone-orders' && route.request().method() === 'POST') {
+      const body = route.request().postDataJSON();
+      state.phoneRequests.push(body);
+      const scheduledTime = body.scheduledTime ? new Date(body.scheduledTime + '+02:00').toISOString() : undefined;
+      const created = { ...order(body.requestId), paymentMethod: 'pay_at_pickup', paymentStatus: 'pending', scheduledTime,
+        estimatedReadyTime: scheduledTime ?? new Date(Date.now() + 30 * 60_000).toISOString() };
+      if (scheduledTime) state.scheduled.push(created);
+      else state.pending.push(created);
+      return json(created, 201);
+    }
     if (endpoint.endsWith('/accept') && route.request().method() === 'PATCH') {
       const id = endpoint.split('/').at(-2);
       const accepted = [...state.pending, ...state.scheduled].find(order => order.id === id);
@@ -375,4 +386,35 @@ test('customer sees a same-day booking until the release boundary then live pick
   await page.goto(ORIGIN + '/status?orderId=customer-booking');
   await page.getByText('Din beställning är bokad', { exact: true }).waitFor();
   await page.getByText('Väntar på bekräftelse', { exact: true }).waitFor();
+});
+
+test('owner chooses pickup today or another day for a phone order and can still order immediately', { timeout: 30000 }, async t => {
+  const product = { id: '11111111-1111-4111-8111-111111111111', name: 'Kunafa', price: 5000,
+    category: 'Kunafa', inStock: true, hidden: false, stockByLocation: { [MOLLE]: true }, variantPrices: { '250 gram': 5000 } };
+  const { page, state } = await setup(t, { profile: 'owner', products: [product], nowMs: Date.parse('2026-10-15T16:00:00+02:00') });
+  page.setDefaultTimeout(6000);
+  await page.clock.setFixedTime(new Date('2026-10-15T16:00:00+02:00'));
+  await page.getByRole('button', { name: 'Telefonbeställning', exact: true }).click();
+  await page.getByLabel('Lokal för upphämtning').selectOption(MOLLE);
+  for (const date of ['2026-10-15', '2026-10-16']) {
+    await page.getByRole('button', { name: 'Lägg till Kunafa', exact: true }).click();
+    await page.getByLabel('När ska beställningen hämtas?').selectOption('scheduled');
+    await page.getByLabel('Datum för hämtning').fill(date);
+    await page.getByLabel('Tid för hämtning').fill('18:00');
+    await page.getByRole('button', { name: 'Skicka beställning till Möllevången', exact: true }).click();
+    await page.locator('.phone-orders__success').waitFor();
+    assert.equal(state.phoneRequests.at(-1).scheduledTime, date + 'T18:00:00');
+    assert.equal(await page.getByLabel('När ska beställningen hämtas?').inputValue(), 'asap');
+    assert.ok((await page.locator('.phone-orders__success').textContent()).includes(date));
+    await page.getByRole('button', { name: /Förbeställningar/ }).click();
+    await page.locator('.preorder-card').filter({ hasText: state.phoneRequests.at(-1).requestId }).waitFor();
+    await silent(page); // Owner monitors phone pre-orders; only the location may accept them.
+    await page.getByRole('button', { name: 'Telefonbeställning', exact: true }).click();
+  }
+  await page.getByRole('button', { name: 'Lägg till Kunafa', exact: true }).click();
+  await page.getByRole('button', { name: 'Skicka beställning till Möllevången', exact: true }).click();
+  await page.locator('.phone-orders__success').waitFor();
+  assert.equal(state.phoneRequests.length, 3);
+  assert.equal(state.phoneRequests.at(-1).scheduledTime, undefined);
+  assert.equal(new Set(state.phoneRequests.map(request => request.requestId)).size, 3);
 });

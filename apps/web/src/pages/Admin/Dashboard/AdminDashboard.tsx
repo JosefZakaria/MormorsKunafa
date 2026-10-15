@@ -2018,6 +2018,7 @@ export const AdminDashboard: React.FC = () => {
                             active={activeTab === 'phone-orders'}
                             locations={locations}
                             paused={settings?.isPaused ?? true}
+                            preparationMinutes={settings?.defaultPreparationTime ?? 30}
                             onCreated={() => { void fetchOrders(true); }}
                         />
                     )}

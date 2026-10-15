@@ -179,6 +179,8 @@ export interface PhoneOrderRequest {
   customer: { firstName: string; lastName: string; phone: string; email: string };
   items: Array<{ productId: string; quantity: number }>;
   notes?: string;
+  /** Stockholm local date/time or ISO with offset. Omit for immediate pickup. */
+  scheduledTime?: string;
 }
 
 // Update Order Status Request
