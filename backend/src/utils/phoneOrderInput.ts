@@ -41,5 +41,6 @@ export function parsePhoneOrder(body: unknown): PhoneOrderRequest {
     return { productId, quantity: Number(row?.quantity) };
   });
   const notes = input.notes == null || input.notes === '' ? '' : text(input.notes, 'en notis på högst 500 tecken', 500);
-  return { requestId, locationId, customer: { firstName, lastName, phone, email }, items, notes };
+  const scheduledTime = text(input.scheduledTime, 'ett giltigt datum och klockslag för hämtning', 40, true) || undefined;
+  return { requestId, locationId, customer: { firstName, lastName, phone, email }, items, notes, scheduledTime };
 }

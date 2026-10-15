@@ -280,6 +280,82 @@ test('owner phone orders enter the selected location queue without online paymen
       assert.equal(response.status, 400);
       assert.match((await response.json()).error, /payment method/);
     });
+    await t.test('owner schedules phone pickup today or another day and the selected location accepts at T-20', async t => {
+      t.mock.timers.enable({ apis: ['Date'], now: Date.parse('2026-10-15T16:00:00+02:00') });
+      const fixtureIds = new Set();
+      const queueIds = async (path, user) => {
+        const response = await call(`/admin/${path}`, 'GET', undefined, user);
+        assert.equal(response.status, 200);
+        return (await response.json()).map(order => order.id);
+      };
+      try {
+        for (const [locationId, user, wrongUser, scheduledTime, expectedUtc] of [
+          [hoja, 'hoja-admin', 'mollan-admin', '2026-10-15T18:00:00', '2026-10-15T16:00:00.000Z'],
+          [mollan, 'mollan-admin', 'hoja-admin', '2026-10-16T18:00:00', '2026-10-16T16:00:00.000Z'],
+        ]) {
+          t.mock.timers.setTime(Date.parse('2026-10-15T16:00:00+02:00'));
+          const body = { ...payload(locationId), scheduledTime };
+          fixtureIds.add(body.requestId);
+          const created = await call('/admin/phone-orders', 'POST', body);
+          const order = await created.json();
+          assert.equal(created.status, 201, JSON.stringify(order));
+          assert.equal(order.paymentMethod, 'pay_at_pickup');
+          assert.equal(order.paymentStatus, 'pending');
+          assert.equal(order.scheduledTime, expectedUtc);
+          assert.equal(order.estimatedReadyTime, expectedUtc);
+          assert.ok((await queueIds('pre-orders', user)).includes(order.id));
+          assert.ok((await queueIds('pre-orders', 'owner')).includes(order.id));
+          assert.ok(!(await queueIds('pre-orders', wrongUser)).includes(order.id));
+          assert.ok(!(await queueIds('pending', user)).includes(order.id));
+          assert.equal((await call(`/admin/${order.id}/accept`, 'PATCH', {}, user)).status, 400);
+
+          t.mock.timers.setTime(Date.parse(expectedUtc) - 20 * 60_000 - 1);
+          assert.ok(!(await queueIds('pending', user)).includes(order.id));
+          t.mock.timers.setTime(Date.parse(expectedUtc) - 20 * 60_000);
+          assert.ok((await queueIds('pending', user)).includes(order.id));
+          assert.ok(!(await queueIds('pre-orders', user)).includes(order.id));
+          assert.ok(!(await queueIds('pending', 'owner')).includes(order.id));
+          assert.equal((await call(`/admin/${order.id}/accept`, 'PATCH', {})).status, 403);
+          assert.equal((await call(`/admin/${order.id}/accept`, 'PATCH', {}, wrongUser)).status, 403);
+          const accepted = await call(`/admin/${order.id}/accept`, 'PATCH', {}, user);
+          assert.equal(accepted.status, 200);
+          assert.equal((await accepted.json()).estimatedReadyTime, expectedUtc);
+          assert.ok((await queueIds('active', 'owner')).includes(order.id));
+
+          // A retry after the pickup time is still idempotent and returns the saved schedule.
+          t.mock.timers.setTime(Date.parse(expectedUtc) + 60_000);
+          const retried = await call('/admin/phone-orders', 'POST', body);
+          assert.equal(retried.status, 200);
+          assert.equal((await retried.json()).scheduledTime, expectedUtc);
+          assert.equal(orders.filter(row => row.id === body.requestId).length, 1);
+        }
+      } finally {
+        orders.splice(0, orders.length, ...orders.filter(order => !fixtureIds.has(order.id)));
+        items.splice(0, items.length, ...items.filter(item => !fixtureIds.has(item.order_id)));
+      }
+    });
+    await t.test('phone pickup rejects past, too early, closed-hour and invalid times before writing', async t => {
+      t.mock.timers.enable({ apis: ['Date'], now: Date.parse('2026-10-15T16:00:00+02:00') });
+      const before = orders.length;
+      for (const scheduledTime of [
+        '2026-10-14T18:00:00', '2026-10-15T15:00:00', '2026-10-15T16:10:00',
+        '2026-10-16T10:00:00', '2026-10-16T22:00:00', '2026-10-15T20:45:00Z',
+        'invalid', '2026-10-16T99:00:00Z', 123, {}, ['2026-10-15T18:00:00'],
+      ]) {
+        const response = await call('/admin/phone-orders', 'POST', { ...payload(), scheduledTime });
+        assert.equal(response.status, 400, JSON.stringify(scheduledTime));
+        assert.equal(orders.length, before);
+      }
+      const body = { ...payload(), scheduledTime: '2026-10-15T16:00:00Z' }; // 18:00 in Stockholm
+      try {
+        const response = await call('/admin/phone-orders', 'POST', body);
+        assert.equal(response.status, 201);
+        assert.equal((await response.json()).scheduledTime, '2026-10-15T16:00:00.000Z');
+      } finally {
+        orders.splice(0, orders.length, ...orders.filter(order => order.id !== body.requestId));
+        items.splice(0, items.length, ...items.filter(item => item.order_id !== body.requestId));
+      }
+    });
     await t.test('phone push reaches only the selected location; online push still includes the owner', async () => {
       const { default: webpush } = await import('web-push');
       const keys = webpush.generateVAPIDKeys();
