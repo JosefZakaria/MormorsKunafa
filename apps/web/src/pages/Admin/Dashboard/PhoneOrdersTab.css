@@ -11,7 +11,7 @@
 .phone-orders .phone-orders__location { max-width: 540px; margin: 1.25rem 0; }
 .phone-orders__layout { display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(320px, 1fr); gap: 1.5rem; align-items: start; }
 .phone-orders .phone-orders__menu, .phone-orders__summary { padding: 1.25rem; border: 1px solid #e2e4e8; border-radius: 12px; background: #fff; }
-.phone-orders__products { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: 1rem; }
+.phone-orders__products { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; }
 .phone-product { display: flex; flex-direction: column; min-width: 0; padding: 0.75rem; border: 1px solid #e2e4e8; border-radius: 10px; }
 .phone-product__image-wrap { display: flex; align-items: center; justify-content: center; aspect-ratio: 4 / 3; overflow: hidden; border-radius: 7px; background: #f3f4f6; color: #6b7280; }
 .phone-product__image-wrap img { width: 100%; height: 100%; object-fit: cover; }
@@ -31,4 +31,22 @@
 .phone-orders__success { padding: 1rem; background: #e8f6ed; border: 1px solid #a8d5b8; border-radius: 8px; color: #215e38; }
 .phone-order-payment { color: #854d0e; font-weight: 700; background: #fff4da; padding: 0.5rem; border-radius: 6px; }
 @media (max-width: 850px) { .phone-orders__layout { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 600px) {
+    .phone-orders .phone-orders__menu { padding: 0.65rem; }
+    .phone-orders__products { gap: 0.4rem; }
+    .phone-product { padding: 0.35rem; border-radius: 8px; }
+    .phone-product__image-wrap { border-radius: 5px; font-size: 0.7rem; }
+    .phone-product__details { padding: 0.45rem 0; }
+    .phone-product h4 { font-size: 0.8rem; line-height: 1.35; overflow-wrap: anywhere; }
+    .phone-product__price { font-size: 0.75rem; }
+    .phone-product__weight { font-size: 0.7rem; }
+    .phone-orders .phone-product select {
+        min-width: 0; min-height: 36px; padding: 0.35rem 0.1rem;
+        margin: 0.35rem 0 0.25rem; font-size: 0.7rem;
+    }
+    .phone-product > .btn {
+        min-width: 0; min-height: 44px; padding: 0.45rem 0.15rem;
+        font-size: 0.7rem; letter-spacing: 0;
+    }
+}
 @media (max-width: 480px) { .phone-orders__customer { grid-template-columns: minmax(0, 1fr); } }
