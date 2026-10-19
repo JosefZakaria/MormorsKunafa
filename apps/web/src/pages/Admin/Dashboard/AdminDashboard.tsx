@@ -20,6 +20,7 @@ import { calculateOrderReadyTime, isPreOrder } from '@shared/utils/scheduledTime
 import '../Admin.css';
 import { requestWakeLock, releaseWakeLock } from '../../../utils/wakeLock';
 import { useOrderAlarm } from '../../../hooks/useOrderAlarm';
+import { ALARM_SOUND_SECONDS } from '../../../utils/alarmSignal';
 import { createOrderQueueRefresh } from '../../../utils/orderQueueRefresh';
 import { scheduleOrderRelease } from '../../../utils/scheduleOrderRelease';
 import { MenuTab } from './MenuTab';
@@ -1559,7 +1560,7 @@ export const AdminDashboard: React.FC = () => {
                                             onClick={() => { void alarm.test(); }}
                                             disabled={alarm.isTesting}
                                         >
-                                            {alarm.isTesting ? 'Testar…' : 'Testa (5 s)'}
+                                            {alarm.isTesting ? 'Testar…' : `Testa (${ALARM_SOUND_SECONDS} s)`}
                                         </Button>
                                     </div>
                                 )}
@@ -2294,7 +2295,7 @@ export const AdminDashboard: React.FC = () => {
                                         onClick={() => { void alarm.test(); }}
                                         disabled={alarm.isTesting}
                                     >
-                                        {alarm.isTesting ? '🔊 Testar ljud…' : '🔊 Testa starkt larm (5 sek)'}
+                                        {alarm.isTesting ? '🔊 Testar ljud…' : `🔊 Testa starkt larm (${ALARM_SOUND_SECONDS} sek)`}
                                     </Button>
                                     
                                     {alarm.isTesting && (
