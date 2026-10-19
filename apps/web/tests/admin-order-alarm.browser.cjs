@@ -3,6 +3,7 @@
 const assert = require('node:assert/strict');
 const { before, after, test } = require('node:test');
 const { spawn } = require('node:child_process');
+const { mkdirSync } = require('node:fs');
 const path = require('node:path');
 const { chromium } = require('playwright');
 
@@ -146,6 +147,13 @@ async function setup(t, options = {}) {
       else state.pending.push(created);
       return json(created, 201);
     }
+    if (endpoint.endsWith('/time') && route.request().method() === 'PATCH') {
+      const id = endpoint.split('/').at(-2);
+      const activeOrder = state.active.find(order => order.id === id);
+      if (!activeOrder) return json({ error: 'missing fixture' }, 404);
+      activeOrder.estimatedReadyTime = route.request().postDataJSON().estimatedReadyTime;
+      return json(activeOrder);
+    }
     if (endpoint.endsWith('/accept') && route.request().method() === 'PATCH') {
       const id = endpoint.split('/').at(-2);
       const accepted = [...state.pending, ...state.scheduled].find(order => order.id === id);
@@ -190,6 +198,102 @@ async function wake(page) {
 async function overlay(page) {
   await page.locator('.alarm-overlay').waitFor({ timeout: 8000 });
 }
+
+for (const profile of ['owner', 'valid']) {
+  test('mobile dashboard keeps navigation compact and the selected section visible (' + profile + ')', { timeout: 25000 }, async t => {
+    const { page } = await setup(t, { profile });
+    await page.setViewportSize({ width: 375, height: 812 });
+    await activate(page);
+    await page.evaluate(() => document.fonts.ready);
+    const menu = page.getByRole('navigation', { name: 'Dashboardmeny' });
+    const expectSelectedVisible = async () => {
+      await page.waitForFunction(() => {
+        const menu = document.querySelector('.admin-tabs');
+        const selected = menu.querySelector('[aria-current="page"]');
+        const bounds = menu.getBoundingClientRect();
+        const tab = selected.getBoundingClientRect();
+        return tab.left >= bounds.left && tab.right <= bounds.right;
+      });
+    };
+    for (const width of [320, 375, 430, 700]) {
+      await page.setViewportSize({ width, height: 812 });
+      await expectSelectedVisible();
+      const layout = await menu.evaluate(menu => ({
+        height: menu.getBoundingClientRect().height,
+        tabs: [...menu.querySelectorAll('button')].map(button => ({
+          top: button.getBoundingClientRect().top,
+          height: button.getBoundingClientRect().height,
+        })),
+        overflow: document.documentElement.scrollWidth > window.innerWidth + 1,
+      }));
+      assert.ok(layout.height < 75, `navigation takes too much space at ${width}px`);
+      assert.ok(layout.tabs.every(tab => Math.abs(tab.top - layout.tabs[0].top) < 1 && tab.height >= 44));
+      assert.equal(layout.overflow, false, `page overflows at ${width}px`);
+    }
+    await menu.getByRole('button', { name: 'Inställningar', exact: true }).click();
+    await expectSelectedVisible();
+    assert.equal(await menu.locator('[aria-current="page"]').textContent().then(text => text.trim()), 'Inställningar');
+    // Resizing from a desktop layout must reveal the same section on mobile.
+    await page.setViewportSize({ width: 1280, height: 800 });
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
+    await page.setViewportSize({ width: 375, height: 812 });
+    await expectSelectedVisible();
+    await menu.getByRole('button', { name: 'Inkommande', exact: true }).click();
+    await expectSelectedVisible();
+    await page.getByText('Inga inkommande ordrar just nu.', { exact: true }).waitFor();
+    if (profile === 'owner') {
+      const output = path.resolve(__dirname, '../../../output/playwright');
+      mkdirSync(output, { recursive: true });
+      await page.screenshot({ path: path.join(output, 'admin-mobile-navigation.png') });
+    }
+  });
+}
+
+test('admin countdown shows labelled units, crosses zero and preserves time adjustment controls', { timeout: 25000 }, async t => {
+  const now = Date.parse('2026-10-19T12:00:00Z');
+  const orderNumbers = { 'late-days': '#0375', 'late-one-day': '#0382', 'cross-zero': '#0390', 'cross-day': '#0391', 'unknown-time': '#0392' };
+  const active = (id, offset) => ({ ...order(id), orderNumber: orderNumbers[id], status: 'mottagen', estimatedReadyTime: new Date(now + offset).toISOString() });
+  const { page, state } = await setup(t, { active: [
+    { ...active('late-days', -(2936 * 60 + 2) * 1000), orderType: 'delivery' },
+    active('late-one-day', -(1460 * 60 + 51) * 1000),
+    active('cross-zero', 1000),
+    active('cross-day', 86400 * 1000),
+    { ...active('unknown-time', 0), estimatedReadyTime: 'invalid' },
+  ] });
+  await page.clock.install({ time: now - 1000 });
+  await page.clock.pauseAt(now);
+  await page.getByRole('button', { name: /Aktiva Ordrar/ }).click();
+  const card = id => page.locator('.admin-order-card').filter({ hasText: orderNumbers[id] });
+  const expectTimer = async (id, text, overdue) => {
+    const timer = card(id).locator('.order-timer');
+    await timer.filter({ hasText: text }).waitFor();
+    assert.equal((await timer.textContent()).replace(/\s+/g, ' ').trim(), text);
+    assert.equal((await timer.getAttribute('class')).includes('timer-overdue'), overdue);
+  };
+  await expectTimer('late-days', '⏱ -2 dygn 0 H 56 M 2 S (SEN)', true);
+  await expectTimer('late-one-day', '⏱ -1 dygn 0 H 20 M 51 S (SEN)', true);
+  await expectTimer('cross-zero', '⏱ 1 S', false);
+  await expectTimer('cross-day', '⏱ 1 dygn 0 H 0 M 0 S', false);
+  await expectTimer('unknown-time', '⏱ --', false);
+
+  await page.setViewportSize({ width: 375, height: 812 });
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'mobile layout overflows');
+  await page.clock.runFor(1000);
+  await expectTimer('cross-zero', '⏱ 0 S', false);
+  await expectTimer('cross-day', '⏱ 23 H 59 M 59 S', false);
+  await page.clock.runFor(1000);
+  await expectTimer('cross-zero', '⏱ -1 S (SEN)', true);
+
+  for (const [button, expected, offset] of [
+    ['+5 min', '⏱ 4 M 59 S', 301000],
+    ['−5 min', '⏱ -1 S (SEN)', 1000],
+    ['+10 min', '⏱ 9 M 59 S', 601000],
+  ]) {
+    await card('cross-zero').getByRole('button', { name: button, exact: true }).click();
+    await expectTimer('cross-zero', expected, offset === 1000);
+    assert.equal(state.active.find(order => order.id === 'cross-zero').estimatedReadyTime, new Date(now + offset).toISOString());
+  }
+});
 
 for (const profile of ['valid', 'missing', 'malformed']) {
   test('a paid order rings after the preview has ended (' + profile + ' admin profile)', { timeout: 25000 }, async t => {
