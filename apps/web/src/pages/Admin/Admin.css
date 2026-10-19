@@ -182,6 +182,18 @@
     margin-bottom: var(--spacing-xs);
 }
 
+@media (max-width: 700px) {
+    .active-order-card {
+        flex-direction: column;
+        gap: var(--spacing-md);
+    }
+
+    .active-order-card > .order-details {
+        width: 100%;
+        min-width: 0;
+    }
+}
+
 .order-items {
     margin: 0.5rem 0;
     padding-left: 1.2rem;

@@ -27,8 +27,10 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Alarm and queue regression tests
-        run: npm run test:alarm --workspace=apps/web
+      - name: Alarm, queue and countdown regression tests
+        run: |
+          npm run test:alarm --workspace=apps/web
+          npm run test:countdown --workspace=apps/web
       - name: Production build
         run: npm run web:build
       - name: Install isolated browser test tooling

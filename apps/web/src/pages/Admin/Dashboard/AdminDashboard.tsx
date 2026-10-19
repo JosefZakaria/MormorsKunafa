@@ -20,26 +20,13 @@ import { calculateOrderReadyTime, isPreOrder } from '@shared/utils/scheduledTime
 import '../Admin.css';
 import { requestWakeLock, releaseWakeLock } from '../../../utils/wakeLock';
 import { useOrderAlarm } from '../../../hooks/useOrderAlarm';
+import { getOrderCountdown } from '../../../utils/orderCountdown';
 import { ALARM_SOUND_SECONDS } from '../../../utils/alarmSignal';
 import { createOrderQueueRefresh } from '../../../utils/orderQueueRefresh';
 import { scheduleOrderRelease } from '../../../utils/scheduleOrderRelease';
 import { MenuTab } from './MenuTab';
 import { DeliveryPricingSettings } from './DeliveryPricingSettings';
 import { PhoneOrdersTab } from './PhoneOrdersTab';
-
-// --- Helper: countdown string from ISO time ---
-function getCountdown(isoTime: string | undefined): string {
-    if (!isoTime) return '--:--';
-    const target = parseApiTimestamp(isoTime);
-    if (!target) return '--:--';
-    const diff = target.getTime() - Date.now();
-    const isOverdue = diff < 0;
-    const absoluteDiff = Math.abs(diff);
-    const mins = Math.floor(absoluteDiff / 60000);
-    const secs = Math.floor((absoluteDiff % 60000) / 1000);
-    const formatted = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-    return isOverdue ? `-${formatted}` : formatted;
-}
 
 function deliveryCustomerName(order: Order): string {
     const fromCustomer = order.customerInfo?.name?.trim();
@@ -136,18 +123,17 @@ function orderMatchesPlaceFilter(order: Order, filter: PlaceFilter): boolean {
 
 // --- Per-order timer component ---
 function OrderTimer({ estimatedReadyTime }: { estimatedReadyTime: string }) {
-    const [countdown, setCountdown] = useState(() => getCountdown(estimatedReadyTime));
-    const isOverdue = (parseApiTimestamp(estimatedReadyTime)?.getTime() ?? 0) < Date.now();
+    const [countdown, setCountdown] = useState(() => getOrderCountdown(estimatedReadyTime));
 
     useEffect(() => {
-        setCountdown(getCountdown(estimatedReadyTime));
-        const id = setInterval(() => setCountdown(getCountdown(estimatedReadyTime)), 1000);
+        setCountdown(getOrderCountdown(estimatedReadyTime));
+        const id = setInterval(() => setCountdown(getOrderCountdown(estimatedReadyTime)), 1000);
         return () => clearInterval(id);
     }, [estimatedReadyTime]);
 
     return (
-        <span className={`order-timer ${isOverdue ? 'timer-overdue' : ''}`}>
-            ⏱ {countdown} {isOverdue ? '(SEN)' : ''}
+        <span className={`order-timer ${countdown.isOverdue ? 'timer-overdue' : ''}`}>
+            ⏱ {countdown.text} {countdown.isOverdue ? '(SEN)' : ''}
         </span>
     );
 }
@@ -1841,7 +1827,7 @@ export const AdminDashboard: React.FC = () => {
                                 <p>Inga aktiva ordrar just nu.</p>
                             ) : (
                                 visibleActive.map(order => (
-                                    <div key={order.id} className="admin-order-card">
+                                    <div key={order.id} className="admin-order-card active-order-card">
                                         <div className="order-details">
                                             <h3>
                                                 {order.orderNumber}
