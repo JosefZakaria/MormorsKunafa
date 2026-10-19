@@ -1,4 +1,4 @@
-import { createAlarmSamples, normalizeAlarmVolume } from './alarmSignal';
+import { ALARM_SOUND_SECONDS, createAlarmSamples, normalizeAlarmVolume } from './alarmSignal';
 
 type AudioState = AudioContextState | 'not_initialized' | 'unavailable';
 export interface AlarmPlayerStatus {
@@ -163,7 +163,7 @@ export async function testAlarm(): Promise<boolean> {
   const unlocked = await unlockAudio();
   if (generation !== testGeneration || orderAlarmRequested || !testing) return unlocked;
   if (unlocked) {
-    testTimer = setTimeout(stopAlarmTest, 5000);
+    testTimer = setTimeout(stopAlarmTest, ALARM_SOUND_SECONDS * 1000);
   } else {
     stopAlarmTest();
   }

@@ -44,7 +44,9 @@ function setup() {
       return Promise.resolve();
     }
     createGain() { return { gain: { value: 1, setTargetAtTime() {} }, connect() {}, disconnect() {} }; }
-    createBuffer() { return { copyToChannel() {} }; }
+    createBuffer(_channels, length, sampleRate) {
+      return { duration: length / sampleRate, copyToChannel() {} };
+    }
     createBufferSource() {
       const node = {
         started: false, stopped: false, loop: false, onended: null,
@@ -75,15 +77,17 @@ function setup() {
   };
 }
 
-test('alarm has high sustained signal level, headroom and short pauses at common sample rates', () => {
+test('alarm has two seconds of strong tones followed by seven seconds of silence at common sample rates', () => {
   const { createAlarmSamples } = loadModule('alarmSignal', {});
   for (const sampleRate of [22050, 44100, 48000, 96000]) {
     const samples = createAlarmSamples(sampleRate);
+    assert.equal(samples.length, sampleRate * 9);
+    const soundingSamples = samples.subarray(0, sampleRate * 2);
     let peak = 0;
     let energy = 0;
     let quietRun = 0;
     let longestQuietRun = 0;
-    for (const value of samples) {
+    for (const value of soundingSamples) {
       assert.ok(Number.isFinite(value));
       peak = Math.max(peak, Math.abs(value));
       energy += value * value;
@@ -91,8 +95,9 @@ test('alarm has high sustained signal level, headroom and short pauses at common
       longestQuietRun = Math.max(longestQuietRun, quietRun);
     }
     assert.ok(peak > 0.94 && peak < 0.96, `peak ${peak} at ${sampleRate}`);
-    assert.ok(Math.sqrt(energy / samples.length) > 0.58, `sustained level at ${sampleRate}`);
+    assert.ok(Math.sqrt(energy / soundingSamples.length) > 0.58, `sustained level at ${sampleRate}`);
     assert.ok(longestQuietRun / sampleRate < 0.15, `long silent gap at ${sampleRate}`);
+    assert.ok(samples.subarray(sampleRate * 2).every(value => value === 0), `seven-second silence at ${sampleRate}`);
     assert.equal(samples[0], 0);
     assert.equal(samples.at(-1), 0);
   }
@@ -110,7 +115,7 @@ test('an order arriving during a test keeps ringing after the test deadline', as
   await player.testAlarm();
   const source = contexts[0].sources[0];
   player.startOrderAlarm();
-  advance(6000);
+  advance(2001);
   assert.equal(source.stopped, false);
   assert.equal(source.loop, true);
   assert.equal(player.getAlarmStatus().playing, true);
@@ -132,7 +137,7 @@ test('test and stop-test controls cannot silence an existing order alarm', async
 test('test stops automatically when no order is waiting', async () => {
   const { player, contexts, advance } = setup();
   await player.testAlarm();
-  advance(4999);
+  advance(1999);
   assert.equal(player.getAlarmStatus().playing, true);
   advance(1);
   assert.equal(player.getAlarmStatus().playing, false);
@@ -144,6 +149,27 @@ test('repeated queue refreshes use one source instead of restarting the alarm', 
   for (let i = 0; i < 100; i += 1) { player.startOrderAlarm(); player.checkAlarmAudio(); }
   assert.equal(contexts.length, 1);
   assert.equal(contexts[0].sources.length, 1);
+});
+
+test('recovery and queue refreshes preserve the same looping source throughout its silent phase', async () => {
+  const { player, contexts, advance } = setup();
+  player.startOrderAlarm();
+  const ctx = contexts[0];
+  const source = ctx.sources[0];
+  assert.equal(source.loop, true);
+  assert.equal(source.buffer.duration, 9);
+  for (let second = 0; second < 20; second += 1) {
+    advance(1000);
+    ctx.currentTime += 1;
+    player.startOrderAlarm();
+    player.checkAlarmAudio();
+    player.recoverAlarmAudio();
+    await Promise.resolve();
+    assert.equal(ctx.sources.length, 1);
+    assert.equal(source.stopped, false);
+  }
+  player.stopOrderAlarm();
+  assert.equal(source.stopped, true);
 });
 
 test('suspension is reported and a later user gesture resumes the pending alarm', async () => {

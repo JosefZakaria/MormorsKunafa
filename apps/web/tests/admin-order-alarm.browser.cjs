@@ -77,11 +77,11 @@ async function setup(t, options = {}) {
       constructor(...args) { super(...args); window.__alarmProbe.contexts.push(this); }
       createBufferSource() {
         const source = super.createBufferSource();
-        const record = { started: false, stopped: false };
+        const record = { started: false, stopped: false, startedAt: null };
         window.__alarmProbe.sources.push(record);
         const start = source.start.bind(source);
         const stop = source.stop.bind(source);
-        source.start = (...args) => { start(...args); record.started = true; };
+        source.start = (...args) => { start(...args); record.started = true; record.startedAt = this.currentTime; };
         source.stop = (...args) => { stop(...args); record.stopped = true; };
         return source;
       }
@@ -181,7 +181,7 @@ async function silent(page) {
 async function activate(page) {
   await page.getByRole('button', { name: 'AKTIVERA', exact: true }).click();
   await sound(page);
-  await page.getByRole('button', { name: 'Testa (5 s)', exact: true }).waitFor({ timeout: 8000 });
+  await page.getByRole('button', { name: 'Testa (2 s)', exact: true }).waitFor({ timeout: 8000 });
   await silent(page);
 }
 async function wake(page) {
@@ -237,8 +237,57 @@ test('an order arriving during a preview keeps ringing after the preview deadlin
   state.pending = [order()];
   await wake(page);
   await overlay(page);
-  await page.waitForTimeout(5500);
+  await page.waitForTimeout(2500);
   await sound(page);
+});
+
+test('order alarm repeats two seconds of sound and seven seconds of silence, and stops during silence', { timeout: 35000 }, async t => {
+  const { page, state } = await setup(t);
+  await activate(page);
+  state.pending = [order()];
+  await wake(page);
+  await overlay(page);
+  await sound(page);
+  const baseline = await page.evaluate(() => ({
+    count: window.__alarmProbe.sources.length,
+    start: window.__alarmProbe.sources.at(-1).startedAt,
+  }));
+  const at = async second => {
+    await page.waitForFunction(({ start, second }) => window.__alarmProbe.contexts[0].currentTime - start >= second,
+      { start: baseline.start, second }, { timeout: 10000 });
+  };
+  const expectSound = async second => {
+    await at(second);
+    // Wait through the brief gaps between the tones, but never into the next cycle.
+    await page.waitForFunction(() => window.__alarmRms() > 0.05, null, { timeout: 400 });
+  };
+  const expectQuiet = async second => {
+    await at(second);
+    assert.ok(await page.evaluate(() => window.__alarmRms() < 0.001), `audio at ${second}s should be silent`);
+    assert.equal(await page.evaluate(() => window.__alarmProbe.sources.length), baseline.count, 'the source restarted');
+  };
+  await expectSound(0.5);
+  await expectSound(1.5);
+  await expectQuiet(2.2);
+  // Focus, clicks and another incoming order must preserve the scheduled silence.
+  await wake(page);
+  await page.evaluate(() => document.dispatchEvent(new Event('click')));
+  state.pending.push(order('order-2'));
+  await wake(page);
+  await page.getByRole('heading', { name: '2 ordrar väntar!', exact: true }).waitFor();
+  await expectQuiet(4.5);
+  await expectQuiet(8.8);
+  await expectSound(9.2);
+  await expectSound(10.5);
+  await expectQuiet(11.2);
+  state.pending = [];
+  await wake(page);
+  await page.locator('.alarm-overlay').waitFor({ state: 'hidden' });
+  await silent(page);
+  // Crossing the next scheduled start must stay silent after the queue is cleared.
+  await at(18.5);
+  await silent(page);
+  assert.equal(await page.evaluate(() => window.__alarmProbe.sources.length), baseline.count);
 });
 
 test('a new order interrupts a pause, failed polling preserves the alarm, and recovery clears it', { timeout: 30000 }, async t => {
