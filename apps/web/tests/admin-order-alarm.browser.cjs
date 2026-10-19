@@ -3,6 +3,7 @@
 const assert = require('node:assert/strict');
 const { before, after, test } = require('node:test');
 const { spawn } = require('node:child_process');
+const { mkdirSync } = require('node:fs');
 const path = require('node:path');
 const { chromium } = require('playwright');
 
@@ -196,6 +197,56 @@ async function wake(page) {
 }
 async function overlay(page) {
   await page.locator('.alarm-overlay').waitFor({ timeout: 8000 });
+}
+
+for (const profile of ['owner', 'valid']) {
+  test('mobile dashboard keeps navigation compact and the selected section visible (' + profile + ')', { timeout: 25000 }, async t => {
+    const { page } = await setup(t, { profile });
+    await page.setViewportSize({ width: 375, height: 812 });
+    await activate(page);
+    await page.evaluate(() => document.fonts.ready);
+    const menu = page.getByRole('navigation', { name: 'Dashboardmeny' });
+    const expectSelectedVisible = async () => {
+      await page.waitForFunction(() => {
+        const menu = document.querySelector('.admin-tabs');
+        const selected = menu.querySelector('[aria-current="page"]');
+        const bounds = menu.getBoundingClientRect();
+        const tab = selected.getBoundingClientRect();
+        return tab.left >= bounds.left && tab.right <= bounds.right;
+      });
+    };
+    for (const width of [320, 375, 430, 700]) {
+      await page.setViewportSize({ width, height: 812 });
+      await expectSelectedVisible();
+      const layout = await menu.evaluate(menu => ({
+        height: menu.getBoundingClientRect().height,
+        tabs: [...menu.querySelectorAll('button')].map(button => ({
+          top: button.getBoundingClientRect().top,
+          height: button.getBoundingClientRect().height,
+        })),
+        overflow: document.documentElement.scrollWidth > window.innerWidth + 1,
+      }));
+      assert.ok(layout.height < 75, `navigation takes too much space at ${width}px`);
+      assert.ok(layout.tabs.every(tab => Math.abs(tab.top - layout.tabs[0].top) < 1 && tab.height >= 44));
+      assert.equal(layout.overflow, false, `page overflows at ${width}px`);
+    }
+    await menu.getByRole('button', { name: 'Inställningar', exact: true }).click();
+    await expectSelectedVisible();
+    assert.equal(await menu.locator('[aria-current="page"]').textContent().then(text => text.trim()), 'Inställningar');
+    // Resizing from a desktop layout must reveal the same section on mobile.
+    await page.setViewportSize({ width: 1280, height: 800 });
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
+    await page.setViewportSize({ width: 375, height: 812 });
+    await expectSelectedVisible();
+    await menu.getByRole('button', { name: 'Inkommande', exact: true }).click();
+    await expectSelectedVisible();
+    await page.getByText('Inga inkommande ordrar just nu.', { exact: true }).waitFor();
+    if (profile === 'owner') {
+      const output = path.resolve(__dirname, '../../../output/playwright');
+      mkdirSync(output, { recursive: true });
+      await page.screenshot({ path: path.join(output, 'admin-mobile-navigation.png') });
+    }
+  });
 }
 
 test('admin countdown shows labelled units, crosses zero and preserves time adjustment controls', { timeout: 25000 }, async t => {

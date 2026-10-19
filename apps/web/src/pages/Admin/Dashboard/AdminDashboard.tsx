@@ -798,6 +798,23 @@ export const AdminDashboard: React.FC = () => {
     const { logout, admin, isAuthenticated } = useAuth();
     const navigate = useNavigate();
     const [activeTab, setActiveTab] = useState<'pending' | 'preorders' | 'active' | 'history' | 'stock' | 'menu' | 'phone-orders' | 'delivery-pricing' | 'rush' | 'stats'>('pending');
+    const tabsRef = useRef<HTMLElement>(null);
+
+    useEffect(() => {
+        const revealActiveTab = () => {
+            const menu = tabsRef.current;
+            const selected = menu?.querySelector<HTMLButtonElement>('.admin-tab.active');
+            if (!menu || !selected || menu.scrollWidth <= menu.clientWidth) return;
+            const menuBounds = menu.getBoundingClientRect();
+            const tabBounds = selected.getBoundingClientRect();
+            // Scroll only the menu; changing tabs must not move the page vertically.
+            if (tabBounds.left < menuBounds.left + 8) menu.scrollLeft += tabBounds.left - menuBounds.left - 8;
+            else if (tabBounds.right > menuBounds.right - 8) menu.scrollLeft += tabBounds.right - menuBounds.right + 8;
+        };
+        revealActiveTab();
+        window.addEventListener('resize', revealActiveTab);
+        return () => window.removeEventListener('resize', revealActiveTab);
+    }, [activeTab, admin?.role]);
 
     // Data state
     const [pendingOrders, setPendingOrders] = useState<Order[]>([]);
@@ -1514,7 +1531,7 @@ export const AdminDashboard: React.FC = () => {
                         </span>
 
                         {/* Ljudlarm-indikator i headern */}
-                        <div style={{ marginLeft: '1rem', display: 'flex', flexDirection: 'column' }}>
+                        <div className="admin-audio-status">
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                 {audioLocked ? (
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#FEE2E2', padding: '0.2rem 0.5rem', borderRadius: '8px', border: '1px solid #FCA5A5' }}>
@@ -1605,46 +1622,46 @@ export const AdminDashboard: React.FC = () => {
                     </div>
                 )}
 
-                <div className="admin-tabs">
-                    <button className={`admin-tab ${activeTab === 'preorders' ? 'active' : ''}`} onClick={() => { setActiveTab('preorders'); setStatsData(null); }}>
+                <nav className="admin-tabs" aria-label="Dashboardmeny" ref={tabsRef}>
+                    <button className={`admin-tab ${activeTab === 'preorders' ? 'active' : ''}`} aria-current={activeTab === 'preorders' ? 'page' : undefined} onClick={() => { setActiveTab('preorders'); setStatsData(null); }}>
                         Förbeställningar {visiblePreOrders.length > 0 && <span className="tab-badge">{visiblePreOrders.length}</span>}
                     </button>
-                    <button className={`admin-tab ${activeTab === 'pending' ? 'active' : ''}`} onClick={() => { setActiveTab('pending'); setStatsData(null); }}>
+                    <button className={`admin-tab ${activeTab === 'pending' ? 'active' : ''}`} aria-current={activeTab === 'pending' ? 'page' : undefined} onClick={() => { setActiveTab('pending'); setStatsData(null); }}>
                         Inkommande {visibleIncomingCount > 0 && <span className="tab-badge">{visibleIncomingCount}</span>}
                     </button>
-                    <button className={`admin-tab ${activeTab === 'active' ? 'active' : ''}`} onClick={() => { setActiveTab('active'); setStatsData(null); }}>
+                    <button className={`admin-tab ${activeTab === 'active' ? 'active' : ''}`} aria-current={activeTab === 'active' ? 'page' : undefined} onClick={() => { setActiveTab('active'); setStatsData(null); }}>
                         Aktiva Ordrar ({visibleActive.length})
                     </button>
-                    <button className={`admin-tab ${activeTab === 'history' ? 'active' : ''}`} onClick={() => { setActiveTab('history'); setStatsData(null); }}>
+                    <button className={`admin-tab ${activeTab === 'history' ? 'active' : ''}`} aria-current={activeTab === 'history' ? 'page' : undefined} onClick={() => { setActiveTab('history'); setStatsData(null); }}>
                         Orderhistorik
                     </button>
-                    <button className={`admin-tab ${activeTab === 'stock' ? 'active' : ''}`} onClick={() => { setActiveTab('stock'); setStatsData(null); }}>
+                    <button className={`admin-tab ${activeTab === 'stock' ? 'active' : ''}`} aria-current={activeTab === 'stock' ? 'page' : undefined} onClick={() => { setActiveTab('stock'); setStatsData(null); }}>
                         Lager
                     </button>
                     {admin?.role === 'owner' && (
-                    <button className={`admin-tab ${activeTab === 'phone-orders' ? 'active' : ''}`} onClick={() => { setActiveTab('phone-orders'); setStatsData(null); }}>
+                    <button className={`admin-tab ${activeTab === 'phone-orders' ? 'active' : ''}`} aria-current={activeTab === 'phone-orders' ? 'page' : undefined} onClick={() => { setActiveTab('phone-orders'); setStatsData(null); }}>
                         Telefonbeställning
                     </button>
                     )}
                     {isOwner && (
-                    <button className={`admin-tab ${activeTab === 'menu' ? 'active' : ''}`} onClick={() => { setActiveTab('menu'); setStatsData(null); }}>
+                    <button className={`admin-tab ${activeTab === 'menu' ? 'active' : ''}`} aria-current={activeTab === 'menu' ? 'page' : undefined} onClick={() => { setActiveTab('menu'); setStatsData(null); }}>
                         Meny
                     </button>
                     )}
                     {isOwner && (
-                    <button className={`admin-tab ${activeTab === 'delivery-pricing' ? 'active' : ''}`} onClick={() => { setActiveTab('delivery-pricing'); setStatsData(null); }}>
+                    <button className={`admin-tab ${activeTab === 'delivery-pricing' ? 'active' : ''}`} aria-current={activeTab === 'delivery-pricing' ? 'page' : undefined} onClick={() => { setActiveTab('delivery-pricing'); setStatsData(null); }}>
                         Leveranspriser
                     </button>
                     )}
-                    <button className={`admin-tab ${activeTab === 'rush' ? 'active' : ''}`} onClick={() => { setActiveTab('rush'); setStatsData(null); }}>
+                    <button className={`admin-tab ${activeTab === 'rush' ? 'active' : ''}`} aria-current={activeTab === 'rush' ? 'page' : undefined} onClick={() => { setActiveTab('rush'); setStatsData(null); }}>
                         Inställningar
                     </button>
                     {isOwner && (
-                    <button className={`admin-tab ${activeTab === 'stats' ? 'active' : ''}`} onClick={handleStatsTabClick}>
+                    <button className={`admin-tab ${activeTab === 'stats' ? 'active' : ''}`} aria-current={activeTab === 'stats' ? 'page' : undefined} onClick={handleStatsTabClick}>
                         Statistik
                     </button>
                     )}
-                </div>
+                </nav>
 
                 {isOwner && (activeTab === 'pending' || activeTab === 'preorders' || activeTab === 'active' || activeTab === 'history') && (
                     <div className="place-filter" role="group" aria-label="Filtrera plats">
