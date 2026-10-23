@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "engines": {
-    "node": "^22.23.4"
+    "node": "^24.22.1"
   },
   "scripts": {
     "test:phone-orders": "node --test tests/phone-order-printer.test.cjs",
@@ -13,7 +13,7 @@
     "test:countdown": "node --test tests/order-countdown.test.cjs",
     "test:alarm": "node --test tests/order-alarm.test.cjs tests/order-queue-refresh.test.cjs tests/pre-orders.test.cjs",
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "node --version && tsc -b && vite build",
     "preview": "vite preview",
     "test:alarm:browser": "node --test tests/admin-order-alarm.browser.cjs"
   },
