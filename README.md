@@ -53,7 +53,7 @@ The `shared/` directory contains only **UI-agnostic** code that can be used by b
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 22.23.4 or a later 22.x security release (see `.nvmrc`)
 - npm 9+
 
 ### Installation
