@@ -585,3 +585,49 @@ test('phone pickup shows date and time directly, preserves chosen times and keep
   assert.equal(state.phoneRequests.at(-1).scheduledTime, '2026-10-15T16:50:00');
   assert.equal(new Set(state.phoneRequests.map(request => request.requestId)).size, 3);
 });
+
+test('an expired phone pickup shows an actionable error and can be corrected without losing the order', { timeout: 30000 }, async t => {
+  const product = { id: '11111111-1111-4111-8111-111111111111', name: 'Kunafa', price: 5000,
+    category: 'Kunafa', inStock: true, hidden: false, stockByLocation: { [MOLLE]: true }, variantPrices: { '250 gram': 5000 } };
+  const { page, state } = await setup(t, { profile: 'owner', products: [product], nowMs: Date.parse('2026-10-23T17:20:00+02:00') });
+  page.setDefaultTimeout(6000);
+  await page.clock.setFixedTime(new Date(state.nowMs));
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole('button', { name: 'Telefonbeställning', exact: true }).click();
+  await page.getByLabel('Lokal för upphämtning').selectOption(MOLLE);
+  await page.getByRole('button', { name: 'Lägg till Kunafa', exact: true }).click();
+  await page.getByLabel('Datum för hämtning').fill('2026-10-23');
+  await page.getByLabel('Tid för hämtning').fill('18:00');
+  await page.getByLabel('Tid för hämtning').fill('17:50');
+  await page.getByLabel('Förnamn', { exact: true }).fill('على التلفون');
+  await page.getByLabel('Notis till lokalen (valfritt)').fill('Utan sirap');
+
+  // Selecting the date pins the time. The moving minimum overtakes it while
+  // the admin enters the customer details (the reported mobile failure).
+  state.nowMs = Date.parse('2026-10-23T17:23:00+02:00');
+  await page.clock.setFixedTime(new Date(state.nowMs));
+  await page.getByRole('button', { name: /Förbeställningar/ }).click();
+  await page.getByRole('button', { name: 'Telefonbeställning', exact: true }).click();
+  const time = page.getByLabel('Tid för hämtning');
+  assert.equal(await time.inputValue(), '17:50', 'keep the explicit choice until the admin corrects it');
+  assert.equal(await time.evaluate(input => input.validity.rangeUnderflow), true);
+  await page.evaluate(() => document.addEventListener('invalid', event => {
+    setTimeout(() => { window.__phoneInvalidPrevented = event.defaultPrevented; }, 0);
+  }, true));
+  const submit = page.getByRole('button', { name: 'Skicka beställning till Möllevången', exact: true });
+  await submit.click();
+  await page.getByRole('alert').filter({ hasText: 'Tiden är för tidig. Tidigast möjliga tid är kl. 17:55.' }).waitFor();
+  assert.equal(await page.evaluate(() => window.__phoneInvalidPrevented), true, 'suppress the native mobile validation tooltip');
+  assert.equal(await time.evaluate(input => document.activeElement === input), true);
+  assert.equal(state.phoneRequests.length, 0, 'an invalid pickup must never reach the API');
+  await page.getByRole('button', { name: 'Välj tidigaste hämtningstid', exact: true }).click();
+  assert.equal(await time.inputValue(), '17:55');
+  assert.equal(await page.getByLabel('Förnamn', { exact: true }).inputValue(), 'على التلفون');
+  assert.equal(await page.getByLabel('Notis till lokalen (valfritt)').inputValue(), 'Utan sirap');
+  await submit.click();
+  await page.locator('.phone-orders__success').waitFor();
+  assert.equal(state.phoneRequests.length, 1);
+  assert.equal(state.phoneRequests[0].scheduledTime, '2026-10-23T17:55:00');
+  assert.equal(state.phoneRequests[0].customer.firstName, 'على التلفون');
+  assert.equal(state.phoneRequests[0].items.length, 1);
+});
