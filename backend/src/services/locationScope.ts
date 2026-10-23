@@ -14,8 +14,11 @@ export type OrderLocationRef = {
   locationId?: string | null;
 };
 
+export class AdminAccessDeniedError extends Error {}
+
 export function parseAdminRole(value: unknown): AdminRole {
-  return value === 'location' ? 'location' : 'owner';
+  if (value === 'owner' || value === 'location') return value;
+  throw new AdminAccessDeniedError('Invalid administrator role');
 }
 
 export function orderVisibleToScope(scope: AdminScope, order: OrderLocationRef): boolean {
@@ -53,7 +56,7 @@ export async function loadAdminScope(adminId: string): Promise<AdminScope> {
   }
 
   if (!data) {
-    return { adminId, role: 'owner', locationId: null, fulfillsDelivery: false };
+    throw new AdminAccessDeniedError('Administrator account does not exist');
   }
 
   const role = parseAdminRole((data as Row).role);
@@ -73,7 +76,12 @@ export async function loadAdminScopes(adminIds: string[]): Promise<Map<string, A
   const scopes = new Map<string, AdminScope>();
   await Promise.all(
     unique.map(async (id) => {
-      scopes.set(id, await loadAdminScope(id));
+      try {
+        scopes.set(id, await loadAdminScope(id));
+      } catch (error) {
+        // Stale push subscriptions must not grant access or block other recipients.
+        if (!(error instanceof AdminAccessDeniedError)) throw error;
+      }
     })
   );
   return scopes;

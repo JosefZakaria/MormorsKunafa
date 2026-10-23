@@ -56,7 +56,7 @@ test('owner phone orders enter the selected location queue without online paymen
   await once(database, 'listening');
   process.env.SUPABASE_URL = `http://127.0.0.1:${database.address().port}`;
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'phone-orders-test-only';
-  process.env.JWT_SECRET = 'phone-orders-test-only';
+  process.env.JWT_SECRET = 'phone-orders-test-only-strong-secret-32';
   for (const key of ['RESEND_API_KEY', 'STRIPE_SECRET_KEY', 'SINCH_PROJECT_ID', 'SINCH_KEY_ID', 'SINCH_KEY_SECRET', 'SINCH_APP_ID', 'WEB_PUSH_VAPID_PUBLIC_KEY', 'WEB_PUSH_VAPID_PRIVATE_KEY']) delete process.env[key];
   const { default: router } = await import('../dist/routes/orders.js');
   const { signToken } = await import('../dist/middleware/auth.js');
@@ -81,7 +81,7 @@ test('owner phone orders enter the selected location queue without online paymen
     await t.test('anonymous and location accounts cannot create orders; live role beats JWT', async () => {
       assert.equal((await call('/admin/phone-orders', 'POST', payload(), null)).status, 401);
       assert.equal((await call('/admin/phone-orders', 'POST', payload(), 'hoja-admin')).status, 403);
-      assert.equal((await call('/admin/phone-orders', 'POST', payload(), 'deleted-admin')).status, 403);
+      assert.equal((await call('/admin/phone-orders', 'POST', payload(), 'deleted-admin')).status, 401);
       users[0].role = 'location'; users[0].location_id = hoja;
       assert.equal((await call('/admin/phone-orders', 'POST', payload())).status, 403);
       users[0].role = 'owner'; users[0].location_id = null;

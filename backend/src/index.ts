@@ -9,6 +9,7 @@ import { handleStripeWebhook } from './routes/stripeWebhook.js';
 import { handleSwishCallback } from './routes/swishCallback.js';
 import { getPublicWebAppUrlDiagnostics } from './utils/publicWebAppUrl.js';
 import { configureWebPush, isWebPushConfigured } from './services/pushNotifications.js';
+import { isJwtConfigured } from './middleware/auth.js';
 
 const app = express();
 configureWebPush();
@@ -64,7 +65,7 @@ app.get('/api/health', (_req, res) => {
   const hasSupabase = Boolean(
     process.env.SUPABASE_URL?.trim() && process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
   );
-  const hasJwt = Boolean(process.env.JWT_SECRET?.trim());
+  const hasJwt = isJwtConfigured();
   if (!hasSupabase) {
     res.status(503).json({
       ok: false,
@@ -76,6 +77,7 @@ app.get('/api/health', (_req, res) => {
   res.json({
     ok: true,
     supabase: true,
+    nodeVersion: process.version,
     jwtConfigured: hasJwt,
     webPushConfigured: isWebPushConfigured(),
     stripeWebhookConfigured: Boolean(process.env.STRIPE_WEBHOOK_SECRET?.trim()),

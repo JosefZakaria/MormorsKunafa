@@ -49,7 +49,7 @@ test('delivery checkout uses saved settings and freezes server-calculated terms'
   await once(database, 'listening');
   process.env.SUPABASE_URL = `http://127.0.0.1:${database.address().port}`;
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'local-checkout-test-only';
-  process.env.JWT_SECRET = 'local-checkout-test-only';
+  process.env.JWT_SECRET = 'local-checkout-test-only-strong-secret-32';
   // No real payment, messaging, or printer services are used.
   delete process.env.RESEND_API_KEY;
   delete process.env.STRIPE_SECRET_KEY;

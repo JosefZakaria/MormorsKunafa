@@ -3,6 +3,9 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "engines": {
+    "node": "^22.23.4"
+  },
   "scripts": {
     "test:phone-orders": "node --test tests/phone-order-printer.test.cjs",
     "test:printer": "node --test tests/printer-connection.test.cjs tests/phone-order-printer.test.cjs",
