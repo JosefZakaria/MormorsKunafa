@@ -4,13 +4,13 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": "^22.23.4"
+    "node": "^24.22.1"
   },
   "scripts": {
     "test:auth": "npm run build && node --test tests/auth.test.mjs",
     "test:phone-orders": "npm run build && node --test tests/phone-orders.test.mjs",
     "test:delivery-pricing": "npm run build && node --test tests/delivery-*.test.mjs",
-    "build": "npm run build --workspace=@mormors-kunafa/shared && node scripts/sync-shared-dist.mjs src && tsc && node scripts/sync-shared-dist.mjs dist",
+    "build": "node --version && npm run build --workspace=@mormors-kunafa/shared && node scripts/sync-shared-dist.mjs src && tsc && node scripts/sync-shared-dist.mjs dist",
     "start": "node dist/index.js",
     "dev": "npm run build --workspace=@mormors-kunafa/shared && node scripts/sync-shared-dist.mjs src && tsx watch src/index.ts",
     "db:migrate": "tsx src/scripts/run-schema.ts",
