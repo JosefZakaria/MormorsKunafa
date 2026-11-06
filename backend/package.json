@@ -9,6 +9,7 @@
   "scripts": {
     "test:auth": "npm run build && node --test tests/auth.test.mjs",
     "test:phone-orders": "npm run build && node --test tests/phone-orders.test.mjs",
+    "test:voice-order-policy": "npm run build && node --test tests/voice-order-policy.test.mjs",
     "test:delivery-pricing": "npm run build && node --test tests/delivery-*.test.mjs",
     "build": "node --version && npm run build --workspace=@mormors-kunafa/shared && node scripts/sync-shared-dist.mjs src && tsc && node scripts/sync-shared-dist.mjs dist",
     "start": "node dist/index.js",
