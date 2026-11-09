@@ -9,8 +9,12 @@ från aktuella produktdata och sådant som ännu saknas.
 - `backend/src/utils/voiceOpeningHours.ts` förbereder lokalernas grundschema och mottagning
   av upplösta öppettider från en framtida gemensam öppettidstjänst.
 - Den används ännu inte av någon route, ElevenLabs, orderkö eller telefonanslutning.
-- Inga produktpriser, lageruppgifter eller produktposter har ändrats i databasen.
-- Steg 1 är förberett i kod och dokumentation. Steg 2 är inventerat; produktkompletteringar återstår.
+- `backend/src/db/prepare-voice-products.sql` förbereder två dolda produktposter och lager per lokal.
+  Skriptet har körts i MormorsKunafas Supabase-projekt. Båda posterna verifierades
+  med rätt priser, dolda i webbmenyn och ej i lager på båda lokalerna. RLS var aktivt
+  på både `products` och `product_location_stock` efter körningen.
+- Steg 1 är förberett i kod och dokumentation. För steg 2 är produktposterna inlagda;
+  tillgänglighet behöver aktiveras per lokal när produkterna ska kunna beställas.
 - `priced` i modulens katalogresultat betyder bara att produktkoppling och pris finns.
   Det är inte ett godkännande av lager, öppettider, pausstatus eller registrering.
 
@@ -18,14 +22,18 @@ från aktuella produktdata och sådant som ännu saknas.
 
 - Ostkunafa på tallrik: malen eller krispig; liten för 2 och stor för 4 personer.
 - Kunafa med ashta: endast krispig; liten för 3 och stor för 6 personer.
-  Ägaren har bekräftat liten 179 kr och stor 299 kr. Beloppen finns som
-  `setupPriceOre` inför skapandet av produktposterna, inte som ersättning för runtime-priser.
+  Ägaren har bekräftat liten 179 kr och stor 299 kr. Beloppen finns i SQL-underlaget.
+  Utan sirap och utan pistage är gratis när kunden själv ber om det.
 - Kunafa i bröd: endast malen; räknas per styck, utan tallriksstorlek.
 - Bara bröd/kake: en separat produkt. Vid oklar beställning av kake behöver fyllningen förtydligas.
 - Vid ”två kunafa” förtydligas först bröd/tallrik om sammanhanget inte redan anger det.
   Antal och portionsstorlek hålls isär; inga fria gissningar från transkriptionen till en produkt.
-- Stor bricka: 20–25 personer; föreslås inte för små sällskap.
-  Ägaren har bekräftat priset 1 000 kr per bricka; produktkopplingen saknas ännu.
+- Stor bricka: 25 personer, malen eller krispig med ost, 1 000 kr per bricka.
+  Endast hämtning på Höja och minst två timmars framförhållning. AI:n får ta emot
+  beställningar på standardbrickan i hämtflödet. Extra/mindre ost, utan sirap och
+  utan pistage är gratis när kunden själv ber om det. Brickan föreslås för stora sällskap.
+- Ashtakunafa och den stora brickan ska vara dolda i webbmenyn vid uppläggning.
+  Ägaren kan visa dem senare med adminpanelens befintliga val **Visa på menyn**.
 - Extra/mindre ost samt utan sirap/pistage är gratis för ostkunafa.
   Anpassningar kopplas till rätt orderrad och föreslås inte på eget initiativ.
 - Ingen offert eller beställningsregistrering för specialupplägg till bröllop/förlovning/fest.
@@ -36,7 +44,9 @@ från aktuella produktdata och sådant som ännu saknas.
 - Normalt 15 minuter; fler än 4 stora kunafa ger 20 minuter. Exakt 4 ger 15 minuter.
   Modulen räknar ihop stora ostkunafa (4 personer) och stora ashta (6 personer) över alla rader.
   Bröd och små kunafa ökar inte antalet stora. Regeln ändrar ännu inte befintlig ordertid.
-- Tidsregeln för 20–25-personersbrickan är inte fastställd; modulen ger inget automatiskt tidsbesked för den.
+- En order som innehåller en 25-personersbricka får minst 120 minuter till gemensam
+  hämtning, även om övriga rader annars skulle ge 15 eller 20 minuter. Kontrollera
+  Höjas öppettider och lager innan hämtningstiden bekräftas.
 - Priser nämns bara på fråga. Koden räknar ändå totalsumman från aktuella priser.
 - Arabiska ord: ناعمة = malen, خشنة = krispig, قطر = sirap,
   فستق = pistage, جبنة = ost, قشطة = ashta.
@@ -73,9 +83,24 @@ ska hämtas aktuellt per lokal; dokumentet är inte ett löfte om lagerstatus.
 Den offentliga listan omfattade 13 produkter. En efterföljande skrivskyddad SQL-läsning
 av hela `public.products` i projektet `MormorsKunafa` (`zwxdvyxrvixlsetylhur`) bekräftade
 samma 13 poster och priser, samtliga med `hidden=false`. Det finns alltså ingen dold
-produktpost för kunafa med ashta eller 20–25-personersbrickan i denna tabell vid kontrollen.
-Modulens två kopplingar lämnas `null` tills rätt ID och priser har lagts till och
-kontrollerats. Ingen matchning görs enbart på ordet ”ashta”.
+produktpost för kunafa med ashta eller 25-personersbrickan i denna tabell vid kontrollen.
+De nya posterna har nu förberedda ID:n i SQL-underlaget och motsvarande kopplingar i
+telefonreglerna. Före uppläggning ger katalogen `product_missing`. Ingen matchning
+görs enbart på ordet ”ashta”.
+
+## Uppläggning och synlighet
+
+- SQL-underlaget skapar båda posterna med `hidden=true` och använder samma produkt-ID:n
+  som telefonreglerna. Det startar med ej i lager per lokal, eftersom tillgängligheten
+  för de nya varorna inte är bekräftad.
+- Vid omkörning sparas redan gjorda adminändringar för respektive produkt-ID.
+- Den publika produktlistan filtrerar bort dolda produkter och vanlig checkout
+  avvisar dem. När ägaren väljer **Visa på menyn** används ordinarie menylogik.
+- Telefonreglernas katalog får läsa pris för de två särskilt utpekade produkterna
+  även när de är dolda från hemsidan. Övriga dolda produkter förblir spärrade.
+- Det befintliga manuella telefonorderflödet avvisar fortfarande dolda produkter.
+  Den framtida skyddade AI-anslutningen behöver använda telefonreglerna och
+  kontrollera lager och öppettider innan någon order kan sparas.
 
 ## Källor för priser och produktdata
 
@@ -87,10 +112,8 @@ kontrollerats. Ingen matchning görs enbart på ordet ”ashta”.
   `rowToProduct`-resultat som redan har fått gamla reservpriser från `variantPricesForProduct`.
 - Saknat/ogiltigt variantpris får inte ersättas med produktens frånpris eller
   de gamla 149/249-kronorspriserna i `defaultVariantPrices.ts`.
-- Livekatalogens prisresultat använder inga fasta reservpriser. Ändrade indata ger ändrat prisresultat.
-  De nya ägarbekräftade priserna används endast som underlag för kommande produktregistrering.
-  `setupPriceOre` tas bort ur resultatet från `buildVoiceProductChoices`, så en saknad
-  databasprodukt fortfarande får `product_missing` och inte kan prissättas därifrån.
+- Katalogen läser aktuella priser från produktposterna. En saknad databasprodukt
+  får `product_missing` och kan inte prissättas från SQL-underlaget.
 - Katalogmappningen omfattar i detta steg de särskilda kunafaprodukterna och bröd.
   Övriga bakverk ska få egna verifierade regler innan de används i orderverktyget.
 
@@ -126,18 +149,18 @@ Källa: `GET https://mormors-kunafa-backend.vercel.app/api/locations` 2026-11-05
 
 ## Återstående arbete före en orderkoppling
 
-1. Skapa rätt katalogposter för ashtakunafa (179/299 kr) och stor bricka (1 000 kr).
-   Den aktuella kontrollen omfattar även dolda produkter; inga motsvarande poster hittades.
-2. Fastställ den stora brickans fyllning/variant och tillagningstid.
-3. Anslut superadmins kommande schema/datumundantag som gemensam källa för hemsida och AI.
+1. Aktivera lager för rätt lokaler när produkterna ska kunna beställas.
+   Brickan får endast erbjudas för hämtning på Höja.
+2. Anslut superadmins kommande schema/datumundantag som gemensam källa för hemsida och AI.
    Ordinarie tider är nu bekräftade, inklusive Höjas måndagsstängning.
-4. Koppla verifierad katalog, lager, pausflaggor och öppettider till en skyddad läsroute (planens steg 3).
-5. Koppla 15/20-minutersregeln till orderkontroll och hantera kundvald tid separat (steg 4).
-6. Spara anpassningar per orderrad. Nuvarande manuella telefonorder har en generell notis,
+3. Koppla verifierad katalog, lager, pausflaggor och öppettider till en skyddad läsroute (planens steg 3).
+4. Koppla 15/20-minutersregeln och brickans framförhållning till orderkontroll (steg 4).
+   Spärra 25-personersbrickan för andra hämtningslokaler än Höja.
+5. Spara anpassningar per orderrad. Nuvarande manuella telefonorder har en generell notis,
    men sätter `modifications_json` till null.
-7. Lägg till kundbekräftelse, atomiskt sparande, dubbleringsskydd och separat integrationstillgång.
+6. Lägg till kundbekräftelse, atomiskt sparande, dubbleringsskydd och separat integrationstillgång.
    Återanvänd inte ägarens inloggning. Nuvarande telefonroute kräver ägarbehörighet.
-8. Bygg testflöde utan operativa order/notiser innan ElevenLabs kopplas till skrivande verktyg.
+7. Bygg testflöde utan operativa order/notiser innan ElevenLabs kopplas till skrivande verktyg.
 
 ## Verifiering
 

@@ -1,20 +1,26 @@
 /** Owner-confirmed telephone rules. Not connected to live routes yet.
  * Prices, stock, opening hours and pause flags must come from current data.
  */
+import type { LocationSlug } from '@mormors-kunafa/shared/types';
+
 type ProductRule = {
   key: string;
-  productId: string | null;
+  productId: string;
   name: string;
   serving: 'plate' | 'bread' | 'bread_only' | 'tray';
   filling: 'cheese' | 'ashta' | null;
   texture: 'ground' | 'crispy' | null;
+  /** This product can be offered by phone even while hidden from the web menu. */
+  availableWhenHidden?: true;
+  pickupLocationSlug?: LocationSlug;
+  minimumLeadMinutes?: 120;
+  freeCustomizations?: readonly string[];
   options: readonly {
     key: string;
     persons: number | null;
     catalogOption: string | null;
     countsAsLarge: boolean;
-    /** Owner-confirmed setup data only. Never a runtime fallback for a missing DB price. */
-    setupPriceOre?: number;
+    texture?: 'ground' | 'crispy';
   }[];
 };
 
@@ -47,18 +53,23 @@ export const VOICE_PRODUCT_RULES = [
   },
   {
     // Do not borrow the ID or prices of Ashta Baklawa or Mad bel Ashta.
-    key: 'crispy_ashta', productId: null,
+    key: 'crispy_ashta', productId: 'd1671a64-2ae3-407a-b9cc-e417678f26f0', availableWhenHidden: true,
     name: 'Krispig kunafa med ashta', serving: 'plate', filling: 'ashta', texture: 'crispy',
+    freeCustomizations: ['utan sirap', 'utan pistage'],
     options: [
-      { key: 'small', persons: 3, catalogOption: null, countsAsLarge: false, setupPriceOre: 17900 },
-      { key: 'large', persons: 6, catalogOption: null, countsAsLarge: true, setupPriceOre: 29900 },
+      { key: 'small', persons: 3, catalogOption: '3 personer', countsAsLarge: false },
+      { key: 'large', persons: 6, catalogOption: '6 personer', countsAsLarge: true },
     ],
   },
   {
-    // Price confirmed; filling, variant, product binding and preparation still need completion.
-    key: 'large_tray', productId: null,
-    name: 'Bricka för 20–25 personer', serving: 'tray', filling: null, texture: null,
-    options: [{ key: 'tray', persons: null, catalogOption: null, countsAsLarge: false, setupPriceOre: 100000 }],
+    key: 'large_tray', productId: 'bf8ec400-450b-4726-bc58-d2b6a53a28a6', availableWhenHidden: true,
+    name: 'Kunafabricka för 25 personer', serving: 'tray', filling: 'cheese', texture: null,
+    pickupLocationSlug: 'hoja', minimumLeadMinutes: 120,
+    freeCustomizations: ['extra ost', 'mindre ost', 'utan sirap', 'utan pistage'],
+    options: [
+      { key: 'ground', persons: 25, catalogOption: 'Malen med ost · 25 personer', texture: 'ground', countsAsLarge: false },
+      { key: 'crispy', persons: 25, catalogOption: 'Krispig med ost · 25 personer', texture: 'crispy', countsAsLarge: false },
+    ],
   },
 ] as const satisfies readonly ProductRule[];
 
@@ -98,16 +109,15 @@ function currentPrice(product: VoiceCatalogProduct, option: string | null): numb
 export function buildVoiceProductChoices(products: readonly VoiceCatalogProduct[]) {
   const byId = new Map(products.map(product => [product.id, product]));
   return VOICE_PRODUCT_RULES.map(rule => {
-    const product = rule.productId ? byId.get(rule.productId) : undefined;
+    const product = byId.get(rule.productId);
+    const hiddenFromPhone = product?.hidden === true && !('availableWhenHidden' in rule);
     return {
       ...rule,
-      options: rule.options.map(rawOption => {
-        // Setup prices belong to product provisioning, not the agent's live catalog.
-        const { setupPriceOre: _setupPriceOre, ...option } = rawOption as ProductRule['options'][number];
-        const priceOre = product && product.hidden !== true
+      options: rule.options.map(option => {
+        const priceOre = product && !hiddenFromPhone
           ? currentPrice(product, option.catalogOption) : null;
         const catalogStatus = !product ? 'product_missing'
-          : product.hidden === true ? 'hidden'
+          : hiddenFromPhone ? 'hidden'
           : priceOre === null ? 'price_missing' : 'priced';
         return { ...option, priceOre, catalogStatus };
       }),
@@ -118,21 +128,23 @@ export function buildVoiceProductChoices(products: readonly VoiceCatalogProduct[
 type VoiceProductKey = (typeof VOICE_PRODUCT_RULES)[number]['key'];
 export type VoicePreparationLine = { productKey: VoiceProductKey; optionKey: string; quantity: number };
 
-/** Only ordinary mapped kunafa/bread lines. Other products need explicit handling. */
-export function voicePreparationMinutes(lines: readonly VoicePreparationLine[]): 15 | 20 {
+/** Minimum lead time for the mapped lines. Stock and opening hours are checked separately. */
+export function voicePreparationMinutes(lines: readonly VoicePreparationLine[]): 15 | 20 | 120 {
   if (lines.length === 0) throw new Error('Beställningen saknar produkter.');
   let largeCount = 0;
+  let minimumLeadMinutes: 0 | 120 = 0;
   for (const line of lines) {
     if (!Number.isSafeInteger(line.quantity) || line.quantity < 1 || line.quantity > 100) {
       throw new Error('Ogiltigt antal.');
     }
     const rule = VOICE_PRODUCT_RULES.find(candidate => candidate.key === line.productKey);
     if (!rule) throw new Error('Okänd produkt.');
-    if (rule.serving === 'tray') throw new Error('Tillagningstid för den stora brickan behöver fastställas.');
     const option = rule.options.find(candidate => candidate.key === line.optionKey);
     if (!option) throw new Error('Ogiltig storlek för produkten.');
     if (option.countsAsLarge) largeCount += line.quantity;
+    if ('minimumLeadMinutes' in rule) minimumLeadMinutes = rule.minimumLeadMinutes;
   }
+  if (minimumLeadMinutes) return minimumLeadMinutes;
   return largeCount > VOICE_ORDER_POLICY.largeOrderThresholdExclusive
     ? VOICE_ORDER_POLICY.largeOrderPreparationMinutes : VOICE_ORDER_POLICY.defaultPreparationMinutes;
 }

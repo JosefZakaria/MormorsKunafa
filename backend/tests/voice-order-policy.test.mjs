@@ -62,7 +62,7 @@ test('ashta kunafa never borrows a similarly named dessert; missing mappings and
     { id: groundId, price_ore: 13900, variant_prices: { '2 personer': 13900 }, hidden: true },
   ]);
   assert.equal(find(choices, 'crispy_ashta', 'small').catalogStatus, 'product_missing');
-  assert.equal(find(choices, 'large_tray', 'tray').catalogStatus, 'product_missing');
+  assert.equal(find(choices, 'large_tray', 'ground').catalogStatus, 'product_missing');
   assert.equal(find(choices, 'ground_cheese', 'small').catalogStatus, 'hidden');
   assert.equal(find(choices, 'ground_cheese', 'small').priceOre, null);
 });
@@ -74,15 +74,35 @@ test('ambiguous, invalid and unsupported lines cannot silently receive a prepara
   }
 });
 
-test('confirmed setup prices do not make missing products quotable or leak into the live catalog', () => {
-  const choices = buildVoiceProductChoices([]);
-  for (const key of ['crispy_ashta', 'large_tray']) {
-    for (const option of choices.find(product => product.key === key).options) {
-      assert.equal(option.priceOre, null);
-      assert.equal(option.catalogStatus, 'product_missing');
-      assert.equal(Object.hasOwn(option, 'setupPriceOre'), false);
-    }
+test('ashta and the large tray use database prices regardless of the web visibility toggle', () => {
+  const ashta = {
+    id: 'd1671a64-2ae3-407a-b9cc-e417678f26f0', price_ore: 17900,
+    variant_prices: { '3 personer': 17900, '6 personer': 29900 }, hidden: true,
+  };
+  const tray = {
+    id: 'bf8ec400-450b-4726-bc58-d2b6a53a28a6', price_ore: 100000, hidden: true,
+    variant_prices: { 'Malen med ost · 25 personer': 100000, 'Krispig med ost · 25 personer': 100000 },
+  };
+  const hiddenChoices = buildVoiceProductChoices([ashta, tray]);
+  assert.equal(find(hiddenChoices, 'crispy_ashta', 'small').priceOre, 17900);
+  assert.equal(find(hiddenChoices, 'crispy_ashta', 'large').priceOre, 29900);
+  for (const key of ['ground', 'crispy']) {
+    const choice = find(hiddenChoices, 'large_tray', key);
+    assert.equal(choice.priceOre, 100000);
+    assert.equal(choice.persons, 25);
+    assert.equal(choice.catalogStatus, 'priced');
   }
+  assert.equal(hiddenChoices.find(product => product.key === 'large_tray').pickupLocationSlug, 'hoja');
+  const visibleChoices = buildVoiceProductChoices([{ ...ashta, hidden: false }, { ...tray, hidden: false }]);
+  assert.deepEqual(visibleChoices, hiddenChoices);
+});
+
+test('a tray requires two hours even alongside five large ordinary kunafa', () => {
+  assert.equal(voicePreparationMinutes([line('large_tray', 'ground', 1)]), 120);
+  assert.equal(voicePreparationMinutes([
+    line('large_tray', 'crispy', 1), line('ground_cheese', 'large', 3), line('crispy_ashta', 'large', 2),
+  ]), 120);
+  assert.equal(voicePreparationMinutes([line('ground_cheese', 'large', 3), line('crispy_ashta', 'large', 2)]), 20);
 });
 
 test('Höja is closed on Mondays while Möllevången remains open; both open on Tuesday', () => {
