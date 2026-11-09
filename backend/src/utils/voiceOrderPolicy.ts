@@ -1,4 +1,4 @@
-/** Owner-confirmed telephone rules. Not connected to live routes yet.
+/** Owner-confirmed telephone rules. Order registration is not connected yet.
  * Prices, stock, opening hours and pause flags must come from current data.
  */
 import type { LocationSlug } from '@mormors-kunafa/shared/types';
@@ -96,7 +96,7 @@ function validPrice(value: unknown): value is number {
 }
 
 /** Explicitly missing prices remain missing; never use descriptions or old constants. */
-function currentPrice(product: VoiceCatalogProduct, option: string | null): number | null {
+export function currentVoiceCatalogPrice(product: VoiceCatalogProduct, option: string | null): number | null {
   if (option === null) return validPrice(product.price_ore) ? product.price_ore : null;
   const variants = product.variant_prices;
   if (!variants || typeof variants !== 'object' || Array.isArray(variants)) return null;
@@ -115,7 +115,7 @@ export function buildVoiceProductChoices(products: readonly VoiceCatalogProduct[
       ...rule,
       options: rule.options.map(option => {
         const priceOre = product && !hiddenFromPhone
-          ? currentPrice(product, option.catalogOption) : null;
+          ? currentVoiceCatalogPrice(product, option.catalogOption) : null;
         const catalogStatus = !product ? 'product_missing'
           : hiddenFromPhone ? 'hidden'
           : priceOre === null ? 'price_missing' : 'priced';
