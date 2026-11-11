@@ -2,7 +2,7 @@
  * Shared Types
  * 
  * This module contains TypeScript types and interfaces that are shared
- * across the web frontend, mobile frontend, and backend.
+ * across the web frontend and backend.
  * 
  * IMPORTANT: Do not add any UI-specific code here.
  * Types should be pure data structures only.

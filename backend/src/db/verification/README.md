@@ -6,7 +6,7 @@ The migration file is an exact copy of the applied SQL, using the remote version
 
 ## Access model
 
-The web/mobile clients call Express. Express uses `service_role` and its own
+The web client calls Express. Express uses `service_role` and its own
 admin authentication. All nine application tables in `public` therefore have
 RLS enabled with no client policies. This intentionally denies direct access.
 All table and sequence privileges were revoked from `PUBLIC`, `anon`, and

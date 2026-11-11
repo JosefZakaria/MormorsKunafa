@@ -8,7 +8,7 @@
 
 
 
-KRAVDOKUMENT – Mormors Kunafa App
+KRAVDOKUMENT – Mormors Kunafa
 Version 1.3 - 2025-12-04
 
 
@@ -33,7 +33,7 @@ Beskrivning
 Författare
 25-12-01
 1.0
-Första utkast. Anpassning av mall och struktur. Fullständig omskrivning till Mormors Kunafa App.
+Första utkast. Anpassning av mall och struktur. Fullständig omskrivning till Mormors Kunafa.
 Josef Zakaria
 25-12-01
 1.1
@@ -94,9 +94,9 @@ Josef Zakaria
 
 
 2. Syfte
-Detta dokument beskriver de krav som ställs på Mormors Kunafa App, en mobilapplikation för beställning av kunafa och relaterade produkter. Dokumentet fungerar som ett styrdokument för utvecklingen, där både funktionella och kvalitativa krav specificeras.
+Detta dokument beskriver de krav som ställs på Mormors Kunafas webbapplikation för beställning av kunafa och relaterade produkter. Dokumentet fungerar som ett styrdokument för utvecklingen, där både funktionella och kvalitativa krav specificeras.
 Applikationen består av två huvuddelar:
-Kundapp – där användaren kan:
+Kundwebb – där användaren kan:
 Se meny
 Beställa kunafa
 Välja mellan äta här, ta med eller leverans
@@ -120,7 +120,7 @@ Intern vy för restaurangpersonalen där beställningar hanteras.
 Orderstatus
 Steg i beställningsflödet: mottagen, påbörjad, redo, uthämtad.
 Default-tid
-Standardtiden som appen använder för att beräkna när beställningen bör vara klar.
+Standardtiden som webbapplikationen använder för att beräkna när beställningen bör vara klar.
 Nedräkning
 Timer som visar hur lång tid som återstår tills maten är klar.
 Förbeställning
@@ -131,8 +131,8 @@ Notis som skickas till kund och admin vid viktiga händelser.
 
 4. Funktionella krav (F)
 4.1 Kategorier
-Appens funktionella krav delas in i följande kategorier:
-Kundfunktioner (Kund) – allt kunden gör i appen
+Webbapplikationens funktionella krav delas in i följande kategorier:
+Kundfunktioner (Kund) – allt kunden gör på webbplatsen
 Beställningshantering (Order) – logik för att skapa och följa beställningar
 Adminfunktioner (Admin) – funktioner för personalen
 Notiser (Notis) – allt som rör notifikationer
@@ -201,7 +201,7 @@ Timer för varje order
 Hur lång tid är kvar
 Orderdetaljer
 //Kunna se när kunden lade beställningen, tid
-//Se när kunden har valt att beställningen ska upphämtas, ex. kunden köper från appen och fyller i att den kommer kunna hämta beställningen om 40 min, då ska tiden för när den ska hämtas samt timer visas. Likt det som står ovan, men lite mer exakt. 
+//Se när kunden har valt att beställningen ska upphämtas, ex. kunden köper från webbplatsen och fyller i att den kommer kunna hämta beställningen om 40 min, då ska tiden för när den ska hämtas samt timer visas. Likt det som står ovan, men lite mer exakt.
 F.Admin.2.1 – Se förbeställningar – Must:
 Admin ska kunna se beställningar upp till 7 dagar framåt.
 
@@ -248,7 +248,7 @@ Platta
 Färgaccent i Mormors kunafa-tema
 Enkla att förstå
 K.UI.3 – Responsiv design – Must:
-Appen ska fungera på Android & iOS.
+Webbplatsen ska fungera i webbläsare på dator, surfplatta och telefon.
 
 K.SEC – Säkerhet
 K.SEC.1 – Admin-inloggning med kryptering – Must
@@ -261,7 +261,7 @@ K.TECH – Teknisk prestanda
 K.TECH.1 – Realtidsuppdateringar – Must:
 Orderstatus ska uppdateras utan att användaren behöver ladda om sidan.
 K.TECH.2 – Offline-stöd – Could:
-Kundappen ska fungera offline fram till checkout. //Tror inte detta hade funkat, hur ska den ladda ner menyn osv.
+Kundwebben ska fungera offline fram till checkout. //Tror inte detta hade funkat, hur ska den ladda ner menyn osv.
 
 7. Prioritering enligt MoSCoW
 Must:

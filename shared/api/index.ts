@@ -1,18 +1,15 @@
 /**
  * Shared API Helpers
  * 
- * This module contains API-related utilities that can be used by both
- * web and mobile frontends.
+ * This module contains API-related utilities for the web frontend.
  * 
  * IMPORTANT: Do not add any UI framework dependencies here.
  * This should only contain pure JavaScript/TypeScript code.
  */
 
-// Helper to safely get environment variables in both Vite, Expo, and Node environments
+// Helper to safely get environment variables in Vite and Node environments
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 declare const process: any;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-declare const Constants: any; // Expo Constants
 
 function normalizeBaseUrl(url: string): string {
   return url.trim().replace(/\/+$/, '');
@@ -20,15 +17,6 @@ function normalizeBaseUrl(url: string): string {
 
 const getEnvVar = (key: string, fallback: string): string => {
   let value: string | undefined;
-
-  // Check for Expo/React Native environment
-  try {
-    if (typeof Constants !== 'undefined' && Constants.expoConfig?.extra?.[key]) {
-      value = Constants.expoConfig.extra[key] as string;
-    }
-  } catch {
-    // Ignore if Constants is not available
-  }
 
   // Check for Vite environment (web)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -61,13 +49,13 @@ const defaultApiBaseUrl = viteProd
   ? 'https://mormors-kunafa-backend.vercel.app/api'
   : 'http://localhost:3001/api';
 
-// API configuration - works for both web and mobile
+// API configuration
 export const API_CONFIG = {
   baseUrl: getEnvVar('API_BASE_URL', defaultApiBaseUrl),
   timeout: 10000,
 };
 
-// API Error class for consistent error handling across platforms
+// API Error class for consistent error handling
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -79,7 +67,7 @@ export class ApiError extends Error {
   }
 }
 
-// Generic API request function - works for both web and mobile
+// Generic API request function
 export async function apiRequest<T>(
   endpoint: string,
   options?: RequestInit & {
@@ -149,13 +137,8 @@ export async function apiRequest<T>(
   }
 }
 
-// Helper to get auth token from storage (platform-agnostic)
-// Each platform should implement their own storage mechanism
+// Placeholder token provider; callers currently pass their token explicitly.
 export async function getAuthToken(): Promise<string | null> {
-  // This should be implemented per platform:
-  // Web: localStorage.getItem('authToken')
-  // Mobile: AsyncStorage.getItem('authToken') or SecureStore
-  // For now, return null - each app should implement this
   return null;
 }
 

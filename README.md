@@ -1,18 +1,19 @@
 # Mormors Kunafa
 
-A monorepo containing the web and mobile applications for Mormors Kunafa.
+A monorepo containing the web application and backend API for Mormors Kunafa.
 
 ## Project Structure
 
 ```
 MormorsKunafa/
 ├── apps/
-│   ├── mobile/          # Expo React Native mobile app
 │   └── web/             # React (Vite) web application
-├── backend/             # Backend API server (future)
-├── shared/              # Shared code between frontends and backend
+├── backend/             # Express backend API server
+├── shared/              # Shared code between the web frontend and backend
 │   ├── types/           # TypeScript types and interfaces
 │   ├── api/             # API helpers and configuration
+│   ├── constants/       # Shared constants
+│   ├── utils/           # Shared utility functions
 │   └── validation/      # Validation logic
 ├── Docs/                # Project documentation
 └── package.json         # Root monorepo configuration
@@ -20,34 +21,21 @@ MormorsKunafa/
 
 ## Architecture
 
-### Frontend Clients
+### Web Frontend
 
-- **Mobile App** (`apps/mobile`): Expo/React Native app for iOS and Android
-- **Web App** (`apps/web`): React web application for marketing and ordering
+The React web application in `apps/web` provides the customer ordering flow and
+the restaurant administration interface. It consumes the backend API.
 
-**Important**: Web and mobile are completely separate clients. They do NOT share UI components or framework-specific code.
+### Backend
 
-### Backend (Single Source of Truth)
-
-The `backend/` directory will contain the API server that serves as the single source of truth for:
-- Business logic
-- Data persistence
-- Authentication
-- All API endpoints
-
-Both web and mobile frontends consume the same backend API.
+The Express server in `backend` is the source of truth for business logic, data
+persistence, authentication, and API endpoints.
 
 ### Shared Code
 
-The `shared/` directory contains only **UI-agnostic** code that can be used by both frontends and the backend:
-- **types/**: TypeScript interfaces and types
-- **api/**: API client helpers and configuration
-- **validation/**: Data validation functions
-
-**Rules for shared code:**
-- No React, React Native, or Expo dependencies
-- No DOM APIs
-- Pure TypeScript/JavaScript only
+The `shared` directory contains types, API helpers, constants, utilities, and
+validation logic. Keep this code independent of UI frameworks and use pure
+TypeScript/JavaScript.
 
 ## Getting Started
 
@@ -58,47 +46,38 @@ The `shared/` directory contains only **UI-agnostic** code that can be used by b
 
 ### Installation
 
+Install dependencies from the repository root:
+
 ```bash
-# Install all dependencies from root
 npm install
 ```
 
-### Running the Mobile App
+### Running Locally
+
+Start the web application:
 
 ```bash
-# From root
-npm run mobile
-
-# Or from apps/mobile
-cd apps/mobile
-npm start
-```
-
-### Running the Web App
-
-```bash
-# From root
 npm run web
-
-# Or from apps/web
-cd apps/web
-npm run dev
 ```
+
+Start the backend API in a separate terminal:
+
+```bash
+npm run dev:backend
+```
+
+See `backend/README.md` for backend configuration.
 
 ## Development Guidelines
 
-1. **Keep frontends separate**: Never share UI components between web and mobile
-2. **Backend is the source of truth**: All business logic lives in the backend
-3. **Share only pure logic**: Types, validation, and API helpers can be shared
-4. **Follow monorepo conventions**: Use workspace commands from root when possible
+1. Keep UI components in the web application.
+2. Keep business logic and data access in the backend.
+3. Share only framework-independent types, validation, and utilities.
+4. Use workspace commands from the repository root when possible.
 
 ## Scripts
 
-| Command | Description |
-|---------|-------------|
-| `npm run mobile` | Start Expo mobile app |
-| `npm run mobile:android` | Start mobile app on Android |
-| `npm run mobile:ios` | Start mobile app on iOS |
-| `npm run web` | Start web development server |
-| `npm run web:build` | Build web app for production |
-| `npm run web:preview` | Preview production web build |
+- `npm run dev` or `npm run web`: start the web development server.
+- `npm run dev:backend`: start the backend development server.
+- `npm run web:build`: build the web application for production.
+- `npm run web:preview`: preview the production web build.

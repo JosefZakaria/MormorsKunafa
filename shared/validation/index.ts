@@ -2,7 +2,7 @@
  * Shared Validation
  * 
  * This module contains validation logic that can be used by both
- * frontends and the backend to ensure consistent data validation.
+ * the web frontend and backend to ensure consistent data validation.
  * 
  * IMPORTANT: Do not add any UI framework dependencies here.
  * Validation should be pure functions only.

@@ -6,8 +6,6 @@ node_modules/
 dist/
 **/dist/
 build/
-.expo/
-.expo-shared/
 
 # Environment files
 .env
