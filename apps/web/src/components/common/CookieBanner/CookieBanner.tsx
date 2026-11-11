@@ -8,6 +8,7 @@ import {
   saveConsent,
 } from '../../../consent/consent';
 import { useConsent, useConsentSettingsOpen } from '../../../consent/useConsent';
+import { isAdminPath } from '../../../utils/adminPath';
 import './CookieBanner.css';
 
 export const CookieBanner: React.FC = () => {
@@ -26,7 +27,7 @@ export const CookieBanner: React.FC = () => {
     setShowDetails(true);
   }, [settingsRequested, consent]);
 
-  if (pathname.startsWith('/admin')) return null;
+  if (isAdminPath(pathname)) return null;
   if (consent && !settingsRequested) return null;
 
   return (

@@ -1,5 +1,6 @@
 import { API_CONFIG, apiRequest, authenticatedRequest } from '@shared/api';
 import { getPublicSettings } from './publicSettings';
+import { isAdminPath } from '../utils/adminPath';
 import type { DeliveryPricing } from '@shared/utils/deliveryPricing';
 import type {
   Product,
@@ -15,8 +16,9 @@ import type {
   PushSubscriptionRecord,
 } from '@shared/types';
 
-// Get auth token from localStorage (web-specific)
+// Staff auth token. Read only on admin pages, never on customer pages (cookie consent).
 const getToken = (): string | null => {
+  if (!isAdminPath()) return null;
   return localStorage.getItem('authToken');
 };
 
