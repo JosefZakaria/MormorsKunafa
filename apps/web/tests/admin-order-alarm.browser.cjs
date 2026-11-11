@@ -617,6 +617,8 @@ test('an expired phone pickup shows an actionable error and can be corrected wit
   const submit = page.getByRole('button', { name: 'Skicka beställning till Möllevången', exact: true });
   await submit.click();
   await page.getByRole('alert').filter({ hasText: 'Tiden är för tidig. Tidigast möjliga tid är kl. 17:55.' }).waitFor();
+  // The invalid-event probe records defaultPrevented on the next event-loop task.
+  await page.waitForFunction(() => window.__phoneInvalidPrevented !== undefined);
   assert.equal(await page.evaluate(() => window.__phoneInvalidPrevented), true, 'suppress the native mobile validation tooltip');
   assert.equal(await time.evaluate(input => document.activeElement === input), true);
   assert.equal(state.phoneRequests.length, 0, 'an invalid pickup must never reach the API');
