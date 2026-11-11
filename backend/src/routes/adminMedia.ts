@@ -5,6 +5,7 @@ import { adminSettingsFromRow } from '../db/adminSettings.js';
 import { requireAdmin, requireOwner } from '../middleware/auth.js';
 import {
   SITE_MEDIA_MAX_BYTES,
+  compressProductImage,
   contentTypeForKind,
   isAllowedImageMime,
   sniffImageKind,
@@ -96,10 +97,22 @@ async function handleUpload(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  const imageKind = sniffImageKind(file.buffer);
+  let imageKind = sniffImageKind(file.buffer);
   if (!imageKind) {
     res.status(400).json({ error: 'File is not a valid JPEG, PNG, or WebP image' });
     return;
+  }
+
+  // Hero images are left untouched on purpose; product photos are shrunk to save storage egress.
+  let buffer = file.buffer;
+  if (kindRaw === 'product') {
+    try {
+      buffer = await compressProductImage(file.buffer);
+      imageKind = 'webp';
+    } catch {
+      res.status(400).json({ error: 'File is not a valid JPEG, PNG, or WebP image' });
+      return;
+    }
   }
 
   const productId = String(req.body?.productId ?? '').trim();
@@ -117,7 +130,7 @@ async function handleUpload(req: Request, res: Response): Promise<void> {
   try {
     const url = await uploadSiteMedia({
       path: storagePath,
-      buffer: file.buffer,
+      buffer,
       contentType: contentTypeForKind(imageKind),
       upsert: false,
     });

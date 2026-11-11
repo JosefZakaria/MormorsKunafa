@@ -1,3 +1,4 @@
+import sharp from 'sharp';
 import { supabase } from '../db/supabase.js';
 
 export const SITE_MEDIA_BUCKET = 'site-media';
@@ -42,6 +43,20 @@ export function contentTypeForKind(kind: ImageKind): string {
   return 'image/jpeg';
 }
 
+// 1200 px covers a product card/modal on a 2x retina screen; phone photos arrive at ~4000 px.
+export const PRODUCT_IMAGE_MAX_PX = 1200;
+const PRODUCT_IMAGE_QUALITY = 80;
+// Upload paths are timestamped and never overwritten, so a cached copy can never go stale.
+const SITE_MEDIA_CACHE_SECONDS = String(365 * 24 * 60 * 60);
+
+export async function compressProductImage(buffer: Buffer): Promise<Buffer> {
+  return sharp(buffer)
+    .rotate() // bake in EXIF orientation, since metadata is stripped
+    .resize({ width: PRODUCT_IMAGE_MAX_PX, height: PRODUCT_IMAGE_MAX_PX, fit: 'inside', withoutEnlargement: true })
+    .webp({ quality: PRODUCT_IMAGE_QUALITY })
+    .toBuffer();
+}
+
 export function withCacheBuster(url: string): string {
   const sep = url.includes('?') ? '&' : '?';
   return `${url}${sep}v=${Date.now()}`;
@@ -83,7 +98,7 @@ export async function uploadSiteMedia(params: {
   const { error } = await supabase.storage.from(SITE_MEDIA_BUCKET).upload(params.path, params.buffer, {
     contentType: params.contentType,
     upsert: params.upsert,
-    cacheControl: '3600',
+    cacheControl: SITE_MEDIA_CACHE_SECONDS,
   });
   if (error) {
     throw new Error(`Upload failed: ${error.message}`);
