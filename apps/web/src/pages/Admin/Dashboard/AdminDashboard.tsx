@@ -1,5 +1,6 @@
 import { showOrderDeliveryEstimate } from '@shared/utils/deliveryPricing';
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { BellRing, Clock3, Printer, ShoppingBag, SlidersHorizontal } from 'lucide-react';
 import { OpeningHoursSettings } from './OpeningHoursSettings';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -19,6 +20,7 @@ import { HOJA_LOCATION_ID, MOLLEVANGEN_LOCATION_ID } from '@shared/types';
 import { parseApiTimestamp } from '@shared/utils/parseApiTimestamp';
 import { calculateOrderReadyTime, isPreOrder } from '@shared/utils/scheduledTime';
 import '../Admin.css';
+import './Settings.css';
 import { requestWakeLock, releaseWakeLock } from '../../../utils/wakeLock';
 import { useOrderAlarm } from '../../../hooks/useOrderAlarm';
 import { getOrderCountdown } from '../../../utils/orderCountdown';
@@ -191,49 +193,43 @@ function PrinterSettings({
     const isCurrentConfigured = selectedSlug === 'hoja' ? hojaConfigured : molleConfigured;
 
     return (
-        <div className="rush-card" style={{ marginTop: '1rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
-                <h3 style={{ margin: 0 }}>Kvittoskrivare (ePOS-Print)</h3>
-                <span style={{
-                    fontSize: '0.8rem',
-                    padding: '0.2rem 0.6rem',
-                    borderRadius: '999px',
-                    background: isCurrentConfigured ? '#dcfce7' : '#f3f4f6',
-                    color: isCurrentConfigured ? '#166534' : '#6b7280',
-                    fontWeight: 600,
-                }}>
-                    {isCurrentConfigured ? `🟢 ${currentLocName}: Konfigurerad` : `⚪ ${currentLocName}: Ej konfigurerad`}
-                </span>
+        <div className="rush-card printer-settings">
+            <div className="settings-card-heading">
+                <span className="settings-card-icon"><Printer size={21} aria-hidden="true" /></span>
+                <div><h3>Kvittoskrivare</h3><p>Anslut en Epson-skrivare via ePOS-Print på lokalens nätverk.</p></div>
             </div>
-            <p style={{ marginTop: '0.5rem', marginBottom: '0.75rem', color: '#666', fontSize: '0.9rem' }}>
-                Anslut till en Epson-termoskrivare på det lokala nätverket. Varje restaurang har sin egen skrivarkonfiguration.
-            </p>
 
             {isOwner && (
-                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+                <div className="settings-location-picker" aria-label="Lokal för skrivare">
                     <button
                         type="button"
                         className={`place-filter-chip ${selectedSlug === 'hoja' ? 'active' : ''}`}
+                        aria-pressed={selectedSlug === 'hoja'}
                         onClick={() => setSelectedSlug('hoja')}
                     >
-                        Höja {hojaConfigured ? '🟢' : ''}
+                        Höja
                     </button>
                     <button
                         type="button"
                         className={`place-filter-chip ${selectedSlug === 'mollevangen' ? 'active' : ''}`}
+                        aria-pressed={selectedSlug === 'mollevangen'}
                         onClick={() => setSelectedSlug('mollevangen')}
                     >
-                        Möllevången {molleConfigured ? '🟢' : ''}
+                        Möllevången
                     </button>
                 </div>
             )}
+            <span className={`settings-status ${isCurrentConfigured ? 'settings-status--ready' : ''}`}>
+                {currentLocName}: {isCurrentConfigured ? 'Konfigurerad' : 'Ej konfigurerad'}
+            </span>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.75rem' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                    <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>
+                    <label htmlFor="settings-printer-ip" style={{ fontSize: '0.85rem', fontWeight: 600 }}>
                         Skrivarens IP-adress ({currentLocName})
                     </label>
                     <input
+                        id="settings-printer-ip"
                         type="text"
                         placeholder={selectedSlug === 'hoja' ? DEFAULT_HOJA_PRINTER_IP : 't.ex. 192.168.1.50'}
                         value={ip}
@@ -252,8 +248,9 @@ function PrinterSettings({
                     )}
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                    <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Enhets-ID</label>
+                    <label htmlFor="settings-printer-device" style={{ fontSize: '0.85rem', fontWeight: 600 }}>Enhets-ID</label>
                     <input
+                        id="settings-printer-device"
                         type="text"
                         placeholder="local_printer"
                         value={deviceId}
@@ -261,7 +258,7 @@ function PrinterSettings({
                         style={{ padding: '0.5rem 0.75rem', borderRadius: '6px', border: '1px solid #ccc', fontSize: '1rem' }}
                     />
                 </div>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <div className="settings-actions">
                     <Button variant="primary" size="sm" onClick={handleSave}>Spara</Button>
                     <Button variant="ghost" size="sm" onClick={handleTest} disabled={testing}>
                         {testing ? 'Testar...' : `Testa anslutning (${currentLocName})`}
@@ -708,7 +705,12 @@ function LocationPauseBlock({
     const showToggles = showTypeToggles || showDeliveryToggle;
     return (
         <div className="location-pause-block">
-            <h4>{location.name}</h4>
+            <div className="settings-location-heading">
+                <h4>{location.name}</h4>
+                <span className={`settings-status ${!location.isPaused ? 'settings-status--ready' : 'settings-status--paused'}`}>
+                    {location.isPaused ? 'Pausad' : 'Ej pausad'}
+                </span>
+            </div>
             <div className="order-availability-pause">
                 <Button
                     variant={location.isPaused ? 'primary' : 'ghost'}
@@ -2210,6 +2212,11 @@ export const AdminDashboard: React.FC = () => {
                     {/* ── INSTÄLLNINGAR ── */}
                     {activeTab === 'rush' && settings && (
                         <div className="rush-settings">
+                            <header className="settings-page-heading">
+                                <span className="settings-page-eyebrow"><SlidersHorizontal size={16} aria-hidden="true" /> Administration</span>
+                                <h2>Inställningar</h2>
+                                <p>Hantera öppettider, beställningar och utrustning för dina lokaler.</p>
+                            </header>
                             {isOwner && <OpeningHoursSettings locations={locations} onSaved={updated => {
                                 setLocations(current => current.map(location => location.id === updated.id ? updated : location));
                                 setSettings(current => current ? {
@@ -2218,14 +2225,19 @@ export const AdminDashboard: React.FC = () => {
                                 } : current);
                             }} />}
                             <div className="rush-card order-availability-card">
-                                <h3>Beställningar</h3>
-                                <p>
-                                    {isOwner
-                                        ? 'Pausa per plats, stäng av Äta här/Ta med, eller nödstoppa allt.'
-                                        : canManageDelivery
-                                            ? 'Pausa den här platsen, eller stäng av hemleverans.'
-                                            : 'Pausa Äta här och Ta med på den här platsen.'}
-                                </p>
+                                <div className="settings-card-heading">
+                                    <span className="settings-card-icon"><ShoppingBag size={21} aria-hidden="true" /></span>
+                                    <div>
+                                        <h3>Beställningar</h3>
+                                        <p>
+                                            {isOwner
+                                                ? 'Pausa per plats, stäng av Äta här/Ta med, eller nödstoppa allt.'
+                                                : canManageDelivery
+                                                    ? 'Pausa den här platsen, eller stäng av hemleverans.'
+                                                    : 'Pausa Äta här och Ta med på den här platsen.'}
+                                        </p>
+                                    </div>
+                                </div>
                                 {isOwner && (
                                     <>
                                         <div className="order-availability-pause">
@@ -2254,9 +2266,11 @@ export const AdminDashboard: React.FC = () => {
                                 ))}
                             </div>
                             {isOwner && (
-                            <div className="rush-card">
-                                <h3>Standard tillagningstid</h3>
-                                <p>Används för alla nya beställningar.</p>
+                            <div className="rush-card preparation-settings">
+                                <div className="settings-card-heading">
+                                    <span className="settings-card-icon"><Clock3 size={21} aria-hidden="true" /></span>
+                                    <div><h3>Standard tillagningstid</h3><p>Används för alla nya beställningar.</p></div>
+                                </div>
                                 <div className="rush-controls">
                                     <Button variant="ghost" onClick={() => handleUpdateSettings({ defaultPreparationTime: Math.max(5, settings.defaultPreparationTime - 5) })}>- 5 min</Button>
                                     <div className="rush-display">
@@ -2271,14 +2285,15 @@ export const AdminDashboard: React.FC = () => {
 
                             {/* --- Ljudinställningar för inkommande ordrar --- */}
                             <div className="alarm-settings-card">
-                                <h3 className="settings-section-title" style={{ marginTop: 0 }}>Ljud- & Larmsignaler</h3>
-                                <p style={{ fontSize: '0.9rem', color: '#666', marginBottom: '1rem' }}>
-                                    Starkt kökslarm med växlande toner. Larmet fortsätter tills ordern hanteras.
-                                    Höj Androids medievolym och kontrollera ljudet på den anslutna högtalaren.
-                                </p>
-                                
-
-
+                                <div className="settings-card-heading">
+                                    <span className="settings-card-icon"><BellRing size={21} aria-hidden="true" /></span>
+                                    <div><h3>Ljud och larmsignaler</h3>
+                                        <p>
+                                            Starkt kökslarm med växlande toner. Larmet fortsätter tills ordern hanteras.
+                                            Höj Androids medievolym och kontrollera ljudet på den anslutna högtalaren.
+                                        </p>
+                                    </div>
+                                </div>
                                 <div className="alarm-settings-row">
                                     <label htmlFor="alarm-volume-input">Volym</label>
                                     <div className="volume-slider-container">
@@ -2299,7 +2314,7 @@ export const AdminDashboard: React.FC = () => {
                                     </div>
                                 </div>
 
-                                <div style={{ marginTop: '1.25rem', display: 'flex', gap: '0.5rem' }}>
+                                <div className="settings-actions">
                                     <Button
                                         variant="ghost"
                                         size="sm"
