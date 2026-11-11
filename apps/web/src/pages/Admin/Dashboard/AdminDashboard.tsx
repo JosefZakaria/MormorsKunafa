@@ -1,5 +1,6 @@
 import { showOrderDeliveryEstimate } from '@shared/utils/deliveryPricing';
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { OpeningHoursSettings } from './OpeningHoursSettings';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { Container } from '../../../components/common/Container/Container';
@@ -2209,6 +2210,13 @@ export const AdminDashboard: React.FC = () => {
                     {/* ── INSTÄLLNINGAR ── */}
                     {activeTab === 'rush' && settings && (
                         <div className="rush-settings">
+                            {isOwner && <OpeningHoursSettings locations={locations} onSaved={updated => {
+                                setLocations(current => current.map(location => location.id === updated.id ? updated : location));
+                                setSettings(current => current ? {
+                                    ...current,
+                                    locations: current.locations.map(location => location.id === updated.id ? updated : location),
+                                } : current);
+                            }} />}
                             <div className="rush-card order-availability-card">
                                 <h3>Beställningar</h3>
                                 <p>

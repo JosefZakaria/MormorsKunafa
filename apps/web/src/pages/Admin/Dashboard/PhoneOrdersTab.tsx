@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { Location, Order, OrderItem, PhoneOrderRequest, Product } from '@shared/types';
 import { resolveProductImage } from '@shared/utils/productImage.ts';
-import { clampScheduledClock, findNextOrderableSlot, getOrderableClockRange, validateScheduledOrderTime } from '@shared/utils/openingHours';
+import { clampScheduledClock, defaultOpeningHours, findNextOrderableSlot, getOrderableClockRange, validateScheduledOrderTime } from '@shared/utils/openingHours';
 import { dateToStockholmInputValue } from '@shared/utils/scheduledTime';
 import { adminApi, productApi } from '../../../services/api';
 import { Button } from '../../../components/common/Button/Button';
@@ -63,12 +63,13 @@ export function PhoneOrdersTab({ active, locations, paused, preparationMinutes, 
     const [requestId, setRequestId] = useState(() => crypto.randomUUID());
     const submittingRef = useRef(false);
     const location = locations.find(place => place.id === locationId);
+    const openingHours = location?.openingHours ?? defaultOpeningHours(location?.slug);
     const unavailable = paused || !location || location.isPaused || !location.takeawayEnabled;
     const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
     // Keep the default current until the admin explicitly chooses a date or time.
-    const pickupSlot = selectedPickupSlot ?? findNextOrderableSlot(preparationMinutes, new Date(nowMs));
+    const pickupSlot = selectedPickupSlot ?? findNextOrderableSlot(preparationMinutes, new Date(nowMs), 30, openingHours);
     const clockRange = pickupSlot.dateStr
-        ? getOrderableClockRange(pickupSlot.dateStr, preparationMinutes, new Date(nowMs))
+        ? getOrderableClockRange(pickupSlot.dateStr, preparationMinutes, new Date(nowMs), openingHours)
         : null;
 
     useEffect(() => {
@@ -114,7 +115,7 @@ export function PhoneOrdersTab({ active, locations, paused, preparationMinutes, 
             return;
         }
         const scheduledTime = `${pickupSlot.dateStr}T${pickupSlot.clock}:00`;
-        const validation = validateScheduledOrderTime(scheduledTime, preparationMinutes);
+        const validation = validateScheduledOrderTime(scheduledTime, preparationMinutes, new Date(), openingHours);
         if (pickupSlot.dateStr < dateToStockholmInputValue() || !validation.valid) {
             setPickupError(!validation.valid ? validation.error : 'Välj ett datum i framtiden för hämtning.');
             return;
@@ -201,7 +202,7 @@ export function PhoneOrdersTab({ active, locations, paused, preparationMinutes, 
                                     <label>Datum för hämtning<input type="date" required min={dateToStockholmInputValue(new Date(nowMs))}
                                         value={pickupSlot.dateStr} onChange={event => {
                                             const dateStr = event.target.value;
-                                            setSelectedPickupSlot({ dateStr, clock: dateStr ? clampScheduledClock(dateStr, pickupSlot.clock, preparationMinutes) : pickupSlot.clock });
+                                            setSelectedPickupSlot({ dateStr, clock: dateStr ? clampScheduledClock(dateStr, pickupSlot.clock, preparationMinutes, new Date(), openingHours) : pickupSlot.clock });
                                             setError(null); setPickupError(null);
                                         }} /></label>
                                     <label>Tid för hämtning<input type="time" required step={300}
@@ -212,7 +213,7 @@ export function PhoneOrdersTab({ active, locations, paused, preparationMinutes, 
                                             // mobile tooltip with the same actionable message as the API.
                                             event.preventDefault();
                                             event.currentTarget.focus();
-                                            const validation = validateScheduledOrderTime(`${pickupSlot.dateStr}T${pickupSlot.clock}:00`, preparationMinutes);
+                                            const validation = validateScheduledOrderTime(`${pickupSlot.dateStr}T${pickupSlot.clock}:00`, preparationMinutes, new Date(), openingHours);
                                             setError(null);
                                             setPickupError(!pickupSlot.clock ? 'Välj tid för hämtning.' : !validation.valid ? validation.error : 'Välj en hämtningstid i femminuterssteg.');
                                         }}
@@ -225,7 +226,7 @@ export function PhoneOrdersTab({ active, locations, paused, preparationMinutes, 
                                     <Button type="button" size="sm" onClick={() => {
                                         const now = new Date();
                                         setNowMs(now.getTime());
-                                        setSelectedPickupSlot(findNextOrderableSlot(preparationMinutes, now));
+                                        setSelectedPickupSlot(findNextOrderableSlot(preparationMinutes, now, 30, openingHours));
                                         setPickupError(null); setError(null);
                                     }}>Välj tidigaste hämtningstid</Button>
                                 </div>}

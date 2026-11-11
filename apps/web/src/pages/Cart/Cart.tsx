@@ -5,8 +5,9 @@ import { Button } from '../../components/common/Button/Button';
 import { AllergenNotice } from '../../components/common/AllergenNotice/AllergenNotice';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useCart } from '../../contexts/CartContext';
-import { orderApi, locationApi } from '../../services/api';
-import type { CheckoutPaymentChoice, CustomerInfo, Location, OrderType } from '@shared/types';
+import { orderApi } from '../../services/api';
+import { watchPublicSettings } from '../../services/watchPublicSettings';
+import { HOJA_LOCATION_ID, type CheckoutPaymentChoice, type CustomerInfo, type Location, type OrderType } from '@shared/types';
 import { parseDeliveryPricing, quoteDelivery, type DeliveryPricing } from '@shared/utils/deliveryPricing';
 import {
     dateToStockholmInputValue,
@@ -19,6 +20,7 @@ import {
     getOrderableClockRange,
     validateScheduledOrderTime,
     isStoreClosedNow,
+    defaultOpeningHours,
 } from '@shared/utils/openingHours';
 import './Cart.css';
 import {
@@ -115,13 +117,13 @@ export const Cart: React.FC = () => {
     const [locations, setLocations] = useState<Location[]>([]);
     const [locationId, setLocationId] = useState(() => getStoredLocationId());
     const [placeError, setPlaceError] = useState<string | null>(null);
+    const openingHours = useMemo(() => {
+        const place = locations.find(location => location.id === (orderType === 'delivery' ? HOJA_LOCATION_ID : locationId));
+        return place?.openingHours ?? defaultOpeningHours(place?.slug);
+    }, [locations, locationId, orderType]);
 
     useEffect(() => {
         localStorage.removeItem('deliveryInfo');
-    }, []);
-
-    useEffect(() => {
-        locationApi.getAll().then(setLocations).catch(() => undefined);
     }, []);
 
     useEffect(() => {
@@ -139,8 +141,8 @@ export const Cart: React.FC = () => {
     const maxDateStr = dateToStockholmInputValue(maxDate);
 
     const [prepTime, setPrepTime] = useState<number>(30);
-    const [isClosedNow, setIsClosedNow] = useState(() => isStoreClosedNow());
     const [nowMs, setNowMs] = useState(() => Date.now());
+    const isClosedNow = isStoreClosedNow(new Date(nowMs), openingHours);
     const [showClosedWarningPopup, setShowClosedWarningPopup] = useState(false);
     const [, setHasConfirmedClosedWarning] = useState(false);
 
@@ -163,76 +165,65 @@ export const Cart: React.FC = () => {
             document.removeEventListener('mousedown', handleClickOutside);
         };
     }, []);
-    // Fetch public settings on mount
+    // Keep the displayed hours and selectable pickup slots current.
     useEffect(() => {
-        orderApi.getPublicSettings()
-            .then((settings) => {
-                if (settings) {
-                    const newPrepTime = settings.defaultPreparationTime;
-                    setPrepTime(newPrepTime);
-                    const flags: OrderTypeFlags = {
-                        isPaused: Boolean(settings.isPaused),
-                        eatHereEnabled: settings.eatHereEnabled !== false,
-                        takeawayEnabled: settings.takeawayEnabled !== false,
-                        deliveryEnabled: settings.deliveryEnabled !== false,
-                    };
-                    setOrderTypeFlags(flags);
-                    const nextLocations = settings.locations ?? [];
-                    if (nextLocations.length) setLocations(nextLocations);
-                    const storedPlace = getStoredLocationId();
+        return watchPublicSettings((settings) => {
+            setPrepTime(settings.defaultPreparationTime);
+            const flags: OrderTypeFlags = {
+                isPaused: Boolean(settings.isPaused),
+                eatHereEnabled: settings.eatHereEnabled !== false,
+                takeawayEnabled: settings.takeawayEnabled !== false,
+                deliveryEnabled: settings.deliveryEnabled !== false,
+            };
+            setOrderTypeFlags(flags);
+            const nextLocations = settings.locations ?? [];
+            setLocations(nextLocations);
+            const storedPlace = getStoredLocationId();
 
-                    if (flags.isPaused) {
-                        setPausedPopup('all');
+            if (flags.isPaused) {
+                setPausedPopup('all');
+            } else {
+                const storedType = (searchParams.get('type') || sessionStorage.getItem('orderType') || '') as OrderType | '';
+                if (storedType && !isOrderTypeEnabled(storedType, flags, nextLocations, storedPlace)) {
+                    if (needsPickupLocation(storedType) && anyLocationAcceptsOrderType(nextLocations, storedType)) {
+                        setPausedPopup(storedType);
                     } else {
-                        const storedType = (searchParams.get('type') || sessionStorage.getItem('orderType') || '') as OrderType | '';
-                        if (storedType && !isOrderTypeEnabled(storedType, flags, nextLocations, storedPlace)) {
-                            if (needsPickupLocation(storedType) && anyLocationAcceptsOrderType(nextLocations, storedType)) {
-                                setPausedPopup(storedType);
-                            } else {
-                                sessionStorage.removeItem('orderType');
-                                setOrderType('');
-                                setPausedPopup(storedType);
-                            }
-                        }
+                        sessionStorage.removeItem('orderType');
+                        setOrderType('');
+                        setPausedPopup(storedType);
                     }
-
-                    // Recalculate and set the initial slot with the correct prep time
-                    const slot = findNextOrderableSlot(newPrepTime);
-                    setScheduledDate(slot.dateStr);
-                    setScheduledClock(roundClockToNext5Min(slot.clock));
                 }
-            })
-            .catch((err) => {
-                console.error('Failed to fetch public settings:', err);
-            });
+            }
+        }, (err) => {
+            console.error('Failed to fetch public settings:', err);
+        });
     }, [searchParams]);
 
     // Keep store closed status and earliest slot in sync with the clock
     useEffect(() => {
         const timer = setInterval(() => {
-            setIsClosedNow(isStoreClosedNow());
             setNowMs(Date.now());
         }, 15000);
         return () => clearInterval(timer);
     }, []);
 
     const clockRange = useMemo(
-        () => getOrderableClockRange(scheduledDate, prepTime),
-        [scheduledDate, prepTime, nowMs]
+        () => getOrderableClockRange(scheduledDate, prepTime, new Date(nowMs), openingHours),
+        [scheduledDate, prepTime, nowMs, openingHours]
     );
 
     useEffect(() => {
         if (!clockRange) {
-            const slot = findNextOrderableSlot(prepTime);
+            const slot = findNextOrderableSlot(prepTime, new Date(), 30, openingHours);
             setScheduledDate(slot.dateStr);
-            setScheduledClock(roundClockToNext5Min(slot.clock));
+            setScheduledClock(slot.clock ? roundClockToNext5Min(slot.clock) : '');
             return;
         }
         setScheduledClock((prev) => {
-            const next = roundClockToNext5Min(clampScheduledClock(scheduledDate, prev, prepTime));
+            const next = roundClockToNext5Min(clampScheduledClock(scheduledDate, prev, prepTime, new Date(), openingHours));
             return next === prev ? prev : next;
         });
-    }, [clockRange, scheduledDate, prepTime]);
+    }, [clockRange, scheduledDate, prepTime, openingHours]);
 
     const hoursToDisplay = useMemo(() => {
         if (!clockRange) return [];
@@ -271,7 +262,7 @@ export const Cart: React.FC = () => {
         if (isHourDisabled(hourVal)) return;
         const currentMinStr = scheduledClock.split(':')[1];
         const newClockCandidate = `${String(hourVal).padStart(2, '0')}:${currentMinStr}`;
-        const clamped = clampScheduledClock(scheduledDate, newClockCandidate, prepTime);
+        const clamped = clampScheduledClock(scheduledDate, newClockCandidate, prepTime, new Date(), openingHours);
         setScheduledClock(roundClockToNext5Min(clamped));
     };
 
@@ -280,7 +271,7 @@ export const Cart: React.FC = () => {
         const hourVal = parseInt(hourStr, 10);
         if (isMinuteDisabled(minuteVal, hourVal)) return;
         const newClockCandidate = `${hourStr}:${String(minuteVal).padStart(2, '0')}`;
-        const clamped = clampScheduledClock(scheduledDate, newClockCandidate, prepTime);
+        const clamped = clampScheduledClock(scheduledDate, newClockCandidate, prepTime, new Date(), openingHours);
         setScheduledClock(roundClockToNext5Min(clamped));
     };
 
@@ -306,18 +297,18 @@ export const Cart: React.FC = () => {
     const handleScheduledDateChange = (value: string) => {
         const next = value || todayStr;
         setScheduledDate(next);
-        const range = getOrderableClockRange(next, prepTime);
+        const range = getOrderableClockRange(next, prepTime, new Date(), openingHours);
         if (range) {
-            setScheduledClock((prev) => roundClockToNext5Min(clampScheduledClock(next, prev, prepTime)));
+            setScheduledClock((prev) => roundClockToNext5Min(clampScheduledClock(next, prev, prepTime, new Date(), openingHours)));
         } else {
-            const slot = findNextOrderableSlot(prepTime);
+            const slot = findNextOrderableSlot(prepTime, new Date(), 30, openingHours);
             setScheduledDate(slot.dateStr);
-            setScheduledClock(roundClockToNext5Min(slot.clock));
+            setScheduledClock(slot.clock ? roundClockToNext5Min(slot.clock) : '');
         }
     };
 
     const resolveScheduledClock = (): string => {
-        const clock = roundClockToNext5Min(clampScheduledClock(scheduledDate, scheduledClock, prepTime));
+        const clock = roundClockToNext5Min(clampScheduledClock(scheduledDate, scheduledClock, prepTime, new Date(), openingHours));
         if (clock !== scheduledClock) {
             setScheduledClock(clock);
         }
@@ -507,12 +498,17 @@ export const Cart: React.FC = () => {
             const isDelivery = orderType === 'delivery';
             let scheduledTime: string | undefined;
             if (!isDelivery) {
+                if (!scheduledDate || !clockRange) {
+                    setError('Inga hämtningstider finns tillgängliga. Välj ett annat datum.');
+                    setIsSubmitting(false);
+                    return;
+                }
                 const clock = resolveScheduledClock();
                 scheduledTime = scheduledDate
                     ? `${scheduledDate}T${clock}:00`
                     : undefined;
 
-                const hoursCheck = validateScheduledOrderTime(scheduledTime, prepTime);
+                const hoursCheck = validateScheduledOrderTime(scheduledTime, prepTime, new Date(), openingHours);
                 if (!hoursCheck.valid) {
                     setError(hoursCheck.error);
                     setIsSubmitting(false);
