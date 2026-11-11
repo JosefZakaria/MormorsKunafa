@@ -3,7 +3,7 @@ import { supabase, generateId, type Row, logSupabaseError, nowIso } from '../db/
 import { getOrderById, getNextOrderNumber, updateOrder } from '../db/orderRepository.js';
 import { orderRowToOrder, rowsToOrders } from '../db/ordersList.js';
 import { requireAdmin, requireOwner, getRequestAdmin } from '../middleware/auth.js';
-import { loadAdminScope, orderRowVisibleToScope } from '../services/locationScope.js';
+import { loadAdminScope, orderRowVisibleToScope, type AdminScope } from '../services/locationScope.js';
 import { PrinterService } from '../services/PrinterService.js';
 import { sendOrderConfirmationEmail } from '../services/OrderConfirmationEmail.js';
 import { sendSms } from '../services/SmsService.js';
@@ -74,6 +74,24 @@ async function ordersVisibleToRequest(req: Request, rows: Row[], hideUnacceptedP
   const scope = await loadAdminScope(admin.adminId);
   return rows.filter((row) => orderRowVisibleToScope(scope, row)
     && !(hideUnacceptedPhoneOrders && scope.role === 'owner' && row.payment_method === 'pay_at_pickup' && row.status === 'ny'));
+}
+
+async function requestScope(req: Request): Promise<AdminScope | null> {
+  const admin = getRequestAdmin(req);
+  return admin ? loadAdminScope(admin.adminId) : null;
+}
+
+/** Orders query narrowed in SQL to the admin's location, so location screens don't download every order; null = sees nothing.
+ *  Sync on purpose: returning the builder from an async function would await (execute) it. */
+function scopedOrdersQuery(scope: AdminScope | null) {
+  if (!scope) return null;
+  const query = supabase.from('orders').select('*');
+  if (scope.role !== 'location') return query;
+  if (!scope.locationId) return null;
+  // Same rule as orderVisibleToScope; ordersVisibleToRequest still re-checks every row.
+  return scope.fulfillsDelivery
+    ? query.or(`location_id.eq.${scope.locationId},order_type.eq.delivery`)
+    : query.eq('location_id', scope.locationId).neq('order_type', 'delivery');
 }
 
 async function assertOrderVisible(req: Request, res: Response, order: Row, locationAcceptanceOnly = false): Promise<boolean> {
@@ -550,9 +568,12 @@ router.post('/stripe-confirm', async (req: Request, res: Response) => {
 // Scheduled orders enter this queue at pickup minus 20 minutes, still awaiting acceptance.
 router.get('/admin/pending', requireAdmin, async (req: Request, res: Response) => {
   try {
-    const { data, error } = await supabase
-      .from('orders')
-      .select('*')
+    const query = scopedOrdersQuery(await requestScope(req));
+    if (!query) {
+      res.json([]);
+      return;
+    }
+    const { data, error } = await query
       .eq('status', 'ny')
       .or('payment_status.eq.paid,payment_method.eq.pay_at_pickup')
       .order('created_at', { ascending: true });
@@ -653,9 +674,12 @@ router.patch('/admin/:id/accept', requireAdmin, async (req: Request, res: Respon
 // Admin: active orders
 router.get('/admin/active', requireAdmin, async (req: Request, res: Response) => {
   try {
-    const { data, error } = await supabase
-      .from('orders')
-      .select('*')
+    const query = scopedOrdersQuery(await requestScope(req));
+    if (!query) {
+      res.json([]);
+      return;
+    }
+    const { data, error } = await query
       .in('status', ['mottagen', 'påbörjad'])
       .or('payment_status.eq.paid,payment_method.eq.pay_at_pickup')
       .order('created_at', { ascending: true });
@@ -675,9 +699,12 @@ router.get('/admin/active', requireAdmin, async (req: Request, res: Response) =>
 // Admin: unaccepted orders with more than 20 minutes left until scheduled pickup.
 router.get('/admin/pre-orders', requireAdmin, async (req: Request, res: Response) => {
   try {
-    const { data, error } = await supabase
-      .from('orders')
-      .select('*')
+    const query = scopedOrdersQuery(await requestScope(req));
+    if (!query) {
+      res.json([]);
+      return;
+    }
+    const { data, error } = await query
       .not('scheduled_at', 'is', null)
       .eq('status', 'ny')
       .or('payment_status.eq.paid,payment_method.eq.pay_at_pickup')
