@@ -1,3 +1,5 @@
+import { consentStorage } from '../../consent/consent';
+import { ConsentMap } from '../../components/common/ConsentMap/ConsentMap';
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Container } from '../../components/common/Container/Container';
@@ -111,7 +113,7 @@ export const Landing: React.FC = () => {
     const [places, setPlaces] = useState<Location[]>(FALLBACK_PLACES);
 
     useEffect(() => {
-        sessionStorage.removeItem('orderType');
+        consentStorage.removeItem('orderType');
         clearStoredLocation();
         return watchPublicSettings((settings) => {
             setFlags({
@@ -143,7 +145,7 @@ export const Landing: React.FC = () => {
             setPausedPopup(type);
             return;
         }
-        sessionStorage.setItem('orderType', type);
+        consentStorage.setItem('orderType', type);
         clearStoredLocation();
         if (needsPickupLocation(type)) {
             navigate('/select-location');
@@ -399,13 +401,11 @@ export const Landing: React.FC = () => {
                             {mappedPlaces.map((place) => (
                                 <div className="findus__map-wrap" key={place.id}>
                                     <span className="findus__map-label">{place.name}</span>
-                                    <iframe
+                                    <ConsentMap
                                         src={mapsEmbedUrl(place.address)}
                                         title={`${place.name} — ${place.address}`}
                                         className="findus__map"
-                                        loading="lazy"
-                                        allowFullScreen
-                                        referrerPolicy="no-referrer-when-downgrade"
+                                        directionsUrl={mapsDirectionsUrl(place.address)}
                                     />
                                 </div>
                             ))}

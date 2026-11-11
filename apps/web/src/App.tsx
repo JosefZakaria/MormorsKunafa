@@ -16,6 +16,7 @@ import { LanguageProvider } from './contexts/LanguageContext';
 import { CartProvider } from './contexts/CartContext';
 import { ToastProvider } from './contexts/ToastContext';
 import { Toast } from './components/common/Toast/Toast';
+import { CookieBanner } from './components/common/CookieBanner/CookieBanner';
 
 const PrivateRoute = ({ children }: { children: React.ReactElement }) => {
   const { isAuthenticated } = useAuth();
@@ -31,6 +32,7 @@ function App() {
           <CartProvider>
             <ToastProvider>
               <Toast />
+              <CookieBanner />
               <Routes>
             <Route path="/" element={<MainLayout />}>
               <Route index element={<Landing />} />

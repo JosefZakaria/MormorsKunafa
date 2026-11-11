@@ -1,6 +1,7 @@
 import React from 'react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import '../Terms/Terms.css';
+import { openConsentSettings } from '../../consent/consent';
 
 export const Privacy: React.FC = () => {
   const { language } = useLanguage();
@@ -13,7 +14,7 @@ export const Privacy: React.FC = () => {
           <p className="legal-lead">
             في كنافة جدتي (Mormors Kunafa)، نولي أهمية قصوى لخصوصيتك وحماية بياناتك الشخصية. تشرح هذه السياسة كيفية جمع بياناتك واستخدامها وحمايتها وفقاً للائحة العامة لحماية البيانات في الاتحاد الأوروبي (GDPR).
           </p>
-          <p><strong>الإصدار 2.2 – ساري اعتباراً من 19 أغسطس 2026.</strong></p>
+          <p><strong>الإصدار 2.3 – ساري اعتباراً من 11 نوفمبر 2026.</strong></p>
 
           <section className="legal-section">
             <h2>1. المسؤول عن البيانات (Personuppgiftsansvarig)</h2>
@@ -88,15 +89,15 @@ export const Privacy: React.FC = () => {
 
           <section className="legal-section">
             <h2>7. ملفات تعريف الارتباط والتخزين المحلي</h2>
-            <p>لا نستخدم ملفات تعريف ارتباط للإعلانات أو التحليلات، ولا نحمل خرائط أو خطوطاً من أطراف ثالثة تلقائياً. رابط Google Maps لا يفتح إلا بعد نقر المستخدم.</p>
+            <p>وفقاً لقانون الاتصالات الإلكترونية السويدي (LEK 9 kap. 28 §) لا نحفظ أي شيء في متصفحك ولا نقرأ منه قبل أن تختار في نافذة ملفات تعريف الارتباط. حتى ذلك الحين تبقى البيانات في ذاكرة الصفحة فقط وتختفي عند إعادة التحميل. لا نستخدم ملفات تعريف ارتباط للإعلانات أو التحليلات.</p>
             <ul>
-              <li><strong>سلة التسوق:</strong> تخزين محلي لمدة أقصاها 30 يوماً من آخر تغيير.</li>
-              <li><strong>اللغة:</strong> تخزين محلي لمدة أقصاها 365 يوماً من آخر اختيار.</li>
-              <li><strong>نوع الطلب ورمز حالة الطلب:</strong> تخزين خاص بعلامة التبويب حتى إغلاقها.</li>
-              <li><strong>جلسة الإدارة وحماية CSRF:</strong> ملفا ارتباط ضروريان لمدة 30 دقيقة، ويُحذفان عند تسجيل الخروج.</li>
-              <li><strong>إعدادات الطابعة والتنبيه:</strong> إعدادات خاصة بواجهة الإدارة لمدة أقصاها 365 يوماً.</li>
+              <li><strong>ضرورية (دائماً بعد اختيارك):</strong> اختيارك نفسه (<code>mk-consent</code>، لمدة 12 شهراً). نوع الطلب والمطعم المختار ورقم Swish وسلة التسوق في تخزين الجلسة الخاص بعلامة التبويب، ويُحذف عند إغلاقها.</li>
+              <li><strong>التفضيلات (بموافقتك فقط):</strong> اللغة وسلة التسوق في التخزين المحلي حتى تتذكرها في زيارتك القادمة، لمدة أقصاها 12 شهراً.</li>
+              <li><strong>المحتوى الخارجي – Google Maps (بموافقتك فقط):</strong> الخرائط المضمّنة تُحمَّل من Google التي قد تضع ملفات تعريف ارتباط خاصة بها وتتلقى عنوان IP. انظر سياسة خصوصية Google.</li>
+              <li><strong>واجهة الإدارة (للموظفين فقط):</strong> رمز تسجيل الدخول وإعدادات الطابعة والتنبيه، وهي ضرورية للخدمة التي يسجل الموظف الدخول إليها.</li>
             </ul>
-            <p>تُحذف القيم المنتهية أو غير الصالحة تلقائياً. يمكنك أيضاً حذف بيانات الموقع من إعدادات المتصفح في أي وقت.</p>
+            <p>يمكنك سحب موافقتك أو تغييرها في أي وقت، وعندها نحذف البيانات المحفوظة التي لم تعد مسموحة. يُطلب اختيارك مجدداً بعد 12 شهراً.</p>
+            <p><button type="button" className="legal-consent-btn" onClick={openConsentSettings}>إعدادات ملفات تعريف الارتباط</button></p>
           </section>
         </div>
       </div>
@@ -111,7 +112,7 @@ export const Privacy: React.FC = () => {
           <p className="legal-lead">
             At Mormors Kunafa, we value your privacy and are committed to protecting your personal data. This policy explains how we collect, process, and safeguard your data in accordance with the EU General Data Protection Regulation (GDPR).
           </p>
-          <p><strong>Version 2.2 – effective 19 August 2026.</strong></p>
+          <p><strong>Version 2.3 – effective 11 November 2026.</strong></p>
 
           <section className="legal-section">
             <h2>1. Data Controller</h2>
@@ -186,15 +187,15 @@ export const Privacy: React.FC = () => {
 
           <section className="legal-section">
             <h2>7. Cookies and Local Storage</h2>
-            <p>We use no advertising or analytics cookies and do not automatically load third-party maps or fonts. Google Maps opens only after you follow an ordinary external link.</p>
+            <p>In line with the Swedish Electronic Communications Act (LEK 9 kap. 28 §), we do not store or read anything in your browser until you have made a choice in the cookie banner. Until then, data stays in page memory only and disappears when you reload. We use no advertising or analytics cookies.</p>
             <ul>
-              <li><strong>Shopping cart:</strong> Local storage for no more than 30 days from the latest cart change.</li>
-              <li><strong>Language:</strong> Local storage for no more than 365 days from the latest selection.</li>
-              <li><strong>Order type and order-status token:</strong> Tab-only session storage until the tab is closed.</li>
-              <li><strong>Admin session and CSRF protection:</strong> Two strictly necessary 30-minute cookies, deleted on logout.</li>
-              <li><strong>Printer and alarm preferences:</strong> Admin-only settings for no more than 365 days.</li>
+              <li><strong>Necessary (always, once you have chosen):</strong> Your choice itself (<code>mk-consent</code>, 12 months). Order type, chosen restaurant, Swish number and cart in tab-only session storage, deleted when the tab is closed.</li>
+              <li><strong>Preferences (only with your consent):</strong> Language and cart in local storage so they are remembered on your next visit, for no more than 12 months.</li>
+              <li><strong>External content – Google Maps (only with your consent):</strong> Embedded maps are loaded from Google, which may set its own cookies and receive your IP address. See Google's privacy policy.</li>
+              <li><strong>Admin interface (staff only):</strong> Login token plus printer and alarm settings, which are strictly necessary for the service the staff member logs in to.</li>
             </ul>
-            <p>Expired or invalid values are removed automatically. You can also delete site data in your browser settings at any time.</p>
+            <p>You can withdraw or change your consent at any time; we then delete stored data that is no longer allowed. You are asked again after 12 months.</p>
+            <p><button type="button" className="legal-consent-btn" onClick={openConsentSettings}>Cookie settings</button></p>
           </section>
         </div>
       </div>
@@ -209,7 +210,7 @@ export const Privacy: React.FC = () => {
         <p className="legal-lead">
           Hos Mormors Kunafa värnar vi om din personliga integritet. Denna integritetspolicy beskriver hur vi samlar in, använder, sparar och skyddar dina personuppgifter i enlighet med EU:s dataskyddsförordning (GDPR).
         </p>
-        <p><strong>Version 2.2 – gäller från och med 19 augusti 2026.</strong></p>
+        <p><strong>Version 2.3 – gäller från och med 11 november 2026.</strong></p>
 
         <section className="legal-section">
           <h2>1. Personuppgiftsansvarig</h2>
@@ -290,15 +291,15 @@ export const Privacy: React.FC = () => {
 
         <section className="legal-section">
           <h2>7. Kakor och lokal lagring</h2>
-          <p>Vi använder inga reklam- eller analyskakor och laddar inte automatiskt kartor eller typsnitt från tredje part. Google Maps öppnas endast när du följer en vanlig extern länk.</p>
+          <p>Enligt lagen om elektronisk kommunikation (LEK 9 kap. 28 §) sparar eller läser vi ingenting i din webbläsare innan du har gjort ett val i cookierutan. Fram till dess finns uppgifterna bara i sidans minne och försvinner när du laddar om. Vi använder inga reklam- eller analyskakor.</p>
           <ul>
-            <li><strong>Varukorg:</strong> Lokal lagring i högst 30 dagar från den senaste ändringen.</li>
-            <li><strong>Språk:</strong> Lokal lagring i högst 365 dagar från det senaste valet.</li>
-            <li><strong>Ordertyp och orderstatustoken:</strong> Sessionslagring för den aktuella fliken tills den stängs.</li>
-            <li><strong>Adminsession och CSRF-skydd:</strong> Två strikt nödvändiga 30-minuterskakor som raderas vid utloggning.</li>
-            <li><strong>Skrivar- och larminställningar:</strong> Endast i admin, i högst 365 dagar.</li>
+            <li><strong>Nödvändiga (alltid, efter att du gjort ett val):</strong> Själva valet (<code>mk-consent</code>, 12 månader). Ordertyp, vald restaurang, Swishnummer och varukorg i sessionslagring för den aktuella fliken, som raderas när fliken stängs.</li>
+            <li><strong>Inställningar (endast med samtycke):</strong> Språk och varukorg i lokal lagring så att de finns kvar vid nästa besök, i högst 12 månader.</li>
+            <li><strong>Externt innehåll – Google Maps (endast med samtycke):</strong> Inbäddade kartor laddas från Google, som då kan sätta egna kakor och ta emot din IP-adress. Se Googles integritetspolicy.</li>
+            <li><strong>Admingränssnitt (endast personal):</strong> Inloggningstoken samt skrivar- och larminställningar, som är strikt nödvändiga för tjänsten personalen loggar in i.</li>
           </ul>
-          <p>Utgångna eller ogiltiga värden raderas automatiskt. Du kan också när som helst radera webbplatsdata i webbläsarens inställningar.</p>
+          <p>Du kan när som helst återkalla eller ändra ditt samtycke. Då raderar vi sparade uppgifter som inte längre är tillåtna. Du tillfrågas på nytt efter 12 månader.</p>
+          <p><button type="button" className="legal-consent-btn" onClick={openConsentSettings}>Cookieinställningar</button></p>
         </section>
       </div>
     </div>

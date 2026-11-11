@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import './Footer.css';
 
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { openConsentSettings } from '../../../consent/consent';
 import { LanguageSelector } from '../../common/LanguageSelector/LanguageSelector';
 
 const TEL_LINK = 'tel:0728682592';
@@ -36,6 +37,9 @@ export const Footer: React.FC = () => {
                         <h3 id="footer-legal" className="footer__col-title">Information</h3>
                         <Link to="/terms" className="footer__item footer__link">{t('footer.terms')}</Link>
                         <Link to="/privacy" className="footer__item footer__link">{t('footer.privacy')}</Link>
+                        <button type="button" className="footer__item footer__link footer__link-button" onClick={openConsentSettings}>
+                            {t('cookies.footer_link')}
+                        </button>
                     </div>
                 </div>
             </div>

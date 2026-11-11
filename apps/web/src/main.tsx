@@ -9,7 +9,8 @@ import './styles/animations.css'
 import { LanguageProvider } from './contexts/LanguageContext'
 import { registerServiceWorker } from './services/pwa'
 
-registerServiceWorker()
+// The service worker only serves admin push notifications. Customers get none.
+if (window.location.pathname.startsWith('/admin')) registerServiceWorker()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
