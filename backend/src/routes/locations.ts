@@ -4,6 +4,7 @@ import { listLocations } from '../db/locations.js';
 const router = Router();
 
 router.get('/', async (_req: Request, res: Response) => {
+  res.set('Cache-Control', 'no-store');
   try {
     const locations = await listLocations();
     res.json(locations);

@@ -1,8 +1,9 @@
-import type { Location, LocationSlug } from '@mormors-kunafa/shared/types';
+import type { Location, LocationSlug, OpeningHoursSchedule } from '@mormors-kunafa/shared/types';
+import { defaultOpeningHours, parseOpeningHours } from '../shared/utils/openingHours.js';
 import { supabase, type Row, logSupabaseError } from './connection.js';
 
 export const LOCATION_COLUMNS =
-  'id, slug, name, address, fulfills_delivery, eat_here_enabled, takeaway_enabled, is_paused';
+  'id, slug, name, address, fulfills_delivery, eat_here_enabled, takeaway_enabled, is_paused, opening_hours';
 
 function toLocationSlug(value: unknown): LocationSlug {
   return value === 'mollevangen' ? 'mollevangen' : 'hoja';
@@ -18,6 +19,7 @@ export function rowToLocation(r: Row): Location {
     eatHereEnabled: r.eat_here_enabled !== false,
     takeawayEnabled: r.takeaway_enabled !== false,
     isPaused: r.is_paused === true,
+    openingHours: r.opening_hours == null ? defaultOpeningHours(toLocationSlug(r.slug)) : parseOpeningHours(r.opening_hours),
   };
 }
 
@@ -106,6 +108,7 @@ export type LocationFlagsPatch = {
   isPaused?: boolean;
   eatHereEnabled?: boolean;
   takeawayEnabled?: boolean;
+  openingHours?: OpeningHoursSchedule;
 };
 
 export async function updateLocationFlags(
@@ -116,6 +119,7 @@ export async function updateLocationFlags(
   if (typeof patch.isPaused === 'boolean') dbPatch.is_paused = patch.isPaused;
   if (typeof patch.eatHereEnabled === 'boolean') dbPatch.eat_here_enabled = patch.eatHereEnabled;
   if (typeof patch.takeawayEnabled === 'boolean') dbPatch.takeaway_enabled = patch.takeawayEnabled;
+  if (patch.openingHours) dbPatch.opening_hours = patch.openingHours;
 
   if (Object.keys(dbPatch).length === 0) {
     return getLocationById(id);

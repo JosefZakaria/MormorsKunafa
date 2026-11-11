@@ -4,6 +4,7 @@ import type { AdminSettings } from '@shared/types';
 let initialRequest: Promise<AdminSettings> | null = null;
 let activeRequest: Promise<AdminSettings> | null = null;
 let appRequestedSettings = false;
+const preloadedHeroImages = new Set<string>();
 
 function preloadHeroImages(settings: AdminSettings): void {
     const images = [
@@ -12,6 +13,9 @@ function preloadHeroImages(settings: AdminSettings): void {
     ];
     for (const [url, media] of images) {
         if (!url) continue;
+        const key = `${url}|${media}`;
+        if (preloadedHeroImages.has(key)) continue;
+        preloadedHeroImages.add(key);
         const link = document.createElement('link');
         link.rel = 'preload';
         link.as = 'image';

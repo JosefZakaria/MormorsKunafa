@@ -354,7 +354,7 @@ export const adminApi = {
 
   updateLocation: async (
     id: string,
-    patch: Partial<Pick<Location, 'isPaused' | 'eatHereEnabled' | 'takeawayEnabled'>>
+    patch: Partial<Pick<Location, 'isPaused' | 'eatHereEnabled' | 'takeawayEnabled' | 'openingHours'>>
   ): Promise<Location> => {
     const token = getToken();
     if (!token) throw new Error('Not authenticated');

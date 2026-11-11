@@ -4,10 +4,11 @@ import { Container } from '../../components/common/Container/Container';
 import { Button } from '../../components/common/Button/Button';
 import { LanguageSelector } from '../../components/common/LanguageSelector/LanguageSelector';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { orderApi } from '../../services/api';
+import { watchPublicSettings } from '../../services/watchPublicSettings';
 import type { Location, OrderType } from '@shared/types';
 import { HOJA_LOCATION_ID, MOLLEVANGEN_LOCATION_ID } from '@shared/types';
-import { DEFAULT_DAY_HOURS } from '@shared/utils/openingHours';
+import { defaultOpeningHours } from '@shared/utils/openingHours';
+import { todayInStockholmDateString } from '@shared/utils/scheduledTime';
 import { clearStoredLocation, needsPickupLocation } from '../../utils/selectedLocation';
 import './Landing.css';
 
@@ -112,29 +113,25 @@ export const Landing: React.FC = () => {
     useEffect(() => {
         sessionStorage.removeItem('orderType');
         clearStoredLocation();
-        orderApi.getPublicSettings()
-            .then((settings) => {
-                if (!settings) return;
-                setFlags({
-                    isPaused: Boolean(settings.isPaused),
-                    eatHereEnabled: settings.locations?.length
-                        ? settings.locations.some((location) => !location.isPaused && location.eatHereEnabled)
-                        : settings.eatHereEnabled !== false,
-                    takeawayEnabled: settings.locations?.length
-                        ? settings.locations.some((location) => !location.isPaused && location.takeawayEnabled)
-                        : settings.takeawayEnabled !== false,
-                    deliveryEnabled: settings.deliveryEnabled !== false,
-                });
-                if (settings.heroImageDesktop) setHeroDesktop(settings.heroImageDesktop);
-                if (settings.heroImageMobile) setHeroMobile(settings.heroImageMobile);
-                if (settings.locations?.length) setPlaces(settings.locations);
-            })
-            .catch((err) => {
-                console.error('Failed to fetch public settings:', err);
-            })
-            .finally(() => {
-                setSettingsLoaded(true);
+        return watchPublicSettings((settings) => {
+            setFlags({
+                isPaused: Boolean(settings.isPaused),
+                eatHereEnabled: settings.locations?.length
+                    ? settings.locations.some((location) => !location.isPaused && location.eatHereEnabled)
+                    : settings.eatHereEnabled !== false,
+                takeawayEnabled: settings.locations?.length
+                    ? settings.locations.some((location) => !location.isPaused && location.takeawayEnabled)
+                    : settings.takeawayEnabled !== false,
+                deliveryEnabled: settings.deliveryEnabled !== false,
             });
+            if (settings.heroImageDesktop) setHeroDesktop(settings.heroImageDesktop);
+            if (settings.heroImageMobile) setHeroMobile(settings.heroImageMobile);
+            if (settings.locations?.length) setPlaces(settings.locations);
+            setSettingsLoaded(true);
+        }, (err) => {
+            console.error('Failed to fetch public settings:', err);
+            setSettingsLoaded(true);
+        });
     }, []);
 
     const handleSelectOrderType = (type: OrderType) => {
@@ -166,7 +163,8 @@ export const Landing: React.FC = () => {
         const name = new Intl.DateTimeFormat(LOCALE_MAP[language] || 'sv-SE', { weekday: 'long' }).format(new Date(2024, 0, d));
         return name.charAt(0).toUpperCase() + name.slice(1);
     });
-    const hoursLabel = `${DEFAULT_DAY_HOURS.open.slice(0, 2)}–${DEFAULT_DAY_HOURS.close.slice(0, 2)}`;
+    const closedLabel = language === 'ar' ? 'مغلق' : language === 'en' ? 'Closed' : 'Stängt';
+    const exceptionsLabel = language === 'ar' ? 'ساعات عمل استثنائية' : language === 'en' ? 'Special opening hours' : 'Avvikande öppettider';
     const mappedPlaces = places.filter((place) => place.address.trim());
 
     return (
@@ -330,15 +328,33 @@ export const Landing: React.FC = () => {
                         <div className="findus__cards">
                             <div className="findus__card">
                                 <h3 className="findus__card-title">{t('findus.open_hours_title')}</h3>
-                                <p className="findus__hours-all">{t('landing.findus.hours_all')}</p>
-                                <ul className="findus__days">
-                                    {weekdays.map((day) => (
-                                        <li className="findus__day" key={day}>
-                                            <span>{day}</span>
-                                            <span className="findus__day-time">{hoursLabel}</span>
-                                        </li>
-                                    ))}
-                                </ul>
+                                {places.map(place => {
+                                    const schedule = place.openingHours ?? defaultOpeningHours(place.slug);
+                                    const exceptions = Object.entries(schedule.exceptions)
+                                        .filter(([date]) => date >= todayInStockholmDateString())
+                                        .sort(([a], [b]) => a.localeCompare(b));
+                                    return <div className="findus__place" key={place.id}>
+                                        <h4 className="findus__value">{place.name}</h4>
+                                        <ul className="findus__days">
+                                            {weekdays.map((day, index) => {
+                                                const hours = schedule.weekly[(index + 1) % 7];
+                                                return <li className="findus__day" key={day}>
+                                                    <span>{day}</span>
+                                                    <span className="findus__day-time">{hours ? `${hours.open}–${hours.close}` : closedLabel}</span>
+                                                </li>;
+                                            })}
+                                        </ul>
+                                        {exceptions.length > 0 && <>
+                                            <p className="findus__hours-all">{exceptionsLabel}</p>
+                                            <ul className="findus__days">
+                                                {exceptions.map(([date, hours]) => <li className="findus__day" key={date}>
+                                                    <span>{new Date(`${date}T12:00:00Z`).toLocaleDateString(LOCALE_MAP[language], { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Stockholm' })}</span>
+                                                    <span className="findus__day-time">{hours ? `${hours.open}–${hours.close}` : closedLabel}</span>
+                                                </li>)}
+                                            </ul>
+                                        </>}
+                                    </div>;
+                                })}
                                 <p className="findus__note">{t('landing.findus.note')}</p>
                             </div>
                             <div className="findus__card">

@@ -15,7 +15,7 @@ import { outOfStockProductNames, stockLocationIdForOrder } from '../db/productLo
 import type { OrderType } from '@mormors-kunafa/shared/types';
 import { parseOrderScheduledAt, formatStockholmDateTime } from '../utils/stockholmWallTime.js';
 import { dbTimestampToIso } from '../utils/dbTimestamp.js';
-import { calculateOrderReadyTime, isPreOrder } from '../shared/utils/scheduledTime.js';
+import { calculateOrderReadyTime, dateToStockholmInputValue, isPreOrder } from '../shared/utils/scheduledTime.js';
 import { validateScheduledOrderTime } from '../shared/utils/openingHours.js';
 import {
   isAllowedPaymentMethod,
@@ -220,7 +220,12 @@ router.post('/', async (req: Request, res: Response) => {
         }
       }
 
-      const hoursValidation = validateScheduledOrderTime(body.scheduledTime, defaultPrep);
+      const hoursTime = scheduledAt
+        ? `${dateToStockholmInputValue(scheduledAt)}T${scheduledAt.toLocaleTimeString('sv-SE', { timeZone: 'Europe/Stockholm', hour12: false })}`
+        : undefined;
+      const hoursValidation = validateScheduledOrderTime(
+        hoursTime, defaultPrep, new Date(), resolvedLocation.location?.openingHours
+      );
       if (!hoursValidation.valid) {
         res.status(400).json({ error: hoursValidation.error });
         return;
@@ -993,6 +998,7 @@ router.post('/admin/:id/print', requireAdmin, async (req: Request, res: Response
 });
 
 router.get('/settings', async (_req: Request, res: Response) => {
+  res.set('Cache-Control', 'no-store');
   try {
     const { data, error } = await supabase
       .from('admin_settings')
