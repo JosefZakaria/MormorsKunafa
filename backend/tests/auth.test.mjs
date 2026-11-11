@@ -6,6 +6,9 @@ import express from 'express';
 import jwt from 'jsonwebtoken';
 
 test('admin authentication fails closed and uses the current account role', async t => {
+  // Admin scopes are cached for 30 s; tests advance the clock to see database changes.
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() });
+  const expireScopeCache = () => t.mock.timers.tick(30_001);
   const secret = 'isolated-auth-test-secret-at-least-32-characters';
   const users = new Map([
     ['owner', { id: 'owner', role: 'owner', location_id: null }],
@@ -76,6 +79,7 @@ test('admin authentication fails closed and uses the current account role', asyn
       const scopes = await loadAdminScopes(['owner', 'deleted', 'invalid']);
       assert.deepEqual([...scopes.keys()], ['owner']);
       users.delete('owner');
+      expireScopeCache();
       assert.equal((await request()).status, 401);
       users.set('owner', { id: 'owner', role: 'owner', location_id: null });
     });
@@ -85,12 +89,32 @@ test('admin authentication fails closed and uses the current account role', asyn
       assert.equal((await response.json()).role, 'location');
       assert.equal((await request('/owner', token('location'))).status, 403);
       users.get('owner').role = 'location';
+      expireScopeCache();
       assert.equal((await request('/owner')).status, 403);
       users.get('owner').role = 'owner';
+      expireScopeCache();
+    });
+    await t.test('the account scope is cached for 30 s and then re-read', async () => {
+      assert.equal((await request('/owner')).status, 200);
+      const before = lookups;
+      for (let i = 0; i < 5; i++) assert.equal((await request('/owner')).status, 200);
+      assert.equal(lookups, before);
+      users.get('owner').role = 'location';
+      t.mock.timers.tick(29_000);
+      assert.equal((await request('/owner')).status, 200);
+      t.mock.timers.tick(1_001);
+      assert.equal((await request('/owner')).status, 403);
+      assert.equal(lookups, before + 1);
+      users.get('owner').role = 'owner';
+      expireScopeCache();
     });
     await t.test('database failures do not grant access', async () => {
       unavailable = true;
+      expireScopeCache();
       assert.equal((await request()).status, 503);
+      // Failures are not cached: access returns as soon as the database does.
+      unavailable = false;
+      assert.equal((await request()).status, 200);
     });
   } finally {
     server.close(); database.close();

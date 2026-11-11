@@ -937,18 +937,20 @@ export const AdminDashboard: React.FC = () => {
             updateConnectionStatus();
         };
 
-        const queue = (name: Queue, load: () => Promise<Order[]>, apply: (orders: Order[]) => void) =>
+        const queue = (name: Queue, load: () => Promise<Order[]>, apply: (orders: Order[]) => void, minIntervalMs = 0) =>
             createOrderQueueRefresh(load, orders => {
                 if (disposed || sessionExpired) return;
                 apply(orders);
                 failures[name] = 0;
                 if (name === 'pending') setLoadingOrders(false);
                 updateConnectionStatus();
-            }, error => reportError(name, error));
+            }, error => reportError(name, error), minIntervalMs);
 
         const pending = queue('pending', orderApi.getPending, setPendingOrders);
-        const active = queue('active', orderApi.getActive, setActiveOrders);
-        const preOrders = queue('preOrders', orderApi.getPreOrders, setPreOrders);
+        // Own actions update these lists locally and SSE/wake/release force a refresh,
+        // so polling them is only a fallback for changes from other screens.
+        const active = queue('active', orderApi.getActive, setActiveOrders, 30_000);
+        const preOrders = queue('preOrders', orderApi.getPreOrders, setPreOrders, 30_000);
         const refresh = (force = false) => {
             if (disposed || sessionExpired) return Promise.resolve();
             // Secondary requests run independently. Only the pending queue

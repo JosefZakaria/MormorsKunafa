@@ -10,7 +10,8 @@ const compiled = ts.transpileModule(readFileSync(filename, 'utf8'), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
 }).outputText;
 const moduleExports = {};
-vm.runInNewContext(compiled, { exports: moduleExports }, { filename });
+let clock = 0; // fake Date.now for the poll interval
+vm.runInNewContext(compiled, { exports: moduleExports, Date: { now: () => clock } }, { filename });
 const { createOrderQueueRefresh } = moduleExports;
 
 function deferred() {
@@ -127,4 +128,37 @@ test('unmount also ignores a late network failure', async () => {
   queue.dispose();
   request.reject(new Error('offline'));
   await finished;
+});
+
+test('secondary lists poll at most every 30 s, but SSE/wake/release refreshes always fetch', async () => {
+  let calls = 0;
+  const queue = createOrderQueueRefresh(async () => { calls += 1; return []; }, () => {}, assert.fail, 30_000);
+  await queue.refresh();
+  assert.equal(calls, 1);
+  clock += 29_999;
+  for (let i = 0; i < 8; i += 1) await queue.refresh();
+  assert.equal(calls, 1);
+  await queue.refresh(true);
+  assert.equal(calls, 2);
+  clock += 30_000;
+  await queue.refresh();
+  assert.equal(calls, 3);
+});
+
+test('a failed secondary list retries on the next poll instead of waiting 30 s', async () => {
+  let calls = 0;
+  let fail = true;
+  const errors = [];
+  const queue = createOrderQueueRefresh(async () => {
+    calls += 1;
+    if (fail) throw new Error('offline');
+    return [];
+  }, () => {}, error => errors.push(error), 30_000);
+  await queue.refresh();
+  fail = false;
+  await queue.refresh();
+  assert.equal(calls, 2);
+  assert.equal(errors.length, 1);
+  await queue.refresh();
+  assert.equal(calls, 2);
 });

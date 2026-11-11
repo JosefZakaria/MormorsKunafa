@@ -18,7 +18,8 @@ test('owner phone orders enter the selected location queue without online paymen
     res.setHeader('Content-Type', 'application/json');
     const url = new URL(req.url, 'http://localhost');
     const table = url.pathname.split('/').at(-1);
-    requests.push({ table, method: req.method, query: url.searchParams.toString() });
+    const record = { table, method: req.method, query: url.searchParams.toString() };
+    requests.push(record);
     let raw = '';
     for await (const chunk of req) raw += chunk;
     const data = raw ? JSON.parse(raw) : undefined;
@@ -30,13 +31,16 @@ test('owner phone orders enter the selected location queue without online paymen
     };
     let result = tables[table];
     if (!result) { res.statusCode = 500; res.end(JSON.stringify({ message: `Unexpected table ${table}` })); return; }
-    const matches = row => [...url.searchParams].every(([key, value]) => {
-      if (key === 'or') return row.payment_status === 'paid' || row.payment_method === 'pay_at_pickup';
+    const condition = (row, key, value) => {
       if (value.startsWith('eq.')) return String(row[key]) === value.slice(3);
+      if (value.startsWith('neq.')) return String(row[key]) !== value.slice(4);
       if (value.startsWith('in.(')) return value.slice(4, -1).split(',').includes(String(row[key]));
       if (value.startsWith('not.is.')) return row[key] != null;
       return true;
-    });
+    };
+    // Repeated params (two `or`s) are ANDed, like PostgREST.
+    const matches = row => [...url.searchParams].every(([key, value]) => key !== 'or' ? condition(row, key, value)
+      : value.slice(1, -1).split(',').some(part => condition(row, part.split('.')[0], part.split('.').slice(1).join('.'))));
     if (req.method === 'POST') {
       if (table === 'order_items' && failItems) { res.statusCode = 500; res.end(JSON.stringify({ message: 'Test item insert failure', code: 'XX000' })); return; }
       if (table === 'orders' && orders.some(order => order.id === data.id)) { res.statusCode = 409; res.end(JSON.stringify({ message: 'duplicate', code: '23505' })); return; }
@@ -51,6 +55,7 @@ test('owner phone orders enter the selected location queue without online paymen
         if (table === 'orders') items.splice(0, items.length, ...items.filter(item => !result.some(order => order.id === item.order_id)));
       }
     }
+    record.ids = result.map(row => row.id);
     res.end(JSON.stringify(req.headers.accept?.includes('application/vnd.pgrst.object+json') ? result[0] ?? null : result));
   }).listen(0, '127.0.0.1');
   await once(database, 'listening');
@@ -78,13 +83,17 @@ test('owner phone orders enter the selected location queue without online paymen
   const payload = (locationId = hoja) => ({ requestId: randomUUID(), locationId, customer: { firstName: 'Anna', lastName: 'Andersson', phone: '0701234567', email: 'anna@example.test' }, items: [{ productId: `${productId}-250 gram`, quantity: 2 }], notes: 'Ring vid hämtning' });
   let phoneOrder;
   try {
-    await t.test('anonymous and location accounts cannot create orders; live role beats JWT', async () => {
+    await t.test('anonymous and location accounts cannot create orders; live role beats JWT', async t => {
+      // Admin scopes are cached for 30 s; advance the clock so the role change is read.
+      t.mock.timers.enable({ apis: ['Date'], now: Date.now() });
       assert.equal((await call('/admin/phone-orders', 'POST', payload(), null)).status, 401);
       assert.equal((await call('/admin/phone-orders', 'POST', payload(), 'hoja-admin')).status, 403);
       assert.equal((await call('/admin/phone-orders', 'POST', payload(), 'deleted-admin')).status, 401);
       users[0].role = 'location'; users[0].location_id = hoja;
       assert.equal((await call('/admin/phone-orders', 'POST', payload())).status, 403);
       users[0].role = 'owner'; users[0].location_id = null;
+      t.mock.timers.tick(30_001);
+      assert.equal((await call('/admin/pending')).status, 200);
       assert.equal(orders.length, 0);
     });
     await t.test('server prices, contact info, unpaid status and location event are saved', async () => {
@@ -118,6 +127,39 @@ test('owner phone orders enter the selected location queue without online paymen
       assert.deepEqual(pending.map(order => order.id), [phoneOrder.id]);
       assert.deepEqual(await (await call('/admin/pending', 'GET', undefined, 'mollan-admin')).json(), []);
       assert.deepEqual(await (await call('/admin/pending')).json(), []);
+    });
+    await t.test('location queues are filtered by location in the database query', async t => {
+      t.mock.timers.enable({ apis: ['Date'], now: Date.now() });
+      const row = (location_id, order_type) => ({ id: randomUUID(), order_number: `#${order_type}`, status: 'mottagen', order_type, location_id, payment_method: 'card', payment_status: 'paid' });
+      const hojaTakeaway = row(hoja, 'takeaway'), mollanTakeaway = row(mollan, 'takeaway'), delivery = row(mollan, 'delivery');
+      orders.push(hojaTakeaway, mollanTakeaway, delivery);
+      const fetched = async user => {
+        const before = requests.length;
+        const ids = (await (await call('/admin/active', 'GET', undefined, user)).json()).map(order => order.id);
+        const record = requests.slice(before).find(r => r.table === 'orders' && r.method === 'GET');
+        return { ids, query: record.query, dbIds: record.ids };
+      };
+      try {
+        const owner = await fetched('owner');
+        assert.ok(!owner.query.includes('location_id'));
+        for (const id of [hojaTakeaway.id, mollanTakeaway.id, delivery.id]) assert.ok(owner.ids.includes(id));
+        const plain = await fetched('hoja-admin');
+        assert.match(plain.query, new RegExp(`location_id=eq.${hoja}.*order_type=neq.delivery`));
+        assert.deepEqual(plain.dbIds, [hojaTakeaway.id], 'other locations and delivery never leave the database');
+        assert.deepEqual(plain.ids, [hojaTakeaway.id]);
+        places[0].fulfills_delivery = true;
+        t.mock.timers.tick(30_001);
+        const courier = await fetched('hoja-admin');
+        assert.ok(courier.query.includes(`or=%28location_id.eq.${hoja}%2Corder_type.eq.delivery%29`), courier.query);
+        assert.deepEqual(courier.dbIds, [hojaTakeaway.id, delivery.id]);
+        assert.deepEqual(courier.ids, [hojaTakeaway.id, delivery.id]);
+        assert.deepEqual((await fetched('mollan-admin')).dbIds, [mollanTakeaway.id]);
+      } finally {
+        delete places[0].fulfills_delivery;
+        t.mock.timers.tick(30_001);
+        assert.equal((await call('/admin/active', 'GET', undefined, 'hoja-admin')).status, 200);
+        orders.splice(0, orders.length, ...orders.filter(o => ![hojaTakeaway.id, mollanTakeaway.id, delivery.id].includes(o.id)));
+      }
     });
     await t.test('invalid contacts, quantities, products, variants and unavailable stock create no order', async () => {
       const before = orders.length;

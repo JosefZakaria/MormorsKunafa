@@ -43,7 +43,23 @@ export function orderRowVisibleToScope(scope: AdminScope, row: Row): boolean {
   });
 }
 
-export async function loadAdminScope(adminId: string): Promise<AdminScope> {
+// shortcut: per-instance cache, so a role/location/account change made in Supabase takes up to 30 s to apply; invalidate here if roles become editable in the app.
+const SCOPE_TTL_MS = 30_000;
+const scopeCache = new Map<string, { expiresAt: number; scope: Promise<AdminScope> }>();
+
+export function loadAdminScope(adminId: string): Promise<AdminScope> {
+  const cached = scopeCache.get(adminId);
+  if (cached && cached.expiresAt > Date.now()) return cached.scope;
+  const scope = fetchAdminScope(adminId);
+  scopeCache.set(adminId, { expiresAt: Date.now() + SCOPE_TTL_MS, scope });
+  // Never cache failures: denied accounts and database errors are re-checked on the next request.
+  scope.catch(() => {
+    if (scopeCache.get(adminId)?.scope === scope) scopeCache.delete(adminId);
+  });
+  return scope;
+}
+
+async function fetchAdminScope(adminId: string): Promise<AdminScope> {
   const { data, error } = await supabase
     .from('admin_users')
     .select('id, role, location_id')
