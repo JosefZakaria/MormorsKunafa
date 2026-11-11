@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import type { Product } from '@shared/types';
+import { consentStorage } from '../consent/consent';
 import {
   getVariantPriceOre,
   getFixedWeight,
@@ -31,18 +32,18 @@ const CART_STORAGE_KEY = 'mormors-kunafa-cart';
 
 export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [items, setItems] = useState<CartItem[]>(() => {
-    // Load from localStorage on mount
+    // Before consent this reads from memory only; see consent/consent.ts.
     try {
-      const stored = localStorage.getItem(CART_STORAGE_KEY);
+      const stored = consentStorage.getItem(CART_STORAGE_KEY);
       return stored ? JSON.parse(stored) : [];
     } catch {
       return [];
     }
   });
 
-  // Save to localStorage whenever items change
   useEffect(() => {
-    localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items));
+    if (items.length) consentStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items));
+    else consentStorage.removeItem(CART_STORAGE_KEY);
   }, [items]);
 
   const addItem = (product: Product, quantity: number = 1, option?: string) => {

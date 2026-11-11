@@ -7,9 +7,13 @@ import './styles/global.css'
 import './styles/typography.css'
 import './styles/animations.css'
 import { LanguageProvider } from './contexts/LanguageContext'
-import { registerServiceWorker } from './services/pwa'
+import { registerServiceWorker, unregisterServiceWorkers } from './services/pwa'
+import { isAdminPath } from './utils/adminPath'
 
-registerServiceWorker()
+// The service worker only serves admin push notifications. Customers get none, and
+// any left over from older versions of the site is removed.
+if (isAdminPath()) registerServiceWorker()
+else unregisterServiceWorkers()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

@@ -1,3 +1,4 @@
+import { consentStorage } from '../../consent/consent';
 import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Container } from '../../components/common/Container/Container';
@@ -30,7 +31,7 @@ export const SwishPay: React.FC = () => {
 
     const start = async () => {
       try {
-        const phone = sessionStorage.getItem('swishPayerPhone') ?? undefined;
+        const phone = consentStorage.getItem('swishPayerPhone') ?? undefined;
         const created = await orderApi.createSwishPayment(orderId, phone ? { phone } : undefined);
         if (cancelled) return;
         setOrderNumber(String(created.orderNumber ?? ''));

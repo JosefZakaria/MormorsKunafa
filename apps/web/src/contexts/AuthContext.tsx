@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
 import type { AdminRole } from '@shared/types';
+import { useLocation } from 'react-router-dom';
 import { adminApi } from '../services/api';
+import { isAdminPath } from '../utils/adminPath';
 
 interface AdminInfo {
     id: string;
@@ -32,19 +34,31 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-    const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-        return !!localStorage.getItem('authToken');
-    });
+interface StoredAuth {
+    isAuthenticated: boolean;
+    admin: AdminInfo | null;
+}
 
-    const [admin, setAdmin] = useState<AdminInfo | null>(() => {
-        try {
-            const stored = localStorage.getItem('adminInfo');
-            return stored ? normalizeAdmin(JSON.parse(stored)) : null;
-        } catch {
-            return null;
-        }
-    });
+function readStoredAuth(): StoredAuth {
+    try {
+        const stored = localStorage.getItem('adminInfo');
+        return {
+            isAuthenticated: !!localStorage.getItem('authToken'),
+            admin: stored ? normalizeAdmin(JSON.parse(stored)) : null,
+        };
+    } catch {
+        return { isAuthenticated: false, admin: null };
+    }
+}
+
+export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+    // Staff login lives in localStorage. Customer pages never read it, so the
+    // visitor's browser is not touched before they have answered the cookie banner.
+    const onAdminPage = isAdminPath(useLocation().pathname);
+    const [auth, setAuth] = useState<StoredAuth | null>(() => (onAdminPage ? readStoredAuth() : null));
+    if (onAdminPage && auth === null) setAuth(readStoredAuth());
+    const isAuthenticated = auth?.isAuthenticated ?? false;
+    const admin = auth?.admin ?? null;
 
     const login = async (email: string, password: string): Promise<{ ok: boolean; error?: string }> => {
         try {
@@ -53,8 +67,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             if (!admin) return { ok: false, error: 'Inloggning misslyckades' };
             localStorage.setItem('authToken', result.token);
             localStorage.setItem('adminInfo', JSON.stringify(admin));
-            setIsAuthenticated(true);
-            setAdmin(admin);
+            setAuth({ isAuthenticated: true, admin });
             return { ok: true };
         } catch (err: any) {
             const message = err?.data?.error || err?.message || 'Inloggning misslyckades';
@@ -65,8 +78,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const logout = () => {
         localStorage.removeItem('authToken');
         localStorage.removeItem('adminInfo');
-        setIsAuthenticated(false);
-        setAdmin(null);
+        setAuth({ isAuthenticated: false, admin: null });
     };
 
     return (

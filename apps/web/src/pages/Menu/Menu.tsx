@@ -1,3 +1,4 @@
+import { consentStorage } from '../../consent/consent';
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Container } from '../../components/common/Container/Container';
@@ -141,7 +142,7 @@ export const Menu: React.FC = () => {
     tRef.current = t;
 
     useEffect(() => {
-        const orderType = sessionStorage.getItem('orderType');
+        const orderType = consentStorage.getItem('orderType');
         if (needsPickupLocation(orderType) && !getStoredLocationId()) {
             navigate('/select-location', { replace: true });
         }

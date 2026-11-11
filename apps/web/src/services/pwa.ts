@@ -8,6 +8,18 @@ export function registerServiceWorker(): void {
   });
 }
 
+/** Remove service workers that older versions of the site registered for every visitor. */
+export function unregisterServiceWorkers(): void {
+  if (!('serviceWorker' in navigator)) return;
+
+  navigator.serviceWorker
+    .getRegistrations()
+    .then((registrations) => Promise.all(registrations.map((registration) => registration.unregister())))
+    .catch(() => {
+      /* Nothing to clean up. */
+    });
+}
+
 export function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');

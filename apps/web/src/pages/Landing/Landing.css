@@ -628,6 +628,47 @@
     .findus__map { min-height: 220px; }
 }
 
+/* Map placeholder shown until the visitor allows Google Maps */
+.consent-map-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    padding: 1rem;
+    text-align: center;
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 0.85rem;
+    line-height: 1.45;
+}
+
+.consent-map-placeholder p {
+    margin: 0;
+    max-width: 32ch;
+}
+
+.consent-map-placeholder__btn {
+    border: 1px solid var(--color-secondary-gold);
+    background: transparent;
+    color: var(--color-secondary-gold);
+    border-radius: var(--radius-full);
+    padding: 0.45rem 1rem;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+}
+
+.consent-map-placeholder__btn:hover {
+    background: var(--color-secondary-gold);
+    color: var(--color-primary-red);
+}
+
+.consent-map-placeholder__link {
+    color: rgba(255, 255, 255, 0.85);
+    text-decoration: underline;
+    font-size: 0.8rem;
+}
+
 /* ---- Språkväljare ---- */
 .landing__language {
     display: flex;

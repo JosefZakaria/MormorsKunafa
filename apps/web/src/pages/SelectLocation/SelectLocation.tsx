@@ -1,3 +1,4 @@
+import { consentStorage } from '../../consent/consent';
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Container } from '../../components/common/Container/Container';
@@ -16,7 +17,7 @@ export const SelectLocation: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
-    const orderType = (sessionStorage.getItem('orderType') || '') as OrderType | '';
+    const orderType = (consentStorage.getItem('orderType') || '') as OrderType | '';
     const returnToCart = searchParams.get('from') === 'cart';
 
     useEffect(() => {

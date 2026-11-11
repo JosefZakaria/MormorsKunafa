@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { translations, Language } from '../translations/translations';
+import { consentStorage } from '../consent/consent';
 
 type LanguageContextType = {
     language: Language;
@@ -11,14 +12,16 @@ type LanguageContextType = {
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
 
 export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-    const [language, setLanguage] = useState<Language>(() => {
-        const saved = localStorage.getItem('language');
-        return (saved as Language) || 'sv';
+    const [language, setLanguageState] = useState<Language>(() => {
+        const saved = consentStorage.getItem('language');
+        return saved === 'sv' || saved === 'en' || saved === 'ar' ? saved : 'sv';
     });
 
-    useEffect(() => {
-        localStorage.setItem('language', language);
-    }, [language]);
+    const setLanguage = (lang: Language) => {
+        setLanguageState(lang);
+        // Only an explicit choice is remembered; the default is never written.
+        consentStorage.setItem('language', lang);
+    };
 
     const t = (key: string): string => {
         // @ts-ignore

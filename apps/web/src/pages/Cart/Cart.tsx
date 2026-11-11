@@ -1,3 +1,4 @@
+import { consentStorage } from '../../consent/consent';
 import React, { useMemo, useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Container } from '../../components/common/Container/Container';
@@ -85,7 +86,7 @@ export const Cart: React.FC = () => {
     const [orderType, setOrderType] = useState<OrderType | ''>(() => {
         const fromUrl = searchParams.get('type') as OrderType;
         if (fromUrl) return fromUrl;
-        const stored = sessionStorage.getItem('orderType') as OrderType;
+        const stored = consentStorage.getItem('orderType') as OrderType;
         return stored || '';
     });
     const [orderTypeError, setOrderTypeError] = useState<string | null>(null);
@@ -121,10 +122,6 @@ export const Cart: React.FC = () => {
         const place = locations.find(location => location.id === (orderType === 'delivery' ? HOJA_LOCATION_ID : locationId));
         return place?.openingHours ?? defaultOpeningHours(place?.slug);
     }, [locations, locationId, orderType]);
-
-    useEffect(() => {
-        localStorage.removeItem('deliveryInfo');
-    }, []);
 
     useEffect(() => {
         if (needsPickupLocation(orderType) && !getStoredLocationId()) {
@@ -183,12 +180,12 @@ export const Cart: React.FC = () => {
             if (flags.isPaused) {
                 setPausedPopup('all');
             } else {
-                const storedType = (searchParams.get('type') || sessionStorage.getItem('orderType') || '') as OrderType | '';
+                const storedType = (searchParams.get('type') || consentStorage.getItem('orderType') || '') as OrderType | '';
                 if (storedType && !isOrderTypeEnabled(storedType, flags, nextLocations, storedPlace)) {
                     if (needsPickupLocation(storedType) && anyLocationAcceptsOrderType(nextLocations, storedType)) {
                         setPausedPopup(storedType);
                     } else {
-                        sessionStorage.removeItem('orderType');
+                        consentStorage.removeItem('orderType');
                         setOrderType('');
                         setPausedPopup(storedType);
                     }
@@ -373,7 +370,7 @@ export const Cart: React.FC = () => {
         }
         if (!isOrderTypeEnabled(nextType, orderTypeFlags, locations, locationId)) {
             if (needsPickupLocation(nextType) && anyLocationAcceptsOrderType(locations, nextType)) {
-                sessionStorage.setItem('orderType', nextType);
+                consentStorage.setItem('orderType', nextType);
                 setOrderType(nextType);
                 clearStoredLocation();
                 setLocationId('');
@@ -383,7 +380,7 @@ export const Cart: React.FC = () => {
             setPausedPopup(nextType);
             return;
         }
-        sessionStorage.setItem('orderType', nextType);
+        consentStorage.setItem('orderType', nextType);
         setOrderType(nextType);
         if (nextType === 'delivery') {
             clearStoredLocation();
@@ -526,7 +523,7 @@ export const Cart: React.FC = () => {
                     setIsSubmitting(false);
                     return;
                 }
-                sessionStorage.setItem('swishPayerPhone', phoneForSwish);
+                consentStorage.setItem('swishPayerPhone', phoneForSwish);
             }
 
             const order = await orderApi.create({
