@@ -1,7 +1,5 @@
 /* Settings are scoped so order cards and the rest of the dashboard keep their layout. */
 .rush-settings {
-    --font-family-base: 'Inter', system-ui, sans-serif;
-    --font-family-display: 'Inter', system-ui, sans-serif;
     font-family: var(--font-family-base);
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));

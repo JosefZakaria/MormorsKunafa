@@ -14,9 +14,9 @@
   --color-gray-800: #1F2937;
 
   /* Typography */
-  --font-family-base: 'Playfair Display', serif;
-  --font-family-display: 'Playfair Display', serif;
-  /* Elegant feeling */
+  --font-family-base: 'Inter', system-ui, sans-serif;
+  --font-family-display: var(--font-family-base);
+  --font-family-body: var(--font-family-base);
 
   /* Spacing */
   --spacing-xs: 0.25rem;
