@@ -15,6 +15,8 @@ import {
 } from '../db/pushSubscriptionsRepository.js';
 import { getRealtimeStatus, registerRealtimeClient } from '../services/realtimeEvents.js';
 import { isWebPushConfigured } from '../services/pushNotifications.js';
+import { parseOpeningHours } from '../shared/utils/openingHours.js';
+import type { LocationFlagsPatch } from '../db/locations.js';
 
 const router = Router();
 router.use('/delivery-pricing', adminDeliveryPricingRouter);
@@ -365,7 +367,19 @@ router.patch('/locations/:id', requireAdmin, async (req: Request, res: Response)
     }
 
     const body = (req.body ?? {}) as Record<string, unknown>;
-    const patch: { isPaused?: boolean; eatHereEnabled?: boolean; takeawayEnabled?: boolean } = {};
+    const patch: LocationFlagsPatch = {};
+    if (Object.hasOwn(body, 'openingHours')) {
+      if (scope.role !== 'owner') {
+        res.status(403).json({ error: 'Endast superadmin kan ändra öppettider.' });
+        return;
+      }
+      try {
+        patch.openingHours = parseOpeningHours(body.openingHours);
+      } catch (error) {
+        res.status(400).json({ error: error instanceof Error ? error.message : 'Ogiltiga öppettider.' });
+        return;
+      }
+    }
     if (typeof body.isPaused === 'boolean') patch.isPaused = body.isPaused;
     if (scope.role === 'owner') {
       if (typeof body.eatHereEnabled === 'boolean') patch.eatHereEnabled = body.eatHereEnabled;
@@ -382,6 +396,7 @@ router.patch('/locations/:id', requireAdmin, async (req: Request, res: Response)
       res.status(404).json({ error: 'Platsen hittades inte.' });
       return;
     }
+    res.set('Cache-Control', 'no-store');
     res.json(updated);
   } catch (e) {
     console.error('[PATCH /admin/locations/:id]', e);

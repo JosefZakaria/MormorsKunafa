@@ -73,6 +73,32 @@ export const VOICE_PRODUCT_RULES = [
   },
 ] as const satisfies readonly ProductRule[];
 
+/** Owner-confirmed exclusions, separate from temporary stock availability. */
+export const VOICE_UNAVAILABLE_PRODUCTS = [
+  {
+    key: 'madlouqa',
+    name: 'Madlo2a',
+    arabicName: 'مدلوقة',
+    aliases: ['madlo2a', 'madlou2a', 'madlouqa', 'مدلوقة'],
+    status: 'not_offered',
+    answer: {
+      sv: 'Nej, vi har tyvärr inte madlo2a.',
+      ar: 'للأسف ما عنا مدلوقة.',
+    },
+  },
+  {
+    key: 'shuaibiyat',
+    name: 'Shuaibiyat',
+    arabicName: 'شعيبيات',
+    aliases: ['sh3yboyat', 'sh3aybiyat', 'shuaibiyat', 'شعيبيات'],
+    status: 'discontinued',
+    answer: {
+      sv: 'Nej, vi gör tyvärr inte shuaibiyat längre.',
+      ar: 'للأسف ما عاد نعمل شعيبيات.',
+    },
+  },
+] as const;
+
 export const VOICE_ORDER_POLICY = {
   defaultPreparationMinutes: 15,
   largeOrderPreparationMinutes: 20,

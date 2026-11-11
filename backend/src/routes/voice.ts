@@ -4,7 +4,8 @@ import { logSupabaseError, supabase } from '../db/connection.js';
 import { listLocations } from '../db/locations.js';
 import { inStockAtLocation, loadStockMap } from '../db/productLocationStock.js';
 import {
-  buildVoiceProductChoices, currentVoiceCatalogPrice, VOICE_PRODUCT_RULES, type VoiceCatalogProduct,
+  buildVoiceProductChoices, currentVoiceCatalogPrice, VOICE_PRODUCT_RULES, VOICE_UNAVAILABLE_PRODUCTS,
+  type VoiceCatalogProduct,
 } from '../utils/voiceOrderPolicy.js';
 
 type CatalogRow = VoiceCatalogProduct & { name: string; stock_status: string | null };
@@ -53,6 +54,7 @@ router.get('/catalog', async (req, res) => {
 
     res.json({
       currency: 'SEK',
+      unavailableProducts: VOICE_UNAVAILABLE_PRODUCTS,
       locations: locations.map(({ id, slug, name, address }) => ({ id, slug, name, address })),
       products: products.map(row => {
         const choice = choices.get(row.id);

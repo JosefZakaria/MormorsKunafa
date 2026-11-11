@@ -51,7 +51,7 @@ async function createPhoneOrder(req: Request, res: Response): Promise<void> {
       }
       // Validate the Stockholm wall clock even when the request uses UTC or an explicit offset.
       const clock = scheduledAt.toLocaleTimeString('sv-SE', { timeZone: STOCKHOLM_TZ, hour12: false });
-      const validation = validateScheduledOrderTime(`${dateToStockholmInputValue(scheduledAt)}T${clock}`, prep);
+      const validation = validateScheduledOrderTime(`${dateToStockholmInputValue(scheduledAt)}T${clock}`, prep, new Date(), location.openingHours);
       if (!validation.valid) throw new PhoneOrderError(400, validation.error);
     }
     const ids = [...new Set(body.items.map(item => resolveProductIdFromLineId(item.productId)))];

@@ -28,6 +28,14 @@ export const HOJA_LOCATION_ID = '2f1a9c4e-6b7d-4e8f-a901-b2c3d4e5f601';
 /** Möllevången. Matches DB seed. */
 export const MOLLEVANGEN_LOCATION_ID = '2f1a9c4e-6b7d-4e8f-a901-b2c3d4e5f602';
 
+export type OpeningDayHours = { open: string; close: string };
+export type OpeningHoursSchedule = {
+  /** Sunday = 0, Monday = 1, ... Saturday = 6. Null means closed. */
+  weekly: Record<number, OpeningDayHours | null>;
+  /** ISO dates override the weekly schedule, including exceptional closures. */
+  exceptions: Record<string, OpeningDayHours | null>;
+};
+
 export interface Location {
   id: string;
   slug: LocationSlug;
@@ -37,6 +45,7 @@ export interface Location {
   eatHereEnabled: boolean;
   takeawayEnabled: boolean;
   isPaused: boolean;
+  openingHours?: OpeningHoursSchedule;
 }
 
 // Product Interface
