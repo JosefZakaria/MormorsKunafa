@@ -58,20 +58,6 @@ async function setup(t, options = {}) {
     if (profile === 'missing') localStorage.removeItem('adminInfo');
     else if (profile === 'malformed') localStorage.setItem('adminInfo', '{broken-json');
     else localStorage.setItem('adminInfo', JSON.stringify({ id: 'fixture-admin', email: 'fixture@example.invalid', name: 'Fixture', role: profile === 'owner' ? 'owner' : 'location', locationId: profile === 'owner' ? null : MOLLE }));
-    window.__eventSources = [];
-    class TestEventSource extends EventTarget {
-      static CONNECTING = 0;
-      static OPEN = 1;
-      static CLOSED = 2;
-      readyState = 1;
-      constructor() {
-        super();
-        window.__eventSources.push(this);
-        queueMicrotask(() => { if (this.readyState === 1) this.onopen?.(new Event('open')); });
-      }
-      close() { this.readyState = 2; }
-    }
-    window.EventSource = TestEventSource;
     window.__alarmProbe = { contexts: [], analysers: [], sources: [] };
     const NativeAudioContext = window.AudioContext;
     window.AudioContext = class extends NativeAudioContext {
@@ -134,6 +120,8 @@ async function setup(t, options = {}) {
       }
       return json(endpoint.endsWith('/active') ? state.active : state.scheduled.filter(order => order.status === 'ny' && Date.parse(order.scheduledTime) - nowMs > 20 * 60_000), state.secondaryStatus);
     }
+    // Realtime not configured: the dashboard must keep working on polling alone.
+    if (endpoint === '/admin/realtime-token') { state.tokenCalls = (state.tokenCalls ?? 0) + 1; return json({ error: 'Realtime is not configured' }, 503); }
     if (endpoint === '/admin/settings' || endpoint === '/orders/settings') return json(settings);
     if (endpoint === '/locations') return json([location]);
     if (endpoint === '/products') return json(state.products);
@@ -438,27 +426,23 @@ test('an event during an old snapshot queues a follow-up instead of losing the n
   for (let i = 0; i < 50 && !state.releasePending; i += 1) await page.waitForTimeout(20);
   assert.ok(state.releasePending, 'pending request was not held');
   state.pending = [order()];
-  await page.evaluate(() => {
-    const stream = window.__eventSources.at(-1);
-    for (let i = 0; i < 10; i += 1) stream.dispatchEvent(new MessageEvent('ORDER_CREATED', { data: JSON.stringify({ event_id: 'event-' + i }) }));
-  });
+  // Forced refreshes (Realtime signals, focus) take the same path; ten of them during a held request.
+  for (let i = 0; i < 10; i += 1) await wake(page);
   state.releasePending();
   await overlay(page);
   await sound(page);
 });
 
-test('SSE reconnection immediately refreshes orders and restores event handlers', { timeout: 25000 }, async t => {
+test('without Realtime the dashboard warns and keeps polling fast', { timeout: 30000 }, async t => {
   const { page, state } = await setup(t);
   await activate(page);
-  const streams = await page.evaluate(() => {
-    window.__eventSources.at(-1).onerror(new Event('error'));
-    return window.__eventSources.length;
-  });
-  await page.waitForFunction(count => window.__eventSources.length > count, streams);
+  assert.ok(state.tokenCalls >= 1, 'dashboard never asked for a realtime token');
+  await page.getByText('Live-uppdatering nere', { exact: false }).waitFor({ timeout: 12000 });
+  const before = state.pendingCalls;
   state.pending = [order()];
-  await page.evaluate(() => window.__eventSources.at(-1).dispatchEvent(new MessageEvent('ORDER_CREATED', { data: JSON.stringify({ event_id: 'after-reconnect' }) })));
   await overlay(page);
   await sound(page);
+  assert.ok(state.pendingCalls > before, 'fallback polling stopped');
 });
 
 test('expired authentication stops an active alarm and returns to login', { timeout: 25000 }, async t => {
