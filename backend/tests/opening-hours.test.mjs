@@ -110,7 +110,7 @@ test('superadmin saves hours, public settings refresh and checkout enforces the 
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ orderType: 'takeaway', locationId: hojaId, paymentMethod: 'card',
       scheduledTime: '2099-01-05T12:00:00', customerInfo: { email: 'test@example.invalid', phone: '0701234567' },
-      items: [{ productId: 'fixture', productName: 'Test', quantity: 1, price: 1000 }],
+      items: [{ productId: '11111111-1111-4111-8111-111111111111', productName: 'Test', quantity: 1, price: 1000 }],
     }),
   });
   assert.equal(order.status, 400);

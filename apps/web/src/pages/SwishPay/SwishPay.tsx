@@ -1,6 +1,6 @@
 import { consentStorage } from '../../consent/consent';
 import React, { useCallback, useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { Container } from '../../components/common/Container/Container';
 import { orderApi } from '../../services/api';
 import './SwishPay.css';
@@ -9,6 +9,7 @@ export const SwishPay: React.FC = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const orderId = searchParams.get('orderId');
+  const { hash } = useLocation();
 
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -17,8 +18,8 @@ export const SwishPay: React.FC = () => {
   const [amountKr, setAmountKr] = useState<string>('');
 
   const goToStatus = useCallback(() => {
-    if (orderId) navigate(`/status?orderId=${encodeURIComponent(orderId)}`);
-  }, [navigate, orderId]);
+    if (orderId) navigate(`/status?orderId=${encodeURIComponent(orderId)}${hash}`);
+  }, [navigate, orderId, hash]);
 
   useEffect(() => {
     if (!orderId) {

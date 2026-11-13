@@ -122,24 +122,26 @@ export const orderApi = {
   getDeliveryPricing: async (): Promise<DeliveryPricing> => {
     return apiRequest<DeliveryPricing>('/orders/delivery-pricing');
   },
-  create: async (data: CreateOrderRequest): Promise<Order> => {
-    return apiRequest<Order>('/orders', {
+  create: async (data: CreateOrderRequest): Promise<Order & { statusToken?: string }> => {
+    return apiRequest<Order & { statusToken?: string }>('/orders', {
       method: 'POST',
       body: JSON.stringify(data),
     });
   },
 
-  createCheckoutSession: async (orderId: string): Promise<{ url: string }> => {
+  createCheckoutSession: async (orderId: string, statusToken?: string): Promise<{ url: string }> => {
     return apiRequest<{ url: string }>(`/orders/checkout-session/${orderId}`, {
       method: 'POST',
+      headers: statusToken ? { 'X-Order-Token': statusToken } : {},
     });
   },
 
   /** After Stripe redirect — marks order paid if webhook has not run yet. */
-  confirmStripeCheckout: async (orderId: string, sessionId: string): Promise<Order> => {
+  confirmStripeCheckout: async (orderId: string, sessionId: string, statusToken?: string): Promise<Order> => {
     return apiRequest<Order>('/orders/stripe-confirm', {
       method: 'POST',
       body: JSON.stringify({ orderId, sessionId }),
+      headers: statusToken ? { 'X-Order-Token': statusToken } : {},
     });
   },
 
@@ -171,8 +173,10 @@ export const orderApi = {
     return apiRequest(`/orders/swish-payment/${orderId}/status`);
   },
 
-  getById: async (id: string): Promise<Order> => {
-    return apiRequest<Order>(`/orders/${id}`);
+  getById: async (id: string, statusToken?: string): Promise<Order> => {
+    return apiRequest<Order>(`/orders/${id}`, {
+      headers: statusToken ? { 'X-Order-Token': statusToken } : {},
+    });
   },
 
   getPending: async (): Promise<Order[]> => {

@@ -1,6 +1,6 @@
 import { showOrderDeliveryEstimate } from '@shared/utils/deliveryPricing';
 import React, { useState, useEffect } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import { Container } from '../../components/common/Container/Container';
 import { orderApi } from '../../services/api';
 import type { Order } from '@shared/types';
@@ -261,6 +261,7 @@ export const OrderStatus: React.FC = () => {
     const navigate = useNavigate();
     const orderId = searchParams.get('orderId');
     const stripeSessionId = searchParams.get('session_id');
+    const statusToken = new URLSearchParams(useLocation().hash.slice(1)).get('statusToken') ?? undefined;
 
     const [order, setOrder] = useState<Order | null>(null);
     const [countdown, setCountdown] = useState('--:--');
@@ -285,7 +286,7 @@ export const OrderStatus: React.FC = () => {
 
         const fetchOrder = async () => {
             try {
-                const data = await orderApi.getById(orderId);
+                const data = await orderApi.getById(orderId, statusToken);
                 setOrder(data);
                 setError(null);
             } catch {
@@ -298,7 +299,7 @@ export const OrderStatus: React.FC = () => {
         const bootstrap = async () => {
             if (stripeSessionId) {
                 try {
-                    const confirmed = await orderApi.confirmStripeCheckout(orderId, stripeSessionId);
+                    const confirmed = await orderApi.confirmStripeCheckout(orderId, stripeSessionId, statusToken);
                     setOrder(confirmed);
                     setError(null);
                     setLoading(false);
@@ -324,7 +325,7 @@ export const OrderStatus: React.FC = () => {
             void fetchOrder();
         }, intervalMs);
         return () => clearInterval(pollId);
-    }, [orderId, stripeSessionId, order?.paymentMethod, order?.paymentStatus, order?.orderType, order?.scheduledTime, liveTracking]);
+    }, [orderId, stripeSessionId, statusToken, order?.paymentMethod, order?.paymentStatus, order?.orderType, order?.scheduledTime, liveTracking]);
 
     useEffect(() => {
         if (!liveTracking || !order?.estimatedReadyTime) return;

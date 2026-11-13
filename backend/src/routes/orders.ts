@@ -1,7 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { supabase, generateId, type Row, logSupabaseError, nowIso } from '../db/connection.js';
 import { getOrderById, getNextOrderNumber, updateOrder } from '../db/orderRepository.js';
-import { orderRowToOrder, rowsToOrders } from '../db/ordersList.js';
+import { orderRowToOrder, orderRowToCustomerOrder, rowsToOrders } from '../db/ordersList.js';
+import { createOrderStatusToken, canReadOrderContact } from '../utils/orderStatusToken.js';
 import { requireAdmin, requireOwner, getRequestAdmin } from '../middleware/auth.js';
 import { loadAdminScope, orderRowVisibleToScope, type AdminScope } from '../services/locationScope.js';
 import { PrinterService } from '../services/PrinterService.js';
@@ -115,7 +116,7 @@ async function assertOrderVisible(req: Request, res: Response, order: Row, locat
 // Create order (public)
 router.post('/', async (req: Request, res: Response) => {
   try {
-    const body = req.body as {
+    const body = (req.body ?? {}) as {
       items: Array<{ productId: string; productName: string; quantity: number; price: number; modifications?: string[] }>;
       orderType: string;
       customerInfo?: { name?: string; phone?: string; email?: string };
@@ -125,16 +126,29 @@ router.post('/', async (req: Request, res: Response) => {
       paymentMethod: string;
       locationId?: string;
     };
-    if (!body.items?.length) {
+    if (!Array.isArray(body.items) || !body.items.length || body.items.length > 100
+      || body.items.some(it => !it || typeof it !== 'object')) {
       res.status(400).json({ error: 'items required' });
       return;
     }
 
     const orderType = String(body.orderType ?? 'takeaway').trim();
+    if (!['eat-here', 'takeaway', 'delivery'].includes(orderType)) {
+      res.status(400).json({ error: 'Ogiltig beställningstyp.' });
+      return;
+    }
     const isDelivery = orderType === 'delivery';
     const productItems = body.items.filter((it) => !isDeliveryFeeLineItem(it));
     if (!productItems.length) {
       res.status(400).json({ error: 'items required' });
+      return;
+    }
+    if (productItems.some(it => typeof it.productId !== 'string' || it.productId.length > 120
+      || !resolveProductIdFromLineId(it.productId)
+      || !Number.isSafeInteger(it.quantity) || it.quantity < 1 || it.quantity > 100
+      || (it.modifications != null && (!Array.isArray(it.modifications) || it.modifications.length > 50
+        || it.modifications.some(value => typeof value !== 'string' || value.length > 500))))) {
+      res.status(400).json({ error: 'Ogiltiga orderrader. Antalet måste vara ett heltal mellan 1 och 100.' });
       return;
     }
     if (isDelivery && (!body.deliveryInfo || ['city', 'address', 'postalCode'].some(
@@ -306,13 +320,6 @@ router.post('/', async (req: Request, res: Response) => {
       location_id: locationId,
     };
 
-    const { error: orderInsertError } = await supabase.from('orders').insert(orderInsert);
-    if (orderInsertError) {
-      logSupabaseError('POST /api/orders insert', orderInsertError);
-      res.status(500).json({ error: 'Failed to create order', details: orderInsertError.message });
-      return;
-    }
-
     let totalOre = 0;
     const itemRows = [];
     const productIds = [
@@ -322,21 +329,21 @@ router.post('/', async (req: Request, res: Response) => {
           .filter((id): id is string => Boolean(id))
       ),
     ];
-    const catalog = new Map<string, { priceOre: number; variantPrices: Record<string, number> | null; hidden: boolean }>();
+    const catalog = new Map<string, { name: string; priceOre: number; variantPrices: Record<string, number> | null; hidden: boolean }>();
     if (productIds.length > 0) {
       const { data: catalogRows, error: catalogError } = await supabase
         .from('products')
-        .select('id, price_ore, variant_prices, hidden')
+        .select('id, name, price_ore, variant_prices, hidden')
         .in('id', productIds);
       if (catalogError) {
         logSupabaseError('POST /api/orders products', catalogError);
-        await supabase.from('orders').delete().eq('id', orderId);
         res.status(500).json({ error: 'Failed to create order', details: catalogError.message });
         return;
       }
       for (const row of catalogRows ?? []) {
         const id = String((row as Row).id);
         catalog.set(id, {
+          name: String((row as Row).name ?? ''),
           priceOre: Number((row as Row).price_ore),
           variantPrices: variantPricesForProduct(id, (row as Row).variant_prices),
           hidden: (row as Row).hidden === true,
@@ -349,21 +356,33 @@ router.post('/', async (req: Request, res: Response) => {
       const productId = resolveProductIdFromLineId(it.productId);
       const option = resolveLineOption(it.productId);
       const catalogProduct = productId ? catalog.get(productId) : undefined;
-      if (catalogProduct?.hidden) {
-        await supabase.from('orders').delete().eq('id', orderId);
+      if (!catalogProduct || catalogProduct.hidden) {
         res.status(400).json({ error: 'En eller flera varor finns inte längre på menyn' });
         return;
       }
-      const unitPriceOre = catalogProduct
-        ? resolveUnitPriceOre(catalogProduct.priceOre, catalogProduct.variantPrices, option)
-        : (it.price ?? 0);
-      const quantity = it.quantity ?? 1;
+      const variants = catalogProduct.variantPrices;
+      const fixedWeight = productId === 'c005c8af-3f2e-401c-923f-7dac0f682cda' ? '1 kg'
+        : productId === '9e6d210b-8637-4deb-889c-0726060288aa' ? '1350 gram' : null;
+      const validOption = fixedWeight ? !option || option === fixedWeight
+        : variants ? (option ? Object.hasOwn(variants, option)
+          || (Object.hasOwn(variants, 'st') && /^[1-9]\d*\s*st$/i.test(option)) : Object.hasOwn(variants, 'st'))
+          : !option;
+      if (!validOption || (it.productId.trim().length > 36 && !option)) {
+        res.status(400).json({ error: 'Välj en giltig storlek för produkten.' });
+        return;
+      }
+      const unitPriceOre = resolveUnitPriceOre(catalogProduct.priceOre, variants, option);
+      if (!Number.isSafeInteger(unitPriceOre) || unitPriceOre < 0) {
+        res.status(400).json({ error: 'Produkten har ett ogiltigt pris.' });
+        return;
+      }
+      const quantity = it.quantity;
       totalOre += unitPriceOre * quantity;
       itemRows.push({
         id: itemId,
         order_id: orderId,
         product_id: productId,
-        product_name_snapshot: sanitizeProductName(String(it.productName ?? '')),
+        product_name_snapshot: sanitizeProductName(`${catalogProduct.name}${option ? ` - ${option}` : ''}`),
         quantity,
         price_ore: unitPriceOre,
         modifications_json: it.modifications?.length ? it.modifications : null,
@@ -381,6 +400,18 @@ router.post('/', async (req: Request, res: Response) => {
         price_ore: deliveryQuote!.feeOre,
         modifications_json: null,
       });
+    }
+
+    if (!Number.isSafeInteger(totalOre)) {
+      res.status(400).json({ error: 'Orderns totalsumma är ogiltig.' });
+      return;
+    }
+
+    const { error: orderInsertError } = await supabase.from('orders').insert(orderInsert);
+    if (orderInsertError) {
+      logSupabaseError('POST /api/orders insert', orderInsertError);
+      res.status(500).json({ error: 'Failed to create order', details: orderInsertError.message });
+      return;
     }
 
     const { error: itemsError } = await supabase.from('order_items').insert(itemRows);
@@ -438,7 +469,9 @@ router.post('/', async (req: Request, res: Response) => {
       );
     }
 
-    res.status(201).json(orderRowToOrder(result.order, result.items));
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(201).json({ ...orderRowToCustomerOrder(result.order, result.items, true),
+      statusToken: createOrderStatusToken(orderId, estimatedReady) });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Failed to create order' });
@@ -480,7 +513,9 @@ router.post('/checkout-session/:orderId', async (req: Request, res: Response) =>
     }
 
     const base = getPublicWebAppUrl();
-    const successUrl = `${base}/status?orderId=${encodeURIComponent(orderId)}&session_id={CHECKOUT_SESSION_ID}`;
+    const statusToken = req.get('X-Order-Token');
+    const statusHash = canReadOrderContact(orderId, statusToken) ? `#statusToken=${encodeURIComponent(statusToken!)}` : '';
+    const successUrl = `${base}/status?orderId=${encodeURIComponent(orderId)}&session_id={CHECKOUT_SESSION_ID}${statusHash}`;
     const cancelUrl = `${base}/cart`;
     console.info('[checkout-session] redirect base URL:', base);
 
@@ -535,6 +570,7 @@ router.post('/checkout-session/:orderId', async (req: Request, res: Response) =>
 
 /** Confirm card payment after Stripe redirect (backup when webhook is slow/missing). */
 router.post('/stripe-confirm', async (req: Request, res: Response) => {
+  res.setHeader('Cache-Control', 'no-store');
   try {
     const orderId = String(req.body?.orderId ?? '').trim();
     const sessionId = String(req.body?.sessionId ?? '').trim();
@@ -555,7 +591,7 @@ router.post('/stripe-confirm', async (req: Request, res: Response) => {
       res.status(404).json({ error: 'Order not found' });
       return;
     }
-    res.json(orderRowToOrder(result.order, result.items));
+    res.json(orderRowToCustomerOrder(result.order, result.items, canReadOrderContact(orderId, req.get('X-Order-Token'))));
   } catch (e) {
     console.error('[stripe-confirm]', e);
     res.status(500).json({ error: 'Failed to confirm payment' });
@@ -1052,6 +1088,7 @@ router.get('/settings', async (_req: Request, res: Response) => {
 });
 
 router.get('/:id', async (req: Request, res: Response) => {
+  res.setHeader('Cache-Control', 'no-store');
   try {
     const id = paramId(req);
     const result = await getOrderById(id);
@@ -1059,7 +1096,7 @@ router.get('/:id', async (req: Request, res: Response) => {
       res.status(404).json({ error: 'Order not found' });
       return;
     }
-    res.json(orderRowToOrder(result.order, result.items));
+    res.json(orderRowToCustomerOrder(result.order, result.items, canReadOrderContact(id, req.get('X-Order-Token'))));
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Failed to fetch order' });

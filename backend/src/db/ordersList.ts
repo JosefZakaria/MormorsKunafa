@@ -99,3 +99,41 @@ export function orderRowToOrder(r: Row, items: Row[]): Record<string, unknown> {
     })),
   };
 }
+
+/** Customer status must never inherit new fields added to the admin response. */
+export function orderRowToCustomerOrder(r: Row, items: Row[], includeContact = false): Record<string, unknown> {
+  const order = orderRowToOrder(r, items);
+  const delivery = order.deliveryInfo as Row | undefined;
+  return {
+    id: order.id,
+    orderNumber: order.orderNumber,
+    status: order.status,
+    orderType: order.orderType,
+    paymentMethod: order.paymentMethod,
+    paymentStatus: order.paymentStatus,
+    totalPrice: order.totalPrice,
+    defaultPreparationTime: order.defaultPreparationTime,
+    estimatedReadyTime: order.estimatedReadyTime,
+    scheduledTime: order.scheduledTime,
+    createdAt: order.createdAt,
+    updatedAt: order.updatedAt,
+    startedAt: order.startedAt,
+    completedAt: order.completedAt,
+    cancellationReason: order.cancellationReason,
+    cancelledAt: order.cancelledAt,
+    refundStatus: order.refundStatus,
+    locationId: order.locationId,
+    ...(includeContact ? { customerInfo: { name: r.customer_name ?? '', phone: r.customer_phone ?? '' } } : {}),
+    ...(delivery ? { deliveryInfo: {
+      pricing: delivery.pricing,
+      ...(includeContact ? { address: delivery.address, postalCode: delivery.postalCode, city: delivery.city,
+        name: delivery.name, phone: delivery.phone } : {}),
+    } } : {}),
+    items: items.map(item => ({
+      productId: item.product_id ?? '',
+      productName: sanitizeProductName(String(item.product_name_snapshot ?? '')),
+      quantity: item.quantity,
+      price: item.price_ore,
+    })),
+  };
+}
