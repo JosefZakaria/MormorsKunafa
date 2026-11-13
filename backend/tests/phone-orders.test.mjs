@@ -17,6 +17,7 @@ test('owner phone orders enter the selected location queue without online paymen
   const database = createServer(async (req, res) => {
     res.setHeader('Content-Type', 'application/json');
     const url = new URL(req.url, 'http://localhost');
+    if (url.pathname === '/rest/v1/rpc/consume_api_rate_limits') { req.resume(); res.end('0'); return; }
     const table = url.pathname.split('/').at(-1);
     const record = { table, method: req.method, query: url.searchParams.toString() };
     requests.push(record);

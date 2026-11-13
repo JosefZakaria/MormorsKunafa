@@ -1,5 +1,18 @@
 # Backend
 
+## Abuse protection: deployment order
+
+Apply `src/db/migrations/20261113095802_api_rate_limits.sql` **before deploying this backend**. It adds a separate service-only counter table and function; it does not alter orders or admin accounts. No new external service or environment variable is required; counter identifiers use the existing strong `JWT_SECRET`. Without the migration or a working counter store, login and new public orders return 503 rather than silently disabling protection. Status polling and payment webhooks are not rate limited.
+
+- Login: at most 60 attempts per client IP and 20 per email address in a 15-minute window. Known and unknown emails use the same limits. Limits clear automatically when the window expires; accounts are not permanently locked.
+- New public orders: 30 per IP and 10 per phone number/email address in 10 minutes. Phone/email formatting is normalized for counting. Authenticated staff telephone orders do not use the public-order quota.
+- Outbound notifications: 20 per recipient and 1,000 globally per channel (SMS/email) per hour. Missing provider configuration still skips sending. A blocked recipient does not consume other customers' global quota. When a quota is exhausted, that notification is skipped; the order and its payment status are preserved. A counter-store error prevents sending and is logged by the existing caller.
+- A blocked API request returns 429 with `Retry-After` and the existing error UI displays a Swedish explanation. Existing customer polling, admin queues and cookie choices are unchanged.
+- IPs come from Vercel's overwritten `x-forwarded-for` header only on Vercel. Other hosts use the direct socket address, ignoring client-supplied forwarding headers. Configure a trusted proxy explicitly before moving to a different proxied host.
+- Only keyed hashes and short-lived counters are stored, never raw IPs, phone numbers, emails, passwords or message contents. Expired rows are deleted in bounded batches during subsequent allowed requests after 24 hours. The table has RLS enabled, no client policies and no client grants. The function uses security invoker and is executable only by service_role.
+
+Limits are deliberately separate from the second-factor/session changes, which are not part of this change. Test the SQL with `src/db/verification/rate-limits.sql` in an isolated PostgreSQL database. No production migration is run by building or testing the app.
+
 Express API for Mormors Kunafa: products, orders, and admin (JWT). Data is stored in **Supabase**; prices in öre.
 
 ## Environment variables

@@ -41,6 +41,7 @@ import swishPaymentRouter from './swishPayment.js';
 import { loadDeliveryPricing } from '../db/deliveryPricing.js';
 import { deliveryQuoteMatches, quoteDelivery, type DeliveryQuote } from '../shared/utils/deliveryPricing.js';
 import { registerPhoneOrderRoutes } from './adminPhoneOrders.js';
+import { limitOrderCreation } from '../services/rateLimit.js';
 
 const router = Router();
 registerPhoneOrderRoutes(router);
@@ -114,7 +115,7 @@ async function assertOrderVisible(req: Request, res: Response, order: Row, locat
 }
 
 // Create order (public)
-router.post('/', async (req: Request, res: Response) => {
+router.post('/', limitOrderCreation, async (req: Request, res: Response) => {
   try {
     const body = (req.body ?? {}) as {
       items: Array<{ productId: string; productName: string; quantity: number; price: number; modifications?: string[] }>;

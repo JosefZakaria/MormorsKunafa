@@ -52,6 +52,7 @@ test('superadmin saves hours, public settings refresh and checkout enforces the 
   const writes = [];
   const database = createServer(async (req, res) => {
     const url = new URL(req.url, 'http://localhost');
+    if (url.pathname === '/rest/v1/rpc/consume_api_rate_limits') { req.resume(); res.setHeader('Content-Type', 'application/json'); res.end('0'); return; }
     const table = url.pathname.split('/').at(-1);
     const tables = {
       locations: places, admin_users: users, orders: [], product_location_stock: [],

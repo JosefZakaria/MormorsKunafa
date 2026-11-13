@@ -1,3 +1,5 @@
+import { allowNotification } from './rateLimit.js';
+
 export async function sendSms(to: string, message: string): Promise<void> {
   const projectId = process.env.SINCH_PROJECT_ID?.trim();
   const keyId = process.env.SINCH_KEY_ID?.trim();
@@ -8,6 +10,8 @@ export async function sendSms(to: string, message: string): Promise<void> {
     console.warn('Sinch Conversation API config missing, skipping SMS sending.');
     return;
   }
+
+  if (!await allowNotification('sms', to)) return;
 
   // Konvertera telefonnummer: 073... blir +4673...
   let cleanedNumber = to.trim().replace(/^\+/, '');

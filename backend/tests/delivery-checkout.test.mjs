@@ -14,6 +14,7 @@ test('delivery checkout uses saved settings and freezes server-calculated terms'
   const database = createServer(async (req, res) => {
     res.setHeader('Content-Type', 'application/json');
     const url = new URL(req.url, 'http://localhost');
+    if (url.pathname === '/rest/v1/rpc/consume_api_rate_limits') { req.resume(); res.end('0'); return; }
     const table = url.pathname.split('/').at(-1);
     let body = '';
     for await (const chunk of req) body += chunk;

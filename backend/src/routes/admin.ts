@@ -17,6 +17,7 @@ import { getRealtimeStatus, registerRealtimeClient } from '../services/realtimeE
 import { isWebPushConfigured } from '../services/pushNotifications.js';
 import { parseOpeningHours } from '../shared/utils/openingHours.js';
 import type { LocationFlagsPatch } from '../db/locations.js';
+import { limitLoginAttempts } from '../services/rateLimit.js';
 
 const router = Router();
 router.use('/delivery-pricing', adminDeliveryPricingRouter);
@@ -83,10 +84,10 @@ function inRange(createdAt: string, start: Date | null, end: Date | null): boole
   return true;
 }
 
-router.post('/login', async (req: Request, res: Response) => {
+router.post('/login', limitLoginAttempts, async (req: Request, res: Response) => {
   try {
-    const { email, password } = req.body as { email?: string; password?: string };
-    if (!email || !password) {
+    const { email, password } = (req.body ?? {}) as { email?: string; password?: string };
+    if (typeof email !== 'string' || !email.trim() || typeof password !== 'string' || !password) {
       res.status(400).json({ error: 'Email and password required' });
       return;
     }

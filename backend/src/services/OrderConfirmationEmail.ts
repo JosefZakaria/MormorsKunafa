@@ -2,6 +2,7 @@ import { Resend } from 'resend';
 import type { Row } from '../db/connection.js';
 import { formatStockholmDateTime } from '../utils/stockholmWallTime.js';
 import { getLocationById, pickupPlaceLabel } from '../db/locations.js';
+import { allowNotification } from './rateLimit.js';
 
 /** Same asset as `apps/web/public/images/logo.png` (must resolve to an absolute public URL in email). */
 const ORDER_EMAIL_LOGO_PUBLIC_PATH = '/images/logo.png';
@@ -76,6 +77,7 @@ export async function sendOrderConfirmationEmail(ctx: OrderConfirmationRowContex
 
   const to = String(ctx.order.customer_email ?? '').trim();
   if (!to || !isValidEmail(to)) return;
+  if (!await allowNotification('email', to)) return;
 
   const from = process.env.RESEND_FROM_EMAIL?.trim() || 'onboarding@resend.dev';
   const customerName = String(ctx.order.customer_name ?? '').trim();
