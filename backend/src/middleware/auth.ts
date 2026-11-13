@@ -1,7 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
 import type { AdminRole } from '@mormors-kunafa/shared/types';
-import { AdminAccessDeniedError, loadAdminScope, parseAdminRole } from '../services/locationScope.js';
+import { AdminAccessDeniedError, loadAdminScope } from '../services/locationScope.js';
+import { readAdminSession, validAdminCsrf, type AdminSession } from '../services/adminSessions.js';
 
 function jwtSecret(): string | null {
   const secret = process.env.JWT_SECRET?.trim();
@@ -12,40 +12,23 @@ export function isJwtConfigured(): boolean {
   return jwtSecret() !== null;
 }
 
-export interface JwtPayload {
+export interface AdminIdentity {
   adminId: string;
   email: string;
   role?: AdminRole;
   locationId?: string | null;
+  session?: AdminSession;
 }
 
-export function getRequestAdmin(req: Request): JwtPayload | undefined {
-  return (req as Request & { admin?: JwtPayload }).admin;
+export function getRequestAdmin(req: Request): AdminIdentity | undefined {
+  return (req as Request & { admin?: AdminIdentity }).admin;
 }
 
-export function verifyAdminToken(token: string): JwtPayload | null {
-  try {
-    const secret = jwtSecret();
-    if (!secret) return null;
-    const decoded = jwt.verify(token, secret, { algorithms: ['HS256'] });
-    if (typeof decoded === 'string' || typeof decoded.adminId !== 'string' || !decoded.adminId.trim()
-      || typeof decoded.email !== 'string' || !decoded.email.trim()) return null;
-    return {
-      adminId: decoded.adminId,
-      email: decoded.email,
-      role: decoded.role === undefined ? undefined : parseAdminRole(decoded.role),
-      locationId: typeof decoded.locationId === 'string' ? decoded.locationId : null,
-    };
-  } catch {
-    return null;
-  }
-}
-
-export function readAdminFromRequest(req: Request): JwtPayload | null {
-  const auth = req.headers.authorization;
-  const token = auth?.startsWith('Bearer ') ? auth.slice(7) : null;
-  if (!token) return null;
-  return verifyAdminToken(token);
+export async function readAdminFromRequest(req: Request): Promise<AdminIdentity | null> {
+  const session = await readAdminSession(req);
+  if (!session) return null;
+  const scope = await loadAdminScope(session.admin_id);
+  return { adminId: session.admin_id, email: session.email, role: scope.role, locationId: scope.locationId, session };
 }
 
 export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
@@ -55,15 +38,17 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction): v
         res.status(503).json({ error: 'Admin authentication is not configured' });
         return;
       }
-      const decoded = readAdminFromRequest(req);
+      res.setHeader('Cache-Control', 'no-store');
+      const decoded = await readAdminFromRequest(req);
       if (!decoded) {
         res.status(401).json({ error: 'Unauthorized' });
         return;
       }
-      const scope = await loadAdminScope(decoded.adminId);
-      (req as Request & { admin?: JwtPayload }).admin = {
-        ...decoded, role: scope.role, locationId: scope.locationId,
-      };
+      if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) && !validAdminCsrf(req)) {
+        res.status(403).json({ error: 'Ogiltig säkerhetskontroll. Ladda om sidan och försök igen.' });
+        return;
+      }
+      (req as Request & { admin?: AdminIdentity }).admin = decoded;
       next();
     } catch (error) {
       if (error instanceof AdminAccessDeniedError) {
@@ -100,10 +85,4 @@ export function requireOwner(req: Request, res: Response, next: NextFunction): v
       res.status(500).json({ error: 'Failed to verify access' });
     }
   })();
-}
-
-export function signToken(payload: JwtPayload): string {
-  const secret = jwtSecret();
-  if (!secret) throw new Error('JWT_SECRET must be configured with at least 32 characters');
-  return jwt.sign(payload, secret, { expiresIn: '7d', algorithm: 'HS256' });
 }

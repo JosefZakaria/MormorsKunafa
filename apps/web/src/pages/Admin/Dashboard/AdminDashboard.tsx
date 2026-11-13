@@ -928,7 +928,6 @@ export const AdminDashboard: React.FC = () => {
             console.warn('[AdminDashboard] ' + queue + ' orders:', failure?.message || error);
             if (failure?.status === 401 || failure?.message === 'Not authenticated') {
                 sessionExpired = true;
-                logout();
                 navigate('/admin/login');
                 return;
             }
@@ -1001,7 +1000,7 @@ export const AdminDashboard: React.FC = () => {
 
             try {
                 const url = adminApi.getRealtimeEventsUrl();
-                const es = new EventSource(url);
+                const es = new EventSource(url, { withCredentials: true });
                 eventSourceRef.current = es;
 
                 es.onopen = () => {
@@ -1437,9 +1436,13 @@ export const AdminDashboard: React.FC = () => {
         }
     };
 
-    const handleLogout = () => {
-        logout();
-        navigate('/admin/login');
+    const handleLogout = async () => {
+        try {
+            await logout();
+            navigate('/admin/login');
+        } catch {
+            window.alert('Kunde inte logga ut. Kontrollera anslutningen och försök igen.');
+        }
     };
 
     const handleStatsTabClick = () => {

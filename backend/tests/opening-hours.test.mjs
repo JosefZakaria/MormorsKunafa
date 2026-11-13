@@ -1,3 +1,4 @@
+import { fixtureSession, serveSessionTable } from './helpers/admin-session.mjs';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
@@ -52,6 +53,7 @@ test('superadmin saves hours, public settings refresh and checkout enforces the 
   const writes = [];
   const database = createServer(async (req, res) => {
     const url = new URL(req.url, 'http://localhost');
+    if (await serveSessionTable(req, res, url)) return;
     if (url.pathname === '/rest/v1/rpc/consume_api_rate_limits') { req.resume(); res.setHeader('Content-Type', 'application/json'); res.end('0'); return; }
     const table = url.pathname.split('/').at(-1);
     const tables = {
@@ -80,14 +82,14 @@ test('superadmin saves hours, public settings refresh and checkout enforces the 
   process.env.JWT_SECRET = 'isolated-opening-hours-test-secret-long-enough';
   process.env.NODE_ENV = 'production';
   const { default: app } = await import('../dist/index.js');
-  const { signToken } = await import('../dist/middleware/auth.js');
+  const signToken = fixtureSession;
   const server = app.listen(0, '127.0.0.1');
   t.after(() => server.close());
   await once(server, 'listening');
   const base = `http://127.0.0.1:${server.address().port}/api`;
   const patch = (body, user = 'owner') => fetch(`${base}/admin/locations/${hojaId}`, {
     method: 'PATCH', headers: { 'Content-Type': 'application/json',
-      ...(user ? { Authorization: `Bearer ${signToken({ adminId: user, email: `${user}@example.invalid` })}` } : {}),
+      ...(user ? signToken({ adminId: user, email: `${user}@example.invalid` }) : {}),
     }, body: JSON.stringify(body),
   });
   const schedule = defaultOpeningHours('hoja');

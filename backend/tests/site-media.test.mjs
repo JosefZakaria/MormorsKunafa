@@ -1,3 +1,4 @@
+import { fixtureSession, serveSessionTable } from './helpers/admin-session.mjs';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
@@ -40,6 +41,7 @@ test('upload route compresses product images, keeps hero images and caches for a
     const chunks = [];
     for await (const chunk of req) chunks.push(chunk);
     const url = new URL(req.url, 'http://localhost');
+    if (await serveSessionTable(req, res, url)) return;
     res.setHeader('Content-Type', 'application/json');
     if (url.pathname === '/rest/v1/admin_users') return res.end(JSON.stringify([{ id: 'owner', role: 'owner', location_id: null }]));
     if (url.pathname === '/storage/v1/bucket') return res.end(JSON.stringify([{ id: 'site-media', name: 'site-media' }]));
@@ -56,7 +58,7 @@ test('upload route compresses product images, keeps hero images and caches for a
   process.env.SUPABASE_URL = `http://127.0.0.1:${database.address().port}`;
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'isolated-site-media-test-only';
   process.env.JWT_SECRET = 'isolated-site-media-test-secret-at-least-32-chars';
-  const { signToken } = await import('../dist/middleware/auth.js');
+  const signToken = fixtureSession;
   const { registerAdminMediaRoutes } = await import('../dist/routes/adminMedia.js');
   const app = express();
   const router = express.Router();
@@ -70,7 +72,7 @@ test('upload route compresses product images, keeps hero images and caches for a
     form.set('file', new Blob([file], { type: 'image/jpeg' }), 'photo.jpg');
     return fetch(`http://127.0.0.1:${server.address().port}/uploads`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${signToken({ adminId: 'owner', email: 'owner@example.invalid', role: 'owner' })}` },
+      headers: signToken({ adminId: 'owner', email: 'owner@example.invalid', role: 'owner' }),
       body: form,
     });
   };

@@ -112,6 +112,11 @@ async function setup(t, options = {}) {
     const endpoint = url.pathname.replace(/^\/api/, '');
     const nowMs = state.nowMs ?? Date.now();
     const json = (value, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(value) });
+    if (endpoint === '/admin/session') return json({ csrfToken: 'isolated-csrf-token', admin: {
+      id: 'fixture-admin', email: 'fixture@example.invalid', name: 'Fixture',
+      role: options.profile === 'owner' ? 'owner' : 'location', locationId: options.profile === 'owner' ? null : MOLLE,
+    } });
+    if (endpoint === '/admin/logout') return json({ ok: true });
     if (url.hostname === 'printer.example.test') {
       state.prints.push(route.request().postData());
       return route.fulfill({ contentType: 'text/xml', body: '<response success="true" />', headers: { 'Access-Control-Allow-Origin': '*' } });

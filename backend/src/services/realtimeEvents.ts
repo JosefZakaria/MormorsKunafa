@@ -3,6 +3,7 @@ import type { OrderType } from '@mormors-kunafa/shared/types';
 import type { AdminScope } from './locationScope.js';
 import { orderNotificationVisibleToScope } from './locationScope.js';
 import { sendOrderCreatedPush } from './pushNotifications.js';
+import { loadSessionByHash, type AdminSession } from './adminSessions.js';
 
 export type OrderCreatedEvent = {
   event_id: string;
@@ -20,6 +21,7 @@ type Client = {
   adminId: string;
   scope: AdminScope;
   res: Response;
+  session: AdminSession;
 };
 
 const clients = new Map<string, Client>();
@@ -29,27 +31,39 @@ function sseWrite(res: Response, event: string, payload: unknown): void {
   res.write(`data: ${JSON.stringify(payload)}\n\n`);
 }
 
-export function registerRealtimeClient(scope: AdminScope, res: Response): () => void {
+export function closeSessionClients(hash: string): void {
+  for (const client of clients.values()) {
+    if (client.session.token_hash === hash) client.res.end();
+  }
+}
+
+export function registerRealtimeClient(scope: AdminScope, res: Response, session: AdminSession): () => void {
   const clientId = crypto.randomUUID();
-  clients.set(clientId, { id: clientId, adminId: scope.adminId, scope, res });
+  clients.set(clientId, { id: clientId, adminId: scope.adminId, scope, res, session });
 
   sseWrite(res, 'ready', {
     ok: true,
     connected_at: new Date().toISOString(),
   });
 
-  const heartbeat = setInterval(() => {
+  const heartbeat = setInterval(async () => {
     try {
+      // No session cache: logout on another server instance also closes this stream.
+      if (!await loadSessionByHash(session.token_hash)) { res.end(); return; }
       sseWrite(res, 'ping', { ts: new Date().toISOString() });
     } catch {
-      // Connection is closed; cleanup runs on request close.
+      res.end();
     }
   }, 25000);
 
-  return () => {
+  const expiry = setTimeout(() => res.end(), Math.max(0, new Date(session.expires_at).getTime() - Date.now()));
+  const cleanup = () => {
     clearInterval(heartbeat);
+    clearTimeout(expiry);
     clients.delete(clientId);
   };
+  res.on('close', cleanup);
+  return cleanup;
 }
 
 export function broadcastOrderCreated(event: OrderCreatedEvent): void {

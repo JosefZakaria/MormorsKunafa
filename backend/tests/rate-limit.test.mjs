@@ -1,3 +1,4 @@
+import { fixtureSession, serveSessionTable } from './helpers/admin-session.mjs';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
@@ -13,6 +14,7 @@ test('persistent abuse quotas protect login, orders and messages across app inst
   const database = createServer(async (req, res) => {
     res.setHeader('Content-Type', 'application/json');
     const url = new URL(req.url, 'http://localhost');
+    if (await serveSessionTable(req, res, url)) return;
     let raw = '';
     for await (const chunk of req) raw += chunk;
     if (url.pathname === '/rest/v1/rpc/consume_api_rate_limits') {
@@ -77,7 +79,7 @@ test('persistent abuse quotas protect login, orders and messages across app inst
   await Promise.all(servers.map(server => once(server, 'listening')));
   const request = (path, body = {}, address = '203.0.113.1', instance = 0, method = 'POST') => fetch(
     `http://127.0.0.1:${servers[instance].address().port}${path}`, {
-      method, headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': address },
+      method, headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': address, 'X-Admin-Request': '1' },
       ...(method === 'POST' ? { body: JSON.stringify(body) } : {}),
     });
   const reset = () => { counters.clear(); calls.length = 0; sends.length = 0; accountLookups = 0; businessWrites = 0; unavailable = false; };

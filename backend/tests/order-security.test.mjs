@@ -1,3 +1,4 @@
+import { fixtureSession, serveSessionTable } from './helpers/admin-session.mjs';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
@@ -24,6 +25,7 @@ test('guest checkout validates catalog lines and separates customer status from 
   const database = createServer(async (req, res) => {
     res.setHeader('Content-Type', 'application/json');
     const url = new URL(req.url, 'http://localhost');
+    if (await serveSessionTable(req, res, url)) return;
     if (url.pathname === '/rest/v1/rpc/consume_api_rate_limits') { req.resume(); res.end('0'); return; }
     const table = url.pathname.split('/').at(-1);
     let raw = '';
@@ -69,7 +71,7 @@ test('guest checkout validates catalog lines and separates customer status from 
   for (const key of ['RESEND_API_KEY', 'SINCH_PROJECT_ID', 'SINCH_KEY_ID', 'SINCH_KEY_SECRET', 'SINCH_APP_ID', 'WEB_PUSH_VAPID_PUBLIC_KEY', 'WEB_PUSH_VAPID_PRIVATE_KEY']) delete process.env[key];
   const { default: router } = await import('../dist/routes/orders.js');
   const { createOrderStatusToken, canReadOrderContact } = await import('../dist/utils/orderStatusToken.js');
-  const { signToken, verifyAdminToken } = await import('../dist/middleware/auth.js');
+  const signToken = payload => jwt.sign(payload, secret);
   const { getStripe } = await import('../dist/services/stripeClient.js');
   let checkout;
   t.mock.method(getStripe().checkout.sessions, 'create', async params => {
@@ -139,7 +141,7 @@ test('guest checkout validates catalog lines and separates customer status from 
       assert.equal(own.customerInfo.name, 'Anna Test');
       assert.equal(own.customerInfo.email, undefined);
       assert.equal(own.internalNotes, undefined);
-      assert.equal(verifyAdminToken(order.statusToken), null);
+      assert.equal((await fetch(`${base}/admin/history`, { headers: { Cookie: `mk_admin=${order.statusToken}` } })).status, 401);
       const scheduled = new Date('2099-01-01T12:00:00Z');
       const future = jwt.decode(createOrderStatusToken('preorder', scheduled));
       assert.ok(future.exp >= scheduled.getTime() / 1000 + 7 * 86400 - 1);
@@ -151,7 +153,7 @@ test('guest checkout validates catalog lines and separates customer status from 
     await t.test('admin history keeps contact, internal notes and modifications', async () => {
       orders[0].status = 'klar';
       const response = await fetch(`${base}/admin/history`, { headers: {
-        Authorization: `Bearer ${signToken({ adminId: 'owner', email: 'owner@example.invalid' })}`,
+        ...fixtureSession({ adminId: 'owner', email: 'owner@example.invalid' }),
       } });
       assert.equal(response.status, 200);
       const [adminOrder] = await response.json();
