@@ -174,7 +174,11 @@ async function setup(t, options = {}) {
     return route.abort();
   });
   await page.goto(ORIGIN + '/admin/dashboard');
-  await page.getByText('AKTIVERA LJUDET', { exact: true }).waitFor();
+  if (options.profile === 'malformed') {
+    await page.getByRole('heading', { name: 'Admin Login', exact: true }).waitFor();
+  } else {
+    await page.getByText('AKTIVERA LJUDET', { exact: true }).waitFor();
+  }
   return { page, state };
 }
 
@@ -325,7 +329,16 @@ test('admin countdown shows labelled units, crosses zero and preserves time adju
   }
 });
 
-for (const profile of ['valid', 'missing', 'malformed']) {
+test('malformed stored admin data redirects to login without fetching orders or starting audio', { timeout: 25000 }, async t => {
+  const { page, state } = await setup(t, { profile: 'malformed', pending: [order()] });
+  assert.equal(new URL(page.url()).pathname, '/admin/login');
+  await page.getByRole('button', { name: 'Logga in', exact: true }).waitFor();
+  assert.equal(await page.locator('.admin-dashboard').count(), 0);
+  assert.equal(state.pendingCalls, 0);
+  assert.equal(await page.evaluate(() => window.__alarmProbe.contexts.length), 0);
+});
+
+for (const profile of ['valid', 'missing']) {
   test('a paid order rings after the preview has ended (' + profile + ' admin profile)', { timeout: 25000 }, async t => {
     const { page, state } = await setup(t, { profile });
     await activate(page);
