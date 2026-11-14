@@ -162,7 +162,11 @@ async function setup(t, options = {}) {
     return route.abort();
   });
   await page.goto(ORIGIN + '/admin/dashboard');
-  await page.getByText('AKTIVERA LJUDET', { exact: true }).waitFor();
+  if (options.profile === 'malformed') {
+    await page.getByRole('heading', { name: 'Admin Login', exact: true }).waitFor();
+  } else {
+    await page.getByText('AKTIVERA LJUDET', { exact: true }).waitFor();
+  }
   return { page, state };
 }
 
@@ -237,6 +241,30 @@ for (const profile of ['owner', 'valid']) {
   });
 }
 
+test('accepting an order updates the active count even after a translator replaces its text', { timeout: 25000 }, async t => {
+  const { page } = await setup(t, { pending: [order()] });
+  page.setDefaultTimeout(8000);
+  await page.getByRole('button', { name: /Visa ordrar.*pausa/ }).click();
+  await page.locator('.pending-order-card').waitFor();
+  const dashboard = page.locator('.admin-dashboard');
+  assert.equal(await dashboard.getAttribute('lang'), 'sv');
+  assert.equal(await dashboard.getAttribute('translate'), 'no');
+  assert.ok((await dashboard.getAttribute('class')).includes('notranslate'));
+  const activeTab = page.getByRole('button', { name: 'Aktiva Ordrar (0)', exact: true });
+  // Simulate an extension that ignores translate="no" and replaces React's text nodes.
+  await activeTab.evaluate(button => {
+    for (const node of [...button.childNodes]) {
+      if (node.nodeType !== Node.TEXT_NODE) continue;
+      const font = document.createElement('font');
+      font.textContent = node.textContent;
+      node.replaceWith(font);
+    }
+  });
+  await page.getByRole('button', { name: 'Acceptera', exact: true }).click();
+  await page.getByRole('button', { name: 'Aktiva Ordrar (1)', exact: true }).click();
+  assert.equal(await page.locator('.active-order-card').count(), 1);
+});
+
 test('admin countdown shows labelled units, crosses zero and preserves time adjustment controls', { timeout: 25000 }, async t => {
   const now = Date.parse('2026-10-19T12:00:00Z');
   const orderNumbers = { 'late-days': '#0375', 'late-one-day': '#0382', 'cross-zero': '#0390', 'cross-day': '#0391', 'unknown-time': '#0392' };
@@ -258,24 +286,30 @@ test('admin countdown shows labelled units, crosses zero and preserves time adju
     assert.equal((await timer.textContent()).replace(/\s+/g, ' ').trim(), text);
     assert.equal((await timer.getAttribute('class')).includes('timer-overdue'), overdue);
   };
-  await expectTimer('late-days', '⏱ -2 dygn 0 H 56 M 2 S (SEN)', true);
-  await expectTimer('late-one-day', '⏱ -1 dygn 0 H 20 M 51 S (SEN)', true);
-  await expectTimer('cross-zero', '⏱ 1 S', false);
-  await expectTimer('cross-day', '⏱ 1 dygn 0 H 0 M 0 S', false);
+  await expectTimer('late-days', '⏱ -2 dygn 0 tim 56 min 2 sek (SEN)', true);
+  await expectTimer('late-one-day', '⏱ -1 dygn 0 tim 20 min 51 sek (SEN)', true);
+  await expectTimer('cross-zero', '⏱ 1 sek', false);
+  await expectTimer('cross-day', '⏱ 1 dygn 0 tim 0 min 0 sek', false);
   await expectTimer('unknown-time', '⏱ --', false);
 
   await page.setViewportSize({ width: 375, height: 812 });
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'mobile layout overflows');
+  // Even a translator that ignores the dashboard guard must not freeze the timer.
+  await card('cross-zero').locator('.order-timer').evaluate(timer => {
+    const font = document.createElement('font');
+    font.textContent = '⏱ 1 söndag';
+    timer.replaceChildren(font);
+  });
   await page.clock.runFor(1000);
-  await expectTimer('cross-zero', '⏱ 0 S', false);
-  await expectTimer('cross-day', '⏱ 23 H 59 M 59 S', false);
+  await expectTimer('cross-zero', '⏱ 0 sek', false);
+  await expectTimer('cross-day', '⏱ 23 tim 59 min 59 sek', false);
   await page.clock.runFor(1000);
-  await expectTimer('cross-zero', '⏱ -1 S (SEN)', true);
+  await expectTimer('cross-zero', '⏱ -1 sek (SEN)', true);
 
   for (const [button, expected, offset] of [
-    ['+5 min', '⏱ 4 M 59 S', 301000],
-    ['−5 min', '⏱ -1 S (SEN)', 1000],
-    ['+10 min', '⏱ 9 M 59 S', 601000],
+    ['+5 min', '⏱ 4 min 59 sek', 301000],
+    ['−5 min', '⏱ -1 sek (SEN)', 1000],
+    ['+10 min', '⏱ 9 min 59 sek', 601000],
   ]) {
     await card('cross-zero').getByRole('button', { name: button, exact: true }).click();
     await expectTimer('cross-zero', expected, offset === 1000);
@@ -283,7 +317,16 @@ test('admin countdown shows labelled units, crosses zero and preserves time adju
   }
 });
 
-for (const profile of ['valid', 'missing', 'malformed']) {
+test('malformed stored admin data redirects to login without fetching orders or starting audio', { timeout: 25000 }, async t => {
+  const { page, state } = await setup(t, { profile: 'malformed', pending: [order()] });
+  assert.equal(new URL(page.url()).pathname, '/admin/login');
+  await page.getByRole('button', { name: 'Logga in', exact: true }).waitFor();
+  assert.equal(await page.locator('.admin-dashboard').count(), 0);
+  assert.equal(state.pendingCalls, 0);
+  assert.equal(await page.evaluate(() => window.__alarmProbe.contexts.length), 0);
+});
+
+for (const profile of ['valid', 'missing']) {
   test('a paid order rings after the preview has ended (' + profile + ' admin profile)', { timeout: 25000 }, async t => {
     const { page, state } = await setup(t, { profile });
     await activate(page);

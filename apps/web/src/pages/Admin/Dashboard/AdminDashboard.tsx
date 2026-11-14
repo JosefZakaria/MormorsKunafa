@@ -125,6 +125,8 @@ function orderMatchesPlaceFilter(order: Order, filter: PlaceFilter): boolean {
 }
 
 // --- Per-order timer component ---
+// Keep the timer and active-tab label as single text children so React can replace
+// their contents if a browser translator has displaced the original text nodes.
 function OrderTimer({ estimatedReadyTime }: { estimatedReadyTime: string }) {
     const [countdown, setCountdown] = useState(() => getOrderCountdown(estimatedReadyTime));
 
@@ -136,7 +138,7 @@ function OrderTimer({ estimatedReadyTime }: { estimatedReadyTime: string }) {
 
     return (
         <span className={`order-timer ${countdown.isOverdue ? 'timer-overdue' : ''}`}>
-            ⏱ {countdown.text} {countdown.isOverdue ? '(SEN)' : ''}
+            {`⏱ ${countdown.text}${countdown.isOverdue ? ' (SEN)' : ''}`}
         </span>
     );
 }
@@ -1433,7 +1435,7 @@ export const AdminDashboard: React.FC = () => {
     const hojaName = locations.find((location) => location.slug === 'hoja')?.name ?? 'Höja';
     const molleName = locations.find((location) => location.slug === 'mollevangen')?.name ?? 'Möllevången';
     return (
-        <div className="admin-dashboard">
+        <div className="admin-dashboard notranslate" lang="sv" dir="ltr" translate="no">
             <Container>
                 <header className="admin-header">
                     <div className="admin-header-left">
@@ -1576,7 +1578,7 @@ export const AdminDashboard: React.FC = () => {
                         Inkommande {visibleIncomingCount > 0 && <span className="tab-badge">{visibleIncomingCount}</span>}
                     </button>
                     <button className={`admin-tab ${activeTab === 'active' ? 'active' : ''}`} aria-current={activeTab === 'active' ? 'page' : undefined} onClick={() => { setActiveTab('active'); setStatsData(null); }}>
-                        Aktiva Ordrar ({visibleActive.length})
+                        {`Aktiva Ordrar (${visibleActive.length})`}
                     </button>
                     <button className={`admin-tab ${activeTab === 'history' ? 'active' : ''}`} aria-current={activeTab === 'history' ? 'page' : undefined} onClick={() => { setActiveTab('history'); setStatsData(null); }}>
                         Orderhistorik
