@@ -1,6 +1,9 @@
-import { API_CONFIG, apiRequest, authenticatedRequest } from '@shared/api';
+import { apiRequest, authenticatedRequest } from '@shared/api';
 import { getPublicSettings } from './publicSettings';
 import { isAdminPath } from '../utils/adminPath';
+
+/** Listen-only access to the private order-signal channel, minted per admin by the backend. */
+export type AdminRealtimeAccess = { url: string; apiKey: string; token: string; topic: string; expiresIn: number };
 import type { DeliveryPricing } from '@shared/utils/deliveryPricing';
 import type {
   Product,
@@ -440,11 +443,10 @@ export const adminApi = {
     });
   },
 
-  getRealtimeEventsUrl: (): string => {
+  getRealtimeToken: async (): Promise<AdminRealtimeAccess> => {
     const token = getToken();
     if (!token) throw new Error('Not authenticated');
-    const base = API_CONFIG.baseUrl.replace(/\/+$/, '');
-    return `${base}/admin/events?token=${encodeURIComponent(token)}`;
+    return authenticatedRequest<AdminRealtimeAccess>('/admin/realtime-token', { token });
   },
 
   getStatistics: async (password: string, startDate?: string, endDate?: string): Promise<{

@@ -8,7 +8,7 @@ import { PrinterService } from '../services/PrinterService.js';
 import { sendOrderConfirmationEmail } from '../services/OrderConfirmationEmail.js';
 import { sendSms } from '../services/SmsService.js';
 import { getStripe } from '../services/stripeClient.js';
-import { broadcastOrderCreated, dispatchOrderCreatedEvent, dispatchPhoneOrderAcceptedEvent, type OrderCreatedEvent } from '../services/realtimeEvents.js';
+import { dispatchOrderCreatedEvent } from '../services/realtimeEvents.js';
 import { sendOrderCreatedPush } from '../services/pushNotifications.js';
 import { resolveOrderLocationId, locationOrderTypeError, inStorePickupSmsSuffix } from '../db/locations.js';
 import { outOfStockProductNames, stockLocationIdForOrder } from '../db/productLocationStock.js';
@@ -661,9 +661,6 @@ router.patch('/admin/:id/accept', requireAdmin, async (req: Request, res: Respon
 
     const payload = orderRowToOrder(updated.order, updated.items);
     payload.estimatedReadyTime = estimatedReady.toISOString();
-    if (updated.order.payment_method === 'pay_at_pickup') {
-      dispatchPhoneOrderAcceptedEvent(id, updated.order.location_id != null ? String(updated.order.location_id) : null);
-    }
     res.json(payload);
   } catch (e) {
     console.error(e);

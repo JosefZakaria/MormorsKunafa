@@ -28,6 +28,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-leaflet": "^5.0.0",
+    "@supabase/realtime-js": "^2.106.1",
     "react-router-dom": "^7.1.0",
     "socket.io-client": "^4.7.2"
   },
