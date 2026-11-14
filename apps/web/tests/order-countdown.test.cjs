@@ -21,19 +21,23 @@ const { getOrderCountdown } = load(path.resolve(__dirname, '../src/utils/orderCo
 const now = Date.parse('2026-10-19T12:00:00Z');
 const countdown = offset => getOrderCountdown(new Date(now + offset).toISOString(), now);
 
+test('the reported 16 minutes and 36 seconds use unambiguous Swedish units', () => {
+  assert.equal(countdown((16 * 60 + 36) * 1000).text, '16 min 36 sek');
+});
+
 test('countdown rolls seconds into minutes, hours and days in both directions', () => {
   for (const [seconds, text] of [
-    [1, '1 S'],
-    [59, '59 S'],
-    [60, '1 M 0 S'],
-    [61, '1 M 1 S'],
-    [3599, '59 M 59 S'],
-    [3600, '1 H 0 M 0 S'],
-    [3601, '1 H 0 M 1 S'],
-    [86399, '23 H 59 M 59 S'],
-    [86400, '1 dygn 0 H 0 M 0 S'],
-    [90061, '1 dygn 1 H 1 M 1 S'],
-    [172800, '2 dygn 0 H 0 M 0 S'],
+    [1, '1 sek'],
+    [59, '59 sek'],
+    [60, '1 min 0 sek'],
+    [61, '1 min 1 sek'],
+    [3599, '59 min 59 sek'],
+    [3600, '1 tim 0 min 0 sek'],
+    [3601, '1 tim 0 min 1 sek'],
+    [86399, '23 tim 59 min 59 sek'],
+    [86400, '1 dygn 0 tim 0 min 0 sek'],
+    [90061, '1 dygn 1 tim 1 min 1 sek'],
+    [172800, '2 dygn 0 tim 0 min 0 sek'],
   ]) {
     for (const sign of [1, -1]) {
       const result = countdown(sign * seconds * 1000);
@@ -44,14 +48,14 @@ test('countdown rolls seconds into minutes, hours and days in both directions', 
 });
 
 test('the overdue times in the reported screenshot show days instead of thousands of minutes', () => {
-  assert.equal(countdown(-(2936 * 60 + 2) * 1000).text, '-2 dygn 0 H 56 M 2 S');
-  assert.equal(countdown(-(1460 * 60 + 51) * 1000).text, '-1 dygn 0 H 20 M 51 S');
+  assert.equal(countdown(-(2936 * 60 + 2) * 1000).text, '-2 dygn 0 tim 56 min 2 sek');
+  assert.equal(countdown(-(1460 * 60 + 51) * 1000).text, '-1 dygn 0 tim 20 min 51 sek');
 });
 
 test('zero and sub-second boundaries keep the text and overdue state consistent', () => {
   for (const [offset, text, isOverdue] of [
-    [1001, '1 S', false], [999, '0 S', false], [0, '0 S', false],
-    [-1, '-0 S', true], [-999, '-0 S', true], [-1000, '-1 S', true],
+    [1001, '1 sek', false], [999, '0 sek', false], [0, '0 sek', false],
+    [-1, '-0 sek', true], [-999, '-0 sek', true], [-1000, '-1 sek', true],
   ]) {
     const result = countdown(offset);
     assert.equal(result.text, text);
@@ -71,8 +75,8 @@ test('API timestamps with UTC, offsets and missing timezone retain the existing 
   for (const timestamp of [
     '2026-10-19T13:05:09Z', '2026-10-19T15:05:09+02:00',
     '2026-10-19T13:05:09', '2026-10-19 13:05:09',
-  ]) assert.equal(getOrderCountdown(timestamp, now).text, '1 H 5 M 9 S');
+  ]) assert.equal(getOrderCountdown(timestamp, now).text, '1 tim 5 min 9 sek');
 
   assert.equal(getOrderCountdown('2026-10-25T02:30:00+01:00',
-    Date.parse('2026-10-25T02:30:00+02:00')).text, '1 H 0 M 0 S');
+    Date.parse('2026-10-25T02:30:00+02:00')).text, '1 tim 0 min 0 sek');
 });

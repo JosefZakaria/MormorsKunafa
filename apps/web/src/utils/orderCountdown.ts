@@ -17,9 +17,9 @@ export function getOrderCountdown(
   const parts: string[] = [];
 
   if (days > 0) parts.push(`${days} dygn`);
-  if (days > 0 || hours > 0) parts.push(`${hours} H`);
-  if (days > 0 || hours > 0 || minutes > 0) parts.push(`${minutes} M`);
-  parts.push(`${seconds} S`);
+  if (days > 0 || hours > 0) parts.push(`${hours} tim`);
+  if (days > 0 || hours > 0 || minutes > 0) parts.push(`${minutes} min`);
+  parts.push(`${seconds} sek`);
 
   return { text: `${isOverdue ? '-' : ''}${parts.join(' ')}`, isOverdue };
 }
