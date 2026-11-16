@@ -1,3 +1,4 @@
+import { fixtureSession, serveSessionTable } from './helpers/admin-session.mjs';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
@@ -52,6 +53,8 @@ test('superadmin saves hours, public settings refresh and checkout enforces the 
   const writes = [];
   const database = createServer(async (req, res) => {
     const url = new URL(req.url, 'http://localhost');
+    if (await serveSessionTable(req, res, url)) return;
+    if (url.pathname === '/rest/v1/rpc/consume_api_rate_limits') { req.resume(); res.setHeader('Content-Type', 'application/json'); res.end('0'); return; }
     const table = url.pathname.split('/').at(-1);
     const tables = {
       locations: places, admin_users: users, orders: [], product_location_stock: [],
@@ -79,14 +82,14 @@ test('superadmin saves hours, public settings refresh and checkout enforces the 
   process.env.JWT_SECRET = 'isolated-opening-hours-test-secret-long-enough';
   process.env.NODE_ENV = 'production';
   const { default: app } = await import('../dist/index.js');
-  const { signToken } = await import('../dist/middleware/auth.js');
+  const signToken = fixtureSession;
   const server = app.listen(0, '127.0.0.1');
   t.after(() => server.close());
   await once(server, 'listening');
   const base = `http://127.0.0.1:${server.address().port}/api`;
   const patch = (body, user = 'owner') => fetch(`${base}/admin/locations/${hojaId}`, {
     method: 'PATCH', headers: { 'Content-Type': 'application/json',
-      ...(user ? { Authorization: `Bearer ${signToken({ adminId: user, email: `${user}@example.invalid` })}` } : {}),
+      ...(user ? signToken({ adminId: user, email: `${user}@example.invalid` }) : {}),
     }, body: JSON.stringify(body),
   });
   const schedule = defaultOpeningHours('hoja');
@@ -110,7 +113,7 @@ test('superadmin saves hours, public settings refresh and checkout enforces the 
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ orderType: 'takeaway', locationId: hojaId, paymentMethod: 'card',
       scheduledTime: '2099-01-05T12:00:00', customerInfo: { email: 'test@example.invalid', phone: '0701234567' },
-      items: [{ productId: 'fixture', productName: 'Test', quantity: 1, price: 1000 }],
+      items: [{ productId: '11111111-1111-4111-8111-111111111111', productName: 'Test', quantity: 1, price: 1000 }],
     }),
   });
   assert.equal(order.status, 400);

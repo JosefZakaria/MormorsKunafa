@@ -139,7 +139,8 @@ async function nextSortOrder(): Promise<number> {
 
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const includeHidden = Boolean(readAdminFromRequest(req));
+    const includeHidden = Boolean(await readAdminFromRequest(req));
+    if (includeHidden) res.setHeader('Cache-Control', 'private, no-store');
     let query = supabase
       .from('products')
       .select(PRODUCT_COLUMNS)

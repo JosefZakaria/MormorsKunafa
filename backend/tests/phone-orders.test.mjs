@@ -1,3 +1,4 @@
+import { fixtureSession, serveSessionTable } from './helpers/admin-session.mjs';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
@@ -17,6 +18,8 @@ test('owner phone orders enter the selected location queue without online paymen
   const database = createServer(async (req, res) => {
     res.setHeader('Content-Type', 'application/json');
     const url = new URL(req.url, 'http://localhost');
+    if (await serveSessionTable(req, res, url)) return;
+    if (url.pathname === '/rest/v1/rpc/consume_api_rate_limits') { req.resume(); res.end('0'); return; }
     const table = url.pathname.split('/').at(-1);
     const record = { table, method: req.method, query: url.searchParams.toString() };
     requests.push(record);
@@ -64,7 +67,7 @@ test('owner phone orders enter the selected location queue without online paymen
   process.env.JWT_SECRET = 'phone-orders-test-only-strong-secret-32';
   for (const key of ['RESEND_API_KEY', 'STRIPE_SECRET_KEY', 'SINCH_PROJECT_ID', 'SINCH_KEY_ID', 'SINCH_KEY_SECRET', 'SINCH_APP_ID', 'WEB_PUSH_VAPID_PUBLIC_KEY', 'WEB_PUSH_VAPID_PRIVATE_KEY']) delete process.env[key];
   const { default: router } = await import('../dist/routes/orders.js');
-  const { signToken } = await import('../dist/middleware/auth.js');
+  const signToken = fixtureSession;
   // Screens refresh from a database trigger signal; per-location push targeting is tested below.
   const { dispatchOrderCreatedEvent } = await import('../dist/services/realtimeEvents.js');
   const app = express();
@@ -74,7 +77,7 @@ test('owner phone orders enter the selected location queue without online paymen
   const base = `http://127.0.0.1:${server.address().port}/orders`;
   const token = id => signToken({ adminId: id, email: `${id}@test.local`, role: id === 'owner' ? 'owner' : 'location' });
   const call = (path, method = 'GET', body, user = 'owner') => fetch(`${base}${path}`, {
-    method, headers: { 'Content-Type': 'application/json', ...(user ? { Authorization: `Bearer ${token(user)}` } : {}) },
+    method, headers: { 'Content-Type': 'application/json', ...(user ? token(user) : {}) },
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
   const payload = (locationId = hoja) => ({ requestId: randomUUID(), locationId, customer: { firstName: 'Anna', lastName: 'Andersson', phone: '0701234567', email: 'anna@example.test' }, items: [{ productId: `${productId}-250 gram`, quantity: 2 }], notes: 'Ring vid hämtning' });

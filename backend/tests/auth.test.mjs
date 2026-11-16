@@ -1,3 +1,4 @@
+import { fixtureSession, serveSessionTable } from './helpers/admin-session.mjs';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
@@ -17,10 +18,11 @@ test('admin authentication fails closed and uses the current account role', asyn
   ]);
   let unavailable = false;
   let lookups = 0;
-  const database = createServer((req, res) => {
-    lookups++;
+  const database = createServer(async (req, res) => {
     res.setHeader('Content-Type', 'application/json');
     const url = new URL(req.url, 'http://localhost');
+    if (await serveSessionTable(req, res, url)) return;
+    lookups++;
     assert.equal(url.pathname, '/rest/v1/admin_users');
     if (unavailable) {
       res.statusCode = 400;
@@ -34,7 +36,7 @@ test('admin authentication fails closed and uses the current account role', asyn
   process.env.SUPABASE_URL = `http://127.0.0.1:${database.address().port}`;
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'isolated-auth-test-only';
   process.env.JWT_SECRET = secret;
-  const { signToken, verifyAdminToken, requireAdmin, requireOwner, getRequestAdmin, isJwtConfigured } =
+  const { requireAdmin, requireOwner, getRequestAdmin, isJwtConfigured } =
     await import('../dist/middleware/auth.js');
   const { loadAdminScope, loadAdminScopes } = await import('../dist/services/locationScope.js');
   const app = express();
@@ -42,31 +44,26 @@ test('admin authentication fails closed and uses the current account role', asyn
   app.get('/owner', requireAdmin, requireOwner, (_req, res) => res.json({ ok: true }));
   const server = app.listen(0, '127.0.0.1');
   await once(server, 'listening');
-  const token = id => signToken({ adminId: id, email: `${id}@example.invalid`, role: 'owner' });
+  const token = id => fixtureSession({ adminId: id, email: `${id}@example.invalid`, role: 'owner' });
   const ownerToken = token('owner');
   const request = (path = '/admin', bearer = ownerToken) => fetch(`http://127.0.0.1:${server.address().port}${path}`, {
-    headers: bearer ? { Authorization: `Bearer ${bearer}` } : {},
+    headers: bearer || {},
   });
   try {
-    await t.test('valid owner works; missing, expired and wrong-algorithm tokens are rejected', async () => {
+    await t.test('valid session works; missing, expired, forged and legacy bearer credentials are rejected', async () => {
       assert.equal((await request('/owner')).status, 200);
       const before = lookups;
-      for (const bearer of ['', 'invalid', jwt.sign({ adminId: 'owner', email: 'owner@example.invalid' }, secret, { expiresIn: -1 }),
-        jwt.sign({ adminId: 'owner', email: 'owner@example.invalid' }, secret, { algorithm: 'HS384' }),
-        jwt.sign({ adminId: 123, email: 'owner@example.invalid' }, secret)]) {
-        assert.equal((await request('/admin', bearer)).status, 401);
+      for (const headers of [{}, { Cookie: 'mk_admin=invalid' }, fixtureSession({ adminId: 'owner', email: 'owner@example.invalid' }, Date.now() - 1),
+        { Authorization: 'Bearer ' + jwt.sign({ adminId: 'owner', email: 'owner@example.invalid' }, secret) }]) {
+        assert.equal((await request('/admin', headers)).status, 401);
       }
       assert.equal(lookups, before);
     });
-    await t.test('missing, blank, short and former fallback secrets cannot sign or accept tokens', async () => {
-      const formerToken = jwt.sign({ adminId: 'owner', email: 'owner@example.invalid' }, 'dev-secret-change-in-production');
+    await t.test('missing, blank, short and former fallback secrets disable admin access', async () => {
       for (const value of [undefined, '', '   ', 'short', 'dev-secret-change-in-production']) {
         if (value === undefined) delete process.env.JWT_SECRET;
         else process.env.JWT_SECRET = value;
         assert.equal(isJwtConfigured(), false);
-        assert.equal(verifyAdminToken(formerToken), null);
-        assert.equal(verifyAdminToken(ownerToken), null);
-        assert.throws(() => token('owner'), /JWT_SECRET/);
         assert.equal((await request()).status, 503);
       }
       process.env.JWT_SECRET = secret;

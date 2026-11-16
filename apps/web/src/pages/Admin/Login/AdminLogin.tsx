@@ -9,11 +9,12 @@ export const AdminLogin: React.FC = () => {
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
-    const { login } = useAuth();
+    const { login, isLoading: checkingSession } = useAuth();
     const navigate = useNavigate();
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (checkingSession) return;
         setError('');
         setIsLoading(true);
 
@@ -63,7 +64,7 @@ export const AdminLogin: React.FC = () => {
                         />
                     </div>
                     {error && <p className="text-error" style={{ color: 'var(--color-primary-red)' }}>{error}</p>}
-                    <Button variant="primary" fullWidth type="submit" disabled={isLoading}>
+                    <Button variant="primary" fullWidth type="submit" disabled={isLoading || checkingSession}>
                         {isLoading ? 'Loggar in...' : 'Logga in'}
                     </Button>
                 </form>

@@ -73,9 +73,10 @@ export async function apiRequest<T>(
   options?: RequestInit & {
     token?: string;
     timeout?: number;
+    baseUrl?: string;
   }
 ): Promise<T> {
-  const { token, timeout = API_CONFIG.timeout, ...fetchOptions } = options || {};
+  const { token, timeout = API_CONFIG.timeout, baseUrl = API_CONFIG.baseUrl, ...fetchOptions } = options || {};
 
   const isFormData =
     typeof FormData !== 'undefined' && fetchOptions.body instanceof FormData;
@@ -90,7 +91,7 @@ export async function apiRequest<T>(
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const url = `${API_CONFIG.baseUrl}${endpoint}`;
+  const url = `${baseUrl}${endpoint}`;
 
   // Create abort controller for timeout
   const controller = new AbortController();

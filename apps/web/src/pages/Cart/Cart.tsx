@@ -540,10 +540,11 @@ export const Cart: React.FC = () => {
             clearCart();
 
             if (paymentChoice === 'card') {
-                const { url } = await orderApi.createCheckoutSession(order.id);
+                const { url } = await orderApi.createCheckoutSession(order.id, order.statusToken);
                 window.location.href = url;
             } else {
-                navigate(`/pay/swish?orderId=${encodeURIComponent(order.id)}`);
+                const statusHash = order.statusToken ? `#statusToken=${encodeURIComponent(order.statusToken)}` : '';
+                navigate(`/pay/swish?orderId=${encodeURIComponent(order.id)}${statusHash}`);
             }
         } catch (err: any) {
             if (err.status === 409 && err.data?.code === 'DELIVERY_QUOTE_CHANGED') {

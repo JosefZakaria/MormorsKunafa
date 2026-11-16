@@ -1,3 +1,4 @@
+import { fixtureSession, serveSessionTable } from './helpers/admin-session.mjs';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
@@ -13,6 +14,7 @@ test('owner delivery pricing API (isolated database stub, no live credentials)',
   const database = createServer(async (req, res) => {
     res.setHeader('Content-Type', 'application/json');
     const url = new URL(req.url, 'http://localhost');
+    if (await serveSessionTable(req, res, url)) return;
     if (url.pathname === '/rest/v1/admin_users') {
       const location = url.searchParams.get('id') === 'eq.location-admin';
       res.end(JSON.stringify([{ id: location ? 'location-admin' : 'owner', role: location ? 'location' : 'owner', location_id: null }]));
@@ -41,7 +43,7 @@ test('owner delivery pricing API (isolated database stub, no live credentials)',
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'local-test-key';
   process.env.JWT_SECRET = 'local-delivery-pricing-test-only';
   const { default: router } = await import('../dist/routes/adminDeliveryPricing.js');
-  const { signToken } = await import('../dist/middleware/auth.js');
+  const signToken = fixtureSession;
   const app = express();
   app.use(express.json());
   app.use('/api/admin/delivery-pricing', router);
@@ -52,7 +54,7 @@ test('owner delivery pricing API (isolated database stub, no live credentials)',
   // Deliberately stale owner claim: the live database role must win.
   const location = signToken({ adminId: 'location-admin', email: 'test@example.invalid', role: 'owner' });
   const request = (method = 'GET', body, token = owner) => fetch(url, {
-    method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    method, headers: { 'Content-Type': 'application/json', ...(token ? token : {}) },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   try {

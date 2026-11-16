@@ -3,7 +3,8 @@ import bcrypt from 'bcryptjs';
 import { timingSafeEqual } from 'node:crypto';
 import { supabase, type Row, logSupabaseError, nowIso } from '../db/connection.js';
 import { applyAdminSettingsPatch, adminSettingsFromRow } from '../db/adminSettings.js';
-import { requireAdmin, requireOwner, signToken, verifyAdminToken, getRequestAdmin } from '../middleware/auth.js';
+import { requireAdmin, requireOwner, getRequestAdmin } from '../middleware/auth.js';
+import { createAdminSession, protectAdminLogin, revokeAdminSession, sessionCsrfToken } from '../services/adminSessions.js';
 import { loadAdminScope, parseAdminRole } from '../services/locationScope.js';
 import { updateLocationFlags } from '../db/locations.js';
 import { isDeliveryFeeLineItem } from '../constants/deliveryFee.js';
@@ -18,6 +19,7 @@ import { createAdminRealtimeToken, sendUnacceptedOrderReminders } from '../servi
 import { isWebPushConfigured } from '../services/pushNotifications.js';
 import { parseOpeningHours } from '../shared/utils/openingHours.js';
 import type { LocationFlagsPatch } from '../db/locations.js';
+import { limitLoginAttempts } from '../services/rateLimit.js';
 
 const router = Router();
 router.use('/delivery-pricing', adminDeliveryPricingRouter);
@@ -48,11 +50,7 @@ function getAdminFromRequest(req: Request): { adminId: string; email: string } |
     return { adminId: fromMiddleware.adminId, email: fromMiddleware.email };
   }
 
-  const token = String(req.query.token ?? '').trim();
-  if (!token) return null;
-  const decoded = verifyAdminToken(token);
-  if (!decoded) return null;
-  return decoded;
+  return null;
 }
 
 function toStockholmDateString(value: Date | string | null | undefined): string | null {
@@ -84,10 +82,10 @@ function inRange(createdAt: string, start: Date | null, end: Date | null): boole
   return true;
 }
 
-router.post('/login', async (req: Request, res: Response) => {
+router.post('/login', protectAdminLogin, limitLoginAttempts, async (req: Request, res: Response) => {
   try {
-    const { email, password } = req.body as { email?: string; password?: string };
-    if (!email || !password) {
+    const { email, password } = (req.body ?? {}) as { email?: string; password?: string };
+    if (typeof email !== 'string' || !email.trim() || typeof password !== 'string' || !password) {
       res.status(400).json({ error: 'Email and password required' });
       return;
     }
@@ -128,14 +126,13 @@ router.post('/login', async (req: Request, res: Response) => {
     const locationId =
       (user as Row).location_id != null ? String((user as Row).location_id) : null;
 
-    const token = signToken({
-      adminId: String((user as Row).id),
+    const csrfToken = await createAdminSession(res, {
+      id: String((user as Row).id),
       email: String((user as Row).email),
-      role,
-      locationId,
+      name: String((user as Row).display_name ?? (user as Row).email),
     });
     res.json({
-      token,
+      csrfToken,
       admin: {
         id: (user as Row).id,
         email: (user as Row).email,
@@ -147,6 +144,23 @@ router.post('/login', async (req: Request, res: Response) => {
   } catch (e) {
     console.error('[POST /admin/login]', e);
     res.status(500).json({ error: 'Login failed' });
+  }
+});
+
+router.get('/session', requireAdmin, (req: Request, res: Response) => {
+  const admin = getRequestAdmin(req)!;
+  res.json({ csrfToken: sessionCsrfToken(req), admin: {
+    id: admin.adminId, email: admin.email, name: admin.session!.name,
+    role: admin.role, locationId: admin.locationId,
+  } });
+});
+
+router.post('/logout', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    await revokeAdminSession(req, res);
+    res.json({ ok: true });
+  } catch {
+    res.status(503).json({ error: 'Kunde inte logga ut. Försök igen.' });
   }
 });
 

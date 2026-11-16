@@ -1,6 +1,5 @@
-import { apiRequest, authenticatedRequest } from '@shared/api';
+import { API_CONFIG, apiRequest } from '@shared/api';
 import { getPublicSettings } from './publicSettings';
-import { isAdminPath } from '../utils/adminPath';
 
 /** Listen-only access to the private order-signal channel, minted per admin by the backend. */
 export type AdminRealtimeAccess = { url: string; apiKey: string; token: string; topic: string; expiresIn: number };
@@ -19,11 +18,28 @@ import type {
   PushSubscriptionRecord,
 } from '@shared/types';
 
-// Staff auth token. Read only on admin pages, never on customer pages (cookie consent).
-const getToken = (): string | null => {
-  if (!isAdminPath()) return null;
-  return localStorage.getItem('authToken');
-};
+// Admin credentials are sent only in the HttpOnly cookie. The CSRF token stays in memory.
+const adminBaseUrl = import.meta.env.PROD ? '/api' : API_CONFIG.baseUrl;
+let csrfToken: string | null = null;
+export const clearAdminCsrf = () => { csrfToken = null; };
+
+async function authenticatedRequest<T>(endpoint: string, options: RequestInit & { timeout?: number } = {}): Promise<T> {
+  try {
+    return await apiRequest<T>(endpoint, { ...options, baseUrl: adminBaseUrl, credentials: 'include',
+      headers: { ...options.headers, ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}) } });
+  } catch (error) {
+    if ((error as { status?: number }).status === 401) {
+      clearAdminCsrf();
+      window.dispatchEvent(new Event('admin-session-expired'));
+    }
+    throw error;
+  }
+}
+
+interface AdminSessionResponse {
+  csrfToken: string;
+  admin: { id: string; email: string; name: string; role: AdminRole; locationId: string | null };
+}
 
 // Products API
 export const productApi = {
@@ -33,10 +49,7 @@ export const productApi = {
   },
 
   getAllAdmin: async (): Promise<Product[]> => {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
-
-    return authenticatedRequest<Product[]>('/products', { token });
+    return authenticatedRequest<Product[]>('/products');
   },
 
   getById: async (id: string): Promise<Product> => {
@@ -44,13 +57,9 @@ export const productApi = {
   },
 
   updateStock: async (id: string, inStock: boolean, locationId: string): Promise<Product> => {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
-    
     return authenticatedRequest<Product>(`/products/${id}/stock`, {
       method: 'PATCH',
       body: JSON.stringify({ inStock, locationId }),
-      token,
     });
   },
 
@@ -61,13 +70,9 @@ export const productApi = {
     image?: string;
     variantPrices?: Record<string, number> | null;
   }): Promise<Product> => {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
-
     return authenticatedRequest<Product>('/products', {
       method: 'POST',
       body: JSON.stringify(data),
-      token,
     });
   },
 
@@ -82,34 +87,22 @@ export const productApi = {
       hidden?: boolean;
     }
   ): Promise<Product> => {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
-
     return authenticatedRequest<Product>(`/products/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
-      token,
     });
   },
 
   reorder: async (orderedIds: string[]): Promise<Product[]> => {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
-
     return authenticatedRequest<Product[]>('/products/reorder', {
       method: 'PATCH',
       body: JSON.stringify({ orderedIds }),
-      token,
     });
   },
 
   remove: async (id: string): Promise<void> => {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
-
     await authenticatedRequest<{ ok: boolean }>(`/products/${id}`, {
       method: 'DELETE',
-      token,
     });
   },
 };
@@ -125,24 +118,26 @@ export const orderApi = {
   getDeliveryPricing: async (): Promise<DeliveryPricing> => {
     return apiRequest<DeliveryPricing>('/orders/delivery-pricing');
   },
-  create: async (data: CreateOrderRequest): Promise<Order> => {
-    return apiRequest<Order>('/orders', {
+  create: async (data: CreateOrderRequest): Promise<Order & { statusToken?: string }> => {
+    return apiRequest<Order & { statusToken?: string }>('/orders', {
       method: 'POST',
       body: JSON.stringify(data),
     });
   },
 
-  createCheckoutSession: async (orderId: string): Promise<{ url: string }> => {
+  createCheckoutSession: async (orderId: string, statusToken?: string): Promise<{ url: string }> => {
     return apiRequest<{ url: string }>(`/orders/checkout-session/${orderId}`, {
       method: 'POST',
+      headers: statusToken ? { 'X-Order-Token': statusToken } : {},
     });
   },
 
   /** After Stripe redirect — marks order paid if webhook has not run yet. */
-  confirmStripeCheckout: async (orderId: string, sessionId: string): Promise<Order> => {
+  confirmStripeCheckout: async (orderId: string, sessionId: string, statusToken?: string): Promise<Order> => {
     return apiRequest<Order>('/orders/stripe-confirm', {
       method: 'POST',
       body: JSON.stringify({ orderId, sessionId }),
+      headers: statusToken ? { 'X-Order-Token': statusToken } : {},
     });
   },
 
@@ -174,127 +169,85 @@ export const orderApi = {
     return apiRequest(`/orders/swish-payment/${orderId}/status`);
   },
 
-  getById: async (id: string): Promise<Order> => {
-    return apiRequest<Order>(`/orders/${id}`);
+  getById: async (id: string, statusToken?: string): Promise<Order> => {
+    return apiRequest<Order>(`/orders/${id}`, {
+      headers: statusToken ? { 'X-Order-Token': statusToken } : {},
+    });
   },
 
   getPending: async (): Promise<Order[]> => {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
-
-    return authenticatedRequest<Order[]>('/orders/admin/pending', { token });
+    return authenticatedRequest<Order[]>('/orders/admin/pending');
   },
 
   acceptOrder: async (id: string, extraMinutes?: number): Promise<Order> => {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
-
     return authenticatedRequest<Order>(`/orders/admin/${id}/accept`, {
       method: 'PATCH',
       body: JSON.stringify({ extraMinutes: extraMinutes ?? 0 }),
-      token,
     });
   },
 
   getActive: async (): Promise<Order[]> => {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
-    
-    return authenticatedRequest<Order[]>('/orders/admin/active', { token });
+    return authenticatedRequest<Order[]>('/orders/admin/active');
   },
 
   getPreOrders: async (): Promise<Order[]> => {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
-    
-    return authenticatedRequest<Order[]>('/orders/admin/pre-orders', { token });
+    return authenticatedRequest<Order[]>('/orders/admin/pre-orders');
   },
 
   getHistory: async (limit?: number, from?: string, to?: string): Promise<Order[]> => {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
-
     const qp = new URLSearchParams();
     if (limit) qp.set('limit', String(limit));
     if (from) qp.set('from', from);
     if (to) qp.set('to', to);
     const qs = qp.toString();
-    return authenticatedRequest<Order[]>(`/orders/admin/history${qs ? `?${qs}` : ''}`, { token });
+    return authenticatedRequest<Order[]>(`/orders/admin/history${qs ? `?${qs}` : ''}`);
   },
 
   cancelOrder: async (id: string, cancellationReason: string, password: string): Promise<Order> => {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
-
     return authenticatedRequest<Order>(`/orders/admin/${id}/cancel`, {
       method: 'POST',
       body: JSON.stringify({ password, cancellationReason }),
-      token,
     });
   },
 
   deleteOrder: async (id: string, password: string): Promise<void> => {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
-
     return authenticatedRequest<void>(`/orders/admin/${id}/delete`, {
       method: 'POST',
       body: JSON.stringify({ password }),
-      token,
     });
   },
 
   deleteAllHistory: async (password: string): Promise<void> => {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
-
     return authenticatedRequest<void>('/orders/admin/history/all/delete', {
       method: 'POST',
       body: JSON.stringify({ password }),
-      token,
     });
   },
 
   updateStatus: async (id: string, data: UpdateOrderStatusRequest): Promise<Order> => {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
-    
     return authenticatedRequest<Order>(`/orders/admin/${id}/status`, {
       method: 'PATCH',
       body: JSON.stringify(data),
-      token,
     });
   },
 
   updateTime: async (id: string, data: UpdateOrderTimeRequest): Promise<Order> => {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
-    
     return authenticatedRequest<Order>(`/orders/admin/${id}/time`, {
       method: 'PATCH',
       body: JSON.stringify(data),
-      token,
     });
   },
 
   updateInternalNotes: async (id: string, data: UpdateOrderNotesRequest): Promise<Order> => {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
-
     return authenticatedRequest<Order>(`/orders/admin/${id}/notes`, {
       method: 'PATCH',
       body: JSON.stringify(data),
-      token,
     });
   },
 
   printReceipt: async (id: string): Promise<{ success: boolean; message: string }> => {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
-    
     return authenticatedRequest<{ success: boolean; message: string }>(`/orders/admin/${id}/print`, {
       method: 'POST',
-      token,
     });
   },
 
@@ -306,54 +259,49 @@ export const orderApi = {
 // Admin API
 export const adminApi = {
   createPhoneOrder: async (data: PhoneOrderRequest): Promise<Order> => {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
     return authenticatedRequest<Order>('/orders/admin/phone-orders', {
-      method: 'POST', body: JSON.stringify(data), token,
+      method: 'POST', body: JSON.stringify(data),
     });
   },
   getDeliveryPricing: async (): Promise<DeliveryPricing> => {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
-    return authenticatedRequest<DeliveryPricing>('/admin/delivery-pricing', { token });
+    return authenticatedRequest<DeliveryPricing>('/admin/delivery-pricing');
   },
 
   updateDeliveryPricing: async (pricing: DeliveryPricing): Promise<DeliveryPricing> => {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
     return authenticatedRequest<DeliveryPricing>('/admin/delivery-pricing', {
-      method: 'PATCH', body: JSON.stringify(pricing), token,
+      method: 'PATCH', body: JSON.stringify(pricing),
     });
   },
 
-  login: async (email: string, password: string): Promise<{
-    token: string;
-    admin: { id: string; email: string; name: string; role: AdminRole; locationId: string | null };
-  }> => {
-    return apiRequest<{
-      token: string;
-      admin: { id: string; email: string; name: string; role: AdminRole; locationId: string | null };
-    }>('/admin/login', {
-      method: 'POST',
-      body: JSON.stringify({ email, password }),
+  login: async (email: string, password: string): Promise<AdminSessionResponse> => {
+    const result = await apiRequest<AdminSessionResponse>('/admin/login', {
+      method: 'POST', body: JSON.stringify({ email, password }), credentials: 'include',
+      baseUrl: adminBaseUrl, headers: { 'X-Admin-Request': '1' },
     });
+    csrfToken = result.csrfToken;
+    return result;
+  },
+
+  getSession: async (): Promise<AdminSessionResponse> => {
+    const result = await authenticatedRequest<AdminSessionResponse>('/admin/session');
+    csrfToken = result.csrfToken;
+    return result;
+  },
+
+  logout: async (): Promise<void> => {
+    try { await authenticatedRequest('/admin/logout', { method: 'POST' }); }
+    catch (error) { if ((error as { status?: number }).status !== 401) throw error; }
+    clearAdminCsrf();
   },
 
   getSettings: async (): Promise<AdminSettings> => {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
-    
-    return authenticatedRequest<AdminSettings>('/admin/settings', { token });
+    return authenticatedRequest<AdminSettings>('/admin/settings');
   },
 
   updateSettings: async (settings: Partial<AdminSettings>): Promise<AdminSettings> => {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
-    
     return authenticatedRequest<AdminSettings>('/admin/settings', {
       method: 'PATCH',
       body: JSON.stringify(settings),
-      token,
     });
   },
 
@@ -361,13 +309,9 @@ export const adminApi = {
     id: string,
     patch: Partial<Pick<Location, 'isPaused' | 'eatHereEnabled' | 'takeawayEnabled' | 'openingHours'>>
   ): Promise<Location> => {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
-
     return authenticatedRequest<Location>(`/admin/locations/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(patch),
-      token,
     });
   },
 
@@ -376,9 +320,6 @@ export const adminApi = {
     file: File,
     productId?: string
   ): Promise<{ url: string; settings?: AdminSettings; product?: Product }> => {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
-
     const body = new FormData();
     body.append('file', file);
     body.append('kind', kind);
@@ -387,66 +328,46 @@ export const adminApi = {
     return authenticatedRequest('/admin/uploads', {
       method: 'POST',
       body,
-      token,
       timeout: 60_000,
     });
   },
 
   getNotifications: async (limit?: number): Promise<any[]> => {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
-    
     const params = limit ? `?limit=${limit}` : '';
-    return authenticatedRequest<any[]>(`/admin/notifications${params}`, { token });
+    return authenticatedRequest<any[]>(`/admin/notifications${params}`);
   },
 
   markNotificationAsRead: async (id: string): Promise<void> => {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
-    
     return authenticatedRequest<void>(`/admin/notifications/${id}/read`, {
       method: 'PATCH',
-      token,
     });
   },
 
   getPushSubscriptions: async (): Promise<PushSubscriptionRecord[]> => {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
-    return authenticatedRequest<PushSubscriptionRecord[]>('/admin/push-subscriptions', { token });
+    return authenticatedRequest<PushSubscriptionRecord[]>('/admin/push-subscriptions');
   },
 
   savePushSubscription: async (
     subscription: PushSubscription,
     deviceLabel?: string
   ): Promise<PushSubscriptionRecord> => {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
-
     return authenticatedRequest<PushSubscriptionRecord>('/admin/push-subscriptions', {
       method: 'POST',
       body: JSON.stringify({
         subscription,
         deviceLabel,
       }),
-      token,
     });
   },
 
   removePushSubscription: async (id: string): Promise<void> => {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
-
     return authenticatedRequest<void>(`/admin/push-subscriptions/${id}`, {
       method: 'DELETE',
-      token,
     });
   },
 
   getRealtimeToken: async (): Promise<AdminRealtimeAccess> => {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
-    return authenticatedRequest<AdminRealtimeAccess>('/admin/realtime-token', { token });
+    return authenticatedRequest<AdminRealtimeAccess>('/admin/realtime-token');
   },
 
   getStatistics: async (password: string, startDate?: string, endDate?: string): Promise<{
@@ -493,13 +414,9 @@ export const adminApi = {
       revenueCustomOre: number;
     };
   }> => {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
-
     return authenticatedRequest(`/admin/statistics`, {
       method: 'POST',
       body: JSON.stringify({ password, startDate, endDate }),
-      token,
     });
   },
 };

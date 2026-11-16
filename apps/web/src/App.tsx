@@ -19,7 +19,8 @@ import { Toast } from './components/common/Toast/Toast';
 import { CookieBanner } from './components/common/CookieBanner/CookieBanner';
 
 const PrivateRoute = ({ children }: { children: React.ReactElement }) => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isLoading } = useAuth();
+  if (isLoading) return <p role="status">Kontrollerar inloggning…</p>;
   return isAuthenticated ? children : <Navigate to="/admin/login" />;
 };
 

@@ -26,6 +26,28 @@ MormorsKunafa/
 The React web application in `apps/web` provides the customer ordering flow and
 the restaurant administration interface. It consumes the backend API.
 
+### Deploying the admin session security change
+
+Before releasing this change, run `backend/src/db/migrations/20261113124338_admin_sessions.sql`
+in Supabase. It adds a backend-only session table; existing accounts, passwords and orders
+are unchanged. `backend/src/db/verification/admin-sessions.sql` is an isolated test script,
+not a production migration.
+
+Release the backend and frontend changes together. Production admin requests use the
+frontend's `/api` rewrite in `apps/web/vercel.json` so cookies remain on the website's own
+domain. Public customer API requests retain their existing configuration. A preview or
+alternative frontend domain must also be listed in the backend's `FRONTEND_URLS` setting.
+Test login, page reload, logout and live order updates on the deployed domain before
+considering the release verified; the local checks do not exercise Vercel's proxy.
+
+Staff must reload the page and sign in once after the release. Old browser-stored JWTs
+are no longer accepted. New sessions expire after 16 hours and are revoked in the database
+on logout. Requests check the session without caching it. Realtime carries only an empty
+order-change signal; fetching orders or renewing Realtime access requires a valid session.
+Offline logout reports failure so staff can retry.
+Expired session records are cleaned up at the next successful login. For local development,
+use the same hostname for frontend and backend (for example, `localhost` for both).
+
 ### Backend
 
 The Express server in `backend` is the source of truth for business logic, data

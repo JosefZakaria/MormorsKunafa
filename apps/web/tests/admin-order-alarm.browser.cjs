@@ -98,6 +98,12 @@ async function setup(t, options = {}) {
     const endpoint = url.pathname.replace(/^\/api/, '');
     const nowMs = state.nowMs ?? Date.now();
     const json = (value, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(value) });
+    if (endpoint === '/admin/session' && options.sessionStatus === 401) return json({ error: 'Unauthorized' }, 401);
+    if (endpoint === '/admin/session') return json({ csrfToken: 'isolated-csrf-token', admin: {
+      id: 'fixture-admin', email: 'fixture@example.invalid', name: 'Fixture',
+      role: options.profile === 'owner' ? 'owner' : 'location', locationId: options.profile === 'owner' ? null : MOLLE,
+    } });
+    if (endpoint === '/admin/logout') return json({ ok: true });
     if (url.hostname === 'printer.example.test') {
       state.prints.push(route.request().postData());
       return route.fulfill({ contentType: 'text/xml', body: '<response success="true" />', headers: { 'Access-Control-Allow-Origin': '*' } });
@@ -162,7 +168,7 @@ async function setup(t, options = {}) {
     return route.abort();
   });
   await page.goto(ORIGIN + '/admin/dashboard');
-  if (options.profile === 'malformed') {
+  if (options.sessionStatus === 401) {
     await page.getByRole('heading', { name: 'Admin Login', exact: true }).waitFor();
   } else {
     await page.getByText('AKTIVERA LJUDET', { exact: true }).waitFor();
@@ -317,8 +323,8 @@ test('admin countdown shows labelled units, crosses zero and preserves time adju
   }
 });
 
-test('malformed stored admin data redirects to login without fetching orders or starting audio', { timeout: 25000 }, async t => {
-  const { page, state } = await setup(t, { profile: 'malformed', pending: [order()] });
+test('expired server session redirects to login despite legacy credentials, without fetching orders or starting audio', { timeout: 25000 }, async t => {
+  const { page, state } = await setup(t, { sessionStatus: 401, pending: [order()] });
   assert.equal(new URL(page.url()).pathname, '/admin/login');
   await page.getByRole('button', { name: 'Logga in', exact: true }).waitFor();
   assert.equal(await page.locator('.admin-dashboard').count(), 0);
@@ -326,7 +332,7 @@ test('malformed stored admin data redirects to login without fetching orders or 
   assert.equal(await page.evaluate(() => window.__alarmProbe.contexts.length), 0);
 });
 
-for (const profile of ['valid', 'missing']) {
+for (const profile of ['valid', 'missing', 'malformed']) {
   test('a paid order rings after the preview has ended (' + profile + ' admin profile)', { timeout: 25000 }, async t => {
     const { page, state } = await setup(t, { profile });
     await activate(page);
