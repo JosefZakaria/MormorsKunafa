@@ -13,6 +13,16 @@ import { configureWebPush, isWebPushConfigured } from './services/pushNotificati
 import { isJwtConfigured } from './middleware/auth.js';
 
 const app = express();
+app.disable('x-powered-by');
+app.use((_req, res, next) => {
+  res.set({
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    'Content-Security-Policy': "base-uri 'self'; object-src 'none'; frame-ancestors 'none'",
+  });
+  next();
+});
 configureWebPush();
 
 function allowedFrontendOrigins(): string[] {

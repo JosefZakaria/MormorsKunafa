@@ -33,12 +33,12 @@
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
-    "express": "^4.21.0",
+    "express": "^4.22.3",
     "jsonwebtoken": "^9.0.2",
-    "multer": "^2.2.0",
-    "mysql2": "^3.11.0",
+    "multer": "^2.5.0",
+    "mysql2": "^3.24.6",
     "node-thermal-printer": "^4.6.0",
-    "resend": "^6.12.2",
+    "resend": "^6.38.1",
     "sharp": "^0.35.5",
     "stripe": "^22.1.1",
     "web-push": "^3.6.7"
@@ -50,7 +50,7 @@
     "@types/jsonwebtoken": "^9.0.7",
     "@types/multer": "^2.2.0",
     "@types/node": "^22.9.0",
-    "tsx": "^4.19.2",
+    "tsx": "^4.23.15",
     "typescript": "~5.6.2"
   }
 }
