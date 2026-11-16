@@ -187,6 +187,32 @@ test('owner phone orders enter the selected location queue without online paymen
       failItems = false;
       assert.equal((await call('/admin/phone-orders', 'POST', body)).status, 201);
     });
+    await t.test('only the owner can read history, including orders at the local account location', async () => {
+      const before = requests.length;
+      assert.equal((await call('/admin/history', 'GET', undefined, null)).status, 401);
+      for (const user of ['hoja-admin', 'mollan-admin']) {
+        assert.equal((await call('/admin/history', 'GET', undefined, user)).status, 403);
+      }
+      assert.ok(!requests.slice(before).some(row => row.table === 'orders'));
+      assert.equal((await call('/admin/history')).status, 200);
+    });
+    await t.test('only unpaid ready phone orders remain active alongside orders in preparation', async () => {
+      const rows = [
+        ['klar', 'pay_at_pickup', 'pending'], ['mottagen', 'card', 'paid'],
+        ['klar', 'card', 'paid'], ['klar', 'pay_at_pickup', 'paid'],
+        ['klar', 'cash', 'pending'], ['uthämtad', 'pay_at_pickup', 'pending'],
+        ['avbruten', 'pay_at_pickup', 'pending'],
+      ].map(([status, payment_method, payment_status]) => ({ id: randomUUID(), location_id: hoja, order_type: 'takeaway', status, payment_method, payment_status }));
+      orders.push(...rows);
+      try {
+        for (const user of ['owner', 'hoja-admin']) {
+          const active = await (await call('/admin/active', 'GET', undefined, user)).json();
+          assert.deepEqual(active.map(order => order.id), rows.slice(0, 2).map(row => row.id));
+        }
+      } finally {
+        orders.splice(0, orders.length, ...orders.filter(order => !rows.some(row => row.id === order.id)));
+      }
+    });
     await t.test('phone orders remain visible after acceptance and payment requires explicit collection', async () => {
       assert.equal((await call(`/admin/${phoneOrder.id}/accept`, 'PATCH', {})).status, 403);
       assert.equal((await call(`/admin/${phoneOrder.id}/status`, 'PATCH', { status: 'mottagen' })).status, 403);
@@ -200,10 +226,28 @@ test('owner phone orders enter the selected location queue without online paymen
       assert.deepEqual(active.map(order => order.id), [phoneOrder.id]);
       assert.equal(active[0].paymentStatus, 'pending');
       assert.equal((await call(`/admin/${phoneOrder.id}/status`, 'PATCH', { status: 'klar' }, 'hoja-admin')).status, 200);
+      const ready = await (await call('/admin/active', 'GET', undefined, 'hoja-admin')).json();
+      assert.deepEqual(ready.map(order => order.id), [phoneOrder.id]);
+      assert.equal(ready[0].status, 'klar');
       assert.equal((await call(`/admin/${phoneOrder.id}/status`, 'PATCH', { status: 'uthämtad' }, 'hoja-admin')).status, 400);
       const collected = await call(`/admin/${phoneOrder.id}/status`, 'PATCH', { status: 'uthämtad', paymentReceived: true }, 'hoja-admin');
       assert.equal(collected.status, 200);
       assert.equal((await collected.json()).paymentStatus, 'paid');
+      assert.deepEqual(await (await call('/admin/active', 'GET', undefined, 'hoja-admin')).json(), []);
+      assert.ok((await (await call('/admin/history')).json()).some(order => order.id === phoneOrder.id));
+    });
+    await t.test('local accounts cannot retrieve or reopen closed orders through action endpoints', async () => {
+      const closed = { ...orders.find(order => order.id === phoneOrder.id), id: randomUUID(), status: 'uthämtad', payment_status: 'paid' };
+      orders.push(closed);
+      const before = requests.length;
+      for (const [action, method, body] of [
+        ['notes', 'PATCH', { internalNotes: 'changed' }],
+        ['time', 'PATCH', { preparationTime: 20 }],
+        ['status', 'PATCH', { status: 'mottagen' }],
+        ['print', 'POST', {}],
+      ]) assert.equal((await call(`/admin/${closed.id}/${action}`, method, body, 'hoja-admin')).status, 403);
+      assert.ok(!requests.slice(before).some(row => row.table === 'orders' && row.method !== 'GET'));
+      assert.equal((await call(`/admin/${closed.id}/notes`, 'PATCH', { internalNotes: 'accounting note' })).status, 200);
     });
     await t.test('online orders still notify the owner and the selected location', async () => {
       const online = { id: randomUUID(), order_number: '#online', status: 'ny', order_type: 'takeaway', location_id: hoja, payment_method: 'card', payment_status: 'paid' };

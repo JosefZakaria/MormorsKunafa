@@ -132,7 +132,10 @@ async function setup(t, options = {}) {
       }
       return json(endpoint.endsWith('/active') ? state.active : state.scheduled.filter(order => order.status === 'ny' && Date.parse(order.scheduledTime) - nowMs > 20 * 60_000), state.secondaryStatus);
     }
-    if (endpoint.startsWith('/orders/admin/history')) return json(state.history);
+    if (endpoint.startsWith('/orders/admin/history')) {
+      state.historyCalls = (state.historyCalls ?? 0) + 1;
+      return json(state.history);
+    }
     // Realtime not configured: the dashboard must keep working on polling alone.
     if (endpoint === '/admin/realtime-token') { state.tokenCalls = (state.tokenCalls ?? 0) + 1; return json({ error: 'Realtime is not configured' }, 503); }
     if (endpoint === '/admin/settings' || endpoint === '/orders/settings') return json(settings);
@@ -147,6 +150,20 @@ async function setup(t, options = {}) {
       if (scheduledTime) state.scheduled.push(created);
       else state.pending.push(created);
       return json(created, 201);
+    }
+    if (endpoint.endsWith('/status') && route.request().method() === 'PATCH') {
+      const id = endpoint.split('/').at(-2);
+      const activeOrder = state.active.find(order => order.id === id);
+      if (!activeOrder) return json({ error: 'missing fixture' }, 404);
+      const body = route.request().postDataJSON();
+      state.statusRequests = [...(state.statusRequests ?? []), { id, ...body }];
+      activeOrder.status = body.status;
+      if (body.paymentReceived === true) activeOrder.paymentStatus = 'paid';
+      if (body.status === 'uthämtad') {
+        state.active = state.active.filter(order => order.id !== id);
+        state.history.push(activeOrder);
+      }
+      return json(activeOrder);
     }
     if (endpoint.endsWith('/time') && route.request().method() === 'PATCH') {
       const id = endpoint.split('/').at(-2);
@@ -213,6 +230,21 @@ test('order history keeps receipts and notes without offering permanent deletion
   assert.equal(await card.getByRole('button', { name: 'Intern notis', exact: true }).count(), 1);
   assert.equal(await card.getByRole('button', { name: 'Ta bort', exact: true }).count(), 0);
   assert.equal(await page.getByRole('button', { name: 'Radera all historik', exact: true }).count(), 0);
+});
+
+test('location accounts collect ready phone orders in active orders without access to history', { timeout: 25000 }, async t => {
+  const { page, state } = await setup(t, { active: [{ ...order('phone-pickup'), status: 'mottagen', paymentMethod: 'pay_at_pickup', paymentStatus: 'pending' }] });
+  assert.equal(await page.getByRole('button', { name: 'Orderhistorik', exact: true }).count(), 0);
+  await page.getByRole('button', { name: 'Aktiva Ordrar (1)', exact: true }).click();
+  const card = page.locator('.active-order-card').filter({ hasText: '#phone-pickup' });
+  await card.getByRole('button', { name: 'Färdig', exact: true }).click();
+  await card.getByRole('button', { name: 'Betald & hämtad', exact: true }).waitFor();
+  await page.reload();
+  await page.getByRole('button', { name: 'Aktiva Ordrar (1)', exact: true }).click();
+  await card.getByRole('button', { name: 'Betald & hämtad', exact: true }).click();
+  await card.waitFor({ state: 'detached' });
+  assert.deepEqual(state.statusRequests, [{ id: 'phone-pickup', status: 'klar' }, { id: 'phone-pickup', status: 'uthämtad', paymentReceived: true }]);
+  assert.equal(state.historyCalls ?? 0, 0);
 });
 
 test('security headers block framing the admin screen without blocking the dashboard itself', { timeout: 25000 }, async t => {

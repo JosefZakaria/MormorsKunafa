@@ -994,7 +994,8 @@ export const AdminDashboard: React.FC = () => {
 
     useEffect(() => {
         if (isOwner) return;
-        if (activeTab === 'menu' || activeTab === 'phone-orders' || activeTab === 'stats' || activeTab === 'delivery-pricing') {
+        setHistoryOrders([]);
+        if (activeTab === 'history' || activeTab === 'menu' || activeTab === 'phone-orders' || activeTab === 'stats' || activeTab === 'delivery-pricing') {
             setActiveTab('pending');
             setStatsData(null);
             setShowStatsModal(false);
@@ -1015,7 +1016,7 @@ export const AdminDashboard: React.FC = () => {
     // Historik hämtas vid öppning och när datumfiltret ändras — ingen polling.
     // Live-uppdatering sköts av pending/active; historik ändras sällan.
     useEffect(() => {
-        if (activeTab !== 'history') return;
+        if (!isOwner || activeTab !== 'history') return;
 
         let cancelled = false;
         setLoadingHistory(true);
@@ -1034,7 +1035,7 @@ export const AdminDashboard: React.FC = () => {
         return () => {
             cancelled = true;
         };
-    }, [activeTab, historyDateFrom, historyDateTo]);
+    }, [isOwner, activeTab, historyDateFrom, historyDateTo]);
 
     // --- Accept pending order ---
     const handleAcceptOrder = async (orderId: string, extraMinutes?: number) => {
@@ -1053,9 +1054,10 @@ export const AdminDashboard: React.FC = () => {
     const handleUpdateStatus = async (orderId: string, status: Order['status'], paymentReceived = false) => {
         try {
             const updated = await orderApi.updateStatus(orderId, { status, ...(paymentReceived ? { paymentReceived: true } : {}) });
+            const awaitingPhonePickup = updated.status === 'klar' && updated.paymentMethod === 'pay_at_pickup' && updated.paymentStatus === 'pending';
             setHistoryOrders(prev => prev.map(order => order.id === orderId ? updated : order));
             setActiveOrders(prev =>
-                status === 'klar' || status === 'avbruten' || status === 'uthämtad' || status === 'levererad'
+                !awaitingPhonePickup && (updated.status === 'klar' || updated.status === 'avbruten' || updated.status === 'uthämtad' || updated.status === 'levererad')
                     ? prev.filter(o => o.id !== orderId)
                     : prev.map(o => o.id === orderId ? updated : o)
             );
@@ -1415,9 +1417,9 @@ export const AdminDashboard: React.FC = () => {
                     <button className={`admin-tab ${activeTab === 'active' ? 'active' : ''}`} aria-current={activeTab === 'active' ? 'page' : undefined} onClick={() => { setActiveTab('active'); setStatsData(null); }}>
                         {`Aktiva Ordrar (${visibleActive.length})`}
                     </button>
-                    <button className={`admin-tab ${activeTab === 'history' ? 'active' : ''}`} aria-current={activeTab === 'history' ? 'page' : undefined} onClick={() => { setActiveTab('history'); setStatsData(null); }}>
+                    {isOwner && <button className={`admin-tab ${activeTab === 'history' ? 'active' : ''}`} aria-current={activeTab === 'history' ? 'page' : undefined} onClick={() => { setActiveTab('history'); setStatsData(null); }}>
                         Orderhistorik
-                    </button>
+                    </button>}
                     <button className={`admin-tab ${activeTab === 'stock' ? 'active' : ''}`} aria-current={activeTab === 'stock' ? 'page' : undefined} onClick={() => { setActiveTab('stock'); setStatsData(null); }}>
                         Lager
                     </button>
@@ -1633,19 +1635,21 @@ export const AdminDashboard: React.FC = () => {
                                                 ))}
                                             </ul>
                                             <p className="order-total">{(order.totalPrice / 100).toLocaleString('sv-SE', { maximumFractionDigits: 2 })} kr</p>
-                                            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
+                                            {order.status !== 'klar' && <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
                                                 <Button size="sm" variant="ghost" onClick={() => handleAddTime(order, -5)}>−5 min</Button>
                                                 <Button size="sm" variant="ghost" onClick={() => handleAddTime(order, 5)}>+5 min</Button>
                                                 <Button size="sm" variant="ghost" onClick={() => handleAddTime(order, 10)}>+10 min</Button>
-                                            </div>
+                                            </div>}
                                         </div>
                                         <div className="order-actions" style={{ flexDirection: 'column', gap: '0.5rem' }}>
                                             <Button size="sm" variant="ghost" style={{ color: '#DC2626' }} onClick={() => openCancelModal(order.id)}>
                                                 Avbryt
                                             </Button>
-                                            <Button size="sm" variant="primary" onClick={() => handleUpdateStatus(order.id, 'klar')}>
+                                            {order.status === 'klar' && order.paymentMethod === 'pay_at_pickup' && order.paymentStatus === 'pending' ? (
+                                                <Button size="sm" onClick={() => handleUpdateStatus(order.id, 'uthämtad', true)}>Betald &amp; hämtad</Button>
+                                            ) : <Button size="sm" variant="primary" onClick={() => handleUpdateStatus(order.id, 'klar')}>
                                                 Färdig
-                                            </Button>
+                                            </Button>}
                                             <Button size="sm" variant="ghost" onClick={() => handlePrintReceipt(order)}>
                                                 Kvitto
                                             </Button>
@@ -1657,7 +1661,7 @@ export const AdminDashboard: React.FC = () => {
                     )}
 
                     {/* ── HISTORIK ── */}
-                    {activeTab === 'history' && (
+                    {isOwner && activeTab === 'history' && (
                         <div className="orders-list">
                             <div className="history-date-filter">
                                 <div className="history-date-field">
@@ -1731,9 +1735,6 @@ export const AdminDashboard: React.FC = () => {
                                             )}
                                         </div>
                                         <div className="order-actions" style={{ flexDirection: 'column', gap: '0.5rem' }}>
-                                            {order.paymentMethod === 'pay_at_pickup' && order.paymentStatus === 'pending' && order.status === 'klar' && (
-                                                <Button size="sm" onClick={() => handleUpdateStatus(order.id, 'uthämtad', true)}>Betald &amp; hämtad</Button>
-                                            )}
                                             <Button size="sm" variant="ghost" onClick={() => openNotesModal(order)}>
                                                 Intern notis
                                             </Button>

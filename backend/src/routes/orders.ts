@@ -3,7 +3,7 @@ import { supabase, generateId, type Row, logSupabaseError, nowIso } from '../db/
 import { getOrderById, getNextOrderNumber, updateOrder } from '../db/orderRepository.js';
 import { orderRowToOrder, orderRowToCustomerOrder, rowsToOrders } from '../db/ordersList.js';
 import { createOrderStatusToken, canReadOrderContact } from '../utils/orderStatusToken.js';
-import { requireAdmin, getRequestAdmin } from '../middleware/auth.js';
+import { requireAdmin, requireOwner, getRequestAdmin } from '../middleware/auth.js';
 import { loadAdminScope, orderRowVisibleToScope, type AdminScope } from '../services/locationScope.js';
 import { PrinterService } from '../services/PrinterService.js';
 import { sendOrderConfirmationEmail } from '../services/OrderConfirmationEmail.js';
@@ -109,6 +109,11 @@ async function assertOrderVisible(req: Request, res: Response, order: Row, locat
   }
   if (!orderRowVisibleToScope(scope, order)) {
     res.status(403).json({ error: 'Ordern tillhör en annan plats.' });
+    return false;
+  }
+  const awaitingPhonePickup = order.status === 'klar' && order.payment_method === 'pay_at_pickup' && order.payment_status === 'pending';
+  if (scope.role === 'location' && ['klar', 'avbruten', 'uthämtad', 'levererad'].includes(String(order.status)) && !awaitingPhonePickup) {
+    res.status(403).json({ error: 'Endast ägare har åtkomst till orderhistoriken.' });
     return false;
   }
   return true;
@@ -714,8 +719,10 @@ router.get('/admin/active', requireAdmin, async (req: Request, res: Response) =>
       return;
     }
     const { data, error } = await query
-      .in('status', ['mottagen', 'påbörjad'])
+      .in('status', ['mottagen', 'påbörjad', 'klar'])
       .or('payment_status.eq.paid,payment_method.eq.pay_at_pickup')
+      .or('status.neq.klar,payment_method.eq.pay_at_pickup')
+      .or('status.neq.klar,payment_status.eq.pending')
       .order('created_at', { ascending: true });
 
     if (error) {
@@ -760,7 +767,7 @@ router.get('/admin/pre-orders', requireAdmin, async (req: Request, res: Response
 });
 
 // Admin: history
-router.get('/admin/history', requireAdmin, async (req: Request, res: Response) => {
+router.get('/admin/history', requireAdmin, requireOwner, async (req: Request, res: Response) => {
   try {
     const limit = Math.min(Number(req.query.limit) || 50, 500);
     const dateFrom = req.query.from as string | undefined;
