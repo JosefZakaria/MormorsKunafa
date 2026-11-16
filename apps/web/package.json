@@ -21,7 +21,7 @@
   "dependencies": {
     "@fontsource/playfair-display": "^5.2.8",
     "@types/leaflet": "^1.9.21",
-    "dompurify": "^3.3.1",
+    "dompurify": "^3.4.18",
     "inter-ui": "^4.1.1",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.564.0",
@@ -29,7 +29,7 @@
     "react-dom": "^19.0.0",
     "react-leaflet": "^5.0.0",
     "@supabase/realtime-js": "^2.106.1",
-    "react-router-dom": "^7.1.0",
+    "react-router-dom": "^7.18.5",
     "socket.io-client": "^4.7.2"
   },
   "devDependencies": {
@@ -37,8 +37,8 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.4",
-    "nanoid": "^3.3.11",
+    "nanoid": "^3.3.20",
     "typescript": "~5.6.2",
-    "vite": "^6.0.3"
+    "vite": "^6.4.6"
   }
 }

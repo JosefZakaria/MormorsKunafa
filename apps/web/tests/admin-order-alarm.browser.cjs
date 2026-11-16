@@ -3,11 +3,13 @@
 const assert = require('node:assert/strict');
 const { before, after, test } = require('node:test');
 const { spawn } = require('node:child_process');
-const { mkdirSync } = require('node:fs');
+const { mkdirSync, readFileSync } = require('node:fs');
 const path = require('node:path');
 const { chromium } = require('playwright');
 
 const ORIGIN = 'http://127.0.0.1:4173';
+const securityHeaders = Object.fromEntries(JSON.parse(readFileSync(path.resolve(__dirname, '../vercel.json'), 'utf8'))
+  .headers.find(rule => rule.source === '/(.*)').headers.map(({ key, value }) => [key, value]));
 const MOLLE = '2f1a9c4e-6b7d-4e8f-a901-b2c3d4e5f602';
 const location = { id: MOLLE, slug: 'mollevangen', name: 'Möllevången', address: '', fulfillsDelivery: false, eatHereEnabled: true, takeawayEnabled: true, isPaused: false };
 const settings = { defaultPreparationTime: 30, isPaused: false, eatHereEnabled: true, takeawayEnabled: true, deliveryEnabled: true, locations: [location], heroImageDesktop: '', heroImageMobile: '' };
@@ -53,6 +55,7 @@ async function setup(t, options = {}) {
     assert.deepEqual(pageErrors, [], 'Unhandled browser errors');
   });
   await page.addInitScript(({ profile, printer, MOLLE }) => {
+    if (window.top !== window) return;
     localStorage.setItem('authToken', 'isolated-test-token');
     if (printer) localStorage.setItem('printer_ip_mollevangen', 'printer.example.test');
     if (profile === 'missing') localStorage.removeItem('adminInfo');
@@ -94,7 +97,10 @@ async function setup(t, options = {}) {
 
   await context.route('**/*', async route => {
     const url = new URL(route.request().url());
-    if (url.origin === ORIGIN && !url.pathname.startsWith('/api/')) return route.continue();
+    if (url.origin === ORIGIN && !url.pathname.startsWith('/api/')) {
+      const response = await route.fetch();
+      return route.fulfill({ response, headers: { ...response.headers(), ...securityHeaders } });
+    }
     const endpoint = url.pathname.replace(/^\/api/, '');
     const nowMs = state.nowMs ?? Date.now();
     const json = (value, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(value) });
@@ -196,6 +202,36 @@ async function wake(page) {
 async function overlay(page) {
   await page.locator('.alarm-overlay').waitFor({ timeout: 8000 });
 }
+
+test('security headers block framing the admin screen without blocking the dashboard itself', { timeout: 25000 }, async t => {
+  const { page } = await setup(t);
+  const blocked = page.waitForEvent('console', { predicate: message => /frame-ancestors|X-Frame-Options/i.test(message.text()), timeout: 8000 });
+  await page.evaluate(() => {
+    const frame = document.createElement('iframe');
+    frame.src = '/admin/dashboard';
+    document.body.append(frame);
+  });
+  await blocked;
+  assert.equal(await page.locator('.admin-dashboard').count(), 1);
+});
+
+test('product descriptions retain formatting and Arabic while removing executable markup', { timeout: 25000 }, async t => {
+  const { page } = await setup(t, { profile: 'owner', products: [{
+    id: 'description-fixture', name: 'Description fixture', price: 10000, inStock: true, image: '/images/logo-icon.png',
+    description: '<h3>För vem?</h3><p onclick="window.__descriptionAttack=1">Hej <strong>ost</strong><br>مرحبا</p><ul><li>Pistage</li></ul>'
+      + '<img src="invalid" onerror="window.__descriptionAttack=2"><script>window.__descriptionAttack=3</script><svg onload="window.__descriptionAttack=4"></svg>',
+  }] });
+  await page.getByRole('button', { name: 'Meny', exact: true }).click();
+  await page.locator('.admin-menu-card').filter({ hasText: 'Description fixture' }).getByRole('button', { name: 'Ändra', exact: true }).click();
+  const editor = page.getByRole('textbox', { name: 'Beskrivning', exact: true });
+  await editor.waitFor();
+  assert.match(await editor.innerHTML(), /<strong>ost<\/strong>/);
+  assert.match(await editor.innerHTML(), /<br>/);
+  assert.match(await editor.innerText(), /مرحبا/);
+  assert.equal(await editor.locator('h3, li').count(), 2);
+  assert.equal(await editor.locator('img, script, svg, iframe, [onclick], [onerror], [onload]').count(), 0);
+  assert.equal(await page.evaluate(() => window.__descriptionAttack), undefined);
+});
 
 for (const profile of ['owner', 'valid']) {
   test('mobile dashboard keeps navigation compact and the selected section visible (' + profile + ')', { timeout: 25000 }, async t => {
