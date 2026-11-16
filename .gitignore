@@ -12,6 +12,7 @@ build/
 .env.*
 !.env.example
 !.env.test
+/backend/.env.example
 
 # Archives & Dumps
 *.zip
