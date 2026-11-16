@@ -1246,21 +1246,6 @@ select.stats-modal-input {
     background: var(--color-gray-100);
 }
 
-.history-delete-all {
-    padding: 0.45rem 0.75rem;
-    background: none;
-    border: 1px solid #DC2626;
-    border-radius: var(--radius-md);
-    font-size: 0.85rem;
-    color: #DC2626;
-    cursor: pointer;
-    margin-left: auto;
-}
-
-.history-delete-all:hover {
-    background: #FEF2F2;
-}
-
 .tab-badge {
     display: inline-flex;
     align-items: center;

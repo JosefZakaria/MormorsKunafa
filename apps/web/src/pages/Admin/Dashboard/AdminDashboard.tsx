@@ -557,105 +557,6 @@ function InternalNotesModal({
     );
 }
 
-function ConfirmDeleteOrderModal({
-    open,
-    orderNumber,
-    password,
-    onPasswordChange,
-    errorMsg,
-    onClose,
-    onConfirm,
-    loading,
-}: {
-    open: boolean;
-    orderNumber?: string;
-    password: string;
-    onPasswordChange: (value: string) => void;
-    errorMsg: string | null;
-    onClose: () => void;
-    onConfirm: () => void;
-    loading: boolean;
-}) {
-    if (!open) return null;
-    return (
-        <div className="stats-modal-overlay" onClick={onClose}>
-            <div className="stats-modal" onClick={(e) => e.stopPropagation()}>
-                <h2>Ta bort order</h2>
-                <p>
-                    Är du säker på att du vill ta bort {orderNumber ? `order ${orderNumber}` : 'den här ordern'}?
-                    Detta går inte att ångra.
-                </p>
-                <input
-                    className="stats-modal-input"
-                    type="password"
-                    placeholder="Lösenord"
-                    value={password}
-                    onChange={(e) => onPasswordChange(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter' && password.trim() && !loading) onConfirm(); }}
-                    autoFocus
-                />
-                {errorMsg && <p className="stats-modal-error">{errorMsg}</p>}
-                <div className="stats-modal-actions">
-                    <Button variant="ghost" onClick={onClose} style={{ flex: 1 }}>
-                        Avbryt
-                    </Button>
-                    <Button variant="primary" onClick={onConfirm} style={{ flex: 1 }} disabled={loading || !password.trim()}>
-                        {loading ? 'Tar bort...' : 'Ta bort'}
-                    </Button>
-                </div>
-            </div>
-        </div>
-    );
-}
-
-function ConfirmDeleteAllHistoryModal({
-    open,
-    password,
-    onPasswordChange,
-    errorMsg,
-    onClose,
-    onConfirm,
-    loading,
-}: {
-    open: boolean;
-    password: string;
-    onPasswordChange: (value: string) => void;
-    errorMsg: string | null;
-    onClose: () => void;
-    onConfirm: () => void;
-    loading: boolean;
-}) {
-    if (!open) return null;
-    return (
-        <div className="stats-modal-overlay" onClick={onClose}>
-            <div className="stats-modal" onClick={(e) => e.stopPropagation()}>
-                <h2>Radera all historik</h2>
-                <p>
-                    Är du säker på att du vill radera hela orderhistoriken? Detta går inte att ångra.
-                </p>
-                <input
-                    className="stats-modal-input"
-                    type="password"
-                    placeholder="Lösenord"
-                    value={password}
-                    onChange={(e) => onPasswordChange(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter' && password.trim() && !loading) onConfirm(); }}
-                    autoFocus
-                />
-                {errorMsg && <p className="stats-modal-error">{errorMsg}</p>}
-                <div className="stats-modal-actions">
-                    <Button variant="ghost" onClick={onClose} style={{ flex: 1 }}>
-                        Avbryt
-                    </Button>
-                    <Button variant="primary" onClick={onConfirm} style={{ flex: 1 }} disabled={loading || !password.trim()}>
-                        {loading ? 'Raderar...' : 'Radera allt'}
-                    </Button>
-                </div>
-            </div>
-        </div>
-    );
-}
-
 function OrderTypeToggleRow({
     label,
     enabled,
@@ -862,16 +763,6 @@ export const AdminDashboard: React.FC = () => {
     const [notesOrderId, setNotesOrderId] = useState<string | null>(null);
     const [notesValue, setNotesValue] = useState('');
     const [notesSubmitting, setNotesSubmitting] = useState(false);
-    const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-    const [deleteOrderId, setDeleteOrderId] = useState<string | null>(null);
-    const [deleteOrderNumber, setDeleteOrderNumber] = useState<string>('');
-    const [deleteSubmitting, setDeleteSubmitting] = useState(false);
-    const [deletePassword, setDeletePassword] = useState('');
-    const [deleteError, setDeleteError] = useState<string | null>(null);
-    const [deleteAllModalOpen, setDeleteAllModalOpen] = useState(false);
-    const [deleteAllSubmitting, setDeleteAllSubmitting] = useState(false);
-    const [deleteAllPassword, setDeleteAllPassword] = useState('');
-    const [deleteAllError, setDeleteAllError] = useState<string | null>(null);
     const [isReconnecting, setIsReconnecting] = useState(false);
     const [liveDown, setLiveDown] = useState(false);
 
@@ -1232,65 +1123,6 @@ export const AdminDashboard: React.FC = () => {
         } catch {
             setError('Kunde inte spara intern anteckning.');
             setNotesSubmitting(false);
-        }
-    };
-
-    const openDeleteModal = (order: Order) => {
-        setDeleteOrderId(order.id);
-        setDeleteOrderNumber(order.orderNumber || '');
-        setDeleteModalOpen(true);
-    };
-
-    const closeDeleteModal = () => {
-        setDeleteModalOpen(false);
-        setDeleteOrderId(null);
-        setDeleteOrderNumber('');
-        setDeleteSubmitting(false);
-        setDeletePassword('');
-        setDeleteError(null);
-    };
-
-    const handleDeleteOrder = async () => {
-        if (!deleteOrderId || !deletePassword.trim()) return;
-        setDeleteSubmitting(true);
-        setDeleteError(null);
-        try {
-            await orderApi.deleteOrder(deleteOrderId, deletePassword.trim());
-            setHistoryOrders(prev => prev.filter(o => o.id !== deleteOrderId));
-            setPreOrders(prev => prev.filter(o => o.id !== deleteOrderId));
-            closeDeleteModal();
-        } catch (e: any) {
-            const msg = e?.status === 401 ? 'Felaktigt lösenord.' : 'Kunde inte ta bort ordern.';
-            setDeleteError(msg);
-            setDeleteSubmitting(false);
-        }
-    };
-
-    const openDeleteAllModal = () => {
-        setDeleteAllPassword('');
-        setDeleteAllError(null);
-        setDeleteAllModalOpen(true);
-    };
-
-    const closeDeleteAllModal = () => {
-        setDeleteAllModalOpen(false);
-        setDeleteAllSubmitting(false);
-        setDeleteAllPassword('');
-        setDeleteAllError(null);
-    };
-
-    const handleDeleteAllHistory = async () => {
-        if (!deleteAllPassword.trim()) return;
-        setDeleteAllSubmitting(true);
-        setDeleteAllError(null);
-        try {
-            await orderApi.deleteAllHistory(deleteAllPassword.trim());
-            setHistoryOrders([]);
-            closeDeleteAllModal();
-        } catch (e: any) {
-            const msg = e?.status === 401 ? 'Felaktigt lösenord.' : 'Kunde inte radera historiken.';
-            setDeleteAllError(msg);
-            setDeleteAllSubmitting(false);
         }
     };
 
@@ -1679,26 +1511,6 @@ export const AdminDashboard: React.FC = () => {
                     onConfirm={handleUpdateInternalNotes}
                     loading={notesSubmitting}
                 />
-                <ConfirmDeleteOrderModal
-                    open={deleteModalOpen}
-                    orderNumber={deleteOrderNumber}
-                    password={deletePassword}
-                    onPasswordChange={setDeletePassword}
-                    errorMsg={deleteError}
-                    onClose={closeDeleteModal}
-                    onConfirm={handleDeleteOrder}
-                    loading={deleteSubmitting}
-                />
-                <ConfirmDeleteAllHistoryModal
-                    open={deleteAllModalOpen}
-                    password={deleteAllPassword}
-                    onPasswordChange={setDeleteAllPassword}
-                    errorMsg={deleteAllError}
-                    onClose={closeDeleteAllModal}
-                    onConfirm={handleDeleteAllHistory}
-                    loading={deleteAllSubmitting}
-                />
-
                 <div className="admin-content animate-in">
                     {/* ── INKOMMANDE ORDRAR ── */}
                     {activeTab === 'pending' && (
@@ -1872,14 +1684,6 @@ export const AdminDashboard: React.FC = () => {
                                         Rensa filter
                                     </button>
                                 )}
-                                {historyOrders.length > 0 && isOwner && (
-                                    <button
-                                        className="history-delete-all"
-                                        onClick={openDeleteAllModal}
-                                    >
-                                        Radera all historik
-                                    </button>
-                                )}
                             </div>
                             {loadingHistory ? (
                                 <p>Laddar historik...</p>
@@ -1935,9 +1739,6 @@ export const AdminDashboard: React.FC = () => {
                                             </Button>
                                             <Button size="sm" variant="ghost" onClick={() => handlePrintReceipt(order)}>
                                                 Kvitto
-                                            </Button>
-                                            <Button size="sm" variant="ghost" style={{ color: '#DC2626' }} onClick={() => openDeleteModal(order)}>
-                                                Ta bort
                                             </Button>
                                         </div>
                                     </div>

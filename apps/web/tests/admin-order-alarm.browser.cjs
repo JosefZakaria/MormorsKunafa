@@ -47,7 +47,7 @@ async function setup(t, options = {}) {
   const page = await context.newPage();
   const pageErrors = [];
   page.on('pageerror', error => pageErrors.push(error.message));
-  const state = { pending: [], scheduled: [], active: [], prints: [], products: [], phoneRequests: [], pendingStatus: 200, secondaryStatus: 200, holdSecondary: false, releaseSecondary: null, pendingCalls: 0, holdPending: false, releasePending: null, ...options };
+  const state = { pending: [], scheduled: [], active: [], history: [], prints: [], products: [], phoneRequests: [], pendingStatus: 200, secondaryStatus: 200, holdSecondary: false, releaseSecondary: null, pendingCalls: 0, holdPending: false, releasePending: null, ...options };
   t.after(async () => {
     state.releaseSecondary?.();
     state.releasePending?.();
@@ -132,6 +132,7 @@ async function setup(t, options = {}) {
       }
       return json(endpoint.endsWith('/active') ? state.active : state.scheduled.filter(order => order.status === 'ny' && Date.parse(order.scheduledTime) - nowMs > 20 * 60_000), state.secondaryStatus);
     }
+    if (endpoint.startsWith('/orders/admin/history')) return json(state.history);
     // Realtime not configured: the dashboard must keep working on polling alone.
     if (endpoint === '/admin/realtime-token') { state.tokenCalls = (state.tokenCalls ?? 0) + 1; return json({ error: 'Realtime is not configured' }, 503); }
     if (endpoint === '/admin/settings' || endpoint === '/orders/settings') return json(settings);
@@ -177,7 +178,7 @@ async function setup(t, options = {}) {
   if (options.sessionStatus === 401) {
     await page.getByRole('heading', { name: 'Admin Login', exact: true }).waitFor();
   } else {
-    await page.getByText('AKTIVERA LJUDET', { exact: true }).waitFor();
+    await page.locator('.admin-audio-status').waitFor();
   }
   return { page, state };
 }
@@ -202,6 +203,17 @@ async function wake(page) {
 async function overlay(page) {
   await page.locator('.alarm-overlay').waitFor({ timeout: 8000 });
 }
+
+test('order history keeps receipts and notes without offering permanent deletion', { timeout: 25000 }, async t => {
+  const { page } = await setup(t, { profile: 'owner', history: [{ ...order('retained'), status: 'uthämtad' }] });
+  await page.getByRole('button', { name: 'Orderhistorik', exact: true }).click();
+  const card = page.locator('.admin-order-card').filter({ hasText: '#retained' });
+  await card.waitFor();
+  assert.equal(await card.getByRole('button', { name: 'Kvitto', exact: true }).count(), 1);
+  assert.equal(await card.getByRole('button', { name: 'Intern notis', exact: true }).count(), 1);
+  assert.equal(await card.getByRole('button', { name: 'Ta bort', exact: true }).count(), 0);
+  assert.equal(await page.getByRole('button', { name: 'Radera all historik', exact: true }).count(), 0);
+});
 
 test('security headers block framing the admin screen without blocking the dashboard itself', { timeout: 25000 }, async t => {
   const { page } = await setup(t);
@@ -547,11 +559,31 @@ test('a waiting paid order alarms on initial load and again after reload', { tim
   const { page } = await setup(t, { profile: 'missing', pending: [order()] });
   await overlay(page);
   const activation = page.getByRole('button', { name: 'Aktivera orderljudet', exact: true });
-  if (await activation.isVisible()) await activation.click();
+  // Hold native audio so the disappearing activation button is exercised on every run.
+  await page.waitForFunction(() => window.__alarmProbe.contexts.length > 0, null, { timeout: 8000 });
+  await page.evaluate(async () => {
+    const ctx = window.__alarmProbe.contexts[0];
+    const resume = ctx.resume.bind(ctx);
+    window.__resumeAlarmAudio = () => { ctx.resume = resume; };
+    ctx.resume = () => new Promise(() => {});
+    await ctx.suspend();
+  });
+  await activation.waitFor({ timeout: 8000 });
+  let unlockedDuringClick = false;
+  await page.addLocatorHandler(activation, async () => {
+    await page.evaluate(() => window.__resumeAlarmAudio());
+    await page.mouse.click(0, 0);
+    await activation.waitFor({ state: 'hidden', timeout: 8000 });
+    unlockedDuringClick = true;
+  }, { times: 1 });
+  // Re-resolve to the static order number if audio unlocks while Playwright prepares the click.
+  const unlockTarget = activation.or(page.locator('.alarm-overlay .alarm-order-number')).last();
+  await unlockTarget.click({ timeout: 8000 });
   await sound(page);
+  assert.equal(unlockedDuringClick, true);
   await page.reload();
   await overlay(page);
-  if (await activation.isVisible()) await activation.click();
+  await unlockTarget.click({ timeout: 8000 });
   await sound(page);
 });
 

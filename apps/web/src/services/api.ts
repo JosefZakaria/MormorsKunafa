@@ -210,20 +210,6 @@ export const orderApi = {
     });
   },
 
-  deleteOrder: async (id: string, password: string): Promise<void> => {
-    return authenticatedRequest<void>(`/orders/admin/${id}/delete`, {
-      method: 'POST',
-      body: JSON.stringify({ password }),
-    });
-  },
-
-  deleteAllHistory: async (password: string): Promise<void> => {
-    return authenticatedRequest<void>('/orders/admin/history/all/delete', {
-      method: 'POST',
-      body: JSON.stringify({ password }),
-    });
-  },
-
   updateStatus: async (id: string, data: UpdateOrderStatusRequest): Promise<Order> => {
     return authenticatedRequest<Order>(`/orders/admin/${id}/status`, {
       method: 'PATCH',

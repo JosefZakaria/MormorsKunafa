@@ -3,7 +3,7 @@ import { supabase, generateId, type Row, logSupabaseError, nowIso } from '../db/
 import { getOrderById, getNextOrderNumber, updateOrder } from '../db/orderRepository.js';
 import { orderRowToOrder, orderRowToCustomerOrder, rowsToOrders } from '../db/ordersList.js';
 import { createOrderStatusToken, canReadOrderContact } from '../utils/orderStatusToken.js';
-import { requireAdmin, requireOwner, getRequestAdmin } from '../middleware/auth.js';
+import { requireAdmin, getRequestAdmin } from '../middleware/auth.js';
 import { loadAdminScope, orderRowVisibleToScope, type AdminScope } from '../services/locationScope.js';
 import { PrinterService } from '../services/PrinterService.js';
 import { sendOrderConfirmationEmail } from '../services/OrderConfirmationEmail.js';
@@ -792,64 +792,6 @@ router.get('/admin/history', requireAdmin, async (req: Request, res: Response) =
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Failed to fetch history' });
-  }
-});
-
-// Admin: delete all history (completed/cancelled orders only) — must be before :id route.
-// Uses POST so a password can be supplied in the body.
-router.post('/admin/history/all/delete', requireAdmin, requireOwner, async (req: Request, res: Response) => {
-  try {
-    const { password } = req.body as { password?: string };
-    const deletePassword = process.env.DELETE_PASSWORD;
-    if (!deletePassword || !password || password !== deletePassword) {
-      res.status(401).json({ error: 'Felaktigt lösenord' });
-      return;
-    }
-    const { error } = await supabase
-      .from('orders')
-      .delete()
-      .in('status', ['klar', 'avbruten', 'uthämtad', 'levererad']);
-
-    if (error) {
-      logSupabaseError('DELETE /admin/history/all', error);
-      res.status(500).json({ error: 'Failed to clear history', details: error.message });
-      return;
-    }
-    res.status(204).end();
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: 'Failed to clear history' });
-  }
-});
-
-// Admin: delete single order. Uses POST so a password can be supplied in the body.
-router.post('/admin/:id/delete', requireAdmin, async (req: Request, res: Response) => {
-  try {
-    const id = paramId(req);
-    const { password } = req.body as { password?: string };
-    const deletePassword = process.env.DELETE_PASSWORD;
-    if (!deletePassword || !password || password !== deletePassword) {
-      res.status(401).json({ error: 'Felaktigt lösenord' });
-      return;
-    }
-
-    const existing = await getOrderById(id);
-    if (!existing) {
-      res.status(404).json({ error: 'Order not found' });
-      return;
-    }
-    if (!(await assertOrderVisible(req, res, existing.order))) return;
-
-    const { error } = await supabase.from('orders').delete().eq('id', id);
-    if (error) {
-      logSupabaseError('DELETE /admin/:id', error);
-      res.status(500).json({ error: 'Failed to delete order', details: error.message });
-      return;
-    }
-    res.status(204).end();
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: 'Failed to delete order' });
   }
 });
 
