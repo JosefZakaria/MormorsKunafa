@@ -1,5 +1,8 @@
 import { API_CONFIG, apiRequest } from '@shared/api';
 import { getPublicSettings } from './publicSettings';
+
+/** Listen-only access to the private order-signal channel, minted per admin by the backend. */
+export type AdminRealtimeAccess = { url: string; apiKey: string; token: string; topic: string; expiresIn: number };
 import type { DeliveryPricing } from '@shared/utils/deliveryPricing';
 import type {
   Product,
@@ -363,9 +366,8 @@ export const adminApi = {
     });
   },
 
-  getRealtimeEventsUrl: (): string => {
-    const base = adminBaseUrl.replace(/\/+$/, '');
-    return `${base}/admin/events`;
+  getRealtimeToken: async (): Promise<AdminRealtimeAccess> => {
+    return authenticatedRequest<AdminRealtimeAccess>('/admin/realtime-token');
   },
 
   getStatistics: async (password: string, startDate?: string, endDate?: string): Promise<{

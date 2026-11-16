@@ -42,8 +42,9 @@ considering the release verified; the local checks do not exercise Vercel's prox
 
 Staff must reload the page and sign in once after the release. Old browser-stored JWTs
 are no longer accepted. New sessions expire after 16 hours and are revoked in the database
-on logout. Requests check the session without caching it; an already-open event stream on
-another server closes within 25 seconds. Offline logout reports failure so staff can retry.
+on logout. Requests check the session without caching it. Realtime carries only an empty
+order-change signal; fetching orders or renewing Realtime access requires a valid session.
+Offline logout reports failure so staff can retry.
 Expired session records are cleaned up at the next successful login. For local development,
 use the same hostname for frontend and backend (for example, `localhost` for both).
 

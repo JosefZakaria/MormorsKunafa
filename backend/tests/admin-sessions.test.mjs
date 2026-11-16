@@ -26,7 +26,8 @@ test('cookie sessions restore safely, enforce CSRF and revoke across instances w
   }).listen(0, '127.0.0.1');
   await once(database, 'listening');
   Object.assign(process.env, { SUPABASE_URL: `http://127.0.0.1:${database.address().port}`,
-    SUPABASE_SERVICE_ROLE_KEY: 'isolated-sessions', JWT_SECRET: 'isolated-sessions-secret-at-least-32-characters', NODE_ENV: 'production' });
+    SUPABASE_SERVICE_ROLE_KEY: 'isolated-sessions', JWT_SECRET: 'isolated-sessions-secret-at-least-32-characters', NODE_ENV: 'production',
+    SUPABASE_JWT_SECRET: 'isolated-realtime-signing-secret', SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_isolated_test' });
   const { default: router } = await import('../dist/routes/admin.js');
   const servers = [0, 1].map(() => {
     const app = express(); app.use(express.json()); app.use('/admin', router); return app.listen(0, '127.0.0.1');
@@ -39,7 +40,7 @@ test('cookie sessions restore safely, enforce CSRF and revoke across instances w
     });
   const login = () => request('/login', { method: 'POST', headers: { Origin: 'https://mormorskunafa.se', 'X-Admin-Request': '1' },
     body: { email: owner.email, password: 'test-password' } });
-  let cookie, csrf, hash;
+  let cookie, csrf, hash, realtimeToken;
   try {
     await t.test('login sets a host-only HttpOnly Secure Lax cookie and stores only a hash with 16h expiry', async () => {
       const response = await login();
@@ -65,8 +66,16 @@ test('cookie sessions restore safely, enforce CSRF and revoke across instances w
       assert.equal(result.headers.get('cache-control'), 'no-store');
       const data = await result.json(); assert.equal(data.csrfToken, csrf); assert.equal(data.admin.id, owner.id);
       assert.equal(data.admin.session, undefined);
+      const realtime = await request('/realtime-token', { headers: { Cookie: cookie }, instance: 1 });
+      assert.equal(realtime.status, 200);
+      assert.equal(realtime.headers.get('cache-control'), 'no-store');
+      const access = await realtime.json();
+      realtimeToken = access.token;
+      const claims = jwt.verify(realtimeToken, process.env.SUPABASE_JWT_SECRET);
+      assert.equal(claims.role, 'anon'); assert.equal(claims.mk_admin, true); assert.equal(claims.sub, owner.id);
+      assert.equal(access.apiKey, process.env.SUPABASE_PUBLISHABLE_KEY);
       const legacy = jwt.sign({ adminId: owner.id, email: owner.email }, process.env.JWT_SECRET);
-      assert.equal((await request(`/events?token=${legacy}`)).status, 401);
+      assert.equal((await request(`/realtime-token?token=${legacy}`)).status, 401);
       assert.equal((await request('/session', { headers: { Authorization: `Bearer ${legacy}` } })).status, 401);
     });
     await t.test('cross-site login, form login and missing, forged or other-session CSRF cannot mutate', async () => {
@@ -87,16 +96,14 @@ test('cookie sessions restore safely, enforce CSRF and revoke across instances w
       assert.equal(result.status, 503); assert.equal(result.headers.get('set-cookie'), null);
       unavailable = false;
     });
-    await t.test('SSE uses cookies; logout closes the stream and invalidates only this session on all instances', async () => {
+    await t.test('logout revokes API and realtime-token access on all instances; signal tokens cannot authenticate', async () => {
       const other = (await login()).headers.get('set-cookie').split(';')[0];
-      const controller = new AbortController();
-      const stream = await request('/events', { headers: { Cookie: cookie }, signal: controller.signal });
-      const reader = stream.body.getReader();
-      assert.match(new TextDecoder().decode((await reader.read()).value), /event: ready/);
       const logout = await request('/logout', { method: 'POST', instance: 1, headers: { Cookie: cookie, 'X-CSRF-Token': csrf } });
       assert.equal(logout.status, 200); assert.ok(logout.headers.get('set-cookie').includes('Expires=Thu, 01 Jan 1970'));
-      assert.equal((await reader.read()).done, true); controller.abort();
-      for (const instance of [0, 1]) assert.equal((await request('/session', { instance, headers: { Cookie: cookie } })).status, 401);
+      for (const instance of [0, 1]) {
+        for (const path of ['/session', '/realtime-token']) assert.equal((await request(path, { instance, headers: { Cookie: cookie } })).status, 401);
+      }
+      assert.equal((await request('/session', { headers: { Authorization: `Bearer ${realtimeToken}` } })).status, 401);
       assert.equal((await request('/session', { headers: { Cookie: other } })).status, 200);
       assert.equal(sessions.has(hash), false);
     });
@@ -105,7 +112,7 @@ test('cookie sessions restore safely, enforce CSRF and revoke across instances w
       const currentHash = createHash('sha256').update(current.split('=')[1]).digest('hex');
       sessions.get(currentHash).expires_at = new Date(Date.now() - 1).toISOString();
       assert.equal((await request('/session', { headers: { Cookie: current } })).status, 401);
-      assert.equal((await request('/events', { headers: { Cookie: current } })).status, 401);
+      assert.equal((await request('/realtime-token', { headers: { Cookie: current } })).status, 401);
     });
   } finally {
     for (const server of [...servers, database]) { server.close(); server.closeAllConnections(); }

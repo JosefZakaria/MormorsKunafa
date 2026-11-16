@@ -77,8 +77,10 @@ export async function sendOrderCreatedPush(event: OrderCreatedEvent): Promise<vo
     order_id: event.order_id,
     order_number: event.order_number,
     created_at: event.created_at,
-    title: 'Ny order',
-    body: `Order ${event.order_number} har kommit in`,
+    title: event.reminder ? 'Order väntar fortfarande' : 'Ny order',
+    body: event.reminder
+      ? `Order ${event.order_number} är inte mottagen än`
+      : `Order ${event.order_number} har kommit in`,
     url: `/admin/dashboard?orderId=${encodeURIComponent(event.order_id)}`,
     tag: `order-${event.order_id}`,
   });

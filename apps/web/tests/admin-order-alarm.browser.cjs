@@ -58,20 +58,6 @@ async function setup(t, options = {}) {
     if (profile === 'missing') localStorage.removeItem('adminInfo');
     else if (profile === 'malformed') localStorage.setItem('adminInfo', '{broken-json');
     else localStorage.setItem('adminInfo', JSON.stringify({ id: 'fixture-admin', email: 'fixture@example.invalid', name: 'Fixture', role: profile === 'owner' ? 'owner' : 'location', locationId: profile === 'owner' ? null : MOLLE }));
-    window.__eventSources = [];
-    class TestEventSource extends EventTarget {
-      static CONNECTING = 0;
-      static OPEN = 1;
-      static CLOSED = 2;
-      readyState = 1;
-      constructor() {
-        super();
-        window.__eventSources.push(this);
-        queueMicrotask(() => { if (this.readyState === 1) this.onopen?.(new Event('open')); });
-      }
-      close() { this.readyState = 2; }
-    }
-    window.EventSource = TestEventSource;
     window.__alarmProbe = { contexts: [], analysers: [], sources: [] };
     const NativeAudioContext = window.AudioContext;
     window.AudioContext = class extends NativeAudioContext {
@@ -112,6 +98,7 @@ async function setup(t, options = {}) {
     const endpoint = url.pathname.replace(/^\/api/, '');
     const nowMs = state.nowMs ?? Date.now();
     const json = (value, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(value) });
+    if (endpoint === '/admin/session' && options.sessionStatus === 401) return json({ error: 'Unauthorized' }, 401);
     if (endpoint === '/admin/session') return json({ csrfToken: 'isolated-csrf-token', admin: {
       id: 'fixture-admin', email: 'fixture@example.invalid', name: 'Fixture',
       role: options.profile === 'owner' ? 'owner' : 'location', locationId: options.profile === 'owner' ? null : MOLLE,
@@ -139,6 +126,8 @@ async function setup(t, options = {}) {
       }
       return json(endpoint.endsWith('/active') ? state.active : state.scheduled.filter(order => order.status === 'ny' && Date.parse(order.scheduledTime) - nowMs > 20 * 60_000), state.secondaryStatus);
     }
+    // Realtime not configured: the dashboard must keep working on polling alone.
+    if (endpoint === '/admin/realtime-token') { state.tokenCalls = (state.tokenCalls ?? 0) + 1; return json({ error: 'Realtime is not configured' }, 503); }
     if (endpoint === '/admin/settings' || endpoint === '/orders/settings') return json(settings);
     if (endpoint === '/locations') return json([location]);
     if (endpoint === '/products') return json(state.products);
@@ -179,7 +168,11 @@ async function setup(t, options = {}) {
     return route.abort();
   });
   await page.goto(ORIGIN + '/admin/dashboard');
-  await page.getByText('AKTIVERA LJUDET', { exact: true }).waitFor();
+  if (options.sessionStatus === 401) {
+    await page.getByRole('heading', { name: 'Admin Login', exact: true }).waitFor();
+  } else {
+    await page.getByText('AKTIVERA LJUDET', { exact: true }).waitFor();
+  }
   return { page, state };
 }
 
@@ -254,6 +247,30 @@ for (const profile of ['owner', 'valid']) {
   });
 }
 
+test('accepting an order updates the active count even after a translator replaces its text', { timeout: 25000 }, async t => {
+  const { page } = await setup(t, { pending: [order()] });
+  page.setDefaultTimeout(8000);
+  await page.getByRole('button', { name: /Visa ordrar.*pausa/ }).click();
+  await page.locator('.pending-order-card').waitFor();
+  const dashboard = page.locator('.admin-dashboard');
+  assert.equal(await dashboard.getAttribute('lang'), 'sv');
+  assert.equal(await dashboard.getAttribute('translate'), 'no');
+  assert.ok((await dashboard.getAttribute('class')).includes('notranslate'));
+  const activeTab = page.getByRole('button', { name: 'Aktiva Ordrar (0)', exact: true });
+  // Simulate an extension that ignores translate="no" and replaces React's text nodes.
+  await activeTab.evaluate(button => {
+    for (const node of [...button.childNodes]) {
+      if (node.nodeType !== Node.TEXT_NODE) continue;
+      const font = document.createElement('font');
+      font.textContent = node.textContent;
+      node.replaceWith(font);
+    }
+  });
+  await page.getByRole('button', { name: 'Acceptera', exact: true }).click();
+  await page.getByRole('button', { name: 'Aktiva Ordrar (1)', exact: true }).click();
+  assert.equal(await page.locator('.active-order-card').count(), 1);
+});
+
 test('admin countdown shows labelled units, crosses zero and preserves time adjustment controls', { timeout: 25000 }, async t => {
   const now = Date.parse('2026-10-19T12:00:00Z');
   const orderNumbers = { 'late-days': '#0375', 'late-one-day': '#0382', 'cross-zero': '#0390', 'cross-day': '#0391', 'unknown-time': '#0392' };
@@ -275,29 +292,44 @@ test('admin countdown shows labelled units, crosses zero and preserves time adju
     assert.equal((await timer.textContent()).replace(/\s+/g, ' ').trim(), text);
     assert.equal((await timer.getAttribute('class')).includes('timer-overdue'), overdue);
   };
-  await expectTimer('late-days', '⏱ -2 dygn 0 H 56 M 2 S (SEN)', true);
-  await expectTimer('late-one-day', '⏱ -1 dygn 0 H 20 M 51 S (SEN)', true);
-  await expectTimer('cross-zero', '⏱ 1 S', false);
-  await expectTimer('cross-day', '⏱ 1 dygn 0 H 0 M 0 S', false);
+  await expectTimer('late-days', '⏱ -2 dygn 0 tim 56 min 2 sek (SEN)', true);
+  await expectTimer('late-one-day', '⏱ -1 dygn 0 tim 20 min 51 sek (SEN)', true);
+  await expectTimer('cross-zero', '⏱ 1 sek', false);
+  await expectTimer('cross-day', '⏱ 1 dygn 0 tim 0 min 0 sek', false);
   await expectTimer('unknown-time', '⏱ --', false);
 
   await page.setViewportSize({ width: 375, height: 812 });
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'mobile layout overflows');
+  // Even a translator that ignores the dashboard guard must not freeze the timer.
+  await card('cross-zero').locator('.order-timer').evaluate(timer => {
+    const font = document.createElement('font');
+    font.textContent = '⏱ 1 söndag';
+    timer.replaceChildren(font);
+  });
   await page.clock.runFor(1000);
-  await expectTimer('cross-zero', '⏱ 0 S', false);
-  await expectTimer('cross-day', '⏱ 23 H 59 M 59 S', false);
+  await expectTimer('cross-zero', '⏱ 0 sek', false);
+  await expectTimer('cross-day', '⏱ 23 tim 59 min 59 sek', false);
   await page.clock.runFor(1000);
-  await expectTimer('cross-zero', '⏱ -1 S (SEN)', true);
+  await expectTimer('cross-zero', '⏱ -1 sek (SEN)', true);
 
   for (const [button, expected, offset] of [
-    ['+5 min', '⏱ 4 M 59 S', 301000],
-    ['−5 min', '⏱ -1 S (SEN)', 1000],
-    ['+10 min', '⏱ 9 M 59 S', 601000],
+    ['+5 min', '⏱ 4 min 59 sek', 301000],
+    ['−5 min', '⏱ -1 sek (SEN)', 1000],
+    ['+10 min', '⏱ 9 min 59 sek', 601000],
   ]) {
     await card('cross-zero').getByRole('button', { name: button, exact: true }).click();
     await expectTimer('cross-zero', expected, offset === 1000);
     assert.equal(state.active.find(order => order.id === 'cross-zero').estimatedReadyTime, new Date(now + offset).toISOString());
   }
+});
+
+test('expired server session redirects to login despite legacy credentials, without fetching orders or starting audio', { timeout: 25000 }, async t => {
+  const { page, state } = await setup(t, { sessionStatus: 401, pending: [order()] });
+  assert.equal(new URL(page.url()).pathname, '/admin/login');
+  await page.getByRole('button', { name: 'Logga in', exact: true }).waitFor();
+  assert.equal(await page.locator('.admin-dashboard').count(), 0);
+  assert.equal(state.pendingCalls, 0);
+  assert.equal(await page.evaluate(() => window.__alarmProbe.contexts.length), 0);
 });
 
 for (const profile of ['valid', 'missing', 'malformed']) {
@@ -443,27 +475,23 @@ test('an event during an old snapshot queues a follow-up instead of losing the n
   for (let i = 0; i < 50 && !state.releasePending; i += 1) await page.waitForTimeout(20);
   assert.ok(state.releasePending, 'pending request was not held');
   state.pending = [order()];
-  await page.evaluate(() => {
-    const stream = window.__eventSources.at(-1);
-    for (let i = 0; i < 10; i += 1) stream.dispatchEvent(new MessageEvent('ORDER_CREATED', { data: JSON.stringify({ event_id: 'event-' + i }) }));
-  });
+  // Forced refreshes (Realtime signals, focus) take the same path; ten of them during a held request.
+  for (let i = 0; i < 10; i += 1) await wake(page);
   state.releasePending();
   await overlay(page);
   await sound(page);
 });
 
-test('SSE reconnection immediately refreshes orders and restores event handlers', { timeout: 25000 }, async t => {
+test('without Realtime the dashboard warns and keeps polling fast', { timeout: 30000 }, async t => {
   const { page, state } = await setup(t);
   await activate(page);
-  const streams = await page.evaluate(() => {
-    window.__eventSources.at(-1).onerror(new Event('error'));
-    return window.__eventSources.length;
-  });
-  await page.waitForFunction(count => window.__eventSources.length > count, streams);
+  assert.ok(state.tokenCalls >= 1, 'dashboard never asked for a realtime token');
+  await page.getByText('Live-uppdatering nere', { exact: false }).waitFor({ timeout: 12000 });
+  const before = state.pendingCalls;
   state.pending = [order()];
-  await page.evaluate(() => window.__eventSources.at(-1).dispatchEvent(new MessageEvent('ORDER_CREATED', { data: JSON.stringify({ event_id: 'after-reconnect' }) })));
   await overlay(page);
   await sound(page);
+  assert.ok(state.pendingCalls > before, 'fallback polling stopped');
 });
 
 test('expired authentication stops an active alarm and returns to login', { timeout: 25000 }, async t => {

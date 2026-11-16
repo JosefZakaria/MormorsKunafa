@@ -13,7 +13,6 @@ import type {
     Order,
     Product,
     AdminSettings,
-    OrderCreatedRealtimeEvent,
     Location,
 } from '@shared/types';
 import { HOJA_LOCATION_ID, MOLLEVANGEN_LOCATION_ID } from '@shared/types';
@@ -22,6 +21,7 @@ import { calculateOrderReadyTime, isPreOrder } from '@shared/utils/scheduledTime
 import '../Admin.css';
 import './Settings.css';
 import { requestWakeLock, releaseWakeLock } from '../../../utils/wakeLock';
+import { connectAdminOrderSignals } from '../../../services/adminRealtime';
 import { useOrderAlarm } from '../../../hooks/useOrderAlarm';
 import { getOrderCountdown } from '../../../utils/orderCountdown';
 import { ALARM_SOUND_SECONDS } from '../../../utils/alarmSignal';
@@ -125,6 +125,8 @@ function orderMatchesPlaceFilter(order: Order, filter: PlaceFilter): boolean {
 }
 
 // --- Per-order timer component ---
+// Keep the timer and active-tab label as single text children so React can replace
+// their contents if a browser translator has displaced the original text nodes.
 function OrderTimer({ estimatedReadyTime }: { estimatedReadyTime: string }) {
     const [countdown, setCountdown] = useState(() => getOrderCountdown(estimatedReadyTime));
 
@@ -136,7 +138,7 @@ function OrderTimer({ estimatedReadyTime }: { estimatedReadyTime: string }) {
 
     return (
         <span className={`order-timer ${countdown.isOverdue ? 'timer-overdue' : ''}`}>
-            ⏱ {countdown.text} {countdown.isOverdue ? '(SEN)' : ''}
+            {`⏱ ${countdown.text}${countdown.isOverdue ? ' (SEN)' : ''}`}
         </span>
     );
 }
@@ -871,15 +873,11 @@ export const AdminDashboard: React.FC = () => {
     const [deleteAllPassword, setDeleteAllPassword] = useState('');
     const [deleteAllError, setDeleteAllError] = useState<string | null>(null);
     const [isReconnecting, setIsReconnecting] = useState(false);
+    const [liveDown, setLiveDown] = useState(false);
 
     const refreshOrdersRef = useRef<((force?: boolean) => Promise<void>) | null>(null);
     const pollingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const eventSourceRef = useRef<EventSource | null>(null);
-    const reconnectRealtimeRef = useRef<(() => void) | null>(null);
-    const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const reconnectAttemptsRef = useRef(0);
     const statsAuthPasswordRef = useRef('');
-    const seenRealtimeEventIdsRef = useRef<Set<string>>(new Set());
 
     // Spårar vilka inkommande ordrar som redan skrivits ut (kökslapp) så att
     // pollingen inte skriver ut samma order flera gånger.
@@ -902,7 +900,7 @@ export const AdminDashboard: React.FC = () => {
         setPlaceFilter('all');
     };
 
-    // Stable entry point used by polling, SSE and wake/manual refreshes.
+    // Stable entry point used by polling, Realtime signals and wake/manual refreshes.
     const fetchOrders = useCallback((force = false): Promise<void> => {
         return refreshOrdersRef.current?.(force) ?? Promise.resolve();
     }, []);
@@ -946,7 +944,7 @@ export const AdminDashboard: React.FC = () => {
             }, error => reportError(name, error), minIntervalMs);
 
         const pending = queue('pending', orderApi.getPending, setPendingOrders);
-        // Own actions update these lists locally and SSE/wake/release force a refresh,
+        // Own actions update these lists locally and signals/wake/release force a refresh,
         // so polling them is only a fallback for changes from other screens.
         const active = queue('active', orderApi.getActive, setActiveOrders, 30_000);
         const preOrders = queue('preOrders', orderApi.getPreOrders, setPreOrders, 30_000);
@@ -960,21 +958,47 @@ export const AdminDashboard: React.FC = () => {
         };
         refreshOrdersRef.current = refresh;
 
+        // Realtime only says "something changed"; orders are always fetched through the API.
+        let live = false;
+        let liveDownTimer = setTimeout(() => setLiveDown(true), 10_000);
+
         const pollLoop = async () => {
+            // Null while a refresh runs, so a live drop never starts a second loop.
+            pollingTimerRef.current = null;
             if (disposed || sessionExpired) return;
             await refresh();
             if (disposed || sessionExpired) return;
-            // Keep a fallback when SSE misses an event, including while hidden.
+            // Live signals make polling a 30 s safety net; without them poll fast again.
             // Browsers may still suspend background pages; focus forces a sync.
             const delay = document.visibilityState === 'visible'
-                ? (failures.pending > 0 ? 5000 : 3500)
-                : 10000;
+                ? (failures.pending > 0 ? 5000 : live ? 30_000 : 3500)
+                : (live ? 30_000 : 10000);
             pollingTimerRef.current = setTimeout(pollLoop, delay);
         };
+
+        const onLive = (next: boolean) => {
+            if (disposed || next === live) return;
+            live = next;
+            clearTimeout(liveDownTimer);
+            if (next) {
+                setLiveDown(false);
+                return;
+            }
+            liveDownTimer = setTimeout(() => setLiveDown(true), 10_000);
+            // Drop straight back to fast polling instead of waiting out a 30 s timer.
+            if (pollingTimerRef.current) {
+                clearTimeout(pollingTimerRef.current);
+                void pollLoop();
+            }
+        };
+
         void pollLoop();
+        const stopSignals = connectAdminOrderSignals(() => { void refresh(true); }, onLive);
 
         return () => {
             disposed = true;
+            stopSignals();
+            clearTimeout(liveDownTimer);
             pending.dispose();
             active.dispose();
             preOrders.dispose();
@@ -982,95 +1006,6 @@ export const AdminDashboard: React.FC = () => {
             if (pollingTimerRef.current) clearTimeout(pollingTimerRef.current);
         };
     }, [logout, navigate]);
-
-    // --- Realtidshändelser via Server-Sent Events (SSE) med självläkande återanslutning ---
-    useEffect(() => {
-        let closed = false;
-
-        const connect = () => {
-            if (closed) return;
-            if (eventSourceRef.current) {
-                try {
-                    eventSourceRef.current.close();
-                } catch {
-                    // Ignore
-                }
-                eventSourceRef.current = null;
-            }
-
-            try {
-                const url = adminApi.getRealtimeEventsUrl();
-                const es = new EventSource(url, { withCredentials: true });
-                eventSourceRef.current = es;
-
-                es.onopen = () => {
-                    reconnectAttemptsRef.current = 0;
-                    void fetchOrders(true);
-                };
-
-                es.addEventListener('ORDER_CREATED', (rawEvent) => {
-                    try {
-                        const event = JSON.parse((rawEvent as MessageEvent).data) as OrderCreatedRealtimeEvent;
-                        if (seenRealtimeEventIdsRef.current.has(event.event_id)) return;
-
-                        seenRealtimeEventIdsRef.current.add(event.event_id);
-                        if (seenRealtimeEventIdsRef.current.size > 1000) {
-                            const first = seenRealtimeEventIdsRef.current.values().next().value;
-                            if (first) seenRealtimeEventIdsRef.current.delete(first);
-                        }
-
-                        void fetchOrders(true);
-                    } catch (error) {
-                        console.error('[realtime] ORDER_CREATED parse failed', error);
-                    }
-                });
-
-                es.addEventListener('PHONE_ORDER_ACCEPTED', () => {
-                    void fetchOrders(true);
-                });
-
-                es.onerror = () => {
-                    try {
-                        es.close();
-                    } catch {
-                        // Ignore
-                    }
-                    eventSourceRef.current = null;
-                    if (!closed) {
-                        reconnectAttemptsRef.current += 1;
-                        const backoff = Math.min(15000, 2000 * Math.pow(1.3, reconnectAttemptsRef.current));
-                        if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
-                        reconnectTimerRef.current = setTimeout(connect, backoff);
-                    }
-                };
-            } catch (err) {
-                console.warn('[realtime] kunde inte skapa EventSource, schemalägger återförsök:', err);
-                if (!closed) {
-                    reconnectAttemptsRef.current += 1;
-                    const backoff = Math.min(15000, 2000 * Math.pow(1.3, reconnectAttemptsRef.current));
-                    if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
-                    reconnectTimerRef.current = setTimeout(connect, backoff);
-                }
-            }
-        };
-
-        reconnectRealtimeRef.current = connect;
-        connect();
-
-        return () => {
-            closed = true;
-            reconnectRealtimeRef.current = null;
-            if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
-            if (eventSourceRef.current) {
-                try {
-                    eventSourceRef.current.close();
-                } catch {
-                    // Ignore
-                }
-                eventSourceRef.current = null;
-            }
-        };
-    }, [fetchOrders]);
 
     // --- Skriv ut kökslapp när en order kommer till Inkommande ---
     // Serverns kö styr både utskrift och larm, även vid flytt från Förbeställningar.
@@ -1135,13 +1070,6 @@ export const AdminDashboard: React.FC = () => {
                 void requestWakeLock();
                 // Hämta ordrar omedelbart när skärmen tänds eller fliken återfår fokus
                 void fetchOrders(true);
-
-                // Om EventSource har dött under surfplattans viloläge, återanslut direkt
-                if (!eventSourceRef.current || eventSourceRef.current.readyState === EventSource.CLOSED) {
-                    reconnectAttemptsRef.current = 0;
-                    if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
-                    reconnectRealtimeRef.current?.();
-                }
             }
         };
 
@@ -1510,7 +1438,7 @@ export const AdminDashboard: React.FC = () => {
     const hojaName = locations.find((location) => location.slug === 'hoja')?.name ?? 'Höja';
     const molleName = locations.find((location) => location.slug === 'mollevangen')?.name ?? 'Möllevången';
     return (
-        <div className="admin-dashboard">
+        <div className="admin-dashboard notranslate" lang="sv" dir="ltr" translate="no">
             <Container>
                 <header className="admin-header">
                     <div className="admin-header-left">
@@ -1606,6 +1534,21 @@ export const AdminDashboard: React.FC = () => {
                     </div>
                 )}
 
+                {liveDown && !isReconnecting && !error && (
+                    <div role="status" className="admin-live-down" style={{
+                        padding: '0.6rem 1rem',
+                        background: '#FEF3C7',
+                        color: '#92400E',
+                        borderRadius: '8px',
+                        marginBottom: '1rem',
+                        fontSize: '0.85rem',
+                        fontWeight: 600,
+                        border: '1px solid #FCD34D'
+                    }}>
+                        Live-uppdatering nere – ordrar hämtas var 3:e sekund tills den är tillbaka.
+                    </div>
+                )}
+
                 {error && (
                     <div style={{ padding: '0.75rem 1rem', background: '#fee', color: '#c00', borderRadius: '8px', marginBottom: '1rem' }}>
                         {error} <button onClick={() => setError(null)} style={{ marginLeft: '1rem', cursor: 'pointer' }}>✕</button>
@@ -1638,7 +1581,7 @@ export const AdminDashboard: React.FC = () => {
                         Inkommande {visibleIncomingCount > 0 && <span className="tab-badge">{visibleIncomingCount}</span>}
                     </button>
                     <button className={`admin-tab ${activeTab === 'active' ? 'active' : ''}`} aria-current={activeTab === 'active' ? 'page' : undefined} onClick={() => { setActiveTab('active'); setStatsData(null); }}>
-                        Aktiva Ordrar ({visibleActive.length})
+                        {`Aktiva Ordrar (${visibleActive.length})`}
                     </button>
                     <button className={`admin-tab ${activeTab === 'history' ? 'active' : ''}`} aria-current={activeTab === 'history' ? 'page' : undefined} onClick={() => { setActiveTab('history'); setStatsData(null); }}>
                         Orderhistorik

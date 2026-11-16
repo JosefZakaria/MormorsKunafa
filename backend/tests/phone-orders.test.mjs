@@ -68,11 +68,8 @@ test('owner phone orders enter the selected location queue without online paymen
   for (const key of ['RESEND_API_KEY', 'STRIPE_SECRET_KEY', 'SINCH_PROJECT_ID', 'SINCH_KEY_ID', 'SINCH_KEY_SECRET', 'SINCH_APP_ID', 'WEB_PUSH_VAPID_PUBLIC_KEY', 'WEB_PUSH_VAPID_PRIVATE_KEY']) delete process.env[key];
   const { default: router } = await import('../dist/routes/orders.js');
   const signToken = fixtureSession;
-  const { registerRealtimeClient, dispatchOrderCreatedEvent } = await import('../dist/services/realtimeEvents.js');
-  const streamHoja = [], streamMollan = [], streamOwner = [];
-  const disconnectOwner = registerRealtimeClient({ adminId: 'owner', role: 'owner', locationId: null, fulfillsDelivery: false }, { on() {}, write: text => streamOwner.push(text) }, { token_hash: 'isolated', expires_at: new Date(Date.now() + 60000).toISOString() });
-  const disconnectHoja = registerRealtimeClient({ adminId: 'hoja-admin', role: 'location', locationId: hoja, fulfillsDelivery: false }, { on() {}, write: text => streamHoja.push(text) }, { token_hash: 'isolated', expires_at: new Date(Date.now() + 60000).toISOString() });
-  const disconnectMollan = registerRealtimeClient({ adminId: 'mollan-admin', role: 'location', locationId: mollan, fulfillsDelivery: false }, { on() {}, write: text => streamMollan.push(text) }, { token_hash: 'isolated', expires_at: new Date(Date.now() + 60000).toISOString() });
+  // Screens refresh from a database trigger signal; per-location push targeting is tested below.
+  const { dispatchOrderCreatedEvent } = await import('../dist/services/realtimeEvents.js');
   const app = express();
   app.use(express.json()); app.use('/orders', router);
   const server = app.listen(0, '127.0.0.1');
@@ -112,13 +109,8 @@ test('owner phone orders enter the selected location queue without online paymen
       assert.equal(phoneOrder.totalPrice, 10000);
       assert.equal(phoneOrder.items[0].productName, 'Kunafa (250 gram)');
       assert.deepEqual(phoneOrder.customerInfo, { name: 'Anna Andersson', phone: '0701234567', email: 'anna@example.test' });
-      assert.match(streamHoja.join(''), /ORDER_CREATED/);
-      assert.doesNotMatch(streamMollan.join(''), /ORDER_CREATED/);
-      assert.doesNotMatch(streamOwner.join(''), /ORDER_CREATED/);
-      const eventsBefore = streamHoja.length;
       assert.equal((await call('/admin/phone-orders', 'POST', body)).status, 200);
       assert.equal(orders.length, 1);
-      assert.equal(streamHoja.length, eventsBefore);
       const itemInsert = requests.findIndex(row => row.table === 'order_items' && row.method === 'POST');
       const publication = requests.findIndex(row => row.table === 'orders' && row.method === 'PATCH');
       assert.ok(itemInsert < publication);
@@ -194,16 +186,12 @@ test('owner phone orders enter the selected location queue without online paymen
       assert.ok(!orders.some(order => order.id === body.requestId));
       failItems = false;
       assert.equal((await call('/admin/phone-orders', 'POST', body)).status, 201);
-      assert.match(streamMollan.join(''), /ORDER_CREATED/);
     });
     await t.test('phone orders remain visible after acceptance and payment requires explicit collection', async () => {
       assert.equal((await call(`/admin/${phoneOrder.id}/accept`, 'PATCH', {})).status, 403);
       assert.equal((await call(`/admin/${phoneOrder.id}/status`, 'PATCH', { status: 'mottagen' })).status, 403);
       assert.equal((await call(`/admin/${phoneOrder.id}/accept`, 'PATCH', {}, 'mollan-admin')).status, 403);
       assert.equal((await call(`/admin/${phoneOrder.id}/accept`, 'PATCH', {}, 'hoja-admin')).status, 200);
-      assert.match(streamOwner.join(''), /PHONE_ORDER_ACCEPTED/);
-      assert.doesNotMatch(streamOwner.join(''), /ORDER_CREATED/);
-      assert.doesNotMatch(streamMollan.join(''), /PHONE_ORDER_ACCEPTED/);
       assert.deepEqual(await (await call('/admin/pending')).json(), []);
       const ownerActive = await (await call('/admin/active')).json();
       assert.deepEqual(ownerActive.map(order => order.id), [phoneOrder.id]);
@@ -220,11 +208,7 @@ test('owner phone orders enter the selected location queue without online paymen
     await t.test('online orders still notify the owner and the selected location', async () => {
       const online = { id: randomUUID(), order_number: '#online', status: 'ny', order_type: 'takeaway', location_id: hoja, payment_method: 'card', payment_status: 'paid' };
       orders.push(online);
-      const ownerBefore = streamOwner.length, hojaBefore = streamHoja.length, mollanBefore = streamMollan.length;
       dispatchOrderCreatedEvent(online.id, online.order_number, 'takeaway', hoja);
-      assert.match(streamOwner.slice(ownerBefore).join(''), /ORDER_CREATED/);
-      assert.match(streamHoja.slice(hojaBefore).join(''), /ORDER_CREATED/);
-      assert.equal(streamMollan.length, mollanBefore);
       assert.deepEqual((await (await call('/admin/pending')).json()).map(order => order.id), [online.id]);
     });
     await t.test('scheduled orders release at 20 minutes, keep manual acceptance and respect payment/location scope', async t => {
@@ -419,7 +403,6 @@ test('owner phone orders enter the selected location queue without online paymen
       assert.deepEqual(sent.sort(), ['https://push.example.test/mollan-admin', 'https://push.example.test/owner']);
     });
   } finally {
-    disconnectHoja(); disconnectMollan(); disconnectOwner();
     server.close(); database.close();
     await Promise.all([once(server, 'close'), once(database, 'close')]);
   }

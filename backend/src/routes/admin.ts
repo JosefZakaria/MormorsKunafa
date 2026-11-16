@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
+import { timingSafeEqual } from 'node:crypto';
 import { supabase, type Row, logSupabaseError, nowIso } from '../db/connection.js';
 import { applyAdminSettingsPatch, adminSettingsFromRow } from '../db/adminSettings.js';
 import { requireAdmin, requireOwner, getRequestAdmin } from '../middleware/auth.js';
@@ -14,7 +15,7 @@ import {
   listActivePushSubscriptions,
   upsertPushSubscription,
 } from '../db/pushSubscriptionsRepository.js';
-import { getRealtimeStatus, registerRealtimeClient, closeSessionClients } from '../services/realtimeEvents.js';
+import { createAdminRealtimeToken, sendUnacceptedOrderReminders } from '../services/realtimeEvents.js';
 import { isWebPushConfigured } from '../services/pushNotifications.js';
 import { parseOpeningHours } from '../shared/utils/openingHours.js';
 import type { LocationFlagsPatch } from '../db/locations.js';
@@ -156,44 +157,46 @@ router.get('/session', requireAdmin, (req: Request, res: Response) => {
 
 router.post('/logout', requireAdmin, async (req: Request, res: Response) => {
   try {
-    const hash = await revokeAdminSession(req, res);
-    if (hash) closeSessionClients(hash);
+    await revokeAdminSession(req, res);
     res.json({ ok: true });
   } catch {
     res.status(503).json({ error: 'Kunde inte logga ut. Försök igen.' });
   }
 });
 
-router.get('/events', requireAdmin, (req: Request, res: Response) => {
-  const admin = getAdminFromRequest(req);
-  if (!admin?.adminId) {
+router.get('/realtime-token', requireAdmin, (req: Request, res: Response) => {
+  const access = createAdminRealtimeToken(getRequestAdmin(req)!.adminId);
+  res.setHeader('Cache-Control', 'no-store');
+  if (!access) {
+    // Screens fall back to polling; this is a configuration gap, not an outage.
+    res.status(503).json({ error: 'Realtime is not configured' });
+    return;
+  }
+  res.json(access);
+});
+
+// Vercel Cron calls this with "Authorization: Bearer <CRON_SECRET>".
+router.get('/cron/order-reminders', async (req: Request, res: Response) => {
+  const secret = process.env.CRON_SECRET?.trim();
+  const given = Buffer.from(req.headers.authorization ?? '');
+  const expected = Buffer.from(`Bearer ${secret}`);
+  if (!secret || given.length !== expected.length || !timingSafeEqual(given, expected)) {
     res.status(401).json({ error: 'Unauthorized' });
     return;
   }
-
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache, no-transform');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders();
-
-  void loadAdminScope(admin.adminId)
-    .then((scope) => {
-      if (res.destroyed) return;
-      const cleanup = registerRealtimeClient(scope, res, getRequestAdmin(req)!.session!);
-      req.on('close', cleanup);
-    })
-    .catch((e) => {
-      console.error('[GET /admin/events] scope', e);
-      res.end();
-    });
+  try {
+    res.json({ reminded: await sendUnacceptedOrderReminders() });
+  } catch (e) {
+    console.error('[GET /admin/cron/order-reminders]', e);
+    res.status(500).json({ error: 'Reminder run failed' });
+  }
 });
 
 router.get('/notifications/health', requireAdmin, (_req: Request, res: Response) => {
-  const status = getRealtimeStatus();
   res.json({
     ok: true,
     webPushConfigured: isWebPushConfigured(),
-    realtime: status,
+    realtimeConfigured: createAdminRealtimeToken('health-check') !== null,
   });
 });
 
