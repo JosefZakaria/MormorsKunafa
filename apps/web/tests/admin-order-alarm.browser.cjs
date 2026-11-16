@@ -47,7 +47,7 @@ async function setup(t, options = {}) {
   const page = await context.newPage();
   const pageErrors = [];
   page.on('pageerror', error => pageErrors.push(error.message));
-  const state = { pending: [], scheduled: [], active: [], prints: [], products: [], phoneRequests: [], pendingStatus: 200, secondaryStatus: 200, holdSecondary: false, releaseSecondary: null, pendingCalls: 0, holdPending: false, releasePending: null, ...options };
+  const state = { pending: [], scheduled: [], active: [], history: [], prints: [], products: [], phoneRequests: [], pendingStatus: 200, secondaryStatus: 200, holdSecondary: false, releaseSecondary: null, pendingCalls: 0, holdPending: false, releasePending: null, ...options };
   t.after(async () => {
     state.releaseSecondary?.();
     state.releasePending?.();
@@ -132,6 +132,7 @@ async function setup(t, options = {}) {
       }
       return json(endpoint.endsWith('/active') ? state.active : state.scheduled.filter(order => order.status === 'ny' && Date.parse(order.scheduledTime) - nowMs > 20 * 60_000), state.secondaryStatus);
     }
+    if (endpoint.startsWith('/orders/admin/history')) return json(state.history);
     // Realtime not configured: the dashboard must keep working on polling alone.
     if (endpoint === '/admin/realtime-token') { state.tokenCalls = (state.tokenCalls ?? 0) + 1; return json({ error: 'Realtime is not configured' }, 503); }
     if (endpoint === '/admin/settings' || endpoint === '/orders/settings') return json(settings);
@@ -202,6 +203,17 @@ async function wake(page) {
 async function overlay(page) {
   await page.locator('.alarm-overlay').waitFor({ timeout: 8000 });
 }
+
+test('order history keeps receipts and notes without offering permanent deletion', { timeout: 25000 }, async t => {
+  const { page } = await setup(t, { profile: 'owner', history: [{ ...order('retained'), status: 'uthämtad' }] });
+  await page.getByRole('button', { name: 'Orderhistorik', exact: true }).click();
+  const card = page.locator('.admin-order-card').filter({ hasText: '#retained' });
+  await card.waitFor();
+  assert.equal(await card.getByRole('button', { name: 'Kvitto', exact: true }).count(), 1);
+  assert.equal(await card.getByRole('button', { name: 'Intern notis', exact: true }).count(), 1);
+  assert.equal(await card.getByRole('button', { name: 'Ta bort', exact: true }).count(), 0);
+  assert.equal(await page.getByRole('button', { name: 'Radera all historik', exact: true }).count(), 0);
+});
 
 test('security headers block framing the admin screen without blocking the dashboard itself', { timeout: 25000 }, async t => {
   const { page } = await setup(t);

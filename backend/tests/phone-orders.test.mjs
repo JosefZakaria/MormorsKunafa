@@ -385,6 +385,34 @@ test('owner phone orders enter the selected location queue without online paymen
         items.splice(0, items.length, ...items.filter(item => item.order_id !== body.requestId));
       }
     });
+    await t.test('removed deletion endpoints cannot erase accounting records, even with owner credentials and the password', async () => {
+      const previousPassword = process.env.DELETE_PASSWORD;
+      process.env.DELETE_PASSWORD = 'isolated-cancellation-password';
+      const savedOrders = structuredClone(orders), savedItems = structuredClone(items);
+      const before = requests.length;
+      try {
+        for (const user of ['owner', 'hoja-admin', null]) {
+          for (const path of [`/admin/${phoneOrder.id}/delete`, '/admin/history/all/delete']) {
+            assert.equal((await call(path, 'POST', { password: process.env.DELETE_PASSWORD }, user)).status, 404);
+          }
+        }
+        assert.deepEqual(orders, savedOrders);
+        assert.deepEqual(items, savedItems);
+        assert.equal(requests.slice(before).some(row => row.method !== 'GET'), false);
+        const cancelled = await call(`/admin/${phoneOrder.id}/cancel`, 'POST', {
+          password: process.env.DELETE_PASSWORD, cancellationReason: 'Synthetic cancellation',
+        });
+        assert.equal(cancelled.status, 200);
+        assert.equal((await cancelled.json()).status, 'avbruten');
+        assert.equal(orders.length, savedOrders.length);
+        assert.deepEqual(items, savedItems);
+      } finally {
+        orders.splice(0, orders.length, ...savedOrders);
+        items.splice(0, items.length, ...savedItems);
+        if (previousPassword === undefined) delete process.env.DELETE_PASSWORD;
+        else process.env.DELETE_PASSWORD = previousPassword;
+      }
+    });
     await t.test('phone push reaches only the selected location; online push still includes the owner', async () => {
       const { default: webpush } = await import('web-push');
       const keys = webpush.generateVAPIDKeys();
