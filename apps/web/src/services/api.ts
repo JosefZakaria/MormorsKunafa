@@ -16,11 +16,6 @@ import type {
   AdminRole,
   PhoneOrderRequest,
   PushSubscriptionRecord,
-  RetentionPreview,
-  RetentionHold,
-  RetentionHoldInput,
-  RetentionErasureInput,
-  RetentionErasureResult,
 } from '@shared/types';
 
 // Admin credentials are sent only in the HttpOnly cookie. The CSRF token stays in memory.
@@ -207,24 +202,6 @@ export const orderApi = {
     const qs = qp.toString();
     return authenticatedRequest<Order[]>(`/orders/admin/history${qs ? `?${qs}` : ''}`);
   },
-
-  getRetentionPreview: (page = 1): Promise<RetentionPreview> =>
-    authenticatedRequest<RetentionPreview>(`/orders/admin/retention-preview?page=${page}`, {timeout: 30000}),
-
-  eraseRetainedFields: (orderId: string, input: RetentionErasureInput): Promise<RetentionErasureResult> =>
-    authenticatedRequest<RetentionErasureResult>(`/orders/admin/${encodeURIComponent(orderId)}/retention-erase`, {
-      method: 'POST', body: JSON.stringify(input), timeout: 30000,
-    }),
-
-  createRetentionHold: (orderId: string, input: RetentionHoldInput): Promise<RetentionHold> =>
-    authenticatedRequest<RetentionHold>(`/orders/admin/${encodeURIComponent(orderId)}/retention-holds`, {
-      method: 'POST', body: JSON.stringify(input),
-    }),
-
-  releaseRetentionHold: (holdId: string): Promise<{ok: true}> =>
-    authenticatedRequest<{ok: true}>(`/orders/admin/retention-holds/${encodeURIComponent(holdId)}/release`, {
-      method: 'PATCH', body: JSON.stringify({}),
-    }),
 
   cancelOrder: async (id: string, cancellationReason: string, password: string): Promise<Order> => {
     return authenticatedRequest<Order>(`/orders/admin/${id}/cancel`, {

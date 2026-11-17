@@ -9,8 +9,6 @@
  */
 
 // Order Status Types (F.Order.2)
-export * from './retention.js';
-
 export type OrderStatus = 'ny' | 'mottagen' | 'påbörjad' | 'klar' | 'avbruten' | 'uthämtad' | 'levererad';
 
 // Order Type

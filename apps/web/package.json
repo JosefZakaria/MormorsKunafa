@@ -7,7 +7,6 @@
     "node": "^24.22.1"
   },
   "scripts": {
-    "test:retention:browser": "node --test tests/retention-preview.browser.cjs",
     "test:phone-orders": "node --test tests/phone-order-printer.test.cjs",
     "test:printer": "node --test tests/printer-connection.test.cjs tests/phone-order-printer.test.cjs",
     "test:landing": "node --test tests/public-settings-preload.test.cjs",

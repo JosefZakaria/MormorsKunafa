@@ -30,7 +30,6 @@ import { scheduleOrderRelease } from '../../../utils/scheduleOrderRelease';
 import { MenuTab } from './MenuTab';
 import { DeliveryPricingSettings } from './DeliveryPricingSettings';
 import { PhoneOrdersTab } from './PhoneOrdersTab';
-import { RetentionPreview } from './RetentionPreview';
 
 function deliveryCustomerName(order: Order): string {
     const fromCustomer = order.customerInfo?.name?.trim();
@@ -728,7 +727,6 @@ export const AdminDashboard: React.FC = () => {
     const [preOrders, setPreOrders] = useState<Order[]>([]);
     const [activeOrders, setActiveOrders] = useState<Order[]>([]);
     const [historyOrders, setHistoryOrders] = useState<Order[]>([]);
-    const [historyRevision, setHistoryRevision] = useState(0);
     const [products, setProducts] = useState<Product[]>([]);
     const [settings, setSettings] = useState<AdminSettings | null>(null);
     const [locations, setLocations] = useState<Location[]>([]);
@@ -1037,7 +1035,7 @@ export const AdminDashboard: React.FC = () => {
         return () => {
             cancelled = true;
         };
-    }, [isOwner, activeTab, historyDateFrom, historyDateTo, historyRevision]);
+    }, [isOwner, activeTab, historyDateFrom, historyDateTo]);
 
     // --- Accept pending order ---
     const handleAcceptOrder = async (orderId: string, extraMinutes?: number) => {
@@ -1665,7 +1663,6 @@ export const AdminDashboard: React.FC = () => {
                     {/* ── HISTORIK ── */}
                     {isOwner && activeTab === 'history' && (
                         <div className="orders-list">
-                            <RetentionPreview onErased={() => {closeNotesModal(); setHistoryOrders([]); setHistoryRevision(previous => previous + 1);}} />
                             <div className="history-date-filter">
                                 <div className="history-date-field">
                                     <label>Från</label>
