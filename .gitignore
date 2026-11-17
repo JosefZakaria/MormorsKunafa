@@ -15,6 +15,7 @@ build/
 /backend/.env.example
 
 # Archives & Dumps
+/MormorsKunafaBackup/
 *.zip
 *.tar
 *.gz
