@@ -42,12 +42,9 @@ import { loadDeliveryPricing } from '../db/deliveryPricing.js';
 import { deliveryQuoteMatches, quoteDelivery, type DeliveryQuote } from '../shared/utils/deliveryPricing.js';
 import { registerPhoneOrderRoutes } from './adminPhoneOrders.js';
 import { limitOrderCreation } from '../services/rateLimit.js';
-import { registerRetentionRoutes } from './orderRetention.js';
-import { checkoutAttemptExpired } from '../services/orderRetention.js';
 
 const router = Router();
 registerPhoneOrderRoutes(router);
-registerRetentionRoutes(router);
 
 router.use('/swish-payment', swishPaymentRouter);
 
@@ -512,10 +509,6 @@ router.post('/checkout-session/:orderId', async (req: Request, res: Response) =>
     }
     if (String(order.payment_status ?? '') !== 'pending') {
       res.status(400).json({ error: 'Order is not awaiting payment' });
-      return;
-    }
-    if (order.status !== 'ny' || checkoutAttemptExpired(order)) {
-      res.status(400).json({ error: 'Betalningsförsöket har gått ut. Lägg en ny beställning.' });
       return;
     }
 
