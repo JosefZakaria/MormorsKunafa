@@ -7,6 +7,7 @@
     "node": "^24.22.1"
   },
   "scripts": {
+    "test:retention": "npm run build && node --test tests/order-retention.test.mjs tests/retention-routes.test.mjs",
     "test:auth": "npm run build && node --test tests/auth.test.mjs",
     "test:phone-orders": "npm run build && node --test tests/phone-orders.test.mjs",
     "test:voice-order-policy": "npm run build && node --test tests/voice-order-policy.test.mjs tests/voice-catalog.test.mjs",
